@@ -1,0 +1,112 @@
+table_name: dws_10000251_resource_item_df
+engine: maxcompute
+table_comment: 道具资源产销统计总表
+description: 道具资源产销统计总表，按角色(role_id)+服务器(server_id)+资源类型(item_type)+资源值(item_value)细分的日全量快照(_df)。粒度：每角色每资源项每日快照。主体：角色(role_id为主键, user_type=3)。覆盖角色资源剩余量、累计产出量与消耗量及产出消耗比。
+domains:
+  - 资源产销
+  - 角色成长
+granularity: 日全量快照(_df)，角色+服务器+资源类型+资源值粒度
+columns:
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 服务器ID
+    role: dimension
+  - name: item_type
+    type: bigint
+    comment: 资源类型
+    role: dimension
+  - name: item_value
+    type: bigint
+    comment: 资源值
+    role: dimension
+  - name: amount
+    type: bigint
+    comment: 剩余数量
+    role: measure
+  - name: add_amount
+    type: bigint
+    comment: 累计增加数量
+    role: measure
+  - name: use_amount
+    type: bigint
+    comment: 累计消耗数量
+    role: measure
+  - name: add_times
+    type: bigint
+    comment: 累计增加次数
+    role: measure
+  - name: use_times
+    type: bigint
+    comment: 累计消耗次数
+    role: measure
+  - name: add_tm_fst
+    type: string
+    comment: 首次增加时间
+    role: attribute
+  - name: add_tm_lst
+    type: string
+    comment: 最近增加时间
+    role: attribute
+  - name: use_tm_fst
+    type: string
+    comment: 首次消耗时间
+    role: attribute
+  - name: use_tm_lst
+    type: string
+    comment: 最近消耗时间
+    role: attribute
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 资源产出消耗角色UV（去重角色数），衡量涉及资源流转的角色规模
+  amount_sum:
+    expression: SUM(amount)
+    description: 剩余资源数量总量，衡量全服资源存量
+  add_amount_sum:
+    expression: SUM(add_amount)
+    description: 累计资源产出总量，衡量资源产出规模
+  use_amount_sum:
+    expression: SUM(use_amount)
+    description: 累计资源消耗总量，衡量资源消耗规模
+  consume_ratio:
+    expression: SUM(use_amount) / NULLIF(SUM(add_amount), 0)
+    description: 产出消耗比=累计消耗/累计产出，衡量资源流转效率与囤积度
+coverage:
+  scenarios:
+    - 全服资源存量(amount_sum)与角色UV(role_uv)监控整体资源盘子
+    - 产出(add_amount_sum)与消耗(use_amount_sum)对比定位资源流转平衡
+    - 产出消耗比(consume_ratio)识别囤积/透支倾向，辅助经济调控
+  limitations:
+    - 仅对 latest ds(20260730) 做 maxc 抽样验证(role_uv=1668721, amount_sum≈13.5T, add_amount_sum≈34.2T, use_amount_sum≈20.7T)，未做全量逐分区复核
+    - _df 日全量快照，指标为截至当日累计值，非当日增量；如需日增量需用 add_amount/use_amount 差分
+    - 无账号/设备维度，仅角色粒度(user_type=3 推断自 role_id 主键，表无 user_type 列未直接验证)
+    - 缺资源类型映射维度表，item_type/item_value 含义需业务字典补充
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: latest ds(20260730) maxc 抽样验证 4 项聚合指标取值合理，结构与 meta describe 列对齐
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (服务器ID) exactly matches the PK server_id of dim_10000251_server_info, the区服维度表 for JOIN回填区服名称与开服时间.
+    origin: deterministic
+  - dim_table: dim_10000251_resource_name_info
+    join_keys:
+      - dws_column: item_type
+        dim_column: item_type
+      - dws_column: item_value
+        dim_column: item_value
+    derivation: DWS columns item_type (资源类型) and item_value (资源值) exactly match the composite PK [item_type, item_value] of dim_10000251_resource_name_info, the资源/道具名称维度表 for将事实表道具编码解析为人类可读名称.
+    origin: deterministic
+pref_label: 道具资源产销总表

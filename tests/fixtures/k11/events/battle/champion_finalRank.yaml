@@ -1,0 +1,131 @@
+name: game.champion.finalRank
+event_filter: event = 'game.champion.finalRank'
+description: 争霸赛最终排名上报事件：赛季结算时记录参赛角色的最终排名快照(seasonId/rankType/rankOldValue/rankValue)。分析主体为角色(role_id)，附带账号id、游戏服、角色名、等级、VIP、战力等画像字段。ds=20260729 单日实测 39 条记录、24 个角色、22 个账号、9 个游戏服，rankValue 范围 1-32、rankType 3 种、seasonId 4 种。
+domains:
+  - 战斗关卡
+domain: battle
+metrics:
+  champion_finalrank_cnt:
+    expression: COUNT(*)
+    description: 最终排名上报记录数
+  champion_finalrank_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 上报最终排名的去重角色数
+  champion_finalrank_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 上报最终排名的去重账号数
+  champion_finalrank_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 上报最终排名的去重游戏服数
+  champion_finalrank_season_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.seasonId'))
+    description: 涉及的去重赛季数
+  champion_finalrank_ranktype_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.rankType'))
+    description: 涉及的去重排名类型数
+  champion_finalrank_top1_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN CAST(GET_JSON_OBJECT(params,'$.rankValue') AS BIGINT)=1 THEN role_id END)
+    description: 最终排名第一(冠军)的去重角色数
+coverage:
+  scenarios:
+    - 各赛季最终排名快照：按 seasonId/rankType 切分统计参赛角色数、Top-N 分布、冠亚军分布
+    - 跨游戏服/赛季的角色最终排名对比与战力画像分析
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id(角色)，account_id 为账号粒度参考
+    - rankValue 单日实测范围 1-32、rankType 3 种、seasonId 4 种(非全量样本)
+coverage_status: analyst_confirmed
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  seasonId:
+    type: int
+    description: seasonId
+  uid:
+    type: int
+    description: uid
+  rankType:
+    type: int
+    description: rankType
+  rankOldValue:
+    type: int
+    description: rankOldValue
+  rankValue:
+    type: int
+    description: rankValue
+  logFrom:
+    type: string
+    description: logFrom
+  logValue:
+    type: string
+    description: logValue
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: ds=20260729 scout 实测：cnt=39, role_uv=24, acc_uv=22, server_uv=9; rankValue 1-32, rankType 3 种, seasonId 4 种
+external_refs: []

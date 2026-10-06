@@ -1,0 +1,114 @@
+name: game.gacha.setGroupSelId
+event_filter: event = 'game.gacha.setGroupSelId'
+description: 抽卡系统选择卡池组ID事件。玩家在抽卡界面选择/设置卡池组(groupId)与卡池(gachaId)时触发，记录所选卡池组、卡池ID及新手集市标识(specialId，0为普通卡池)。分析主体为 role_id(角色级事件)，携带角色等级/vip/战力等角色画像字段与关键货币快照。scout 实测 ds=20260729 与 ds=20260728 均零命中(cnt=0)，疑似该事件下线或未触发。
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  groupId:
+    type: int
+    description: 组ID
+  gachaId:
+    type: int
+    description: 卡池ID
+  specialId:
+    type: int
+    description: 新手集市id，id=0表示普通卡池
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 cnt=0/role_uv=0/acc_uv=0/server_uv=0；ds=20260728 同样零命中。事件疑似下线或未触发，保持 draft，指标定义保留待事件恢复后启用。
+metrics:
+  game_gacha_set_group_sel_id_cnt:
+    expression: COUNT(*)
+    description: 抽卡卡池组选择事件总次数
+  game_gacha_set_group_sel_id_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发卡池组选择的角色去重数（分析主体 role_id）
+  game_gacha_set_group_sel_id_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发卡池组选择的账号去重数
+  game_gacha_set_group_sel_id_gacha_pool_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.gachaId'))
+    description: 被选择的卡池（gachaId）去重数
+  game_gacha_set_group_sel_id_newbie_pool_cnt:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params, '$.specialId') AS BIGINT) <> 0 THEN 1 ELSE 0 END)
+    description: 新手集市卡池（specialId 非 0）选择次数
+  game_gacha_set_group_sel_id_role_per_pool:
+    expression: COUNT(DISTINCT role_id) / NULLIF(COUNT(DISTINCT GET_JSON_OBJECT(params, '$.gachaId')), 0)
+    description: 每个被选卡池的平均选择角色数（role_id / gachaId 去重比）
+coverage:
+  scenarios:
+    - 衡量抽卡卡池组选择行为，分析卡池热度分布、新手集市 vs 普通卡池选择占比、各卡池触达角色数；为运营卡池配置与新手引导效果评估提供数据支撑。
+  limitations:
+    - 日志中零命中(ds=20260729/20260728 cnt=0)，疑似该事件下线或未触发，未做全量复核；指标定义保留待事件恢复后启用。
+  subject_granularity: role_id
+coverage_status: draft
+external_refs: []

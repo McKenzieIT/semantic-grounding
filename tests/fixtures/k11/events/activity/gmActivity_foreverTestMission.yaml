@@ -1,0 +1,133 @@
+name: game.gmActivity.foreverTestMission
+event_filter: event = 'game.gmActivity.foreverTestMission'
+description: GM 活动「永久测试任务(foreverTestMission)」事件：记录角色在 GM 活动中完成/领取永久测试任务mission 的行为，携带 missionId、missionType、requireType、rewards 奖励列表及任务描述 detail，以及角色基础属性(等级/战力/vip/经验)。subject 粒度为 role_id（角色级）。ds=20260729/20260728 实测日志零命中(cnt=0)，疑似未触发或已下线。
+domains:
+  - 自定义
+domain: activity
+metrics:
+  game_gmActivity_foreverTestMission_cnt:
+    expression: COUNT(*)
+    description: 永久测试任务事件总触发次数
+  game_gmActivity_foreverTestMission_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发永久测试任务的去重角色数
+  game_gmActivity_foreverTestMission_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发永久测试任务的去重账号数
+  game_gmActivity_foreverTestMission_mission_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.missionId'))
+    description: 触发的去重 missionId 任务数
+coverage:
+  scenarios:
+    - 监控 GM 活动「永久测试任务」的触发量与参与角色规模
+    - 评估不同 missionId/missionType 的覆盖范围
+    - 核对奖励 rewards 发放的任务维度去重数
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 日志中零命中(ds=20260729/20260728 cnt=0)，疑似下线/未触发
+    - 默认 subject 为 role_id（角色级事件）
+    - metrics 表达式未经有数据日校验，待有命中后再核验
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  actId:
+    type: int
+    description: actId
+  missionId:
+    type: int
+    description: missionId
+  rewards:
+    type: array
+    description: 奖励
+  rewards.type:
+    type: int
+    description: 类型
+  rewards.value:
+    type: int
+    description: 值
+  rewards.size:
+    type: int
+    description: 数量
+  rewards.uid:
+    type: int
+    description: 唯一id
+  missionType:
+    type: int
+    description: missionType
+  requireType:
+    type: int
+    description: requireType
+  detail:
+    type: string
+    description: 任务描述
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 cnt=0/role_uv=0/acc_uv=0，ds=20260728 同样零命中；疑似事件未触发或已下线，标记 draft 待后续命中复核
+  coverage_status: draft
+external_refs: []

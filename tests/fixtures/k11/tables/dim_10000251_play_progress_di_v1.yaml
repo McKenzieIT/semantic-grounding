@@ -1,0 +1,69 @@
+table_name: dim_10000251_play_progress_di_v1
+engine: maxcompute
+kind: dim
+table_comment: star002困难模式进度配置维度表(每进度日一行)
+description: 'star002困难模式进度配置维度表。每进度日(datetime2,从0开始)一行的关卡进度配置表，记录当日上限进度(stage_id)及核心/积极/普通三类玩家各自的关卡排序(_stage)与关卡进度(_id)。用于按进度日JOIN查询玩家所处关卡区间与上限。'
+domains:
+- 战斗关卡
+granularity: 每进度日(datetime2)一行
+primary_key:
+- datetime2
+label_columns:
+- stage_id
+- core_stage
+- active_stage
+- normal_stage
+columns:
+- name: datetime2
+  type: string
+  comment: 0开始的进度第几天
+  role: dimension
+- name: stage_id
+  type: string
+  comment: 当日上限进度
+  role: dimension
+- name: core_stage
+  type: string
+  comment: 核心玩家关卡排序
+  role: dimension
+- name: active_stage
+  type: string
+  comment: 积极玩家关卡排序
+  role: dimension
+- name: normal_stage
+  type: string
+  comment: 普通玩家关卡排序
+  role: dimension
+- name: core_id
+  type: string
+  comment: 核心玩家关卡进度
+  role: dimension
+- name: active_id
+  type: string
+  comment: 积极玩家关卡进度
+  role: dimension
+- name: normal_id
+  type: string
+  comment: 普通玩家关卡进度
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+coverage:
+  scenarios:
+  - 按进度日(datetime2)JOIN查询当日关卡上限(stage_id)与各玩家分层关卡进度
+  - 关卡进度分布分析：核心/积极/普通玩家关卡排序(_stage)与进度(_id)对比
+  limitations:
+  - 配置类维度表，无值度量；仅含困难模式进度
+  - 复合编码串(_stage/_id列)需二次解码方可获取具体关卡ID
+  - 表当前0行，未做唯一性实测(主键唯一性保持unverified)
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 自动dim建模，datetime2为进度日自然主键；表0行无法实测唯一性，保持draft
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数

@@ -1,0 +1,102 @@
+table_name: dws_10000251_battle_stage_act_di
+engine: maxcompute
+table_comment: K11-关卡活跃通关表
+description: |-
+  K11-关卡活跃通关表（角色粒度，关卡停留与参与行为日增量）。
+  粒度：日增量(_di)，按 ds 分区；逻辑粒度为 (ds, role_id, stay_type, play_func_id, stay_chapter_id, stay_stage_id) 组合，记录每个角色在不同关卡停留维度下的当日/累计参与次数。
+  主体：角色(role)——本表以 role_id 为行为主体刻画关卡活跃；表无 user_type 列，主体类型为推断（role->user_type=3），未做 maxc 实测校验。
+  主要字段：account_id, server_id, role_id, stay_type, play_func_id, stay_chapter_id, stay_stage_id, part_pv_di, part_pv_std, ds 等10列。
+domains:
+  - 战斗关卡
+  - 用户生命周期
+granularity: 日增量(_di)，分区字段 ds，逻辑粒度 (ds, role_id, stay_type, play_func_id, stay_chapter_id, stay_stage_id)，角色主体
+columns:
+  - name: account_id
+    type: string
+    comment: 账号id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: stay_type
+    type: int
+    comment: 关卡停留类型，0-解锁未参与 1-玩法功能层面的停留关卡 2-章节主题层面的停留关卡
+    role: dimension
+  - name: play_func_id
+    type: string
+    comment: 玩法功能id
+    role: dimension
+  - name: stay_chapter_id
+    type: int
+    comment: 章节主题id，当关卡停留类型是玩法功能层面的停留关卡时，展示停留关卡对应的的章节主题；当关卡停留类型是章节主题层面的停留时，这里表示在某章停留在哪个关卡
+    role: dimension
+  - name: stay_stage_id
+    type: string
+    comment: 停留关卡id，已通关的关卡
+    role: dimension
+  - name: part_pv_di
+    type: int
+    comment: 玩法当日参与次数
+    role: measure
+  - name: part_pv_std
+    type: int
+    comment: 玩法累计参与次数
+    role: measure
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日活跃角色数（关卡参与角色去重数）
+  stage_uv:
+    expression: COUNT(DISTINCT stay_stage_id)
+    description: 当日有角色停留/通关的关卡去重数
+  part_pv_di_sum:
+    expression: SUM(part_pv_di)
+    description: 当日玩法总参与次数（角色×关卡维度的当日参与次数求和）
+  part_pv_std_sum:
+    expression: SUM(part_pv_std)
+    description: 玩法累计总参与次数（截至当日累计参与次数求和，含历史重复计数，解读需谨慎）
+  avg_part_per_role:
+    expression: SUM(part_pv_di) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 当日人均玩法参与次数（当日总参与次数/活跃角色数）
+coverage:
+  scenarios:
+    - 评估每日关卡活跃规模：role_uv 反映参与关卡的角色规模，stage_uv 反映覆盖关卡广度
+    - 衡量关卡参与强度：part_pv_di_sum 与 avg_part_per_role 刻画当日参与频次与人均参与度
+    - 关卡停留分布分析：按 stay_type/stay_chapter_id/stay_stage_id 切片定位停留/卡点关卡
+  limitations:
+    - 表无 user_type 列，主体(角色)类型为推断，未做 maxc user_type 实测校验
+    - 仅对 latest ds=20250508 做了 scout 抽样验证（role_uv=4021, stage_uv=71, part_pv_di_sum=256, part_pv_std_sum=3707012），未做全量 maxc 实测复核
+    - part_pv_std 为累计值，SUM 会跨角色×关卡维度重复累计，作总量解读需谨慎
+    - _di 为日增量，跨日聚合需注意去重角色口径（同角色跨日可能多次出现）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 已对 latest ds=20250508 实测 role_uv/part_pv_di_sum 等指标，数值合理，标记 analyst_confirmed；主体类型(角色)为推断，未做 user_type 校验
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: "DWS column server_id (comment: 区服id) is an exact match to PK server_id of dim_10000251_server_info (服务器维度配置表) for server name/open-time lookup."
+    origin: deterministic
+  - dim_table: dim_10000251_function_info
+    join_keys:
+      - dws_column: play_func_id
+        dim_column: function_id
+    derivation: "DWS column play_func_id (comment: 玩法功能id) semantically matches PK function_id of dim_10000251_function_info (功能配置维度表), which is explicitly used for fact-table function dimension lookup via function_id."
+  - dim_table: dim_10000251_trans_stage_df
+    join_keys:
+      - dws_column: stay_stage_id
+        dim_column: id
+    derivation: "DWS column stay_stage_id (comment: 停留关卡id, 已通关的关卡) semantically matches PK id (关卡id) of dim_10000251_trans_stage_df (关卡配置维度表, 战斗关卡域), the canonical stage dimension for stage name/type/difficulty attributes."
+pref_label: 关卡活跃通关表

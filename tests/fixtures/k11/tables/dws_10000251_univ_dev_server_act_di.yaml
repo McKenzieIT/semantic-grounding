@@ -1,0 +1,138 @@
+table_name: dws_10000251_univ_dev_server_act_di
+engine: maxcompute
+table_comment: 设备-区服日活跃与付费明细表
+description: |
+  该表是按"设备ID+区服+日期"粒度的日活跃与付费明细宽表(_di 日增量),每行记录某设备在某区服某日的活跃与付费状态。本表固定为 user_type=1 的【设备表】,分析主体=设备,主体标识字段为 user_id(本表中实际存储设备ID);不同表(账号表/角色表)对应不同 user_type,但本表内 user_type 不作为切换层级的开关。能回答的业务问题:当日活跃设备数(DAU)、新增设备数、付费设备数、首充设备数、活跃时长(总/人均)、登录次数(act_pv)、付费金额(总流水/ARPU/付费设备人均)、区服活跃/付费排行、付费率、新增占比、首充占比等。注意事项:(1)act/act_fst/pay/pay_fst 均为 0/1 标记,SUM 即得对应人数,AVG 即得比率;(2)本表为日增量汇总,不含留存列,留存分析需关联对应留存表;(3)ext_info 为 JSON 附加信息,使用前需解析;(4)付费率/ARPU 等比率指标默认以 act=1(当日活跃)为分母口径。备注:建议用 SELECT DISTINCT user_type 复核,DISTINCT user_type 仅返回单一值 1(本表固定为设备表)。
+domains:
+  - 用户生命周期
+  - 系统监控
+granularity: 每设备(user_id)每区服(server_id)每天一行,日增量(_di)。本表固定为 user_type=1 的【设备表】,分析主体=设备,主体标识字段=user_id(实际存储设备ID)。备注:建议用 SELECT DISTINCT user_type 复核,DISTINCT user_type 仅返回单一值 1(本表固定为设备表,不通过 user_type 切换账号/角色视角,如需账号/角色视角请使用对应账号表/角色表)。
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: act_dur
+    type: int
+    comment: 活跃时长，单位：秒
+    role: measure
+  - name: pay_amt
+    type: decimal
+    comment: 付费金额，单位：元
+    role: measure
+  - name: act
+    type: int
+    comment: 活跃标记，1-活跃、0-非活跃
+    role: measure
+  - name: act_fst
+    type: int
+    comment: 新增标记，新增即首次活跃，1-新增、0-非新增
+    role: measure
+  - name: pay
+    type: int
+    comment: 付费标记，1-付费、0-非付费
+    role: measure
+  - name: pay_fst
+    type: int
+    comment: 首次付费标记，1-首次付费、0-非首次付费
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 附加信息
+    role: attribute
+  - name: act_pv
+    type: int
+    comment: 活跃次数，用“角色登录”事件计算，每登录1次算1次活跃
+    role: measure
+  - name: ds
+    type: string
+    comment: 统计日期(yyyy-mm-dd),分区字段,对应数据所属业务日
+    role: dimension
+metrics:
+  dau:
+    expression: SUM(act)
+    description: 当日活跃设备数(DAU),对 act(0/1 标记)求和;可按 server_id 分组得区服级 DAU
+  new_user_cnt:
+    expression: SUM(act_fst)
+    description: 当日新增设备数(首次活跃),对 act_fst(0/1 标记)求和
+  pay_user_cnt:
+    expression: SUM(pay)
+    description: 当日付费设备数,对 pay(0/1 标记)求和
+  first_pay_user_cnt:
+    expression: SUM(pay_fst)
+    description: 当日首充设备数(首次付费),对 pay_fst(0/1 标记)求和
+  total_act_dur:
+    expression: SUM(act_dur)
+    description: 总活跃时长(秒),对 act_dur 求和;按区服分组得区服总在线时长
+  avg_act_dur:
+    expression: SUM(act_dur)*1.0/NULLIF(SUM(act),0)
+    description: 人均活跃时长(秒),总活跃时长/活跃设备数,以 act=1 为分母口径,用 NULLIF 防除零
+  total_pay_amt:
+    expression: SUM(pay_amt)
+    description: 总付费金额/流水(元),对 pay_amt 求和;按区服分组得区服收入
+  pay_amt_per_paying_user:
+    expression: SUM(pay_amt)*1.0/NULLIF(SUM(pay),0)
+    description: 付费设备人均金额(元),总流水/付费设备数,以 pay=1 为分母,用 NULLIF 防除零
+  total_act_pv:
+    expression: SUM(act_pv)
+    description: 总登录次数(活跃次数),对 act_pv 求和
+  active_rate:
+    expression: AVG(act)
+    description: 活跃率,对 act(0/1)求均值即活跃行占比;若本表仅含活跃行(act 恒为 1)则恒为 1,此时无业务意义
+  pay_rate:
+    expression: AVG(CASE WHEN pay>0 THEN 1 ELSE 0 END)
+    description: 付费率,付费行占比;等价于 AVG(pay) 当 pay 严格为 0/1 时
+  arpu:
+    expression: SUM(pay_amt)*1.0/NULLIF(SUM(act),0)
+    description: ARPU(活跃设备人均付费,元),总流水/活跃设备数,以 act=1 为分母,用 NULLIF 防除零
+  new_user_ratio:
+    expression: SUM(act_fst)*1.0/NULLIF(SUM(act),0)
+    description: 新增占比,新增设备数/活跃设备数,用 NULLIF 防除零
+  first_pay_ratio:
+    expression: SUM(pay_fst)*1.0/NULLIF(SUM(pay),0)
+    description: 首充占比,首充设备数/付费设备数,用 NULLIF 防除零
+partitions:
+  - name: ds
+    type: string
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: 真实数据验证通过(ds=20260729,MAX(ds)=20260729 即为最新分区)。元数据核对:meta describe 确认 12 列(user_type,user_id,server_id,act_dur,pay_amt,act,act_fst,pay,pay_fst,ext_info,act_pv,ds)全部真实存在,与 YAML columns 一致。user_type 复核:SELECT DISTINCT user_type WHERE ds=20260729 仅返回 {1},符合"本表固定为设备表(user_type=1)"的口径,未出现 10000312 式多值情况。核心 metrics 实测(SUM WHERE ds=20260729):dau=SUM(act)=5011,new_user_cnt=SUM(act_fst)=661,pay_user_cnt=SUM(pay)=421,first_pay_user_cnt=SUM(pay_fst)=94,total_act_dur=SUM(act_dur)=22211392 秒(人均~4430s≈1.2h/设备,合理,非 Unix 时间戳),total_pay_amt=SUM(pay_amt)=39986.0 元(ARPU≈7.98 元/活跃设备,付费设备人均≈95 元,合理),total_act_pv=SUM(act_pv)=14009。派生比率:arpu=7.98、pay_rate=421/5011≈0.084、new_user_ratio=661/5011≈0.132、first_pay_ratio=94/421≈0.223,均在合理区间。粒度复核:COUNT(*)=5011,COUNT(DISTINCT user_id)=4544,COUNT(DISTINCT CONCAT(user_id,'|',server_id))=5011,即"每设备+每区服+每天一行"在 (user_id,server_id) 维度唯一,符合 _di 日增量口径。无活动运营域,无需剔除。所有引用列真实存在,无 broken metric。
+coverage:
+  scenarios:
+    - 当日活跃设备数(DAU)与新增设备数,按区服分组
+    - 当日付费设备数、首充设备数及付费率,按区服分组
+    - 活跃时长(总/人均)与登录次数,按区服对比
+    - 区服活跃/付费排行
+    - 总流水与 ARPU(活跃设备人均付费),按区服分组
+    - 付费设备人均金额与首充占比,按区服分组
+    - 新增占比(新增设备数/活跃设备数),按区服对比
+    - 区服活跃设备人均时长与登录频次(act_pv)排行
+  limitations:
+    - 本表固定为设备表(user_type=1),仅支持设备视角分析;账号/角色视角请使用对应账号表/角色表
+    - 本表不含留存列(D1/D7/D30 等),留存分析需关联对应留存表
+    - 不含角色等级、装备、关卡等业务明细,相关分析需关联对应明细表
+    - ext_info 为 JSON,需解析后才能使用其中扩展字段
+    - 本表为日增量(_di),跨日去重统计需注意设备标识口径(user_id)
+    - 付费率/ARPU 等比率指标默认以 act=1(当日活跃)为分母口径
+    - act_pv 仅借用"角色登录"事件口径提供登录次数,无法还原登录事件明细,登录时段/路径等需查事件表
+    - 不含渠道、平台、国家等获客维度,渠道分析需关联设备维表
+  coverage_status: draft
+supersedes: []
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (comment '区服id') exactly matches the primary_key server_id of dim_10000251_server_info, the canonical 区服 dimension whose description states it is used by fact tables to JOIN via server_id to backfill server name and open-server date.
+    origin: deterministic
+pref_label: 设备区服活跃日表

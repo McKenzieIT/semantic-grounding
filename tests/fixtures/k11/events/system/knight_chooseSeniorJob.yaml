@@ -1,0 +1,114 @@
+name: game.knight.chooseSeniorJob
+event_filter: event = 'game.knight.chooseSeniorJob'
+description: 武将切换进阶职业事件：玩家为某武将(knightId)选择高级职业(seniorJob)时上报。分析主体为 role_id（角色），单条事件代表一次武将职业切换行为，可统计各武将/职业分布与切换活跃度。scout 实测 ds=20260729 单日命中 cnt=2698，role_uv=964，acc_uv=937，server_uv=170。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightId:
+    type: int
+    description: 武将id
+  seniorJob:
+    type: int
+    description: 职业
+metrics:
+  game_knight_chooseSeniorJob_cnt:
+    expression: COUNT(*)
+    description: 武将切换进阶职业事件总次数
+  game_knight_chooseSeniorJob_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发切换进阶职业的去重角色数
+  game_knight_chooseSeniorJob_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发切换进阶职业的去重账号数
+  game_knight_chooseSeniorJob_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发切换进阶职业的去重游戏服数
+  game_knight_chooseSeniorJob_knight_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.knightId'))
+    description: 被切换进阶职业的去重武将id数（取自 params.knightId）
+  game_knight_chooseSeniorJob_seniorjob_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.seniorJob'))
+    description: 被选择进阶职业的去重职业类型数（取自 params.seniorJob）
+coverage:
+  scenarios:
+    - 武将进阶职业切换总体活跃度（次数、角色UV、账号UV、游戏服覆盖）
+    - 各武将(knightId)被切换进阶职业的分布与热门武将
+    - 进阶职业(seniorJob)选择分布与职业热度对比
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核；多日趋势/节假日波动未验证
+    - 分析主体默认 role_id（角色粒度），未单独校验 account 与 role 一对多关系
+    - knightId/seniorJob 取值字典未在语义层登记，需结合业务字典解读具体职业/武将含义
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=2698，role_uv=964，acc_uv=937，server_uv=170，数量合理非零，事件在线正常触发。
+coverage_status: analyst_confirmed
+external_refs: []

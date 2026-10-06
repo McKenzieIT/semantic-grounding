@@ -1,0 +1,130 @@
+name: game.recover.recover
+event_filter: event = 'game.recover.recover'
+description: 恢复型资源恢复事件 game.recover.recover：玩家持有的恢复性资源（如体力等）按时间自动恢复时上报，记录 recoverId（恢复性资源id）、oldNum/newNum（恢复前后数量）、oldRecoverTime/currRecoverTime（上次与本次恢复时间戳）。分析主体为 role_id（角色粒度），account_id 为账号粒度辅助。实测 ds=20260729：cnt=154303、role_uv=4518、acc_uv=4226、server_uv=466，覆盖 8 种恢复性资源，单日恢复总量 1869054（newNum-oldNum 求和，全部非负）。
+domains:
+  - 资源产销
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  recoverId:
+    type: int
+    description: 恢复性资源id
+  oldNum:
+    type: int
+    description: 旧的数量
+  newNum:
+    type: int
+    description: 新的数量
+  oldRecoverTime:
+    type: int
+    description: 上次恢复时间戳
+  currRecoverTime:
+    type: int
+    description: 当前恢复时间戳
+  now:
+    type: int
+    description: 当前时间戳
+metrics:
+  recover_cnt:
+    expression: COUNT(*)
+    description: 恢复事件总次数（所有恢复性资源恢复上报条数）
+  recover_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发恢复的 distinct 角色数（分析主体为 role_id）
+  recover_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发恢复的 distinct 账号数
+  recover_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的 distinct 游戏服数
+  recover_resource_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.recoverId'))
+    description: distinct 恢复性资源类型数（按 recoverId 去重）
+  recover_qty_delta_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.newNum') AS BIGINT) - CAST(GET_JSON_OBJECT(params, '$.oldNum') AS BIGINT))
+    description: 单日恢复总量（newNum - oldNum 求和，恢复事件该差值恒非负，反映资源净增量）
+coverage:
+  granularity: 单次恢复性资源恢复事件（role_id 为默认分析主体粒度，account_id 为账号粒度辅助）
+  scenarios:
+    - 恢复性资源（如体力）单日恢复总规模（次数/角色UV/账号UV/游戏服数）
+    - 覆盖的恢复性资源类型数（recover_resource_uv 按 recoverId 去重）
+    - 单日资源净恢复量（recover_qty_delta_sum = newNum - oldNum 求和）
+    - 活跃角色恢复强度与跨服分布
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（已验证 role_id 非空），未逐事件实测 role_id 是否为最细主体
+    - recover_qty_delta_sum 假设 newNum>=oldNum（ds=20260729 实测 100% 非负，纯恢复事件）
+    - coinList.* 为恢复时刻货币快照余额，非交易流水，不计 SUM
+    - 跨日趋势与首日/尾日边界效应未核
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729：cnt=154303、role_uv=4518、acc_uv=4226、server_uv=466；recover_id_uv=8、recover_qty_delta_sum=1869054（全部非负，纯恢复事件）。数字合理，事件确实高频触发。
+coverage_status: analyst_confirmed
+external_refs: []

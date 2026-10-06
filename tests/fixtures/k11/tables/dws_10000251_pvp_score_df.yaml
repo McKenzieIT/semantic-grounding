@@ -1,0 +1,78 @@
+table_name: dws_10000251_pvp_score_df
+engine: maxcompute
+table_comment: PVP积分状态总表，按角色(role_id)粒度的日全量快照
+description: |-
+  PVP积分状态总表，按角色(role_id)粒度的日全量快照(_df)，记录各PVP玩法(pvp_type)下角色的最终积分(pvp_score)与段位(pvp_rank)。
+  粒度：日全量快照(_df)，角色级(role_id)。
+  主要字段：pvp_type, role_id, pvp_score, pvp_rank, ds。
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 日全量快照(_df)，角色级(role_id)
+columns:
+  - name: pvp_type
+    type: bigint
+    comment: PVE玩法
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: pvp_score
+    type: bigint
+    comment: 最终积分
+    role: measure
+  - name: pvp_rank
+    type: bigint
+    comment: 最终段位
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  pvp_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: PVP参与角色数(快照UV)，按角色级去重，反映当日PVP玩法的角色覆盖规模
+  pvp_type_cnt:
+    expression: COUNT(DISTINCT pvp_type)
+    description: PVP玩法的种类数，反映当日开放/有积分的PVP玩法数量
+  total_pvp_score:
+    expression: SUM(pvp_score)
+    description: 全角色PVP积分合计，反映当日整体积分产出规模
+  avg_pvp_score:
+    expression: SUM(pvp_score) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均PVP积分(总积分/参与角色数)，刻画PVP玩法的人均参与深度
+  avg_pvp_rank:
+    expression: AVG(pvp_rank)
+    description: 角色平均PVP段位，刻画整体段位分布水平
+coverage:
+  scenarios:
+    - 各PVP玩法的参与角色规模与渗透(pvp_uv 按 pvp_type 分组)
+    - PVP积分产出总量与人均积分水平(总积分、人均积分)监控
+    - PVP段位分布与整体竞技水平(平均段位)跟踪
+    - 跨日快照对比，观察PVP参与/积分/段位的环比变化趋势
+  limitations:
+    - 仅对 latest ds=20260730 做了 maxc 抽样验证(roles=692575/types=2/total_score=167180083/avg_rank=5.65)，未做全量跨日复核
+    - _df 为日全量快照，指标为快照口径 UV/合计，非当日增量；跨日累计需避免重复计数
+    - 缺少账号/设备维度列，无法直接按账号或设备聚合(可经 role_id 关联其他表)
+    - pvp_type 列 DDL 注释为「PVE玩法」与表名(PVP)语义可能存在命名偏差，使用时以实际取值为准
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 最新分区(20260730)抽样验证四项核心指标均得合理值；subject 为角色级(role_id 为 PK)，无 user_type 列故未做 user_type 校验
+dimension_refs:
+  - dim_table: dim_10000251_trans_pvp_rank_df
+    join_keys:
+      - dws_column: pvp_type
+        dim_column: play_func_id
+      - dws_column: pvp_rank
+        dim_column: id
+    derivation: DWS pvp_type (PVP玩法) and pvp_rank (最终段位) match dim_10000251_trans_pvp_rank_df composite primary key (play_func_id, id), a dim explicitly described as the 段位维度供事实表按 play_func_id + 段位 id 关联取段位名称 — exactly the 玩法+段位 pattern of this PVP score fact table.
+pref_label: PVP积分总表
+alt_labels:
+  - 积分
+  - 段位
+  - 排名
+  - 分数

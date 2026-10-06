@@ -1,0 +1,113 @@
+name: game.home.fishidle
+event_filter: event = 'game.home.fishidle'
+description: "家园系统\"枭窝窝\"放置鱼事件：记录玩家在家园玩法中对鱼进行放置/选择/收取等交互行为（params.action: 1-放置自己的鱼，2-选择别人的鱼，3-收取自己的鱼奖励，4-收取别人的鱼奖励），并附带fishId、quality品质、idleReward挂机奖励配置字符串等参数。subject 粒度为 role_id（角色级事件）。实测 ds=20260729 单日触发 cnt=10620，覆盖 role_uv=3653、acc_uv=3482、server_uv=450。"
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  action:
+    type: int
+    description: 行为类型，1-放置自己的鱼 2-选择别人的鱼 3-收取自己的鱼奖励 4-收取别人的鱼奖励
+  fishId:
+    type: int
+    description: 鱼的id
+  quality:
+    type: int
+    description: 鱼的品质
+  idleReward:
+    type: string
+    description: "挂机奖励，直接记配置表中的挂机奖励，例如 1_46_100\tstring"
+metrics:
+  game_home_fishidle_cnt:
+    expression: COUNT(*)
+    description: 家园枭窝窝放置鱼事件总触发次数（含放置/选择/收取各类行为）
+  game_home_fishidle_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发放置鱼事件的不重复角色数
+  game_home_fishidle_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发放置鱼事件的不重复账号数
+  game_home_fishidle_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发放置鱼事件的不重复游戏服数
+coverage:
+  scenarios:
+    - 监控家园枭窝窝放置鱼玩法的活跃度与参与广度（角色/账号/服务器覆盖）
+    - 辅助评估家园社交互动玩法的渗透情况
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认 subject 为 role_id；未按 action(1-4) 行为类型拆分，如需细分需在视图层另行过滤
+    - idleReward 为配置表挂机奖励字符串(如1_46_100)，未在本指标中解析金额
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 实测 cnt=10620, role_uv=3653, acc_uv=3482, server_uv=450
+  coverage_status: analyst_confirmed
+external_refs: []

@@ -1,0 +1,106 @@
+name: game.rogue.elementSelectRefresh
+event_filter: event = 'game.rogue.elementSelectRefresh'
+description: "古战场(rogue)模式元素选择刷新事件：记录玩家在古战场元素选择环节执行刷新操作(刷新可选元素列表)的行为日志，携带角色等级/vip/战力/经验/关键货币等上下文。分析主体为 role_id(角色级事件)。实测 ds=20260729: cnt=87, role_uv=17, acc_uv=17, server_uv=14。"
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+metrics:
+  game_rogue_elementSelectRefresh_cnt:
+    expression: COUNT(*)
+    description: 古战场元素选择刷新事件总次数
+  game_rogue_elementSelectRefresh_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发元素选择刷新的去重角色数(分析主体)
+  game_rogue_elementSelectRefresh_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发元素选择刷新的去重账号数
+  game_rogue_elementSelectRefresh_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发元素选择刷新的去重游戏服数
+  game_rogue_elementSelectRefresh_avg_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 平均每角色刷新元素选择的次数(人均刷新频率)
+coverage:
+  scenarios:
+    - 分析古战场模式元素选择刷新的参与角色规模与服务器分布
+    - 评估玩家在元素选择环节的刷新频率(人均刷新次数 avg_per_role)
+    - 按角色等级(roleLevel)/vip等级(vipLevel)/战力(roleForce)维度拆解刷新行为
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id(角色级事件)，account_uv 供交叉参考
+    - 本事件为刷新操作行为日志，未对 coinList 货币变动做求和校验
+    - metrics 仅使用 base view 列(role_id/account_id/server_id)，未 JOIN 维表
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "实测 ds=20260729: cnt=87, role_uv=17, acc_uv=17, server_uv=14(数据合理，事件真实在线)"
+external_refs: []

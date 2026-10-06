@@ -1,0 +1,109 @@
+name: game.activityTower.fetchStarReward
+event_filter: event = 'game.activityTower.fetchStarReward'
+description: 活动塔星级奖励领取事件：玩家在活动塔玩法中领取星级奖励时触发，记录领奖前后奖励ID（oldRewardId/newRewardId）、themeId及领奖时的角色状态与货币快照（钻石/紫金/体力等）。主体粒度为 role_id（角色），可按 account_id 聚合到账号。单日 scout 实测 ds=20260729/20260728 均零命中，疑似活动未开放或已下线。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  themeId:
+    type: int
+    description: themeId
+  oldRewardId:
+    type: int
+    description: oldRewardId
+  newRewardId:
+    type: int
+    description: newRewardId
+metrics:
+  game_activityTower_fetchStarReward_cnt:
+    expression: COUNT(*)
+    description: 活动塔星级奖励领取事件总次数
+  game_activityTower_fetchStarReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取星级奖励的去重角色数
+  game_activityTower_fetchStarReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取星级奖励的去重账号数
+  game_activityTower_fetchStarReward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取星级奖励覆盖的去重区服数
+coverage:
+  scenarios:
+    - 活动塔星级奖励领取次数、参与角色/账号数、覆盖区服数，用于活动参与度与奖励发放效果评估
+  limitations:
+    - 日志中零命中(ds=20260729/20260728 cnt=0)，疑似活动未开放或已下线
+    - 仅 ds=20260729 单日 scout 实测(并回退 ds=20260728)，未做全量复核
+    - 默认主体粒度 role_id
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 cnt=0 role_uv=0 acc_uv=0 server_uv=0；回退 ds=20260728 cnt=0 role_uv=0 acc_uv=0 server_uv=0。零命中，维持 draft。
+  coverage_status: draft
+external_refs: []

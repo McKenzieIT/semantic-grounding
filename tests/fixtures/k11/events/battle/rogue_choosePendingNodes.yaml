@@ -1,0 +1,123 @@
+name: game.rogue.choosePendingNodes
+event_filter: event = 'game.rogue.choosePendingNodes'
+description: 古战场-选择替换节点：玩家在古战场(rogue)副本中选择替换"待处理节点"时触发的战斗关卡事件，上报被替换节点id(nodeId)、原节点类型(oldType)与替换后节点类型(newType)。 参数含游戏服id、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验、看板娘、关键货币列表(充值/赠送/免费钻石、紫金、经验卷轴、体力)、会话id、logUUID、nodeId/oldType/newType 等25个字段。 分析主体粒度为 role_id（角色）。实测 ds=20260729 单日：cnt=101、role_uv=51、acc_uv=50、server_uv=26，涉及 node_uv=21、old_type_uv=2、new_type_uv=2。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  nodeId:
+    type: int
+    description: nodeId
+  oldType:
+    type: int
+    description: oldType
+  newType:
+    type: int
+    description: newType
+metrics:
+  game_rogue_choosePendingNodes_cnt:
+    expression: COUNT(*)
+    description: 古战场选择替换节点事件总次数
+  game_rogue_choosePendingNodes_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发选择替换节点的去重角色数
+  game_rogue_choosePendingNodes_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发选择替换节点的去重账号数
+  game_rogue_choosePendingNodes_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发选择替换节点的去重游戏服数
+  game_rogue_choosePendingNodes_node_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.nodeId'))
+    description: 被替换的去重节点id数
+  game_rogue_choosePendingNodes_old_type_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.oldType'))
+    description: 替换前节点类型(oldType)的去重种类数
+  game_rogue_choosePendingNodes_new_type_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.newType'))
+    description: 替换后节点类型(newType)的去重种类数
+  game_rogue_choosePendingNodes_avg_per_role:
+    expression: ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0), 2)
+    description: 人均选择替换节点次数（总次数/去重角色数）
+coverage:
+  scenarios:
+    - 替换节点活跃度：通过 cnt/role_uv/account_uv/server_uv 衡量古战场待处理节点替换玩法的日活与热度
+    - 替换广度：通过 node_uv/old_type_uv/new_type_uv 评估被替换节点id与类型转换的覆盖范围
+    - 人均替换次数：avg_per_role 反映单角色在古战场中替换节点的强度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体粒度默认 role_id（角色）；当日 role_uv(51) 略大于 acc_uv(50)，存在少量单账号多角色
+    - old_type_uv=2、new_type_uv=2 表明当日替换类型种类极少，跨类型分布需多日样本
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729：cnt=101、role_uv=51、acc_uv=50、server_uv=26；事件可访问且数据合理（node_uv=21、old_type_uv=2、new_type_uv=2、nodeId 零空值、roleLevel 50-100）。
+external_refs: []

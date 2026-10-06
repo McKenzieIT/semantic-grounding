@@ -1,0 +1,70 @@
+table_name: dim_10000251_knight_level_grade_info
+engine: maxcompute
+table_comment: '武将进阶阶数配置维度表：每个武将在每个进阶阶数下的等级上限、消耗、成长系数、奖励与开启条件等配置。'
+kind: dim
+description: '武将进阶阶数配置维度表（dim）。每行描述一个武将（knight_id）在某一进阶阶数（grade）下的成长配置：等级上限 max_level、进阶消耗 cost、成长系数 develop、获得奖励 reward、开启条件 require、职业备注 job_mark、武将名称 knight_name。配置类维度表，无值度量；cost/reward/require 为复合编码串，需二次解码。'
+domains:
+- 角色成长
+granularity: 每武将×进阶阶数一行的配置维度表，主键 (knight_id, grade) 复合唯一
+columns:
+- name: knight_id
+  type: string
+  comment: 武将id
+  role: dimension
+- name: grade
+  type: string
+  comment: 进阶阶数
+  role: dimension
+- name: knight_name
+  type: string
+  comment: 武将名称
+  role: dimension
+- name: job_mark
+  type: string
+  comment: 武将职业备注
+  role: dimension
+- name: max_level
+  type: string
+  comment: 武将等级上限
+  role: dimension
+- name: cost
+  type: string
+  comment: 消耗
+  role: dimension
+- name: develop
+  type: string
+  comment: 成长系数
+  role: dimension
+- name: reward
+  type: string
+  comment: 获得奖励
+  role: dimension
+- name: require
+  type: string
+  comment: 开启条件
+  role: dimension
+primary_key:
+- knight_id
+- grade
+label_columns:
+- knight_name
+- grade
+primary_key_unique: true
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - '通过 (knight_id, grade) 复合主键 JOIN 事实表，查询武将在各进阶阶数下的等级上限、成长系数等成长配置'
+  - 'JOIN 武将维度表，按 knight_name 展示武将进阶阶数分布与等级上限'
+  - '为事实表中的武将进阶行为提供阶数配置（消耗 cost、奖励 reward、开启条件 require）维度关联'
+  limitations:
+  - '配置类维度表，无值度量（max_level/cost/develop/reward 均为字符串编码，非数值度量）'
+  - 'cost/reward/require 为复合编码串（如 3_70301_1|1_3_4000、101_65），需二次解码方可用于明细度量'
+  - '武将仅有 73 个，共 1022 行配置，覆盖各武将各进阶阶数组合'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '武将进阶阶数配置维度表。复合主键 (knight_id, grade) 经实测唯一（1022 行 = 1022 个组合）。knight_id 单列非唯一（仅 73 个武将），不可单独作主键。配置类维度表无值度量；cost/reward/require 复合编码串需二次解码。status 保持 draft。'

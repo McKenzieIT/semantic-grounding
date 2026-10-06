@@ -1,0 +1,111 @@
+name: game.festivalactivity.dayreward
+event_filter: event = 'game.festivalactivity.dayreward'
+description: 节日活动-三山壁领奖事件，记录角色在节日活动（activityId）中按日领取三山壁奖励的行为，含额外奖励天数（extraDay）与三山壁数量（goldNum）。主体粒度为 role_id（角色），同时携带 account_id/server_id/roleLevel/vipLevel/roleForce 等角色与服务器上下文，及看板娘 image、货币余额快照（coinList.gold/freegold/diamond/expCoin/energy 等）。用于评估节日活动日奖的领取参与度与三山壁产出规模。scout 实测 ds=20260729 cnt=0/role_uv=0/acc_uv=0，零命中。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  activityId:
+    type: int
+    description: 节日id
+  extraDay:
+    type: int
+    description: 额外奖励天数
+  goldNum:
+    type: int
+    description: 三山壁数量
+metrics:
+  game_festivalactivity_dayreward_cnt:
+    expression: COUNT(*)
+    description: 节日活动三山壁日奖领取事件总次数（含同一角色多次领取）
+  game_festivalactivity_dayreward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取节日活动日奖的去重角色数（主体粒度 role_id）
+  game_festivalactivity_dayreward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取节日活动日奖的去重账号数
+  game_festivalactivity_dayreward_goldnum_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.goldNum') AS BIGINT))
+    description: 通过节日活动日奖发放的三山壁（goldNum）总数量
+coverage:
+  scenarios:
+    - 评估节日活动（activityId）日奖的领取参与度（角色/账号 UV）与领取频次
+    - 统计三山壁（goldNum）通过节日日奖的产出总量
+    - 按角色等级/vip/战力维度分析日奖领取用户画像
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 日志中零命中(ds=20260729/20260728)，疑似下线/未触发
+    - 默认主体粒度为 role_id；账号级 UV 作为补充维度
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  coverage_status: draft
+  note: "scout ds=20260729: cnt=0/role_uv=0/acc_uv=0/server_uv=0；ds=20260728 重试同为零。事件零命中，疑似下线或当日未触发，未达 analyst_confirmed 标准。"
+external_refs: []

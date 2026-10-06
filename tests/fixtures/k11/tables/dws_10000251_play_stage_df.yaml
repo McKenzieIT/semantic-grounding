@@ -1,0 +1,333 @@
+table_name: dws_10000251_play_stage_df
+engine: maxcompute
+table_comment: 玩法通关表
+description: 玩法通关表：角色维度的玩法/子玩法/关卡通关进度日全量快照(_df)。粒度：角色x区服x玩法x子玩法x关卡x业务日期。记录每个角色在每个关卡的通关状态、参与次数、首通阵容/战力/等级、成就达成情况等。角色(role)为业务主体(user_type=3 推断，表无 user_type 列)。注意：MAX(ds) 为 NULL，表当前为空/无数据。
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 角色(role) x 区服 x 玩法 x 子玩法 x 关卡 x 业务日期(日全量快照 _df)
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id，key
+    role: dimension
+  - name: play_id
+    type: string
+    comment: 玩法id，key，0表示ds活跃但未参与
+    role: dimension
+  - name: sub_play_id
+    type: string
+    comment: 子玩法id，key，0表示ds活跃但未参与
+    role: dimension
+  - name: stage_id
+    type: string
+    comment: 关卡id，key，0表示ds活跃但未参与
+    role: dimension
+  - name: pass_status
+    type: int
+    comment: 通关状态，1表示通关，0表示未通关
+    role: dimension
+  - name: part_pv
+    type: int
+    comment: 参与次数
+    role: measure
+  - name: unpass_part_pv
+    type: int
+    comment: 通关前参与次数
+    role: measure
+  - name: unpass_rounds
+    type: int
+    comment: 通关前回合数，0表示活跃但未参与
+    role: measure
+  - name: goal1_status
+    type: int
+    comment: 达成成就1，1表示达成，0表示未达成
+    role: dimension
+  - name: goal2_status
+    type: int
+    comment: 达成成就2，1表示达成，0表示未达成
+    role: dimension
+  - name: goal3_status
+    type: int
+    comment: 达成成就3，1表示达成，0表示未达成
+    role: dimension
+  - name: goals_status
+    type: int
+    comment: 达成满成就，1表示达成，0表示未达成
+    role: dimension
+  - name: pass_tm
+    type: datetime
+    comment: 首通时间，9999-12-31 23:59:59为缺省值
+    role: dimension
+  - name: pass_pv
+    type: int
+    comment: 首通参与次数
+    role: measure
+  - name: pass_battle_id
+    type: string
+    comment: 首通战斗id，空字符串为缺省值
+    role: dimension
+  - name: pass_rounds
+    type: int
+    comment: 首通回合数，-1表示活跃但未参与
+    role: measure
+  - name: pass_role_level
+    type: int
+    comment: 首通等级，-1表示活跃但未参与
+    role: dimension
+  - name: pass_lineup_force
+    type: int
+    comment: 首通战力，-1表示活跃但未参与
+    role: measure
+  - name: pass_lineup
+    type: string
+    comment: 首通阵容，空字符串为缺省值
+    role: dimension
+  - name: pass_equip_level
+    type: int
+    comment: 首通装备等级，各装备等级求和
+    role: dimension
+  - name: pass_equip_cnt
+    type: int
+    comment: 首通装备数量，-1表示活跃但未参与
+    role: measure
+  - name: pass_tech_level
+    type: decimal
+    comment: 首通研学堂养成度，-1表示活跃但未参与
+    role: dimension
+  - name: pass_goal1
+    type: int
+    comment: 首通达成成就1，1表示达成，0表示未达成
+    role: dimension
+  - name: pass_goal2
+    type: int
+    comment: 首通达成成就2，1表示达成，0表示未达成
+    role: dimension
+  - name: pass_goal3
+    type: int
+    comment: 首通达成成就3，1表示达成，0表示未达成
+    role: dimension
+  - name: goal1_tm
+    type: datetime
+    comment: 首达成就1时间，goal1表示首达成就1
+    role: dimension
+  - name: goal1_pv
+    type: int
+    comment: 首达成就1参与次数
+    role: measure
+  - name: goal1_battle_id
+    type: string
+    comment: 首达成就1战斗id
+    role: dimension
+  - name: goal1_rounds
+    type: int
+    comment: 首达成就1回合数
+    role: measure
+  - name: goal1_role_level
+    type: int
+    comment: 首达成就1等级
+    role: dimension
+  - name: goal1_lineup_force
+    type: int
+    comment: 首达成就1战力
+    role: measure
+  - name: goal1_lineup
+    type: string
+    comment: 首达成就1阵容
+    role: dimension
+  - name: goal1_equip_level
+    type: int
+    comment: 首达成就1装备等级
+    role: dimension
+  - name: goal1_equip_cnt
+    type: int
+    comment: 首达成就1装备数量
+    role: measure
+  - name: goal1_tech_level
+    type: decimal
+    comment: 首达成就1科技等级
+    role: dimension
+  - name: goal2_tm
+    type: datetime
+    comment: 首达成就2时间
+    role: dimension
+  - name: goal2_pv
+    type: int
+    comment: 首达成就2参与次数
+    role: measure
+  - name: goal2_battle_id
+    type: string
+    comment: 首达成就2战斗id
+    role: dimension
+  - name: goal2_rounds
+    type: int
+    comment: 首达成就2回合数
+    role: measure
+  - name: goal2_role_level
+    type: int
+    comment: 首达成就2等级
+    role: dimension
+  - name: goal2_lineup_force
+    type: int
+    comment: 首达成就2战力
+    role: measure
+  - name: goal2_lineup
+    type: string
+    comment: 首达成就2阵容
+    role: dimension
+  - name: goal2_equip_level
+    type: int
+    comment: 首达成就2装备等级
+    role: dimension
+  - name: goal2_equip_cnt
+    type: int
+    comment: 首达成就2装备数量
+    role: measure
+  - name: goal2_tech_level
+    type: decimal
+    comment: 首达成就2科技等级
+    role: dimension
+  - name: goal3_tm
+    type: datetime
+    comment: 首达成就3时间
+    role: dimension
+  - name: goal3_pv
+    type: int
+    comment: 首达成就3参与次数
+    role: measure
+  - name: goal3_battle_id
+    type: string
+    comment: 首达成就3战斗id
+    role: dimension
+  - name: goal3_rounds
+    type: int
+    comment: 首达成就3回合数
+    role: measure
+  - name: goal3_role_level
+    type: int
+    comment: 首达成就3等级
+    role: dimension
+  - name: goal3_lineup_force
+    type: int
+    comment: 首达成就3战力
+    role: measure
+  - name: goal3_lineup
+    type: string
+    comment: 首达成就3阵容
+    role: dimension
+  - name: goal3_equip_level
+    type: int
+    comment: 首达成就3装备等级
+    role: dimension
+  - name: goal3_equip_cnt
+    type: int
+    comment: 首达成就3数量
+    role: measure
+  - name: goal3_tech_level
+    type: decimal
+    comment: 首达成就3科技等级
+    role: dimension
+  - name: goals_tm
+    type: datetime
+    comment: 首满成就时间
+    role: dimension
+  - name: goals_pv
+    type: int
+    comment: 首满成就参与次数
+    role: measure
+  - name: goals_battle_id
+    type: string
+    comment: 首满成就战斗id
+    role: dimension
+  - name: goals_rounds
+    type: int
+    comment: 首满成就回合数
+    role: measure
+  - name: goals_role_level
+    type: int
+    comment: 首满成就等级
+    role: dimension
+  - name: goals_lineup_force
+    type: int
+    comment: 首满成就战力
+    role: measure
+  - name: goals_lineup
+    type: string
+    comment: 首满成就阵容
+    role: dimension
+  - name: goals_equip_level
+    type: int
+    comment: 首满成就装备等级
+    role: dimension
+  - name: goals_equip_cnt
+    type: int
+    comment: 首满成就装备数量
+    role: measure
+  - name: goals_tech_level
+    type: decimal
+    comment: 首满成就科技等级
+    role: dimension
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: dimension
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  pass_role_cnt:
+    expression: COUNT(DISTINCT role_id)
+    description: 通关快照内角色数(去重 role_id，日全量快照 _df)
+  pass_record_cnt:
+    expression: SUM(CASE WHEN pass_status = 1 THEN 1 ELSE 0 END)
+    description: 通关记录数(pass_status=1 的角色x关卡记录数)
+  part_pv_total:
+    expression: SUM(part_pv)
+    description: 总参与次数(全部角色x关卡 part_pv 求和)
+  pass_rate:
+    expression: SUM(CASE WHEN pass_status = 1 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 通关率(通关记录数/总记录数，行级)
+  goals_role_cnt:
+    expression: COUNT(DISTINCT CASE WHEN goals_status = 1 THEN role_id END)
+    description: 满成就角色数(goals_status=1 去重 role_id)
+coverage:
+  scenarios:
+    - 按玩法/子玩法/关卡维度统计角色通关数与通关率，定位卡点关卡
+    - 评估关卡参与规模(参与次数)与满成就达成角色数
+    - 角色 x 关卡 首通战力/等级/阵容画像(基于 pass_lineup_force/pass_role_level 等)
+  limitations:
+    - 表当前为空：MAX(ds) 为 NULL，无数据可验证；以上指标为结构性定义，未做 maxc 实测复核
+    - 业务主体 角色(role)及 user_type=3 依据 role_id 主键推断，表无 user_type 列，未抽样验证
+    - 仅 scout/meta describe 验证列结构与角色，未做全量数据复核；_df 为日全量快照，跨日累计需按 ds 去重
+    - pass_rate 为行级通关率(角色x关卡记录级)，非角色级通关率；角色多关卡存在重复 role_id
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表为空(MAX(ds) NULL)，无法抽样验证指标值；指标为结构性定义；角色/user_type 推断未验证
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (comment 区服id) exactly matches the PK server_id of dim_10000251_server_info, the canonical 区服 dimension for server name/opening date lookup.
+    origin: deterministic
+  - dim_table: dim_10000251_trans_sub_play_od
+    join_keys:
+      - dws_column: sub_play_id
+        dim_column: sub_play_id
+    derivation: DWS sub_play_id (comment 子玩法id) exactly matches the PK sub_play_id of dim_10000251_trans_sub_play_od, the 子玩法配置 dimension keyed by sub_play_id.
+    origin: deterministic
+  - dim_table: dim_10000251_trans_stage_df
+    join_keys:
+      - dws_column: stage_id
+        dim_column: id
+    derivation: DWS stage_id (comment 关卡id) semantically matches the PK id (关卡id) of dim_10000251_trans_stage_df, the 关卡配置 dimension for stage lookup by id.
+pref_label: 玩法通关表
+alt_labels:
+  - 玩法

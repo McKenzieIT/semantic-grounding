@@ -1,0 +1,111 @@
+name: game.maze.enter
+event_filter: event = 'game.maze.enter'
+description: 玩家进入迷宫副本时上报的事件，记录角色进入特定迷宫(dungeonId)的时机与角色快照(等级/战力/vip/货币)。分析主体为 role_id(角色)；单日 ds=20260729 scout 实测 cnt=308、role_uv=110、acc_uv=110、server_uv=17。用于迷宫关卡参与度、角色构成与副本活跃度分析。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  dungeonId:
+    type: int
+    description: 迷宫的id
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=308, role_uv=110, acc_uv=110, server_uv=17; 数量合理(迷宫进入为高频副本事件)"
+coverage_status: analyst_confirmed
+metrics:
+  game_maze_enter_cnt:
+    expression: COUNT(*)
+    description: 迷宫进入事件总次数
+  game_maze_enter_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 进入迷宫的去重角色数(分析主体 role_id)
+  game_maze_enter_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 进入迷宫的去重账号数
+  game_maze_enter_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及迷宫进入的游戏服数
+  game_maze_enter_dungeon_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.dungeonId'))
+    description: 进入过的不同迷宫副本id数
+  game_maze_enter_avg_per_role:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均迷宫进入次数(总次数/去重角色数)
+coverage:
+  scenarios:
+    - 迷宫副本参与度与活跃角色规模(role_uv/account_uv)
+    - 不同迷宫(dungeonId)的覆盖广度与热门副本分布(dungeon_uv)
+    - 跨服参与情况(server_uv)与人均进入频次(avg_per_role)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认为 role_id(角色)；account_id 与 role_id 实测一一对应(均=110)，无多角色并号情形
+    - 仅验证事件命中与量级，未对 params 内货币(coinList)字段做金额聚合复核
+external_refs: []

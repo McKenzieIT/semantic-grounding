@@ -1,0 +1,117 @@
+name: game.gve2.sweep
+event_filter: event = 'game.gve2.sweep'
+description: GVE2（公会Boss副本）扫荡/通关事件：角色对 bossLevel 关卡造成 damage 伤害后触发。分析主体 role_id（角色），按 server_id 切片。ds=20260729 单日实测 cnt=8536、role_uv=2236、acc_uv=2143、server_uv=402、累计伤害约1.76万亿。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  bossLevel:
+    type: int
+    description: bossLevel
+  damage:
+    type: int
+    description: damage
+metrics:
+  gve2_sweep_cnt:
+    expression: COUNT(*)
+    description: GVE2扫荡事件总次数（每条日志=一次扫荡）
+  gve2_sweep_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与GVE2扫荡的去重角色数
+  gve2_sweep_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与GVE2扫荡的去重账号数
+  gve2_sweep_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发GVE2扫荡的去重游戏服数
+  gve2_sweep_damage_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.damage') AS BIGINT))
+    description: GVE2扫荡累计造成伤害（参数 damage 求和，单日全量非空）
+  gve2_sweep_boss_level_kinds:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.bossLevel'))
+    description: 被扫荡的 bossLevel 关卡种类数
+  gve2_sweep_avg_damage_per_role:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.damage') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 参与扫荡角色的平均伤害（累计伤害/去重角色数，NULLIF防0除）
+coverage:
+  scenarios:
+    - GVE2公会Boss副本扫荡玩法的日活/参与度（cnt、role_uv、account_uv、server_uv）
+    - 各 bossLevel 关卡的扫荡广度（boss_level_kinds）
+    - 角色扫荡伤害产出与人均伤害水平（damage_sum、avg_damage_per_role）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核（多日/周/月趋势待补）
+    - 分析主体默认 role_id（角色），未验证 account_id 跨角色复用情况
+    - damage 全量非空(8536/8536)，但未校验异常负值/越界上限
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 - cnt=8536、role_uv=2236、acc_uv=2143、server_uv=402、damage_sum约1.76万亿、boss_level_kinds=40、damage全量非空
+coverage_status: analyst_confirmed
+external_refs: []

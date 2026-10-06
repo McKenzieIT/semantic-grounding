@@ -1,0 +1,116 @@
+name: game.fantasymonthlycard.active
+event_filter: event = 'game.fantasymonthlycard.active'
+description: 月卡（fantasymonthlycard）激活事件：玩家购买/激活幻想月卡时上报，记录充值项 goodsId 与激活时刻角色快照（等级/vip/战力/货币）。分析主体为 role_id（角色级，account_id 作为账号维补充）。ds=20260729 实测：cnt=920 条、role_uv=461、acc_uv=457、server_uv=5；激活时 coinList.gold/sendgold 实付钻石为 0（月卡钻石按日签发，激活事件本身不发放金币，属正常边界），goodsId 共 2 个充值项。原注释：参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个
+domains:
+  - 付费经济
+domain: payment
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  goodsId:
+    type: int
+    description: 充值项id
+metrics:
+  fantasymonthlycard_active_cnt:
+    description: 月卡激活事件总条数
+    expression: COUNT(*)
+  fantasymonthlycard_active_role_uv:
+    description: 激活月卡的去重角色数
+    expression: COUNT(DISTINCT role_id)
+  fantasymonthlycard_active_account_uv:
+    description: 激活月卡的去重账号数
+    expression: COUNT(DISTINCT account_id)
+  fantasymonthlycard_active_server_uv:
+    description: 覆盖的去重游戏服数
+    expression: COUNT(DISTINCT server_id)
+  fantasymonthlycard_active_goods_kinds:
+    description: 涉及的去重充值项种类数
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.goodsId'))
+  fantasymonthlycard_active_gold_sum:
+    description: 激活事件携带的充值钻石（coinList.gold）累计；月卡钻石按日签发，激活时通常为 0
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+  fantasymonthlycard_active_per_role_event_cnt:
+    description: 人均激活次数=总条数/去重角色数（分母为 0 时返回 NULL）
+    expression: COUNT(*) / NULLIF(CAST(COUNT(DISTINCT role_id) AS DOUBLE), 0)
+coverage:
+  scenarios:
+    - 月卡付费转化监测：统计每日/每服激活月卡的角色数与账号数，跟踪月卡销售渗透。
+    - 充值项分布：按 goodsId 区分月卡档位，观察不同价位月卡的激活占比。
+    - 付费用户画像：结合 roleLevel/vipLevel/roleForce 快照刻画月卡付费人群特征。
+    - 服务器覆盖：通过 server_uv 评估月卡活动在各区服的覆盖广度。
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核；多日趋势需扩展 ds 范围后再确认。
+    - 激活事件本身不发放钻石，coinList.gold/sendgold 实测为 0 属正常边界；如需收入金额请联动 charge/purchase 或月卡每日签发事件。
+    - 分析主体默认 role_id（角色级），account_id 仅作账号维度补充，未独立核验账号粒度去重口径。
+    - params_fields 保留原始定义未改动；coinList.* 嵌套字段以 GET_JSON_OBJECT(params,'$.coinList.<field>') 访问。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=920、role_uv=461、acc_uv=457、server_uv=5；coinList.gold/sendgold 累计均为 0（月卡按日签发，激活不直接发钻）；goodsId 去重 2 种。role_uv<cnt 提示存在同角色多次/多服激活。
+coverage_status: analyst_confirmed
+external_refs: []

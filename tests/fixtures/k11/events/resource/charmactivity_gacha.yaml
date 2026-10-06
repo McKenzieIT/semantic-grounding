@@ -1,0 +1,231 @@
+name: game.charmactivity.gacha
+event_filter: event = 'game.charmactivity.gacha'
+description: 灵器活动抽卡事件：角色在灵器活动卡池（type=1 活动 / type=2 新手集市）进行抽卡时上报，记录每次抽卡的卡池id、抽卡数量(count)、累计总次数(totalCount)、抽卡消耗(costs)、获得资源(gainRes/realRes)、命中灵器次数(hitCounts)、是否触发保底(guarantee)。分析主体粒度为 role_id（角色），单次抽卡行为计为一条日志。ds=20260729 实测：cnt=1285，role_uv=245，acc_uv=245，server_uv=7；当日累计抽卡次数(count合计) 3283，累计总次数(totalCount合计) 34461，触发保底次数 36，涉及卡池去重 5、活动去重 1。
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  activityId:
+    type: int
+    description: 活动id
+  gachaId:
+    type: int
+    description: 卡池id
+  gainRes:
+    type: array
+    description: 获得资源
+  gainRes.type:
+    type: int
+    description: 类型
+  gainRes.value:
+    type: int
+    description: 值
+  gainRes.size:
+    type: int
+    description: 数量
+  gainRes.uid:
+    type: int
+    description: 唯一id
+  realRes:
+    type: array
+    description: 实际获得到的资源
+  realRes.type:
+    type: int
+    description: 类型
+  realRes.value:
+    type: int
+    description: 值
+  realRes.size:
+    type: int
+    description: 数量
+  realRes.uid:
+    type: int
+    description: 唯一id
+  costs:
+    type: array
+    description: 抽卡消耗
+  costs.type:
+    type: int
+    description: 类型
+  costs.value:
+    type: int
+    description: 值
+  costs.size:
+    type: int
+    description: 数量
+  costs.uid:
+    type: int
+    description: 唯一id
+  hitCounts:
+    type: array
+    description: 命中灵器的次数
+  totalCount:
+    type: int
+    description: 总次数
+  count:
+    type: int
+    description: 抽卡次数
+  type:
+    type: int
+    description: 类型 1 活动 2 新手集市
+  guarantee:
+    type: bool
+    description: 是否触发保底
+metrics:
+  game_charmactivity_gacha_cnt:
+    expression: COUNT(*)
+    description: 抽卡日志条数（每次抽卡行为一条）
+  game_charmactivity_gacha_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 发起抽卡的角色去重数（分析主体粒度 role_id）
+  game_charmactivity_gacha_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 发起抽卡的账号去重数
+  game_charmactivity_gacha_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及抽卡的游戏服去重数
+  game_charmactivity_gacha_draws_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.count') AS BIGINT))
+    description: 当期累计抽卡次数（count 求和）
+  game_charmactivity_gacha_total_count_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.totalCount') AS BIGINT))
+    description: 当期累计总次数（totalCount 求和，状态快照累加）
+  game_charmactivity_gacha_guarantee_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.guarantee')='true' THEN 1 ELSE 0 END)
+    description: 触发保底的抽卡次数（guarantee=true）
+  game_charmactivity_gacha_gacha_pool_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.gachaId'))
+    description: 命中的卡池去重数（gachaId）
+  game_charmactivity_gacha_activity_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.activityId'))
+    description: 涉及的活动去重数（activityId）
+  game_charmactivity_gacha_guarantee_rate:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.guarantee')='true' THEN 1 ELSE 0 END) / NULLIF(COUNT(*),0)
+    description: 保底触发率 = 保底次数 / 抽卡日志条数（NULLIF 防零除）
+coverage:
+  scenarios:
+    - 通过 role_uv/account_uv 评估灵器活动抽卡的角色/账号渗透规模
+    - 通过 draws_sum、guarantee_cnt、guarantee_rate 衡量抽卡产出与保底触发，辅助卡池概率与保底机制调优
+    - 通过 gacha_pool_uv、activity_uv 监控活动/卡池覆盖与热度分布
+    - 通过 server_uv 与按服维度聚合，定位高活跃抽卡服
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量多日复核；多日趋势需另行批量校验
+    - 分析主体粒度默认 role_id（角色），未对 account_id 跨角色复抽做去重校验
+    - costs（抽卡消耗）、gainRes（获得资源）、realRes（实际获得资源）、hitCounts（命中灵器次数）均为数组参数，未在本事件 metrics 内展开逐元素求和，如需按消耗/产出资源类型聚合需单独建模
+    - guarantee_rate 分母为日志条数 COUNT(*)（抽卡行为次数），与 count 求和（抽卡次数）口径不同，仅作保底/行为比参考
+    - type 字段（1 活动 / 2 新手集市）区分活动类型，本事件未按 type 分组输出子指标，如需按活动类型对比需单独建模
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=1285, role_uv=245, acc_uv=245, server_uv=7; count合计=3283, totalCount合计=34461, guarantee=true次数=36, gachaId去重=5, activityId去重=1。数值合理，event+ds 双过滤命中，确认在线可查。
+coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_trans_gacha_mission_group_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_gacha_mission_group_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df_arch 主键精确同名
+    origin: deterministic

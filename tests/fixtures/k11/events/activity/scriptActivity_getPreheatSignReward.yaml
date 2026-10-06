@@ -1,0 +1,127 @@
+name: game.scriptActivity.getPreheatSignReward
+event_filter: event = 'game.scriptActivity.getPreheatSignReward'
+description: "剧本活动预热期签到奖励领取事件，记录角色在剧本活动预热阶段完成签到并领取对应天数奖励的行为。分析粒度为角色(role_id)，每个角色每日可多次领取不同天数的签到奖励。ds=20260729 实测：136 次领取，131 个角色，131 个账号，16 个游戏服。参数含主题ID(themeId)、最高签到天数(preheatSignRewardMaxDay)、奖励列表(rewards: type/value/size/uid)及货币快照(coinList)等29个字段。"
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  themeId:
+    type: int
+    description: 活动ID
+  preheatSignRewardMaxDay:
+    type: int
+    description: 最高ID
+  rewards:
+    type: array
+    description: 奖励
+  rewards.type:
+    type: int
+    description: 类型
+  rewards.value:
+    type: int
+    description: 值
+  rewards.size:
+    type: int
+    description: 数量
+  rewards.uid:
+    type: int
+    description: 唯一id
+metrics:
+  getpreheatsignreward_cnt:
+    expression: COUNT(*)
+    description: 预热期签到奖励领取总次数
+  getpreheatsignreward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取签到奖励的去重角色数（分析主语）
+  getpreheatsignreward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取签到奖励的去重账号数
+  getpreheatsignreward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 覆盖的去重游戏服数
+  getpreheatsignreward_role_per_server:
+    expression: ROUND(COUNT(DISTINCT role_id) * 1.0 / NULLIF(COUNT(DISTINCT server_id), 0), 2)
+    description: 平均每服领取角色数
+coverage:
+  scenarios:
+    - 预热期签到奖励的日/周领取量趋势及角色覆盖广度
+    - 各游戏服签到奖励领取参与度对比（role_per_server）
+    - 预热活动参与漏斗中的签到领奖环节渗透
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析粒度默认 role_id；同一账号多角色领取按角色去重，未做账号级去重聚合
+    - rewards 为数组字段，未按奖励 type/value/size 拆解具体物品产出量（需数组展开查询）
+    - 未覆盖跨日重复领取节奏（如连续签到天数达成）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "measured ds=20260729: cnt=136, role_uv=131, acc_uv=131, server_uv=16；事件在线且命中量合理"
+coverage_status: analyst_confirmed
+external_refs: []

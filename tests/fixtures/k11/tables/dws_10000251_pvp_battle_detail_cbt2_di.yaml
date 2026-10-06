@@ -1,0 +1,111 @@
+table_name: dws_10000251_pvp_battle_detail_cbt2_di
+engine: maxcompute
+table_comment: CBT2-PVP战斗详情日表（角色粒度，日增量）
+description: |-
+  CBT2-PVP战斗详情日表，记录每场PVP战斗的攻守双方角色、卡牌阵容、战力及战果。
+  粒度：日增量(_di)，每行一场PVP战斗，主体为角色(atk_role_id/def_role_id)。
+  主要字段：pvp_type, battle_id, atk_role_id, def_role_id, atk_team, atk_star, atk_force, def_force, result 等16列。
+domains:
+  - 战斗关卡
+granularity: 日增量(_di)，角色粒度（每行一场PVP战斗）
+columns:
+  - name: pvp_type
+    type: BIGINT
+    comment: PVP玩法
+    role: dimension
+  - name: battle_id
+    type: string
+    comment: 战斗ID
+    role: dimension
+  - name: atk_role_id
+    type: string
+    comment: 攻击方角色ID
+    role: dimension
+  - name: def_role_id
+    type: string
+    comment: 防守方角色ID
+    role: dimension
+  - name: atk_team
+    type: STRING
+    comment: 攻击方卡牌阵容
+    role: attribute
+  - name: atk_star
+    type: STRING
+    comment: 攻击方星数
+    role: attribute
+  - name: atk_team_detail
+    type: STRING
+    comment: 攻击方卡牌阵容详情
+    role: attribute
+  - name: def_team
+    type: STRING
+    comment: 防守方卡牌阵容
+    role: attribute
+  - name: def_star
+    type: STRING
+    comment: 防守方星数
+    role: attribute
+  - name: def_team_detail
+    type: STRING
+    comment: 防守方卡牌阵容详情
+    role: attribute
+  - name: atk_force
+    type: BIGINT
+    comment: 攻击方战力
+    role: measure
+  - name: def_force
+    type: BIGINT
+    comment: 防守方战力
+    role: measure
+  - name: result
+    type: BIGINT
+    comment: 战果 1-攻击方胜利 2-防守方胜利 3-平局
+    role: dimension
+  - name: tm
+    type: DATETIME
+    comment: 行为时间
+    role: dimension
+  - name: extra_info
+    type: STRING
+    comment: 额外信息
+    role: attribute
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  pvp_battle_cnt:
+    expression: COUNT(battle_id)
+    description: 当日PVP战斗场次总数（每行一场战斗）
+  pvp_atk_uv:
+    expression: COUNT(DISTINCT atk_role_id)
+    description: 当日参与PVP的攻击方角色数（atk_role_id 去重）
+  atk_win_rate:
+    expression: SUM(CASE WHEN result = 1 THEN 1 ELSE 0 END) / NULLIF(COUNT(battle_id), 0)
+    description: 当日攻击方胜率（攻击方胜利场次/总场次）
+  avg_atk_force:
+    expression: AVG(atk_force)
+    description: 当日攻击方平均战力
+  avg_force_diff:
+    expression: AVG(atk_force - def_force)
+    description: 当日攻守双方平均战力差（正值表示攻击方平均更强）
+coverage:
+  scenarios:
+    - PVP战斗规模与参与角色数（pvp_battle_cnt / pvp_atk_uv）
+    - 攻击方胜率分析（atk_win_rate）
+    - 攻守战力水平对比（avg_atk_force / avg_force_diff）
+  limitations:
+    - 表为空/无数据（MAX(ds) NULL，maxc 实测 2026-07-31 查询无数据），指标为结构化草案，未抽样验证。
+    - _di 为日增量，每场PVP战斗一行（battle_id 为主键）；跨日 UV 需按 ds 切分去重，不可直接跨日 SUM。
+    - 表无 user_type 列，分析主体由 atk_role_id/def_role_id 推断为角色（user_type=3），未实测验证。
+    - pvp_type 为分类维度（玩法），result 为分类战果（1/2/3）；卡牌阵容字段（atk_team/def_team 等）为 JSON 文本属性，未展开。
+    - 仅 scout 推断字段语义，未做全量 maxc 实测复核（表空）。
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表为空（MAX(ds) NULL），指标为结构化草案未抽样验证；待有数据后复核。
+dimension_refs: []
+pref_label: CBT2 PVP战斗详情表
+alt_labels:
+  - CBT2

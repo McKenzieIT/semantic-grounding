@@ -1,0 +1,60 @@
+table_name: dws_10000251_risk_acc_identification_df
+engine: maxcompute
+table_comment: 用户风险标识总表
+description: |-
+  用户风险标识总表。
+  粒度：日全量快照(_df)。分析主体=账号（user_type=2）。
+  主要字段：user_type, user_id, risk_level, ds。
+domains:
+  - 系统监控
+granularity: 日全量快照(_df)，分析主体=账号(user_type=2)
+columns:
+  - name: user_type
+    type: BIGINT
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: STRING
+    comment: 用户id
+    role: dimension
+  - name: risk_level
+    type: BIGINT
+    comment: 风险等级
+    role: dimension
+  - name: ds
+    type: STRING
+    comment: 分区字段，格式 yyyyMMdd
+    role: partition
+metrics:
+  账号UV:
+    expression: COUNT(DISTINCT user_id)
+    description: 日全量快照下被风险标识的账号数(UV)，分析主体=账号(user_type=2)
+  高风险账号数:
+    expression: COUNT(DISTINCT CASE WHEN risk_level >= 3 THEN user_id END)
+    description: 高风险等级(risk_level>=3)账号数
+  高风险账号占比:
+    expression: COUNT(DISTINCT CASE WHEN risk_level >= 3 THEN user_id END) / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 高风险账号占全部被标识账号的比例，分母为0时返回NULL
+  最高风险等级:
+    expression: MAX(risk_level)
+    description: 当日快照中出现的最大风险等级
+coverage:
+  scenarios:
+    - 按日追踪被风险标识的账号规模与高风险占比，支持风控大盘与异常波动监控
+    - 通过风险等级分布识别高风险账号集中度，辅助风控策略评估
+  limitations:
+    - 仅在 latest ds=20260730 上抽样验证 total_uv=24984、风险等级均为 1（无高风险样本），未做全量历史复核
+    - _df 为日全量快照，跨日去重需以 user_id 维度自行处理；本表无金额/行为字段，仅做账号级风险标识
+    - 缺少风险原因、标识时间戳等维度，无法下钻风险来源
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 已在 latest ds=20260730 抽样验证 账号UV=24984 与 risk_level 分布(均为1)，数值合理；高风险指标当日为0属预期(无>=3样本)
+dimension_refs: []
+pref_label: 账号风险标识表
+alt_labels:
+  - 风险
+  - 作弊
+  - 异常
+  - 封号

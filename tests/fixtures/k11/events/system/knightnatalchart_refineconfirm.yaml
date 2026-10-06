@@ -1,0 +1,121 @@
+name: game.knightnatalchart.refineconfirm
+event_filter: event = 'game.knightnatalchart.refineconfirm'
+description: 武将命盘-确认事件：玩家对武将命盘方案（scheme）执行确认操作时上报，记录被精炼的武将（knightId）、所选方案及随机到的节点（nodes），同时携带角色基础属性与货币快照。分析主体为角色（role_id），账号（account_id）与角色1:1。实测 ds=20260729：cnt=744，role_uv=130，acc_uv=130，server_uv=30。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightId:
+    type: int
+    description: 武将id
+  scheme:
+    type: int
+    description: 方案
+  nodes:
+    type: array
+    description: 随机到的点
+metrics:
+  knightnatalchart_refineconfirm_cnt:
+    expression: COUNT(*)
+    description: 武将命盘确认操作总次数
+  knightnatalchart_refineconfirm_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发命盘确认的去重角色数
+  knightnatalchart_refineconfirm_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发命盘确认的去重账号数
+  knightnatalchart_refineconfirm_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的去重游戏服数
+  knightnatalchart_refineconfirm_knight_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.knightId'))
+    description: 被精炼命盘的去重武将数
+  knightnatalchart_refineconfirm_scheme_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.scheme'))
+    description: 被选用的去重方案数
+  knightnatalchart_refineconfirm_ops_per_role:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均命盘确认操作次数
+coverage:
+  scenarios:
+    - 命盘确认玩法的日/周活跃度与渗透率（cnt、role_uv、account_uv）
+    - 命盘确认在游戏服间的分布（server_uv）
+    - 被精炼武将（knightId）与方案（scheme）的覆盖广度
+    - 人均命盘确认操作频次（ops_per_role）反映玩法粘性
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认为角色（role_id），account_id 与 role_id 1:1（实测 acc_uv=role_uv=130）
+    - nodes（随机节点）为 array 字段，未展开统计节点分布；如需节点级分析需单独展开
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729：cnt=744, role_uv=130, acc_uv=130, server_uv=30；数据合理，命盘确认玩法有真实触发
+coverage_status: analyst_confirmed
+external_refs: []

@@ -1,0 +1,97 @@
+table_name: dws_10000251_univ_user_predown_tag_df
+engine: maxcompute
+table_comment: 预下载用户标签表
+description: |
+  记录每位预下载用户是否命中原生预下载规则(rule1)与扩展预下载规则(rule2)的标签表，用于识别预下载用户群体及其规则命中情况。
+  本表为通用用户表（univ_user），同时覆盖【设备/账号/角色】三类主体，由 user_type 枚举区分（1=设备、2=账号、3=角色），标识字段 user_id 依 user_type 分别存设备ID/账号ID/角色ID；分析主体必须由 (user_type, user_id) 组合判定，跨 user_type 直接 COUNT(DISTINCT user_id) 可能因不同主体 ID 空间重叠而失真，需用 (user_type, user_id) 组合去重。
+  后缀 _df 表示按 ds 分区的日全量快照，每个分区 ds 对应一份当天全量预下载用户标签，非增量。
+  能回答的业务问题：每日预下载用户去重规模、原生规则/扩展规则命中用户数与命中率、规则重叠与独占结构（同时命中两规则/仅命中其一）、扩展规则相对原生规则的增量贡献率、按 user_type 拆分的主体结构。
+  注意事项：rule1/rule2 为 0/1 布尔标志位而非业务计数，聚合时用 SUM 计命中数、AVG 计命中率；本表仅记录规则命中标签，不含预下载流量/包大小/下载成功率等业务量度量。
+domains:
+  - 用户生命周期
+  - 资源产销
+granularity: |
+  日全量快照（_df），每 (user_type, user_id) 每分区 ds 一行。
+  本表为通用用户表（univ_user），同时覆盖【设备/账号/角色】三类主体，由 user_type 枚举区分（1=设备、2=账号、3=角色），标识字段 user_id 依 user_type 分别存设备ID/账号ID/角色ID；分析主体必须由 (user_type, user_id) 组合判定，跨 user_type 直接 COUNT(DISTINCT user_id) 可能因不同主体 ID 空间重叠而失真，需用 (user_type, user_id) 组合去重。
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，1-设备、2-账号、3-角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: rule1
+    type: int
+    comment: 命中原生规则，1-是、2-否
+    role: measure
+  - name: rule2
+    type: int
+    comment: 命中扩展规则，1-是、2-否
+    role: measure
+  - name: ds
+    type: string
+    comment: ""
+    role: dimension
+partitions:
+  - name: ds
+    type: string
+metrics:
+  pred_user_cnt:
+    expression: COUNT(DISTINCT CONCAT(CAST(user_type AS string), '_', user_id))
+    description: 预下载用户去重数（按 (user_type, user_id) 组合去重，避免跨主体 ID 空间重叠失真）
+  rule1_hit_cnt:
+    expression: SUM(rule1)
+    description: 命中原生预下载规则(rule1)的行数（0/1 标志位累加，行级计数，非去重用户数）
+  rule2_hit_cnt:
+    expression: SUM(rule2)
+    description: 命中扩展预下载规则(rule2)的行数（0/1 标志位累加，行级计数，非去重用户数）
+  rule1_hit_rate:
+    expression: AVG(rule1)
+    description: 原生预下载规则命中率（0/1 标志位平均即命中率）
+  rule2_hit_rate:
+    expression: AVG(rule2)
+    description: 扩展预下载规则命中率（0/1 标志位平均即命中率）
+  rule_any_hit_cnt:
+    expression: SUM(CASE WHEN rule1 = 1 OR rule2 = 1 THEN 1 ELSE 0 END)
+    description: 命中任一预下载规则的行数（行级计数，每 user_type+user_id 一行计一次，如需用户级去重需另用 COUNT DISTINCT）
+  rule_both_hit_cnt:
+    expression: SUM(CASE WHEN rule1 = 1 AND rule2 = 1 THEN 1 ELSE 0 END)
+    description: 同时命中原生与扩展两条规则的行数，用于识别规则重叠人群（行级计数，非去重用户数）
+  rule1_only_hit_cnt:
+    expression: SUM(CASE WHEN rule1 = 1 AND rule2 = 0 THEN 1 ELSE 0 END)
+    description: 仅命中原生规则(rule1)而未命中扩展规则的行数（行级计数，非去重用户数）
+  rule2_only_hit_cnt:
+    expression: SUM(CASE WHEN rule1 = 0 AND rule2 = 1 THEN 1 ELSE 0 END)
+    description: 仅命中扩展规则(rule2)而未命中原生规则的行数，量化扩展规则独占贡献（行级计数，非去重用户数）
+  rule2_incremental_rate:
+    expression: SUM(CASE WHEN rule1 = 0 AND rule2 = 1 THEN 1 ELSE 0 END) * 1.0 / NULLIF(SUM(CASE WHEN rule1 = 0 THEN 1 ELSE 0 END), 0)
+    description: 扩展规则相对原生规则的增量捕获率（在原生未覆盖人群 rule1=0 中，扩展规则额外捕获 rule2=1 的占比），分母为原生未覆盖人群数，用 NULLIF 防除零
+coverage:
+  scenarios:
+    - 每日预下载用户去重规模（COUNT(DISTINCT CONCAT(CAST(user_type AS string),'_',user_id))，按 (user_type, user_id) 组合去重）
+    - 原生规则/扩展规则命中用户数与命中率（SUM(rule1)/AVG(rule1)、SUM(rule2)/AVG(rule2)）
+    - 规则重叠与独占结构分析（同时命中两规则、仅命中其一的人群规模，行级计数）
+    - 扩展规则相对原生规则的增量贡献率（rule2_incremental_rate，分母为原生未覆盖人群）
+    - 按 user_type 拆分的主体结构（设备/账号/角色三类预下载用户规模与命中率）
+  limitations:
+    - rule1/rule2 为 0/1 布尔标志位，非业务计数度量，不可直接当数值业务量（如下载流量/次数）求和
+    - 本表仅记录规则命中标签，不含预下载流量、包大小、下载成功率、下载次数等业务量度量
+    - 本表为预下载阶段标签，不含后续激活/留存/付费结果，无法回答预下载用户的后续转化情况
+    - 分析主体必须由 user_type 与 user_id 组合确定，跨 user_type 直接 COUNT(DISTINCT user_id) 可能因不同主体 ID 空间重叠而失真，需用 (user_type, user_id) 组合去重
+    - rule1/rule2 源表列注释标注为"1-是、2-否"，但实测值域为 {0,1}(0=否、1=是)；metrics 已按 0/1 标志位语义实现(SUM计命中数、AVG计命中率)，注释为源表文档缺陷不影响指标正确性
+    - SUM(CASE WHEN ...) 类指标为行级计数（粒度 user_type+user_id），同一用户如需用户级去重需改用 COUNT DISTINCT
+  coverage_status: draft
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: "真实数据验证通过(2026-07-30, latest ds=20260729)。列均存在(user_type BIGINT/user_id STRING/rule1 BIGINT/rule2 BIGINT/ds STRING,5列匹配meta describe)。user_type 实测 DISTINCT={1,2,3} 与 description 的设备/账号/角色三类主体一致。rule1/rule2 实测值域 {0,1}(注意:源表列注释误标为'1-是、2-否',实际存储为 0/1;YAML 的 SUM/AVG 视作0/1标志位的逻辑正确)。核心指标实测(20260729): pred_user_cnt=755520、rule1_hit_cnt=353207、rule2_hit_cnt=540312、rule1_hit_rate=0.4675、rule2_hit_rate=0.7152、rule_any_hit_cnt=755520(全集,无rule1=0&rule2=0行)、rule_both_hit_cnt=137999、rule1_only_hit_cnt=215208、rule2_only_hit_cnt=402313、rule2_incremental_rate=1.0(rule1=0人群全部rule2=1,无除零)。粒度: total_rows=755520==COUNT(DISTINCT CONCAT(user_type,'_',user_id))=755520,即每(user_type,user_id)每ds恰一行,粒度成立。rule1/rule2 SUM/AVG口径与标志位语义吻合,所有指标通过。"
+supersedes: []
+dimension_refs: []
+pref_label: 预下载用户标签表
+alt_labels:
+  - 预下载
+  - 预约
+  - 渠道

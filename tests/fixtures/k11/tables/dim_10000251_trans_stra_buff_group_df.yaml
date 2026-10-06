@@ -1,0 +1,53 @@
+table_name: dim_10000251_trans_stra_buff_group_df
+engine: maxcompute
+kind: dim
+table_comment: '词缀组(buff group)配置维度表，按 id 唯一标识一个词缀组，name 为可读名称，buff_id 为该组包含的词缀 id 以下划线分隔的复合编码串。'
+description: '词缀组(buff group)配置维度表。日全量快照(_df)。按 id 唯一标识一行词缀组配置；name 为可读标签(词缀组名)；buff_id 为该组所含词缀 id 的复合编码串(下划线分隔，需二次拆分解码)；unlock 为解锁条件编码；desc 为文本描述。'
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+domains:
+- 系统监控
+granularity: 每词缀组(id)一行的配置维度表
+coverage:
+  scenarios:
+  - 通过 buff_id 复合编码串解析出的词缀 id 反查具体词缀属性
+  - 按 name/词缀组名做维度下钻与筛选
+  - 与词缀(buff)主数据表关联解读词缀组合语义
+  limitations:
+  - 配置类维度表，无值度量(metrics 为可选的行数计数)
+  - buff_id 为下划线分隔的复合编码串，使用前需拆分解码为单个词缀 id
+  - unlock 字段为解锁条件编码，需配合主数据/编码字典解读
+  - 仅 25 行小表，已实测 id 唯一(r=d=25)
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 词缀组维度表总行数
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'dim 建模：pk=id(已实测唯一 r=d=25)，label=name(词缀组名)。配置类维度表，buff_id 为复合编码串需二次拆分。保持 draft 待业务确认。'
+columns:
+- name: id
+  type: string
+  comment: 词缀组id
+  role: dimension
+- name: buff_id
+  type: string
+  comment: 包含的词缀id
+  role: dimension
+- name: unlock
+  type: string
+  comment: 解锁条件
+  role: dimension
+- name: desc
+  type: string
+  comment: 描述
+  role: dimension
+- name: name
+  type: string
+  comment: 词缀组名
+  role: dimension

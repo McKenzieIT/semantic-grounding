@@ -1,0 +1,137 @@
+name: game.campaign.dailyReward
+event_filter: event = 'game.campaign.dailyReward'
+description: 历战每日奖励（campaign daily reward）—— 角色每日领取历战活动奖励时触发的行为日志，记录领奖时刻的角色状态与奖励内容。参数含游戏服、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验、看板娘、关键货币列表(coinList)与 reward 奖励数组 等28个字段。主体粒度为 role_id（角色），单次事件=一次领奖行为，单日(ds=20260729)实测 3658 条、覆盖 2881 角色 / 2769 账号 / 439 服务器。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  reward:
+    type: array
+    description: 奖励
+  reward.type:
+    type: int
+    description: 类型
+  reward.value:
+    type: int
+    description: 值
+  reward.size:
+    type: int
+    description: 数量
+  reward.uid:
+    type: int
+    description: 唯一id
+  order:
+    type: array
+    description: 已领取的order
+metrics:
+  game_campaign_dailyReward_cnt:
+    expression: COUNT(*)
+    description: 历战每日奖励触发总次数（领奖行为次数）
+  game_campaign_dailyReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日领取历战每日奖励的去重角色数（主体粒度 role_id）
+  game_campaign_dailyReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 当日领取历战每日奖励的去重账号数
+  game_campaign_dailyReward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 当日有角色领取历战每日奖励的去重游戏服数
+coverage:
+  scenarios:
+    - 历战每日奖励活动的日活参与度（触发次数、参与角色/账号/服务器数）
+    - 历战奖励领取渗透规模与服务器覆盖广度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id；account_id/server_id 为辅助维度
+    - reward/coinList 为数组型参数，未在指标中展开求和（如需奖励发放量需单独建指标）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 实测 cnt=3658 role_uv=2881 acc_uv=2769 server_uv=439（数据合理，确认）
+  coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_knight_awaken_info_arch
+    join_keys:
+      - dws_column: order
+        dim_column: order
+    derivation: 确定性：事件字段 order 与 dim_10000251_knight_awaken_info_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_story_df
+    join_keys:
+      - dws_column: order
+        dim_column: order
+    derivation: 确定性：事件字段 order 与 dim_10000251_trans_story_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_story_df_arch
+    join_keys:
+      - dws_column: order
+        dim_column: order
+    derivation: 确定性：事件字段 order 与 dim_10000251_trans_story_df_arch 主键精确同名
+    origin: deterministic

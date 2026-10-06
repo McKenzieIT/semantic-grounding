@@ -1,0 +1,113 @@
+name: game.equip.preciseCancel
+event_filter: event = 'game.equip.preciseCancel'
+description: 装备精准打造/精炼取消事件：角色在装备精准（partId 部位/knightId 骑士）流程中取消操作时上报。携带货币快照 coinList、roleLevel/vipLevel/roleForce 等。分析主体 role_id（角色），单日 ds=20260729 scout 实测 cnt=2537 / role_uv=425 / acc_uv=420 / server_uv=192。
+domains:
+  - 装备道具
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  partId:
+    type: int
+    description: partId
+  knightId:
+    type: int
+    description: knightId
+metrics:
+  game_equip_preciseCancel_cnt:
+    expression: COUNT(*)
+    description: 装备精准取消事件总次数（事件行数）
+  game_equip_preciseCancel_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发过精准取消的去重角色数（分析主体=role_id）
+  game_equip_preciseCancel_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发过精准取消的去重账号数
+  game_equip_preciseCancel_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发过精准取消的去重游戏服数
+  game_equip_preciseCancel_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 每个触发角色的平均取消次数（事件行数 / 去重角色数）
+coverage:
+  scenarios:
+    - 装备精准流程取消的频次与覆盖角色/账号/服务器广度
+    - 角色在装备精准打造/精炼中取消操作的强度（人均取消次数）
+    - 跨服取消行为分布（server_uv）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度）；account_id 仅作账号维度补充
+    - 取消无对应"成功/失败"结果字段，无法直接换算取消率（需结合 equip 精准成功/失败事件，禁止 JOIN）
+    - coinList 为货币快照（余额），非本次取消消耗金额，故未生成金额类指标
+    - partId/knightId 为维度字段，未纳入聚合指标
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "measured ds=20260729: cnt=2537 / role_uv=425 / acc_uv=420 / server_uv=192，数值合理（事件在线且高频触发）"
+coverage_status: analyst_confirmed
+external_refs: []

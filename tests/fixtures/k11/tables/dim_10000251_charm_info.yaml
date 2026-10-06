@@ -1,0 +1,106 @@
+table_name: dim_10000251_charm_info
+engine: maxcompute
+table_comment: '灵器配置维度表，每行一个灵器，提供 charm_id 主键与 charm_name 名称，及品质/碎片/技能/升星/图鉴属性等配置属性。'
+kind: dim
+primary_key: [charm_id]
+primary_key_unique: true
+label_columns: [charm_name]
+description: '灵器配置维度表（dim_10000251_charm_info）：游戏 10000251 的灵器静态配置，每行一个灵器。
+  主键 charm_id（灵器id，已实测 8 行全唯一），标签 charm_name（灵器名称）。
+  包含 res（资源id）、quality（品质色）、fragment_id（对应碎片id）、active_skill_id_1~5（1~5星战斗技id）、
+  passive_skill_id_1~5（1~5星助战技id）、starup_model（升星模板）、own_attribute（图鉴属性，复合编码串）、atk（攻击力系数千分比）。
+  用于事实表通过 charm_id JOIN 关联灵器维度，输出灵器名称、品质、技能配置等维度切片。'
+domains:
+- 装备道具
+granularity: 每灵器一行的配置维度表
+coverage:
+  scenarios:
+    - 事实表（如灵器获取/升级流水）通过 charm_id JOIN 本表，输出灵器名称、品质、对应碎片、升星模板等维度属性
+    - 通过 active_skill_id / passive_skill_id 二次 JOIN 技能维度表，分析各灵器各星级战斗技/助战技配置
+    - 灵器图鉴与升星规划分析：own_attribute、starup_model、atk 系数切片
+  limitations:
+    - 配置类维度表，无值度量（无 measure 字段）
+    - own_attribute 为复合编码串（如 2701_50），需二次解码才能拆分图鉴属性子项
+    - active_skill_id_* / passive_skill_id_* 为技能id，需 JOIN 技能维度表才能得到技能名称
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（灵器配置总数）
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '灵器配置维度表，charm_id 实测 8 行全唯一（r=d=8）置 primary_key_unique=true；status=draft 待业务确认。'
+columns:
+- name: charm_id
+  type: string
+  comment: 灵器id
+  role: dimension
+- name: charm_name
+  type: string
+  comment: 名称
+  role: dimension
+- name: res
+  type: string
+  comment: 资源id
+  role: dimension
+- name: quality
+  type: string
+  comment: 品质色
+  role: dimension
+- name: fragment_id
+  type: string
+  comment: 对应碎片id
+  role: dimension
+- name: active_skill_id_1
+  type: string
+  comment: 1星战斗技id
+  role: dimension
+- name: active_skill_id_2
+  type: string
+  comment: 2星战斗技id
+  role: dimension
+- name: active_skill_id_3
+  type: string
+  comment: 3星战斗技id
+  role: dimension
+- name: active_skill_id_4
+  type: string
+  comment: 4星战斗技id
+  role: dimension
+- name: active_skill_id_5
+  type: string
+  comment: 5星战斗技id
+  role: dimension
+- name: passive_skill_id_1
+  type: string
+  comment: 1星助战技id
+  role: dimension
+- name: passive_skill_id_2
+  type: string
+  comment: 2星助战技id
+  role: dimension
+- name: passive_skill_id_3
+  type: string
+  comment: 3星助战技id
+  role: dimension
+- name: passive_skill_id_4
+  type: string
+  comment: 4星助战技id
+  role: dimension
+- name: passive_skill_id_5
+  type: string
+  comment: 5星助战技id
+  role: dimension
+- name: starup_model
+  type: string
+  comment: 升星模板
+  role: dimension
+- name: own_attribute
+  type: string
+  comment: 图鉴属性
+  role: dimension
+- name: atk
+  type: string
+  comment: 攻击力系数千分比
+  role: dimension

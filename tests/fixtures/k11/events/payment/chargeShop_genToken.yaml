@@ -1,0 +1,123 @@
+name: game.chargeShop.genToken
+event_filter: event = 'game.chargeShop.genToken'
+description: |-
+  充值商店-申请支付token（玩家在充值商店发起充值/申请支付时，后端生成支付token并上报此埋点，标志一次充值请求发起的起点）。
+  分析主体为 role_id（角色级），account_id 为账号级辅助维度。参数含游戏服、角色信息、vip等级、角色战力、看板娘、关键货币列表（coinList：充值钻石/赠送钻石/免费钻石/紫金/经验卷轴/体力）、商店与货物信息、token 等27个。真实实测 ds=20260729：事件量 1251 条，覆盖 614 个角色 / 608 个账号 / 129 个游戏服。
+domains:
+  - 付费经济
+domain: payment
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  shopId:
+    type: int
+    description: 商店id
+  shopName:
+    type: string
+    description: 商店名字
+  goodsId:
+    type: int
+    description: 货物id
+  goodsName:
+    type: string
+    description: 货物名字
+  token:
+    type: string
+    description: token
+metrics:
+  game_chargeShop_genToken_cnt:
+    expression: COUNT(*)
+    description: 充值token申请事件总次数（发起充值的请求量）
+  game_chargeShop_genToken_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 发起充值申请的去重角色数（主体UV）
+  game_chargeShop_genToken_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 发起充值申请的去重账号数
+  game_chargeShop_genToken_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 发起充值申请涉及的游戏服数
+  game_chargeShop_genToken_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 申请充值时角色"充值钻石"余额快照总量（coinList.gold，非实际入账金额，仅为发起时刻的货币快照）
+coverage:
+  scenarios:
+    - 充值发起规模与角色/账号/游戏服覆盖度（cnt/role_uv/account_uv/server_uv）
+    - 单角色申请频次 = cnt / NULLIF(role_uv, 0)
+    - 充值钻石余额快照分布（gold_sum），结合后续到账事件评估充值转化
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id；同一 account_id 多角色场景下 account_uv 低于 role_uv 属正常
+    - coinList.gold 为"充值钻石"余额快照，非真实人民币/实际到账金额，不能直接作为营收口径
+    - 本事件为"申请token"起点埋点，不代表充值最终成功，需结合到账/支付成功事件评估转化
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=1251, role_uv=614, acc_uv=608, server_uv=129, gold_sum=140609；数值合理（量级与单日充值活跃度匹配）。
+coverage_status: analyst_confirmed
+external_refs: []

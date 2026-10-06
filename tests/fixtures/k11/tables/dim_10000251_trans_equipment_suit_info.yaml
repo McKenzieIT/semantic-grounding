@@ -1,0 +1,44 @@
+table_name: dim_10000251_trans_equipment_suit_info
+engine: maxcompute
+kind: dim
+table_comment: '游戏 10000251 装备套装信息维度/配置表，每行一个套装，提供 suit_id 主键与 name/short_name 标签字段。'
+description: '游戏 10000251 装备套装信息维度/配置表（dim_trans_equipment_suit_info）。每行对应一个装备套装，主键为 suit_id（套装ID），标签列 name（套装名称）与 short_name（套装简称）。作为装备/道具领域的维度表，供事实表通过 suit_id 进行 JOIN 查询，输出套装名称用于分组展示与筛选。'
+domains:
+- 装备道具
+granularity: '每装备套装一行的维度/配置表'
+primary_key:
+- suit_id
+primary_key_unique: true
+label_columns:
+- name
+- short_name
+coverage:
+  scenarios:
+  - '事实表（如装备/套装使用明细）通过 suit_id JOIN 本表，获取套装名称/简称用于分组、筛选与展示'
+  - '套装维度的钻取分析：按 suit_id 维度统计套装使用分布、效果触发频次等'
+  limitations:
+  - '配置类维度表，无值度量，仅提供套装的键与名称标签'
+  - '行数少（约20行），覆盖游戏内置的套装集合，不随玩家行为变化'
+  - '主键 suit_id 实测唯一（r=d=20）'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '配置类维度表建模，suit_id 实测唯一；保持 draft 待业务确认。'
+columns:
+- name: suit_id
+  type: string
+  comment: 套装ID
+  role: dimension
+- name: name
+  type: string
+  comment: 套装名称
+  role: dimension
+- name: short_name
+  type: string
+  comment: 套装简称
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（套装总数）

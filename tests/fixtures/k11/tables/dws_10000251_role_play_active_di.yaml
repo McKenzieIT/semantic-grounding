@@ -1,0 +1,208 @@
+table_name: dws_10000251_role_play_active_di
+engine: maxcompute
+table_comment: 角色上手进循环
+description: |-
+  角色上手进循环。
+  粒度：日增量(_di)。分析主体=角色（user_type=3）。
+  主要字段：account_id, role_id, role_name, server_id, zhuxian_active, wujinta_active, zhuxian_active2, wujinta_active2 等38列。
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 日增量(_di)
+columns:
+  - name: account_id
+    type: string
+    comment: 关联账号id
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: role_name
+    type: string
+    comment: 角色名
+    role: attribute
+  - name: server_id
+    type: string
+    comment: 区服id，key
+    role: dimension
+  - name: zhuxian_active
+    type: bigint
+    comment: 主线积极度
+    role: measure
+  - name: wujinta_active
+    type: bigint
+    comment: 无尽塔积极度
+    role: measure
+  - name: zhuxian_active2
+    type: bigint
+    comment: 主线积极度（策划版）
+    role: measure
+  - name: wujinta_active2
+    type: bigint
+    comment: 主线积极度（策划版）
+    role: measure
+  - name: yanwu_active_day
+    type: bigint
+    comment: 演武积极度日版
+    role: measure
+  - name: jingji_active_day
+    type: bigint
+    comment: 竞技场积极度日版
+    role: measure
+  - name: yanwu_active_week
+    type: bigint
+    comment: 演武积极度周版
+    role: measure
+  - name: jingji_active_week
+    type: bigint
+    comment: 竞技场积极度周版
+    role: measure
+  - name: zhanliyangcheng
+    type: bigint
+    comment: 战力养成
+    role: measure
+  - name: tuiguanjingsu
+    type: bigint
+    comment: 推关竞速
+    role: measure
+  - name: guanqiajiemi
+    type: bigint
+    comment: 关卡解谜
+    role: measure
+  - name: play_type
+    type: string
+    comment: 游玩状态
+    role: dimension
+  - name: zhanliyangcheng2
+    type: bigint
+    comment: 战力养成2
+    role: measure
+  - name: tuiguanjingsu2
+    type: bigint
+    comment: 推关竞速2
+    role: measure
+  - name: guanqiajiemi2
+    type: bigint
+    comment: 关卡解谜2
+    role: measure
+  - name: play_type2
+    type: string
+    comment: 游玩状态2
+    role: dimension
+  - name: step1
+    type: bigint
+    comment: 上手1
+    role: measure
+  - name: step2
+    type: bigint
+    comment: 上手2
+    role: measure
+  - name: step3
+    type: bigint
+    comment: 上手3
+    role: measure
+  - name: step4
+    type: bigint
+    comment: 上手4
+    role: measure
+  - name: step5
+    type: bigint
+    comment: 上手5
+    role: measure
+  - name: step
+    type: bigint
+    comment: 上手最终
+    role: measure
+  - name: loop1
+    type: bigint
+    comment: 基础循环1-1
+    role: measure
+  - name: loop2
+    type: bigint
+    comment: 基础循环1-2
+    role: measure
+  - name: loop3
+    type: bigint
+    comment: 进阶循环2-1
+    role: measure
+  - name: loop4
+    type: bigint
+    comment: 进阶循环2-2
+    role: measure
+  - name: loop5
+    type: bigint
+    comment: 基础循环3
+    role: measure
+  - name: xiyu1
+    type: bigint
+    comment: 娱乐城1(不包含困难)
+    role: measure
+  - name: xiyu2
+    type: bigint
+    comment: 娱乐城2(包含困难)
+    role: measure
+  - name: lineup_avg_level
+    type: string
+    comment: 队伍平均等级
+    role: attribute
+  - name: zhuxian_active22
+    type: bigint
+    comment: 主线积极度（困难版）
+    role: measure
+  - name: hulaoguan_active
+    type: bigint
+    comment: 虎牢线积极度
+    role: measure
+  - name: qice_active
+    type: bigint
+    comment: 奇策积极度
+    role: measure
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  daily_active_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 日活角色数（按 role_id 去重），衡量当日参与上手/循环玩法的活跃角色规模
+  zhuxian_active_sum:
+    expression: SUM(zhuxian_active)
+    description: 当日主线积极度总量，反映主线玩法参与度
+  tuiguanjingsu_sum:
+    expression: SUM(tuiguanjingsu)
+    description: 当日推关竞速参与总量，衡量关卡推进活跃度
+  loop_total:
+    expression: SUM(loop1) + SUM(loop2) + SUM(loop3) + SUM(loop4) + SUM(loop5)
+    description: 当日基础/进阶循环参与总量合计，衡量核心循环活跃度
+  step_reached_uv:
+    expression: COUNT(DISTINCT CASE WHEN step > 0 THEN role_id END)
+    description: 当日达成上手最终阶段的角色数（去重），衡量上手转化规模
+coverage:
+  scenarios:
+    - 日常监控角色上手与基础/进阶循环的活跃度（角色粒度日增量）
+    - 评估主线/推关/解谜等关卡向玩法的日参与规模与转化
+  limitations:
+    - 表为空/无数据（SELECT MAX(ds) 返回 NULL），无法进行实际数据校验，metrics 为结构性定义
+    - 无 user_type 列，分析主体=角色（user_type=3）由表名 role_play 推断，未做数据值复核
+    - 仅 scout 抽样验证，未做全量 maxc 实测复核；表有数据后需重新校验各 metric 列非空与合理性
+    - _di 日增量语义：daily_active_role_uv/loop_total 等为当日增量聚合，非累计快照
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 表为空（MAX(ds) NULL），仅完成结构性丰富（描述/列/指标/coverage），未做数据实测；待表有数据后转 analyst_confirmed
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (comment '区服id，key') is an exact name match to dim_10000251_server_info primary key server_id, and the DIM is explicitly designed to be joined by server_id to look up server name and open-date attributes.
+    origin: deterministic
+pref_label: 角色上手循环表
+alt_labels:
+  - 上手
+  - 循环
+  - 新手
+  - 引导
+  - 漏斗

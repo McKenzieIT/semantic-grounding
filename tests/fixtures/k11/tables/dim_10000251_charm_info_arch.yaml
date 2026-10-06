@@ -1,0 +1,110 @@
+table_name: dim_10000251_charm_info_arch
+engine: maxcompute
+table_comment: '灵器配置维度表（按日归档快照）：灵器id/名称/品质/碎片/各星战斗技与助战技id/升星模板/图鉴属性/攻击力系数。每日全量快照，按 ds 分区。'
+description: '灵器（charm）配置维度表，按日归档快照。每行描述一个灵器在某日的配置：唯一标识为 charm_id+ds；可读标签为 charm_name。包含品质色 quality、对应碎片 fragment_id、1-5星战斗技 active_skill_id_1..5、1-5星助战技 passive_skill_id_1..5、升星模板 starup_model、图鉴属性 own_attribute、攻击力系数千分比 atk、资源id res。用于按灵器维度JOIN事实表做品质/技能/属性切片与图鉴分析。'
+domains:
+- 装备道具
+granularity: 每个（灵器id, 日期分区）一行的归档快照维度表
+primary_key:
+- charm_id
+- ds
+primary_key_unique: true
+label_columns:
+- charm_name
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 灵器配置快照总行数
+columns:
+- name: charm_id
+  type: string
+  comment: 灵器id
+  role: dimension
+- name: charm_name
+  type: string
+  comment: 名称
+  role: dimension
+- name: res
+  type: string
+  comment: 资源id
+  role: dimension
+- name: quality
+  type: string
+  comment: 品质色
+  role: dimension
+- name: fragment_id
+  type: string
+  comment: 对应碎片id
+  role: dimension
+- name: active_skill_id_1
+  type: string
+  comment: 1星战斗技id
+  role: dimension
+- name: active_skill_id_2
+  type: string
+  comment: 2星战斗技id
+  role: dimension
+- name: active_skill_id_3
+  type: string
+  comment: 3星战斗技id
+  role: dimension
+- name: active_skill_id_4
+  type: string
+  comment: 4星战斗技id
+  role: dimension
+- name: active_skill_id_5
+  type: string
+  comment: 5星战斗技id
+  role: dimension
+- name: passive_skill_id_1
+  type: string
+  comment: 1星助战技id
+  role: dimension
+- name: passive_skill_id_2
+  type: string
+  comment: 2星助战技id
+  role: dimension
+- name: passive_skill_id_3
+  type: string
+  comment: 3星助战技id
+  role: dimension
+- name: passive_skill_id_4
+  type: string
+  comment: 4星助战技id
+  role: dimension
+- name: passive_skill_id_5
+  type: string
+  comment: 5星助战技id
+  role: dimension
+- name: starup_model
+  type: string
+  comment: 升星模板
+  role: dimension
+- name: own_attribute
+  type: string
+  comment: 图鉴属性
+  role: dimension
+- name: atk
+  type: string
+  comment: 攻击力系数千分比
+  role: dimension
+- name: ds
+  type: string
+  comment: 日期分区(YYYYMMDD)
+  role: partition
+kind: dim
+coverage:
+  scenarios:
+  - 按灵器id JOIN事实表，按品质色 quality 切片统计各品质灵器分布与战力贡献
+  - 按 charm_id 取当日最新配置，分析灵器1-5星战斗技/助战技id所指向技能的搭配
+  - 按图鉴属性 own_attribute 与升星模板 starup_model 做图鉴收集进度与升星路径分析
+  - 按碎片 fragment_id 关联碎片掉落事实，评估灵器获取路径
+  limitations:
+  - 配置类维度表，无值度量（atk 为系数千分比字符串，非可直接聚合的数值度量）
+  - 多个字段为编码id串（active_skill_id_*、passive_skill_id_*、fragment_id、res），需二次解码关联对应技能/碎片/资源维度表
+  - 按日全量归档快照，跨日分析时需显式指定 ds 分区以避免重复
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '自动建模：列与类型经 meta describe 核对；主键(charm_id,ds)唯一性经 COUNT(*)=COUNT(DISTINCT CONCAT) 实测 r=d=1139 为 true；标签列 charm_name。status=draft 待业务确认。'

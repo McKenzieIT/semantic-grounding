@@ -1,0 +1,143 @@
+name: game.champion.guess
+event_filter: event = 'game.champion.guess'
+description: 争霸赛竞猜埋点：记录角色在争霸赛(Champion)玩法中发起/参与竞猜的每一次日志上报。参数涵盖游戏服(serverId/serverName)、账号(accountId)、角色(roleId/roleName/sex/roleLevel/vipLevel/roleForce/exp/createTime/onlineTime)、货币(coinList.*)、会话(sessionId/logUUID/uid)、赛季与对局(seasonId/matchId)、攻防位(side:0=攻击 1=防守)以及竞猜计数(count/gssCountDefAtk/gssCountDef)等29个字段。分析主体粒度为 role_id(角色)；账号级聚合可用 account_id。scout 实测 ds=20260729 单日：日志 35 条，角色 30 人，账号 30 个，服务器 5 个；count 字段累计 494924，攻方事件 34 条、防方事件 1 条。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  seasonId:
+    type: int
+    description: seasonId
+  uid:
+    type: int
+    description: uid
+  matchId:
+    type: string
+    description: matchId
+  side:
+    type: int
+    description: 0 攻击 1 防守
+  count:
+    type: int
+    description: count
+  gssCountDefAtk:
+    type: int
+    description: gssCountDefAtk
+  gssCountDef:
+    type: int
+    description: gssCountDef
+metrics:
+  game_champion_guess_cnt:
+    expression: COUNT(*)
+    description: 争霸赛竞猜日志总条数
+  game_champion_guess_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与争霸赛竞猜的去重角色数(分析主体粒度)
+  game_champion_guess_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与争霸赛竞猜的去重账号数
+  game_champion_guess_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及竞猜事件的去重游戏服数
+  game_champion_guess_count_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.count') AS BIGINT))
+    description: 竞猜 count 字段累计值(单日志携带的竞猜计数总和)
+  game_champion_guess_defatk_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.gssCountDefAtk') AS BIGINT))
+    description: gssCountDefAtk 字段累计值(防守攻击相关计数)
+  game_champion_guess_def_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.gssCountDef') AS BIGINT))
+    description: gssCountDef 字段累计值(防守相关计数)
+  game_champion_guess_atk_side_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.side') = '0' THEN 1 ELSE 0 END)
+    description: 攻方(side=0)事件条数
+  game_champion_guess_def_side_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.side') = '1' THEN 1 ELSE 0 END)
+    description: 防方(side=1)事件条数
+  game_champion_guess_atk_def_ratio:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.side') = '0' THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN GET_JSON_OBJECT(params, '$.side') = '1' THEN 1 ELSE 0 END), 0)
+    description: 攻方/防方事件条数比(防方为0时返回NULL)
+coverage:
+  scenarios:
+    - 评估争霸赛玩法的活跃度(参与竞猜的日志条数、角色UV、账号UV、覆盖游戏服数)
+    - 量化竞猜行为强度(count 字段累计计数)
+    - 区分攻防位参与分布(攻方/防方事件条数及攻防比)
+    - 支撑赛季(seasonId)与对局(matchId)维度的竞猜参与分析
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认为 role_id(角色)；账号级聚合需切换至 account_id
+    - count 字段单日累计 494924 偏大，疑似累计型计数，跨日 SUM 可能重复计数，跨日聚合前需与业务确认字段语义
+    - side 字段取值仅观测到 0/1，未见其他取值
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：日志 35 条、角色 30 人、账号 30 个、服务器 5 个、count 累计 494924、攻方 34 条、防方 1 条；数据量与口径合理，确认事件在线且可分析。
+coverage_status: analyst_confirmed
+external_refs: []

@@ -1,0 +1,59 @@
+table_name: dim_10000251_trans_recharge_df
+engine: maxcompute
+kind: dim
+primary_key: [id]
+primary_key_unique: true
+label_columns: [name]
+table_comment: '充值商品配置维度表（_df 日全量快照）。每行一个商品配置，存储商品名/类型/单价/商店归属/返利展示。'
+description: '充值商品配置维度表（dim，_df 日全量快照）。粒度：每行一个商品配置（id）。提供商品名(name)用于标签展示、product_id 用于审核关联、cost 单价(分)、shop_id 商店归属、type 商品类型、rebate 返利百分比气泡文本。供交易事实表通过 id 关联，做商品维度的销售/收入切片。'
+domains:
+- 系统监控
+granularity: 每行一个商品配置(id)的充值商品配置维度表
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数(商品配置数)
+columns:
+- name: id
+  type: string
+  comment: 商品配置id
+  role: dimension
+- name: name
+  type: string
+  comment: 商品名
+  role: dimension
+- name: product_id
+  type: string
+  comment: 商品审核id
+  role: dimension
+- name: cost
+  type: bigint
+  comment: 物品单价，单位分
+  role: measure
+- name: shop_id
+  type: string
+  comment: 商店id
+  role: dimension
+- name: type
+  type: bigint
+  comment: 商品类型
+  role: dimension
+- name: rebate
+  type: string
+  comment: 显示返利百分比气泡
+  role: dimension
+coverage:
+  scenarios:
+  - 'JOIN 交易事实表（充值/购买记录）通过 id 关联本表，获取商品名/商店/类型做维度切片与销售/收入聚合'
+  - '商品配置查询：按 shop_id 维度统计某商店在售商品数；按 type 分组商品类型分布'
+  - '成本分析：用 cost(分) 作为单价维度，配合交易金额换算真实售价'
+  limitations:
+  - '配置类维度表，无业务值度量（cost 是单价常量，非度量指标，仅用于描述商品属性）'
+  - '_df 为日全量快照，存在历史多版本；分析时需明确快照日期，避免重复计数'
+  - 'rebate 为前端显示用文本串，可能为空；如需数值需二次解析'
+  - 'primary_key_unique 已实测：r=33, d=33（唯一）'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '通过 maxc meta describe 校验真实列(7列)；id 唯一性实测 r=d=33 通过；cost/type 类型由 int 更正为 bigint 与实际一致。配置类维度表，保持 draft 待业务确认。'

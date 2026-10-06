@@ -1,0 +1,130 @@
+name: game.champion.sendFlyTxt
+event_filter: event = 'game.champion.sendFlyTxt'
+description: 争霸赛弹幕发送事件：玩家在争霸赛/锦标赛场景中向比赛房间发送飞屏弹幕（flyTxt）的日志。记录发送的角色/账号/游戏服上下文、比赛会话（matchId/seasonId）、弹幕文本（txt）及发送结果（sendResult：0 失败 1 成功）。分析主体粒度为 role_id（角色）。真实数据实测：ds=20260728 单日 cnt=1、role_uv=1、acc_uv=1、server_uv=1（单条命中，该事件当日活跃极低）。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  seasonId:
+    type: int
+    description: seasonId
+  uid:
+    type: int
+    description: uid
+  matchId:
+    type: string
+    description: matchId
+  seq:
+    type: int
+    description: seq
+  txt:
+    type: string
+    description: txt
+  sendResult:
+    type: int
+    description: 0 失败 1 成功
+metrics:
+  champion_sendfly_txt_cnt:
+    description: 争霸赛弹幕发送总次数（含成功/失败）
+    expression: COUNT(*)
+  champion_sendfly_txt_role_uv:
+    description: 发送弹幕的角色去重数（分析主体粒度 role_id）
+    expression: COUNT(DISTINCT role_id)
+  champion_sendfly_txt_account_uv:
+    description: 发送弹幕的账号去重数
+    expression: COUNT(DISTINCT account_id)
+  champion_sendfly_txt_server_uv:
+    description: 涉及的游戏服去重数
+    expression: COUNT(DISTINCT server_id)
+  champion_sendfly_txt_success_cnt:
+    description: 弹幕发送成功次数（sendResult=1）
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.sendResult') = '1' THEN 1 ELSE 0 END)
+  champion_sendfly_txt_fail_cnt:
+    description: 弹幕发送失败次数（sendResult=0）
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.sendResult') = '0' THEN 1 ELSE 0 END)
+  champion_sendfly_txt_success_rate:
+    description: 弹幕发送成功率（成功次数 / 总次数）
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.sendResult') = '1' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+coverage:
+  scenarios:
+    - 争霸赛弹幕发送活跃度（总次数、角色/账号 UV、覆盖游戏服数）
+    - 弹幕发送成功率与失败量监控（sendResult 维度）
+    - 单场比赛/赛季弹幕互动热度（可按 matchId/seasonId 下钻）
+  limitations:
+    - 仅 ds=20260728 单日 scout 实测（ds=20260729 零命中），未做全量复核
+    - 单日实测 cnt=1、role_uv=1，样本极小，成功率等比率指标稳定性差
+    - 分析主体粒度默认 role_id（角色），未独立核验 account 级一致性
+    - params 中 txt（弹幕文本）为自由文本，未做内容审计/合规下钻
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260728: cnt=1, role_uv=1, acc_uv=1, server_uv=1（ds=20260729 零命中）。事件在线且有真实命中，但当日样本极小。"
+coverage_status: analyst_confirmed
+external_refs: []

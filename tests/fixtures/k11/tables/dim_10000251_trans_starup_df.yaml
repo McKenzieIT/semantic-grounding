@@ -1,0 +1,48 @@
+table_name: dim_10000251_trans_starup_df
+engine: maxcompute
+kind: dim
+primary_key:
+- id
+label_columns:
+- name
+primary_key_unique: true
+table_comment: '道具升星觉醒配置维度表（日全量快照 _df）。每行一个道具/魂石，记录其 id、名称、品质及备注，供事实表 JOIN 查询道具属性。'
+description: '道具升星觉醒配置维度表（日全量快照 _df）。每行一个道具/魂石配置（id 唯一），记录其名称、品质及备注，供事实表 JOIN 查询道具属性。粒度：每个道具一行。'
+domains:
+- 装备道具
+granularity: 每个道具一行的配置维度表
+coverage:
+  scenarios:
+  - 事实表通过 id JOIN 本表查询道具名称、品质等维度属性
+  - 支持按品质(quality)对道具进行分组/筛选
+  - 支持按备注(remark1/remark2)分类道具用途（如升星觉醒-英雄魂石）
+  limitations:
+  - 配置类维度表，无值度量（quality 为品质等级属性，非可加度量）
+  - 仅 74 行配置数据，无时序变化
+  - 备注字段为自由文本，需二次解读
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '已通过 meta describe 校验真实列；id 唯一性实测 r=d=74 通过；status 保持 draft 待业务确认。'
+columns:
+- name: id
+  type: string
+  comment: 道具id
+  role: dimension
+- name: name
+  type: string
+  comment: 道具名称
+  role: dimension
+- name: quality
+  type: bigint
+  comment: 品质
+  role: dimension
+- name: remark1
+  type: string
+  comment: 备注1
+  role: dimension
+- name: remark2
+  type: string
+  comment: 备注2
+  role: dimension

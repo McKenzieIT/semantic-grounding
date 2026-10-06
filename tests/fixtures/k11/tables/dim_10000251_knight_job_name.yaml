@@ -1,0 +1,38 @@
+table_name: dim_10000251_knight_job_name
+engine: maxcompute
+kind: dim
+table_comment: '游戏内职业（job）配置维度表，按 job_id 唯一标识，存储职业名称'
+description: '游戏内职业（job）配置维度表。主键 job_id（职业ID），标签列 job_name（职业名称）。用于通过 job_id 关联事实表，将职业编码解析为可读的职业名称（如 乐师、传火者）。'
+domains:
+- 角色成长
+granularity: '每 个职业（job）一行的配置维度表'
+primary_key:
+- job_id
+primary_key_unique: true
+label_columns:
+- job_name
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+columns:
+- name: job_id
+  type: string
+  comment: 职业ID
+  role: dimension
+- name: job_name
+  type: string
+  comment: 职业名称
+  role: dimension
+coverage:
+  scenarios:
+  - '通过 job_id JOIN 事实表，将职业编码解析为可读职业名称（如玩家职业分布、各职业指标对比）'
+  - '作为职业维度筛选器，按职业名称分组聚合分析'
+  limitations:
+  - '配置类维度表，无值度量；仅 30 行职业配置数据'
+  - 'job_id 为字符串型编码，事实表 JOIN 时需类型对齐'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '基于 meta describe 实测列结构与唯一性检验（r=d=30）建模；status=draft 待业务确认'

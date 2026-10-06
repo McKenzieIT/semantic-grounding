@@ -1,0 +1,80 @@
+table_name: dim_10000251_trans_resouce_type_df_arch
+engine: maxcompute
+kind: dim
+table_comment: 资源类型翻译配置维度表（按日分区快照）。每行记录一种资源类型(resouce_type+resouce_value)的中文名、品质、图标、描述、引用配置表等属性，供业务宽表/明细表 JOIN 翻译资源编码。
+description: '资源类型翻译配置维度表 dim_10000251_trans_resouce_type_df_arch：游戏内各类资源(道具/武将典藏/插画/皮肤等)的编码到中文名/品质/图标/描述的映射配置，按 ds 日分区快照存储。主键为 (resouce_type, resouce_value, ds) 复合键(已实测唯一)。label 列为 name(资源名称)。粒度：每 资源类型编码+日期 一行的配置维度表。'
+domains:
+- 系统监控
+granularity: 每资源类型编码(resouce_type+resouce_value)按日分区快照一行的配置维度表
+primary_key:
+- resouce_type
+- resouce_value
+- ds
+primary_key_unique: true
+label_columns:
+- name
+coverage:
+  scenarios:
+  - 通过 resouce_type+resouce_value 关联业务宽表/明细表，将资源编码翻译为中文名称 name、品质 quality、描述 directions
+  - 提供 res/new_res 图标字段支撑前端资源展示
+  - 通过 table(引用配置表)字段定位资源所对应的原始配置表来源
+  - 按 ds 分区查询历史某日的资源配置快照，支持配置回溯对比
+  limitations:
+  - 配置类维度表，无值度量(metrics 仅含 row_count)
+  - resouce_type/resouce_value 为编码字符串，部分需配合 table 字段二次解码定位原始配置
+  - 复合主键含 ds 分区列，JOIN 时需指定 ds 或全分区扫描
+  - name 字段对部分类型可能为空字符串(如纯编码类资源)，使用前需过滤
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '草稿状态。主键(resouce_type,resouce_value,ds)已实测唯一(r=d=29375)。label=name(资源名称)。域=系统监控(配置类维度表)。未做业务侧名称校验，待业务确认。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数(含全部 ds 分区快照)
+columns:
+- name: resouce_type
+  type: string
+  comment: 资源type
+  role: dimension
+- name: resouce_value
+  type: string
+  comment: 资源value
+  role: dimension
+- name: quality
+  type: string
+  comment: 品质
+  role: dimension
+- name: name
+  type: string
+  comment: 资源名称
+  role: dimension
+- name: res
+  type: string
+  comment: 资源图标
+  role: dimension
+- name: new_res
+  type: string
+  comment: 资源图标
+  role: dimension
+- name: directions
+  type: string
+  comment: 描述
+  role: dimension
+- name: table
+  type: string
+  comment: 引用配置表
+  role: dimension
+- name: size_ban
+  type: string
+  comment: reward限制
+  role: dimension
+- name: price
+  type: string
+  comment: 道具价值
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition

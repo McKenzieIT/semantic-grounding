@@ -1,0 +1,110 @@
+name: game.charmStone.decompose
+event_filter: event = 'game.charmStone.decompose'
+description: |-
+  灵石-分解：玩家分解灵石(charmStone)时触发，分解目标灵石 uid 列表记录于 params.uids，同时携带角色/账号/区服上下文(roleLevel/vipLevel/roleForce/coinList 等)。用于衡量灵石分解活跃度、分解玩家画像与资源回收规模。主体粒度为角色(role_id)。scout 实测 ds=20260729/20260728 零命中(疑似下线/未触发)。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  uids:
+    type: array
+    description: uids
+metrics:
+  charmStone_decompose_cnt:
+    expression: COUNT(*)
+    description: 灵石分解事件触发次数(每次分解记1条)
+  charmStone_decompose_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 分解灵石的独立角色数(去重 role_id；主体粒度为角色)
+  charmStone_decompose_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 分解灵石的独立账号数(去重 account_id)
+  charmStone_decompose_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 发生分解的区服数(去重 server_id，反映覆盖面)
+  charmStone_decompose_role_per_server_ratio:
+    expression: ROUND(CAST(COUNT(DISTINCT role_id) AS DOUBLE) / NULLIF(COUNT(DISTINCT server_id), 0), 2)
+    description: 平均每区服分解角色数(角色UV/区服UV；衡量区服集中度)
+coverage:
+  scenarios:
+    - 灵石分解参与规模(charmStone_decompose_cnt / charmStone_decompose_role_uv / charmStone_decompose_account_uv)
+    - 分解覆盖面(charmStone_decompose_server_uv 区服数)
+    - 区服集中度(charmStone_decompose_role_per_server_ratio)
+  limitations:
+    - 日志中零命中(ds=20260729 cnt=0 / ds=20260728 cnt=0)，疑似下线/未触发，指标定义保留待事件恢复后验证
+    - 主体粒度默认 role_id 未逐事件实测角色归属正确性，按 base view 同时含 account_id+role_id 推断为角色级
+    - uids(分解灵石列表)为数组，GET_JSON_OBJECT 返回 STRING 无法直接 SIZE，未构建单次分解件数指标
+  coverage_status: draft
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 cnt=0/role_uv=0/acc_uv=0；ds=20260728 cnt=0；零命中，疑似下线/未触发
+external_refs: []

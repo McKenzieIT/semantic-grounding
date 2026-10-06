@@ -1,0 +1,108 @@
+name: game.gve2.activatebuff
+event_filter: event = 'game.gve2.activatebuff'
+description: GVE2（公会VS环境 v2）激活增益（buff）事件。记录玩家在 GVE2 玩法中激活 buff 的行为， 携带角色等级、vip 等级、角色战力、经验及关键货币余额快照（coinList）。分析主体为 role_id（角色粒度），account_id 供账号维度交叉参考。真实测得 ds=20260729 单日： cnt=179，role_uv=179，acc_uv=176，覆盖 155 个游戏服。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+metrics:
+  game_gve2_activatebuff_cnt:
+    expression: COUNT(*)
+    description: GVE2 激活 buff 总次数
+  game_gve2_activatebuff_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 激活 buff 的去重角色数
+  game_gve2_activatebuff_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 激活 buff 的去重账号数
+  game_gve2_activatebuff_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 激活 buff 涉及的游戏服数
+  game_gve2_activatebuff_role_level_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS BIGINT))
+    description: 激活 buff 角色的平均角色等级
+  game_gve2_activatebuff_vip_level_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.vipLevel') AS BIGINT))
+    description: 激活 buff 角色的平均 vip 等级
+coverage:
+  scenarios:
+    - GVE2 玩法 buff 激活的总体规模与角色/账号/服务器覆盖度
+    - 激活 buff 玩家的角色等级与 vip 等级分布（玩法参与人群画像）
+    - 跨服 buff 激活热度对比（server_uv）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（事件以角色为粒度）；account_id 供账号维度交叉参考
+    - coinList 为货币余额快照，非本次激活产生的流水，不作为收入口径
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: maxc scout 实测 ds=20260729：cnt=179, role_uv=179, acc_uv=176, server_uv=155；数据合理，标记 analyst_confirmed
+coverage_status: analyst_confirmed
+external_refs: []

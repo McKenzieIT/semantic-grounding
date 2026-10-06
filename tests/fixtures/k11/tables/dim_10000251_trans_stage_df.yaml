@@ -1,0 +1,70 @@
+table_name: dim_10000251_trans_stage_df
+engine: maxcompute
+table_comment: '关卡/阶段配置维度表（日全量快照 _df），按关卡 id 唯一标识，提供关卡名、类型、难度、所属章、怪物组、入口类型、推荐等级等属性'
+description: '关卡（stage）配置维度表，日全量快照（_df）。每行一个关卡，主键 id（关卡id）；标签列 name2（关卡中文名，如"汉家军阵"）、name（关卡代号）。承载关卡名/类型/难度/章节归属/怪物组/入口类型/推荐等级等维度属性，供事实表按 id 关联做关卡维度查找。'
+kind: dim
+domains:
+- 战斗关卡
+granularity: 每个关卡（stage）一行的配置/维度表
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name2
+- name
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（关卡总数）
+columns:
+- name: id
+  type: string
+  comment: 关卡id
+  role: dimension
+- name: name
+  type: string
+  comment: 关卡名（代号）
+  role: dimension
+- name: type
+  type: BIGINT
+  comment: 关卡类型
+  role: dimension
+- name: difficulty
+  type: BIGINT
+  comment: 难度
+  role: dimension
+- name: chapter_id
+  type: string
+  comment: 章
+  role: dimension
+- name: monster
+  type: string
+  comment: 怪物组
+  role: dimension
+- name: type2
+  type: string
+  comment: 关卡入口类型
+  role: dimension
+- name: reco_level
+  type: BIGINT
+  comment: 推荐等级
+  role: dimension
+- name: name2
+  type: string
+  comment: 关卡名2（中文名）
+  role: dimension
+coverage:
+  scenarios:
+  - 事实表按 id JOIN 查找关卡中文名（name2）/关卡代号（name）
+  - 按关卡类型（type）、入口类型（type2）筛选事实记录
+  - 按难度（difficulty）、推荐等级（reco_level）分组聚合
+  - 按 chapter_id（章）/monster（怪物组）做关卡归属维度下钻
+  limitations:
+  - 配置类维度表，无值度量；difficulty/reco_level 为配置属性而非度量
+  - 部分样本 name 字段值为"0"（代号缺失），以 name2 为首选标签列
+  - monster 为怪物组编码，需关联怪物组维表二次解码（如需明细）
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 meta describe 校正列类型（type/difficulty/reco_level: BIGINT）；主键 id 唯一性实测通过（r=d=4105）；domain 调整为 战斗关卡（关卡/阶段配置）；kind=dim 建模，primary_key=[id]，label_columns=[name2,name]。配置类维度表，未做实体业务校验，保持 draft。'

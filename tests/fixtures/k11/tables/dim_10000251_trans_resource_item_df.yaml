@@ -1,0 +1,44 @@
+table_name: dim_10000251_trans_resource_item_df
+engine: maxcompute
+table_comment: '游戏 10000251 的资源/物品维度配置表（日全量快照 _df），按 (type, id) 唯一标识一个物品，name 为物品可读名称。'
+kind: dim
+primary_key:
+- type
+- id
+label_columns:
+- name
+primary_key_unique: true
+description: '资源/物品维度配置表（日全量快照 _df）。每行对应一个游戏内资源/物品，由 (type, id) 复合唯一标识，name 提供物品的可读名称。供事实表通过 type+id JOIN 查物品名/类型维度使用。'
+domains:
+- 资源产销
+granularity: 每个游戏资源/物品（type+id）一行的维度/配置表
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（当前快照下的物品配置条目数）
+columns:
+- name: type
+  type: bigint
+  comment: 物品类型
+  role: dimension
+- name: id
+  type: string
+  comment: 物品id
+  role: dimension
+- name: name
+  type: string
+  comment: 物品名
+  role: dimension
+coverage:
+  scenarios:
+  - 事实表（如交易/获得/消耗流水）通过 (type, id) JOIN 本表，获取物品可读名称 name 与类型 type，用于按物品类型、物品名称分组报表。
+  - 作为资源/物品字典，支撑付费经济、资源产销、装备道具等域报表中的物品维度钻取与筛选。
+  limitations:
+  - 配置类维度表，无值度量（无数量/金额字段），仅提供物品标识与名称。
+  - 主键为复合键 (type, id)；id 单列不唯一（实测 4126 行中 id 仅 2850 个不同值），跨 type 存在 id 复用，单独按 id JOIN 会产生重复匹配。
+  - 日全量快照（_df）保留快照当日配置；历史物品配置变更需结合分区/快照日期对齐，本表当前无分区列。
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'dim 建模：复合主键 (type, id) 已实测唯一（r=d_tid=4126）；id 单列不唯一故未选单列主键；label=name。配置类维度表无值度量。保持 draft。'

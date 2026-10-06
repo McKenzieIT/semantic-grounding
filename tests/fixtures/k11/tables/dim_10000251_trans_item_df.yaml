@@ -1,0 +1,53 @@
+table_name: dim_10000251_trans_item_df
+engine: maxcompute
+kind: dim
+primary_key: [type, value]
+label_columns: [name]
+primary_key_unique: true
+table_comment: '资源/道具维度配置表（日全量快照 _df），引用 resource_info 等资源元数据表；每行对应一个 (type,value) 资源项，name 为人类可读名称'
+description: '游戏内资源/道具的维度配置表（日全量快照 _df）。每行由资源类型 type 与资源值 value 复合唯一标识一个资源/道具项，name 为人类可读资源名称，table 指向其引用的源配置表（如 resource_info），quality 为品质等级代码，remark 为备注。用于通过 (type,value) 向事实表提供资源名称/品质等维度属性 lookup。'
+domains:
+- 资源产销
+granularity: '每 (type,value) 资源项一行的维度/配置表（日全量快照）'
+columns:
+- name: type
+  type: string
+  comment: 资源类型
+  role: dimension
+- name: value
+  type: string
+  comment: 资源值
+  role: dimension
+- name: name
+  type: string
+  comment: 资源名称
+  role: dimension
+- name: table
+  type: string
+  comment: 引用表
+  role: dimension
+- name: quality
+  type: bigint
+  comment: 品质
+  role: dimension
+- name: remark
+  type: string
+  comment: 备注
+  role: dimension
+coverage:
+  scenarios:
+  - '事实表通过 (type,value) JOIN 本表获取资源名称(name)、品质(quality)、引用表(table)、备注(remark) 等维度属性'
+  - '支持按资源类型 type / 品质 quality 分组统计资源项'
+  limitations:
+  - '配置类维度表，无值度量（quality 为品质等级代码，非可加度量）'
+  - '主键为 (type,value) 复合键，无单一自增 id'
+  - 'value 单列不唯一 (distinct=48 vs rows=66)，复合键已实测唯一 (r=66=dtv=66)'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'meta describe 核实 6 列与 YAML 一致；复合主键 (type,value) 唯一性已实测 (r=66=dtv=66)；name 为 label_column；quality 在 dim 表中作 dimension 而非 measure；域归属资源产销（resource_info 引用 + 资源/道具/碎片）'

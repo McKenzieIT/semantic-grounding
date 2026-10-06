@@ -1,0 +1,151 @@
+name: game.charmStone.setLock
+event_filter: event = 'game.charmStone.setLock'
+description: 灵石-上锁/解锁操作事件。玩家对灵石(charmStone)执行上锁或解锁保护操作时上报，单条日志对应一次灵石锁状态切换；操作类型由 params.charmStone.isLock 标识（true=上锁，false=解锁），同时携带灵石实例 uid/id、shape、属性(attrs)与洗练待替换属性(stagedAttrs)。分析主体粒度为 role_id（角色）。scout 实测 ds=20260729：cnt=14、role_uv=6、acc_uv=6、server_uv=6；isLock 分布 true=10(6角色)/false=4(3角色)。参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验、灵石信息 等35个
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  charmStone:
+    type: json
+    description: 灵石信息
+  charmStone.uid:
+    type: int
+    description: charmStone.uid
+  charmStone.id:
+    type: int
+    description: charmStone.id
+  charmStone.shape:
+    type: int
+    description: 对应charm_stone_shape_info
+  charmStone.isLock:
+    type: bool
+    description: 是否被上锁
+  charmStone.attrs:
+    type: array
+    description: 灵石实际属性
+  charmStone.attrs.id:
+    type: int
+    description: 第几个槽
+  charmStone.attrs.attrId:
+    type: int
+    description: 属性id
+  charmStone.attrs.attrValue:
+    type: int
+    description: 属性值
+  charmStone.stagedAttrs:
+    type: array
+    description: 洗练待替换属性（空表or nil为没有）
+  charmStone.stagedAttrs.id:
+    type: int
+    description: 第几个槽
+  charmStone.stagedAttrs.attrId:
+    type: int
+    description: 属性id
+  charmStone.stagedAttrs.attrValue:
+    type: int
+    description: 属性值
+metrics:
+  game_charmStone_setLock_cnt:
+    expression: COUNT(*)
+    description: 灵石上锁/解锁操作总次数
+  game_charmStone_setLock_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发灵石上锁/解锁的去重角色数（分析主体 role_id）
+  game_charmStone_setLock_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发灵石上锁/解锁的去重账号数
+  game_charmStone_setLock_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发灵石上锁/解锁的去重游戏服数
+  game_charmStone_setLock_lock_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.charmStone.isLock')='true' THEN 1 ELSE 0 END)
+    description: 灵石被上锁(isLock=true)的次数
+  game_charmStone_setLock_unlock_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.charmStone.isLock')='false' THEN 1 ELSE 0 END)
+    description: 灵石被解锁(isLock=false)的次数
+  game_charmStone_setLock_lock_rate:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.charmStone.isLock')='true' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 上锁操作占总操作的比例
+coverage:
+  scenarios:
+    - 灵石上锁/解锁操作总次数与去重角色/账号/游戏服覆盖度（探索收集资源操作活跃度）
+    - 上锁 vs 解锁 拆分（isLock=true/false）观察玩家对灵石锁保护的偏好
+    - 锁操作频率的角色分布，辅助识别高频使用灵石锁的玩家群体
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测（cnt=14/role_uv=6/acc_uv=6/server_uv=6），未做全量复核
+    - 分析主体默认为 role_id（角色粒度），灵石实例 uid/id 在 params 中未做去重聚合
+    - isLock 字段实测取值为字符串 'true'/'false'，未覆盖 nil/异常值分支
+    - 单日样本量较小（14 条），跨日趋势与稳定性需后续多日复核
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=14, role_uv=6, acc_uv=6, server_uv=6；isLock 分布：true=10(6角色)/false=4(3角色)，与"上锁/解锁"语义一致，数字合理
+external_refs: []

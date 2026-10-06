@@ -1,0 +1,61 @@
+table_name: dim_10000251_tactin_info_arch
+engine: maxcompute
+kind: dim
+table_comment: '风物配置维度表：每个风物（tactin）一行的配置信息，含品质、最大佩戴数、推荐武将等。'
+description: '游戏 10000251 的风物（tactin）配置维度表。每行描述一个风物道具的属性：风物ID（tactic_id）为主键，风物名（tactic_name）为可读标签，并包含品质 quality、最大佩戴数 knight_limit、标签名 tag、推荐武将 knight 等配置字段。用于通过 tactic_id 关联事实表做风物维度下钻/筛选。'
+domains:
+- 装备道具
+granularity: '每个风物（tactic_id）一行的配置维度表'
+primary_key:
+- tactic_id
+primary_key_unique: true
+label_columns:
+- tactic_name
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 风物维度表总行数
+coverage:
+  scenarios:
+  - '通过 tactic_id 关联事实表，按风物名/品质/标签维度做分组下钻（如各品质风物数量、各标签风物分布）'
+  - '推荐武将 knight 为下划线分隔的武将ID串，可拆分后关联武将维度表分析"哪些武将被推荐佩戴哪些风物"'
+  - 'knight_limit 可用于分析风物的佩戴上限分布'
+limitations:
+  - '配置类维度表，无度量值字段（quality/knight_limit 为属性而非可加度量）'
+  - 'knight 字段为下划线分隔的武将ID复合编码串（如 1003_1006_1007），需二次拆分解码后才能 JOIN 武将维度表'
+  - 'tag 字段为复合编码（如 3_1），需按业务规则解码'
+  - 'primary_key_unique 基于 ds=20250511 分区实测（r=38=d），未覆盖全分区；跨分区可能存在历史快照重复'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'draft 状态：dim 建模字段已就绪（kind/primary_key/label_columns），primary_key_unique 已基于最新分区实测为 true；待业务方确认域归属与标签列后可升级为 business_confirmed'
+columns:
+- name: tactic_id
+  type: bigint
+  comment: 风物ID
+  role: dimension
+- name: tactic_name
+  type: string
+  comment: 风物名
+  role: dimension
+- name: quality
+  type: bigint
+  comment: 品质
+  role: dimension
+- name: knight_limit
+  type: bigint
+  comment: 最大佩戴数
+  role: dimension
+- name: tag
+  type: string
+  comment: 标签名
+  role: dimension
+- name: knight
+  type: string
+  comment: 推荐武将
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition

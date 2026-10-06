@@ -1,0 +1,135 @@
+table_name: dws_10000251_resource_item_di
+engine: maxcompute
+table_comment: 道具资源产销汇总日表
+description: |-
+  道具资源产销汇总日表（角色粒度，日增量 _di）。
+  粒度：日增量(_di)，每行=单角色单日单道具类型单产销原因的产销汇总。
+  主体：角色(role_id 为表主键，角色粒度；无 user_type 列，按 role 推断 user_type=3)。
+  主要字段：role_id, server_id, item_type, item_value, reason1-4, add_amount, use_amount, add_times, use_times, add/use_tm_fst/lst 等17列。
+domains:
+  - 资源产销
+  - 装备道具
+granularity: 角色粒度，日增量(_di)
+columns:
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 服务器ID
+    role: dimension
+  - name: item_type
+    type: bigint
+    comment: 资源类型
+    role: dimension
+  - name: item_value
+    type: bigint
+    comment: 资源值(道具子类型/档位)
+    role: dimension
+  - name: reason1
+    type: string
+    comment: 产销原因1
+    role: dimension
+  - name: reason2
+    type: string
+    comment: 产销原因2
+    role: dimension
+  - name: reason3
+    type: string
+    comment: 产销原因3
+    role: dimension
+  - name: reason4
+    type: string
+    comment: 产销原因4
+    role: dimension
+  - name: add_amount
+    type: bigint
+    comment: 增加数量
+    role: measure
+  - name: use_amount
+    type: bigint
+    comment: 消耗数量
+    role: measure
+  - name: add_times
+    type: bigint
+    comment: 增加次数
+    role: measure
+  - name: use_times
+    type: bigint
+    comment: 消耗次数
+    role: measure
+  - name: add_tm_fst
+    type: string
+    comment: 首次增加时间
+    role: attribute
+  - name: add_tm_lst
+    type: string
+    comment: 最近增加时间
+    role: attribute
+  - name: use_tm_fst
+    type: string
+    comment: 首次消耗时间
+    role: attribute
+  - name: use_tm_lst
+    type: string
+    comment: 最近消耗时间
+    role: attribute
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  uv_role:
+    expression: COUNT(DISTINCT role_id)
+    description: 涉产角色UV（当日有道具增/减记录的去重角色数）
+  add_amount_total:
+    expression: SUM(add_amount)
+    description: 当日道具增加总量（全角色全道具类型）
+  use_amount_total:
+    expression: SUM(use_amount)
+    description: 当日道具消耗总量（全角色全道具类型）
+  net_amount:
+    expression: SUM(add_amount) - SUM(use_amount)
+    description: 当日道具净增量（增加-消耗）
+  add_use_ratio:
+    expression: SUM(use_amount) / NULLIF(SUM(add_amount), 0)
+    description: 消耗/增加比（当日消耗总量占增加总量比例）
+coverage:
+  scenarios:
+    - 单日道具产销规模：uv_role/add_amount_total/use_amount_total 反映当日有多少角色发生道具变动及总产出/消耗量
+    - 道具净增与流转效率：net_amount 看道具净累积，add_use_ratio 看产出即消耗的流转节奏
+    - 按 item_type/reason1 拆分可在指标层组合出各道具类型、各产销原因的产出/消耗结构（维度列已就绪）
+  limitations:
+    - 仅对 latest_ds=20260730 做了 spot-verify(COUNT/SUM 抽样)，未做全量多日 maxc 实测复核
+    - _di 为日增量，跨日累计需按 ds 求和；该表非角色全量快照(_df)，无角色留存语义
+    - item_value 字段语义偏子类型/档位(小整数)，如需精确语义建议与数仓确认
+    - reason1-4 为层级产销原因编码，需配合维度字典解读
+    - 表无 user_type 列，角色粒度按 role_id 主键推断(user_type=3)，未做 DISTINCT 校验
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: latest_ds=20260730 spot-verify 通过(uv_role=4697, add_amount_total≈4.36e10, use_amount_total≈1.56e10, rows=1947209)，数值合理；列类型已对齐 meta describe(BIGINT)；仅抽样验证未全量复核
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (服务器ID) exactly matches the PK server_id of dim_10000251_server_info, the区服维度表 for JOIN回填区服名称与开服时间.
+    origin: deterministic
+  - dim_table: dim_10000251_resource_name_info
+    join_keys:
+      - dws_column: item_type
+        dim_column: item_type
+      - dws_column: item_value
+        dim_column: item_value
+    derivation: DWS columns item_type (资源类型) and item_value (资源值) exactly match the composite PK [item_type, item_value] of dim_10000251_resource_name_info, the资源/道具名称维度表 for将事实表道具编码解析为人类可读名称.
+    origin: deterministic
+  - dim_table: dim_10000251_trans_reason1_df
+    join_keys:
+      - dws_column: reason1
+        dim_column: reason1
+    derivation: DWS column reason1 (产销原因1) exactly matches the PK reason1 of dim_10000251_trans_reason1_df, the一级原因映射表 for将事务/流水表中的变更一级原因编码翻译为人类可读描述.
+    origin: deterministic
+pref_label: 道具资源产销日表

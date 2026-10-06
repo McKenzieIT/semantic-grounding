@@ -1,0 +1,48 @@
+table_name: dim_10000251_trans_fteam_dungeon_df_arch
+engine: maxcompute
+kind: dim
+table_comment: '组队副本（fteam dungeon）维度/配置日全量表：每行一个 (关卡id, ds) 组合，记录关卡名与推荐等级，按 ds 分区日快照。'
+description: '游戏内组队副本（trans fteam dungeon）的配置/维度日全量归档表（df_arch）。每行代表某 ds 分区下一个组队副本关卡，包含关卡 id（id，主键之一）、关卡名（name，展示标签）、推荐等级（reco_level）以及分区日期（ds，主键之一）。同一副本 id 跨多个 ds 分区重复出现（日全量快照），故主键为 (id, ds) 复合键。用于在事实表中通过 id 关联查找副本名称与推荐等级。'
+domains:
+- 战斗关卡
+granularity: '每个组队副本（每个 ds 分区下的 dungeon id）一行的配置/维度表'
+primary_key:
+- id
+- ds
+primary_key_unique: true
+label_columns:
+- name
+columns:
+- name: id
+  type: string
+  comment: 关卡id
+  role: dimension
+- name: name
+  type: string
+  comment: 关卡名
+  role: dimension
+- name: reco_level
+  type: bigint
+  comment: 推荐等级
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 事实表通过 id 关联本表，查找副本名称（name）与推荐等级（reco_level），用于战报/关卡分析中的副本维度切片
+  - 按 ds 分区取某日副本配置快照，对比不同日期的副本开放/推荐等级变化
+  limitations:
+  - 配置类维度表，无值度量字段（reco_level 为推荐等级阈值，非事实度量）
+  - 日全量归档（df_arch），同一副本 id 跨多个 ds 分区重复出现，单一 id 不唯一；主键为 (id, ds) 复合键，跨表关联时需带上 ds 限定日期
+  - ds 为字符串型分区日期（yyyymmdd），日期运算前需类型转换
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '配置/维度表建模：主键 (id, ds) 经实测唯一（9536 行 / 9536 distinct）；label 选 name；reco_level 为 bigint 型推荐等级（dimension），无度量字段；df_arch 日全量快照导致单 id 不唯一。'

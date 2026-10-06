@@ -1,0 +1,86 @@
+table_name: dws_10000251_play_unlock_df
+engine: maxcompute
+table_comment: 玩法解锁表（角色粒度，日全量快照，记录玩法功能解锁行为）
+description: |-
+  玩法解锁表。记录角色在游戏内解锁玩法功能的行为日志，主体为角色(role_id)，粒度为日全量快照(_df)，每行表示某角色在某区服于 tm 时刻解锁了 play_func_id 对应的玩法功能，params 携带角色当时的状态快照(等级/战力/货币/在线时长/公会等)。用于分析玩法功能解锁渗透率、解锁进度分布、解锁时点角色状态特征等。
+  主体：角色(role_id, user_type=3)。
+  粒度：日全量快照(_df)，每行一条解锁事件，按 ds 分区。
+  主要字段：role_id, server_id, play_func_id, tm, params, ds。
+domains:
+  - 探索收集
+  - 角色成长
+granularity: 日全量快照(_df)，角色粒度(role_id)，每行一条玩法功能解锁事件
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: play_func_id
+    type: string
+    comment: 玩法功能id
+    role: dimension
+  - name: tm
+    type: datetime
+    comment: 行为时间
+    role: dimension
+  - name: params
+    type: string
+    comment: 行为参数(JSON，含角色等级/战力/货币/在线时长/公会等状态快照)
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  unlock_event_cnt:
+    expression: COUNT(*)
+    description: 当日玩法功能解锁事件总数(角色×功能粒度，含重复角色)
+  unlock_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日解锁任意玩法功能的不重复角色数(解锁 UV)
+  unlock_func_cnt:
+    expression: COUNT(DISTINCT play_func_id)
+    description: 当日被解锁的不重复玩法功能数(功能渗透广度)
+  unlock_server_cnt:
+    expression: COUNT(DISTINCT server_id)
+    description: 当日发生解锁行为的不重复区服数(覆盖区服数)
+  avg_unlock_events_per_role:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 当日人均解锁事件数(解锁活跃度，越大代表单角色解锁功能越多)
+coverage:
+  scenarios:
+    - 玩法功能解锁渗透率与广度：通过 unlock_func_cnt / unlock_role_uv 评估各玩法功能的解锁覆盖进度
+    - 解锁活跃度分析：通过 avg_unlock_events_per_role 衡量单角色解锁功能数分布
+    - 区服覆盖：unlock_server_cnt 评估解锁行为在区服维度的覆盖范围
+  limitations:
+    - 仅 scout 抽样验证(20260730 ds 单分区 COUNT 指标实测合理)，未做全量 maxc 实测复核
+    - params 为 JSON 文本字段，指标未解析其内部角色状态(等级/战力/货币等)，如需按角色状态分桶需扩展 JSON 解析
+    - _df 为日全量快照，统计为当日解锁事件聚合；非累计解锁状态，跨日累计需自行汇总
+    - 缺少功能分类维度(玩法功能仅 play_func_id 标识，无功能名/分类映射表 JOIN，遵循无 JOIN 约束)
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 已在 latest ds=20260730 上实测 5 项 COUNT 系指标(30.6M 事件/1.67M 角色 UV/43 功能/608 区服)，数值合理；status=analyst_confirmed
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (区服id) is the server FK; dim_10000251_server_info (PK server_id) provides server dimension attributes.
+    origin: deterministic
+  - dim_table: dim_10000251_function_info
+    join_keys:
+      - dws_column: play_func_id
+        dim_column: function_id
+    derivation: DWS play_func_id (玩法功能id) records the gameplay function being unlocked per the table description; dim_10000251_function_info (PK function_id, 功能配置维度表 with unlock conditions) is the function dimension, so play_func_id joins function_id.
+pref_label: 玩法解锁表
+alt_labels:
+  - 解锁
+  - 功能
+  - 开放
+  - 玩法

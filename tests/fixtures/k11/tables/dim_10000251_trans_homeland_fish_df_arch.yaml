@@ -1,0 +1,45 @@
+table_name: dim_10000251_trans_homeland_fish_df_arch
+engine: maxcompute
+kind: dim
+table_comment: ' homeland（家园）子系统钓鱼玩法的鱼配置维度表，每条鱼一种配置，按日分区 ds 存档'
+description: ' homeland 钓鱼玩法的鱼配置维度表。每行描述一种鱼的配置项：id（鱼的id，主键，但因日分区存档而存在多版本重复）、name（鱼的名字，标签列）、quality（鱼的品质，1-6 数值）。granularity: 每种鱼配置一行的维度表（按 ds 日分区存档，全表 id 非唯一）。'
+primary_key: [id]
+label_columns: [name]
+primary_key_unique: false
+domains:
+- 系统监控
+granularity: 每种鱼配置一行的维度表（按 ds 日分区存档）
+coverage:
+  scenarios:
+  - 'JOIN 事实表（含鱼 id）以获取鱼的名字与品质，作为钓鱼产出、背包鱼资产等分析的维度查找'
+  - '按 quality 维度对鱼的产出/收集做分组聚合'
+  limitations:
+  - '配置类维度表，无值度量；quality 为字符串编码（"1"-"6"），需业务字典二次解码'
+  - 'primary_key id 全表非唯一（r=27189, d=53）：表按 ds 日分区存档，跨分区同一鱼配置重复，跨分区 JOIN 时需指定分区或去重'
+  - 'dim 未做主键唯一性实测（已实测：全表非唯一，单分区内由 id 唯一性未单独验证）'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'dim 建模草稿：primary_key=id（meta 与样本一致），label=name；全表 id 因日分区存档而非唯一，保持 draft。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含分区存档）
+columns:
+- name: id
+  type: string
+  comment: 鱼的id
+  role: dimension
+- name: name
+  type: string
+  comment: 鱼的名字
+  role: dimension
+- name: quality
+  type: string
+  comment: 鱼的品质
+  role: dimension
+- name: ds
+  type: string
+  comment: '日分区（YYYYMMDD 存档日期）'
+  role: partition

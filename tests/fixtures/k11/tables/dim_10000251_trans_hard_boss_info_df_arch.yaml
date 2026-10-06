@@ -1,0 +1,64 @@
+table_name: dim_10000251_trans_hard_boss_info_df_arch
+engine: maxcompute
+kind: dim
+primary_key: [boss_id, boss_level, dungeon_id, ds]
+primary_key_unique: true
+label_columns: [name, section, dungeon_id]
+table_comment: '关卡内 boss 维度配置表：boss_id 为 pve.end 的 chapterId，boss_level 为 stageId，dungeon_id 为真正的关卡ID，name 为 boss 名称，section 为所属篇，ds 为分区日。'
+description: 'pve.end 副本 boss 维度配置表（每 boss 在每关卡的每难度一行的维度表）。
+
+  - boss_id：pve.end 的 chapterId（共 6 个）。
+  - boss_level：pve.end 的 stageId，即 boss 难度档（共 18 个 (boss_id,boss_level) 组合）。
+  - dungeon_id：真正的关卡ID（共 21 个），用于跨表关联 pve.end 明细。
+  - name：boss 名称（人类可读标签）。
+  - section：boss 所属篇。
+  - ds：分区日，配置随日期可能微调，复合主键 (boss_id, boss_level, dungeon_id, ds) 唯一（实测 r=d=7749）。
+
+  粒度：每 (boss_id, boss_level, dungeon_id, ds) 一行的 boss 维度/配置表。'
+domains:
+- 战斗关卡
+granularity: '每 (boss_id, boss_level, dungeon_id, ds) 一行 — boss 在关卡中的难度档维度配置行'
+columns:
+- name: boss_id
+  type: string
+  comment: bossID
+  role: dimension
+- name: boss_level
+  type: string
+  comment: boss难度
+  role: dimension
+- name: section
+  type: string
+  comment: 所属篇
+  role: dimension
+- name: dungeon_id
+  type: string
+  comment: 关卡id
+  role: dimension
+- name: name
+  type: string
+  comment: boss名称
+  role: dimension
+- name: ds
+  type: string
+  comment: '分区日 ds'
+  role: partition
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含分区去重前）
+coverage:
+  scenarios:
+    - '通过 (boss_id, boss_level, dungeon_id) 与 pve.end 明细表关联，反查 boss 名称/section/所属篇 等维度属性。'
+    - '依据 dungeon_id（真正的关卡ID）做关卡维度下钻，区分 chapterId/stageId/dungeon_id 三层编码。'
+    - '依据 section（所属篇）做篇分组聚合。'
+  limitations:
+    - '配置类维度表，无值度量；metrics 仅有 row_count 计数。'
+    - 'boss_id 单列不唯一（仅 6 个 distinct），boss_level 不唯一（18 个 (boss_id,boss_level)），dungeon_id 不唯一（21 个）；唯一性需复合 (boss_id,boss_level,dungeon_id,ds) 主键。'
+    - '同一 (boss_id,boss_level,dungeon_id) 跨 ds 分区可能有多版本，时间序列查询需显式取某 ds 或最新分区。'
+    - 'dungeon_id 为编码串（如 99100101），章节/篇/档位等次级结构需二次解码拆分，不在本表内显式提供。'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '复合主键唯一性已实测 (r=d=7749)；单列无唯一标识，故 primary_key 为复合键并设 primary_key_unique: true。状态保持 draft，待业务确认 boss 维度语义。'

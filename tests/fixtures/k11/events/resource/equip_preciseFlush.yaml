@@ -1,0 +1,129 @@
+name: game.equip.preciseFlush
+event_filter: event = 'game.equip.preciseFlush'
+description: "装备精洗/洗练操作埋点 game.equip.preciseFlush：玩家对装备部位(partId)与骑士(knightId)执行精洗操作，携带洗后属性列表(flushAttrs: attrId/attrValue)与关键货币(coinList)快照。分析主体为 role_id。ds=20260729 实测 cnt=2662 / role_uv=120 / acc_uv=120 / server_uv=74。"
+domains:
+  - 装备道具
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  partId:
+    type: int
+    description: partId
+  knightId:
+    type: int
+    description: knightId
+  flushAttrs:
+    type: array
+    description: flushAttrs
+  flushAttrs.attrId:
+    type: int
+    description: flushAttrs.attrId
+  flushAttrs.attrValue:
+    type: int
+    description: flushAttrs.attrValue
+metrics:
+  game_equip_preciseFlush_cnt:
+    expression: COUNT(*)
+    description: 精洗操作总次数
+  game_equip_preciseFlush_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与精洗的角色去重数（分析主体 role_id）
+  game_equip_preciseFlush_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与精洗的账号去重数
+  game_equip_preciseFlush_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的游戏服去重数
+  game_equip_preciseFlush_part_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.partId'))
+    description: 涉及的装备部位(partId)去重数
+  game_equip_preciseFlush_knight_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.knightId'))
+    description: 涉及的骑士(knightId)去重数
+  game_equip_preciseFlush_per_role_cnt:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 单角色平均精洗操作次数
+  game_equip_preciseFlush_per_acc_cnt:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT account_id), 0)
+    description: 单账号平均精洗操作次数
+coverage:
+  scenarios:
+    - 精洗操作的日级量级与参与规模（次数/角色UV/账号UV/服UV）
+    - 单角色与单账号的操作强度（per_role_cnt / per_acc_cnt）
+    - 涉及的装备部位与骑士分布（part_uv / knight_uv）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id；该事件未携带金额字段，不涉及营收口径
+    - flushAttrs/coinList 为数组/结构体，需在明细层用 GET_JSON_OBJECT/数组展开进一步核算，本层仅统计事件量级
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729：cnt=2662, role_uv=120, acc_uv=120, server_uv=74；非金额事件，未做营收核验
+external_refs: []

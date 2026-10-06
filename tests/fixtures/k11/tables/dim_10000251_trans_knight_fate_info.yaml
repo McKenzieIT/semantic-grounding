@@ -1,0 +1,68 @@
+kind: dim
+table_name: dim_10000251_trans_knight_fate_info
+engine: maxcompute
+table_comment: 武将缘分配置维度表（每条缘分一行，含关联武将、角色名称、一/二级效果技能及技能类型）
+description: '配置/维度表：武将缘分（knight fate）。每条缘分记录关联的武将集合（knight_id，下划线分隔的复合编码串）、未上线角色名称、缘分名称、一级/二级效果所需人数与对应技能 ID、以及技能效果类型。用于通过 fate_id 关联回事实表，进行缘分维度的属性查询与分组统计。'
+domains:
+- 角色成长
+granularity: 每条武将缘分一行（fate_id 唯一）的配置/维度表
+primary_key:
+- fate_id
+label_columns:
+- fate_name
+columns:
+- name: fate_id
+  type: string
+  comment: 缘分ID
+  role: dimension
+- name: knight_id
+  type: string
+  comment: 包含武将ID
+  role: dimension
+- name: character_name
+  type: string
+  comment: 未上线角色名称
+  role: dimension
+- name: fate_name
+  type: string
+  comment: 缘分名称
+  role: dimension
+- name: level1_num
+  type: string
+  comment: 一级效果人数
+  role: dimension
+- name: level1_skill
+  type: string
+  comment: 一级效果
+  role: dimension
+- name: level2_num
+  type: string
+  comment: 二级效果人数
+  role: dimension
+- name: level2_skill
+  type: string
+  comment: 二级效果
+  role: dimension
+- name: skill_type
+  type: string
+  comment: 技能效果类型（对一级二级同时生效）
+  role: dimension
+primary_key_unique: true
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 通过 fate_id JOIN 回事实表，按 fate_name 缘分名称进行分组统计与属性查询
+  - 通过 knight_id 关联武将维度，分析缘分涉及的武将集合
+  - 按 skill_type / level1_skill / level2_skill 对缘分技能效果进行筛选与分类
+  limitations:
+  - 配置类维度表，无值度量（level*_num 为字符串型配置值，非度量）
+  - knight_id 为下划线分隔的复合编码串，需二次解码才能关联单个武将
+  - 一级/二级效果技能 ID（level1_skill/level2_skill）需关联技能维表才能得到技能属性
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 meta describe 真实列与 SELECT COUNT(*) AS r, COUNT(DISTINCT fate_id) AS d (r=d=39) 实测唯一性；保持 draft 待业务确认。'

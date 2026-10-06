@@ -1,0 +1,123 @@
+name: game.script.lighttalent
+event_filter: event = 'game.script.lighttalent'
+description: |-
+  剧本-点亮天赋：角色在剧本(scriptId)中点亮某项天赋(talentId)时上报的成长事件，分析对象为角色(role_id)，同时携带账号(account_id)、游戏服(server_id)、角色等级、vip等级、角色战力、经验及关键货币列表等基线快照字段。
+  实测 ds=20260729：事件 3426 条，覆盖角色 1177、账号 1156、游戏服 256、剧本 3 个、天赋 120 种。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  scriptId:
+    type: int
+    description: 剧本id
+  talentId:
+    type: int
+    description: 天赋id
+metrics:
+  game_script_lighttalent_cnt:
+    description: 点亮天赋事件总次数（角色 × 天赋点亮条目数）
+    expression: COUNT(*)
+  game_script_lighttalent_role_uv:
+    description: 触发点亮天赋的去重角色数
+    expression: COUNT(DISTINCT role_id)
+  game_script_lighttalent_account_uv:
+    description: 触发点亮天赋的去重账号数
+    expression: COUNT(DISTINCT account_id)
+  game_script_lighttalent_server_uv:
+    description: 触发点亮天赋的去重游戏服数
+    expression: COUNT(DISTINCT server_id)
+  game_script_lighttalent_script_cnt:
+    description: 涉及的去重剧本(scriptId)数量
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.scriptId'))
+  game_script_lighttalent_talent_cnt:
+    description: 涉及的去重天赋(talentId)数量
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.talentId'))
+  game_script_lighttalent_role_talent_combo:
+    description: 角色 × 天赋去重组合数（衡量天赋点亮覆盖广度）
+    expression: COUNT(DISTINCT CONCAT(role_id, '#', GET_JSON_OBJECT(params, '$.talentId')))
+  game_script_lighttalent_avg_talent_per_role:
+    description: 人均点亮天赋数 = 总点亮次数 / 去重角色数
+    expression: COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0)
+coverage:
+  scenarios:
+    - 剧本天赋养成进度：通过角色 × 天赋组合数与人均点亮数评估剧本天赋树的覆盖广度与渗透深度。
+    - 角色成长分布：基于 role_level / vip_level / role_force / exp 等快照字段刻画点亮天赋玩家的成长分层。
+    - 服务器活跃画像：按 server_id 聚合统计参与剧本天赋玩法的游戏服数量与分布。
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核；多日趋势/节假日效应未覆盖。
+    - 分析对象默认为 role_id（角色级事件）；若需账号级聚合请改用 account_uv 指标。
+    - params_fields 为上报字段清单，部分角色快照字段（role_level/vip_level/role_force/exp）在分析时需通过 GET_JSON_OBJECT(params, '$.xxx') 取值，未在 metrics 中逐一定义。
+    - talentId 含义（天赋树节点编号）需结合策划配置表解释，本层不做编码映射。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：event=game.script.lighttalent 命中 cnt=3426、role_uv=1177、acc_uv=1156、server_uv=256；GET_JSON_OBJECT(params,$.scriptId) 去重得 3、$.talentId 去重得 120、role#talent 组合 3370，数值合理，确认事件在线。
+coverage_status: analyst_confirmed
+external_refs: []

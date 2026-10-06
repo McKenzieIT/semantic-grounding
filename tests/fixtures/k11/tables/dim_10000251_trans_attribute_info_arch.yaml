@@ -1,0 +1,56 @@
+table_name: dim_10000251_trans_attribute_info_arch
+engine: maxcompute
+table_comment: 交易属性配置维度表，按 ds 分区存放属性编码、名称、类型与初始值的每日快照
+kind: dim
+primary_key:
+- attr_id
+label_columns:
+- attr_name
+primary_key_unique: false
+description: '交易属性 (attr_id) 的配置类维度表：一行表示一个属性编码，提供 attr_name 名称、attr_type
+  类型、base_value 初始值及 directions 备注；按 ds 分区存放每日快照。用于通过 attr_id 关联交易/数值表并下钻属性名称。'
+domains:
+- 系统监控
+granularity: 每 attr_id 一行（按 ds 分区存放每日快照，跨分区存在重复）
+coverage:
+  scenarios:
+  - 通过 attr_id JOIN 交易明细/数值表，下钻属性名称 (attr_name) 与类型 (attr_type)
+  - 作为属性字典提供 base_value 初始值与 directions 说明供报表筛选与展示
+  limitations:
+  - 配置类维度表，无值度量 (measure)
+  - primary_key_unique=false：attr_id 在单一 ds 分区内唯一，但跨分区重复（41914 行 / 108 去重 attr_id），使用时需按 ds 过滤
+  - attr_type 为编码字段（如 "1"），若需语义需二次解码
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: dim 建模完成；primary_key_unique=false（跨分区重复，未通过唯一性实测），保持 draft
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（跨分区）
+columns:
+- name: attr_id
+  type: string
+  comment: 属性ID
+  role: dimension
+- name: attr_name
+  type: string
+  comment: 属性名称
+  role: dimension
+- name: attr_type
+  type: string
+  comment: 属性类型
+  role: dimension
+- name: base_value
+  type: string
+  comment: 初始值
+  role: dimension
+- name: directions
+  type: string
+  comment: 备注
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition

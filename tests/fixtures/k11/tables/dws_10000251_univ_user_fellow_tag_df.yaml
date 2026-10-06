@@ -1,0 +1,84 @@
+table_name: dws_10000251_univ_user_fellow_tag_df
+engine: maxcompute
+table_comment: 内部用户标签表
+description: 记录用户在跟随/好友等社交关系场景下命中运营或风控规则的标签快照,每天一份全量。粒度为每个主体(user_type+user_id)每天一行,日全量快照(_df 后缀)。本表为【通用用户表(多层级)】,实测同一 ds 分区内同时含 user_type=1(设备)、2(账号)、3(角色)三类主体,分析主体由 (user_type,user_id) 共同标识,user_id 语义随 user_type 变化(1=设备号/2=账号ID/3=角色ID)。跨主体层级聚合前须先按 user_type 分组,否则不同层级 ID 空间可能混用导致重复计数。能回答的业务问题:某天有多少账号命中了哪些规则、命中规则的账号规模、首次命中时间分布、规则明细回溯、规则命中规模趋势。注意事项:rule_id/rule_info 可能为多值逗号串,需 SPLIT_TO_ROW 拆分后再聚合;本表只记录命中账号,不含未命中账号,因此无法直接计算命中率/占比,需外置全量账号分母;无规则维表,rule_info 为文本明细不可作为结构化分组键;本表主体为多层级通用用户,不存在单一固定主体层级。
+domains:
+  - 社交公会
+granularity: 日全量快照(daily full,_df 后缀),每个主体(user_type+user_id)每天一行。本表为【通用用户表(多层级)】,实测同一 ds 分区内同时含 user_type=1(设备)、2(账号)、3(角色)三类主体,分析主体由 (user_type,user_id) 共同标识,跨主体层级聚合前须先按 user_type 分组。
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，1-设备、2-账号、3-角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: rule_id
+    type: string
+    comment: 命中规则id，首次命中日期命中的规则id，命中多个用英文逗号分隔
+    role: dimension
+  - name: rule_info
+    type: string
+    comment: 命中规则细节，首次命中日期命中的规则细节
+    role: attribute
+  - name: tm
+    type: datetime
+    comment: 首次命中时间
+    role: attribute
+  - name: ds
+    type: string
+    comment: 日快照分区字段,格式 yyyymmdd,代表该全量快照的统计日期
+    role: dimension
+metrics:
+  tagged_user_cnt:
+    expression: COUNT(DISTINCT user_id)
+    description: 当日命中任意规则的去重用户数(多层级表,user_id 跨层级 ID 空间可能重叠,精确按主体去重建议改用 COUNT(DISTINCT CONCAT(CAST(user_type AS STRING),'_',user_id)))
+  distinct_rule_cnt:
+    expression: COUNT(DISTINCT rule_id)
+    description: 当日命中的不同规则数;rule_id 为逗号串时本指标为近似口径(按整串去重),精确统计需 SPLIT_TO_ROW 拆分后再 COUNT DISTINCT
+  first_hit_today_user_cnt:
+    expression: COUNT(DISTINCT CASE WHEN TO_CHAR(tm,'yyyymmdd')=ds THEN user_id END)
+    description: 当天为首次命中的用户数;将 tm 转为 yyyymmdd 与 ds 比对,精确对齐"首次命中发生在快照当天"口径(多层级表,跨层级去重同 tagged_user_cnt 注意)
+  rules_per_user_avg:
+    expression: COUNT(DISTINCT rule_id)*1.0/NULLIF(COUNT(DISTINCT user_id),0)
+    description: 当日命中用户的人均命中规则数(逗号串近似口径);分子为去重规则数,分母为去重用户数,除零用 NULLIF 保护
+partitions:
+  - name: ds
+    type: string
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: 真实数据验证通过(latest ds=20260729,表非空):列(user_type/user_id/rule_id/rule_info/tm/ds)全部存在于 ieu_cdm 真实 schema;user_type 实测三值 {1,2,3}(设备/账号/角色)已据实修正原移植文本的{1,2};粒度核验 4393 行 = 4393 个 (user_type,user_id) 主体 = 4393 个 user_id(每主体每天 1 行,成立);核心指标实测非空且合理:tagged_user_cnt=4393,distinct_rule_cnt=1(当日仅 ip|code 一条规则串),first_hit_today_user_cnt=3,rules_per_user_avg≈0.000228(=m2/m1,逗号串近似口径,语义偏弱但数学正确且 YAML 已声明近似)。domains 移除非法的 活动运营(本游戏仅 10 个域)。coverage_status 保持 draft 因规则维表缺失/rule_id 为多值逗号串导致指标仅近似口径,需业务方定夺拆分方式与命中率分母口径。
+coverage:
+  scenarios:
+    - 当日命中跟随/好友规则的去重用户规模(tagged_user_cnt)
+    - 单条规则或多规则命中的用户明细回溯(rule_id/rule_info 溯源)
+    - 用户首次命中规则的时间分布(tm)
+    - 命中规则覆盖广度(distinct_rule_cnt)
+    - 命中用户规模随 ds 的日趋势对比(跨日全量快照)
+    - 当天首次命中用户规模(first_hit_today_user_cnt)
+    - 人均命中规则数(rules_per_user_avg)
+  limitations:
+    - 本表只记录命中用户,不含未命中用户,无法直接计算命中率/占比,需外置全量用户分母
+    - 无规则维表,rule_info 为文本明细,不可作为结构化分组键聚合
+    - rule_id/rule_info 为多值逗号串,规则维度聚合前必须 SPLIT_TO_ROW 拆分
+    - 本表主体为多层级通用用户(user_type 实测含 1:设备、2:账号、3:角色三类),跨主体层级聚合前须按 user_type 分组,否则不同层级 ID 空间可能混用导致重复计数
+    - 日全量快照仅按 ds 当天快照,不做留存/转化等时序外推
+    - 不含金额、行为次数等度量字段,只能做规模与构成分析,不能做金额或频次分析
+    - 本游戏(10000251)该表 user_type 实测含 {1,2,3} 三值(设备/账号/角色),主体口径待业务方确认是否需按 (user_type,user_id) 联合去重;已据实修正原移植文本只提 {1,2} 的不完整描述
+    - coverage_status 保持 draft,待业务方确认命中率分母口径与规则维表归属后定稿
+  coverage_status: draft
+supersedes: []
+dimension_refs:
+  - dim_table: dim_10000251_fellow_rule_df
+    join_keys:
+      - dws_column: rule_id
+        dim_column: rule_id
+    derivation: DWS column rule_id (comment 命中规则id) exactly matches dim_10000251_fellow_rule_df.primary_key rule_id; both tables are in the fellow/社交规则 domain and the DIM's stated purpose is 供事实表通过 rule_id JOIN 解析规则语义.
+    origin: deterministic
+pref_label: 内部用户标签表
+alt_labels:
+  - 内部
+  - 员工

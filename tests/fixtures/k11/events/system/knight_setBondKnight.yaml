@@ -1,0 +1,119 @@
+name: game.knight.setBondKnight
+event_filter: event = 'game.knight.setBondKnight'
+description: 武将-sp设置羁绊武将：玩家在武将界面为某武将(knightId)指定羁绊武将(bondKnight)时上报的埋点，记录设置羁绊关系的行为。分析粒度为 role_id（角色），单日 ds=20260729 scout 实测 cnt=390、role_uv=294、acc_uv=292、server_uv=117，涉及 3 种主武将(91001~93001)与 6 种羁绊武将。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightId:
+    type: int
+    description: 武将ID
+  bondKnight:
+    type: int
+    description: 羁绊武将ID
+metrics:
+  knight_set_bond_knight_cnt:
+    expression: COUNT(*)
+    description: 设置羁绊武将的总次数
+  knight_set_bond_knight_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 设置羁绊武将的角色去重数（分析主体）
+  knight_set_bond_knight_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 设置羁绊武将的账号去重数
+  knight_set_bond_knight_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的游戏服去重数
+  knight_set_bond_knight_distinct_knight:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.knightId'))
+    description: 被设置羁绊的主武将(knightId)种类数
+  knight_set_bond_knight_distinct_bond:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.bondKnight'))
+    description: 被设为羁绊的武将(bondKnight)种类数
+  knight_set_bond_knight_avg_per_role:
+    expression: COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 平均每个角色的设置羁绊次数
+coverage:
+  scenarios:
+    - 武将羁绊系统使用情况：通过 cnt/role_uv 评估羁绊功能的渗透与活跃
+    - 武将/羁绊种类覆盖：distinct_knight 与 distinct_bond 反映玩家常用的武将与羁绊组合
+    - 服务器分布：server_uv 反映功能在不同游戏服的覆盖范围
+    - 人均设置频次：avg_per_role 反映单角色平均设置羁绊次数，识别重度玩家
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认为 role_id（角色粒度），account_id 供账号粒度补充
+    - knightId/bondKnight 为配置表ID，具体武将名需关联配置字典（本视图不JOIN）
+    - coinList 等货币快照字段存在于 params，本事件未聚焦货币口径
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=390、role_uv=294、acc_uv=292、server_uv=117；knightId 3 种(91001~93001)、bondKnight 6 种，数据合理
+coverage_status: analyst_confirmed
+external_refs: []

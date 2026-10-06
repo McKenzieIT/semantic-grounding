@@ -1,0 +1,104 @@
+name: game.lunwu.matchFailed
+event_filter: event = 'game.lunwu.matchFailed'
+description: 论武匹配失败事件：玩家在论武玩法匹配对手失败时上报，记录错误码 code、会话 sessionId、角色与货币快照等23个参数。主体粒度为 role_id（角色）。实测 ds=20260729/20260728 单日 cnt=0（零命中，疑似下线/未触发）。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  code:
+    type: int
+    description: 错误码
+metrics:
+  game_lunwu_matchFailed_cnt:
+    expression: COUNT(*)
+    description: 论武匹配失败事件总触发次数
+  game_lunwu_matchFailed_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 论武匹配失败的去重角色数
+  game_lunwu_matchFailed_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 论武匹配失败的去重账号数
+  game_lunwu_matchFailed_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 论武匹配失败的去重游戏服数
+coverage:
+  scenarios:
+    - 论武匹配失败频次与受影响角色/账号/游戏服规模
+    - 论武匹配异常/匹配池容量问题的监控与归因
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 日志中零命中(ds=20260729/20260728 cnt=0)，疑似事件下线/未触发，指标实测值均为 0
+    - 主体粒度默认 role_id（角色），账号级口径需用 account_uv 单独核算
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 实测 cnt=0, role_uv=0, acc_uv=0, server_uv=0；ds=20260728 复测仍为 0（零命中）
+  coverage_status: draft
+external_refs: []

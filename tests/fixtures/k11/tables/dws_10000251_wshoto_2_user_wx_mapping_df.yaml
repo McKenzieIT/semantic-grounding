@@ -1,0 +1,59 @@
+table_name: dws_10000251_wshoto_2_user_wx_mapping_df
+engine: maxcompute
+table_comment: 微盛Id和企微Id映射表
+description: |-
+  微盛Id和企微Id映射表。记录微盛用户(user_id)与企微用户(mapping_id)的一对一映射关系。
+  主体：账号/用户(user_id + mapping_id)。粒度：日全量快照(_df)，每日全量镜像全表映射关系。
+  用于跨系统用户身份对齐，支撑企微侧用户行为归因与微盛侧用户档案关联分析。主要字段：user_id, mapping_id, ds。
+domains:
+  - 用户生命周期
+  - 自定义
+granularity: 日全量快照(_df)，主体账号/用户(微盛user_id+企微mapping_id)
+columns:
+  - name: user_id
+    type: string
+    comment: 微盛id
+    role: dimension
+  - name: mapping_id
+    type: string
+    comment: 企微用户ID
+    role: dimension
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  mapped_user_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 快照内已映射的微盛用户数(UV)
+  mapped_wx_uv:
+    expression: COUNT(DISTINCT mapping_id)
+    description: 快照内已映射的企微用户数(UV)
+  mapping_total_cnt:
+    expression: COUNT(*)
+    description: 快照内映射记录总数
+  one_to_one_coverage_ratio:
+    expression: CAST(COUNT(DISTINCT user_id) AS DOUBLE) / NULLIF(COUNT(DISTINCT mapping_id), 0)
+    description: 微盛用户对企微用户的映射覆盖率(1.0表示严格一对一)
+coverage:
+  scenarios:
+    - 跨系统用户身份对齐：统计快照内微盛与企微用户的映射覆盖规模
+    - 用户去重计数：以微盛侧或企微侧为基准的UV口径
+    - 映射质量评估：通过微盛/企微UV比值判断映射是否一对一
+  limitations:
+    - 仅含 user_id/mapping_id 两列映射字段，无业务属性(如注册时间、来源渠道)，无法做用户画像分群
+    - _df 日全量快照，历史ds保留180天(lifecycle=180)；跨天分析需注意同一映射关系会重复计数
+    - 仅 scout 抽样验证(20260730 快照 uv_users=uv_wx=1903, cnt=1903)，未做全量 maxc 实测复核
+    - 无时间维度的明细行为，无法直接做趋势/留存分析，需与行为事实表 JOIN 使用
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已在最新ds(20260730)抽样验证 mapped_user_uv/mapped_wx_uv/mapping_total_cnt 均返回 1903 且一对一，数值合理
+dimension_refs: []
+pref_label: 微盛企微映射表
+alt_labels:
+  - 微盛
+  - 企微
+  - 映射
+  - 客服

@@ -1,0 +1,117 @@
+name: game.guildLuckyBag.fetch
+event_filter: event = 'game.guildLuckyBag.fetch'
+description: "公会福袋-领取(fetch)事件，记录公会成员领取公会福袋(luckyBag)的行为，每次领取记一条日志。参数含游戏服id、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验、货币余额快照(coinList: gold/sendgold/freegold/diamond/expCoin/energy)、会话id、logUUID、福袋uid(bagUid)、福袋id(bagId) 等24个字段。subject 粒度为角色(role_id)。scout 实测 ds=20260729 与 ds=20260728 连续两日零命中(cnt=0)，事件疑似下线/未触发。"
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  bagUid:
+    type: int
+    description: 福袋uid
+  bagId:
+    type: int
+    description: 福袋id
+metrics:
+  guildLuckyBag_fetch_cnt:
+    expression: COUNT(*)
+    description: 公会福袋领取总次数
+  guildLuckyBag_fetch_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取福袋的去重角色数
+  guildLuckyBag_fetch_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取福袋的去重账号数
+  guildLuckyBag_fetch_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发福袋领取的去重服务器数
+  guildLuckyBag_fetch_os_uv:
+    expression: COUNT(DISTINCT os_id)
+    description: 触发福袋领取的去重平台(os)数
+  guildLuckyBag_fetch_bagid_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.bagId'))
+    description: 去重福袋类型id数(领取的福袋种类分布)
+  guildLuckyBag_fetch_avg_per_role:
+    expression: ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id),0), 3)
+    description: 人均福袋领取次数(总次数/去重角色数)
+coverage:
+  scenarios:
+    - 公会福袋领取活跃度(领取总次数、去重角色数、去重账号数、人均领取次数)
+    - 福袋领取在服务器/平台维度的覆盖广度
+    - 领取的福袋类型分布(去重福袋id数)
+  limitations:
+    - 日志中零命中(ds=20260729 与 ds=20260728 连续两日 scout 实测 cnt=0, role_uv=0, acc_uv=0, server_uv=0)，事件疑似下线/未触发，metrics 表达式为定义性质(当前实测返回 0)
+    - subject 粒度默认 role_id(社交公会域 guildLuckyBag_* 事件，角色级触发)，因零命中未做角色级聚合准确性实测
+    - 仅 scout 两日实测，未做全量复核
+    - coinList 为货币余额快照(非交易金额)，无显式金额字段，未设 revenue 指标
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 双日实测 ds=20260729 与 ds=20260728 均零命中(cnt=0, role_uv=0, acc_uv=0, server_uv=0)，事件疑似下线/未触发；status 维持 draft；metrics 为基于真实列(role_id/account_id/server_id/os_id + GET_JSON_OBJECT(params,'$.bagId'))的定义性表达式，当前返回 0
+external_refs: []

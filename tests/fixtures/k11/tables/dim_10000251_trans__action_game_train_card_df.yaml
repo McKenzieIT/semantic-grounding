@@ -1,0 +1,39 @@
+table_name: dim_10000251_trans__action_game_train_card_df
+engine: maxcompute
+kind: dim
+table_comment: 行为类型配置维度表
+description: '行为类型配置维度表(dim, _df 日全量快照)。游戏训练卡行为类型的配置/维度表，每行对应一种行为类型，提供行为 id 与名称的维度属性供 JOIN 查询使用。'
+domains:
+- 系统监控
+granularity: 每种行为类型(id)一行的配置/维度表，日全量快照(_df)
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+columns:
+- name: id
+  type: string
+  comment: ID,ID
+  role: dimension
+- name: name
+  type: string
+  comment: 名称,显示名称
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 通过行为 id 关联事实表，将行为 id 映射为可读的行为名称(如战报/训练卡流水中的行为类型展示)
+  - 作为行为类型字典，支持按 name 反查 id 或按 id 过滤特定行为
+  limitations:
+  - 配置类维度表，无值度量(metrics 仅含 row_count 计数)
+  - 仅含 id/name 两列，无额外属性(如行为分类、启用状态等)
+  - 实测唯一性时表为空表(0 行)，r=d=0 数学上唯一但未覆盖真实数据
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'dim 建模完成；primary_key=id，label=name；实测唯一性查询返回 0 行(空表)，r=d=0 视为唯一但未覆盖真实数据；保持 draft 待业务确认'

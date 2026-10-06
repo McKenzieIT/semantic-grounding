@@ -1,0 +1,119 @@
+table_name: dws_10000251_pve_team_statistics_di
+engine: maxcompute
+table_comment: PVE阵容战斗统计日表(角色×关卡×阵容,日增量)
+description: PVE阵容战斗统计日表。粒度：日增量(_di)，按角色(role_id)×PVE系统(pve_type)×关卡(stage_id)×阵容(team) 维度记录当日PVE阵容战斗结果(胜/负/平、战斗次数、阵容战力与等级、是否代打)。主题：角色(role_id)。 覆盖PVE各系统关卡的阵容使用与战斗结果统计，用于关卡难度与阵容胜率分析。
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 日增量(_di)，角色(role_id)×关卡(stage_id)×阵容(team)
+columns:
+  - name: pve_type
+    type: BIGINT
+    comment: PVE系统
+    role: dimension
+  - name: stage_id
+    type: BIGINT
+    comment: 关卡ID(主键)
+    role: dimension
+  - name: chapter_id
+    type: BIGINT
+    comment: 章节ID
+    role: dimension
+  - name: role_id
+    type: STRING
+    comment: 角色ID(主题)
+    role: dimension
+  - name: team
+    type: STRING
+    comment: 阵容(角色名拼接)
+    role: attribute
+  - name: star
+    type: STRING
+    comment: 星数(各角色星级拼接)
+    role: attribute
+  - name: force
+    type: BIGINT
+    comment: 战力
+    role: measure
+  - name: lineup_force
+    type: BIGINT
+    comment: 阵容平均战力
+    role: measure
+  - name: lineup_level
+    type: BIGINT
+    comment: 阵容平均等级
+    role: measure
+  - name: suggest_level
+    type: BIGINT
+    comment: 推荐等级(关卡参考值)
+    role: attribute
+  - name: npc_status
+    type: BIGINT
+    comment: NPC是否上阵 1:是 0:否
+    role: dimension
+  - name: is_boost
+    type: BIGINT
+    comment: 是否代打 1:是 0:否
+    role: dimension
+  - name: battle_times
+    type: BIGINT
+    comment: 战斗次数
+    role: measure
+  - name: win_times
+    type: BIGINT
+    comment: 胜利次数
+    role: measure
+  - name: lose_times
+    type: BIGINT
+    comment: 失败次数
+    role: measure
+  - name: draw_times
+    type: BIGINT
+    comment: 平局次数
+    role: measure
+  - name: ds
+    type: STRING
+    comment: 分区
+    role: partition
+metrics:
+  pve_battle_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日参与PVE阵容战斗的角色数(UV，去重role_id)，衡量PVE战斗角色活跃规模
+  pve_battle_times_sum:
+    expression: SUM(battle_times)
+    description: 当日PVE阵容战斗总次数，反映PVE战斗总活跃度
+  pve_win_rate:
+    expression: SUM(win_times) / NULLIF(SUM(battle_times), 0)
+    description: PVE阵容战斗胜率，胜利次数/战斗次数，衡量关卡难度与阵容通关能力
+  pve_win_times_sum:
+    expression: SUM(win_times)
+    description: 当日PVE阵容战斗胜利总次数，与失败次数配合衡量通关效果
+  pve_boost_role_ratio:
+    expression: COUNT(DISTINCT CASE WHEN is_boost = 1 THEN role_id END) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 当日代打角色占比(代打角色去重数/参与角色去重数)，衡量代打( boosting )使用情况
+coverage:
+  scenarios:
+    - PVE战斗活跃度分析：战斗角色UV、战斗总次数衡量PVE各系统(pve_type)的日活跃规模
+    - 关卡难度与通关效果分析：胜率/胜利次数/失败次数衡量各关卡(stage_id)、章节(chapter_id)的通关难度与阵容表现
+    - 代打使用分析：代打角色占比衡量代打玩法的渗透与依赖度，可按PVE系统、关卡切片
+  limitations:
+    - 表非空(MAX(ds)=20260730)，已对最新ds做指标spot-verify(role_uv/battle_times/win_times/lose_times均合理)，未做全量maxc实测复核
+    - _di为日增量，每角色×关卡×阵容每业务日可能多行(同一关卡多次不同阵容)，跨日或跨关卡聚合UV需按role_id去重
+    - subject为角色(role_id)，但表无user_type列，未做user_type=3(角色)的实测核验，仅按role_id列名推断
+    - team/star为角色名/星级拼接字符串，无法直接聚合，需配合role_id/stage_id维度切片
+    - suggest_level为关卡推荐等级参考值(非角色属性)，聚合无业务意义，应作分组键或属性使用
+    - draw_times在最新ds样本中为0，平局是否真的不发生需业务方确认
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 表非空(MAX(ds)=20260730)，已在最新ds上spot-verify指标(roles=4182,battle_times=108393,win_times=98765,lose_times=9094,win_rate≈0.911，均合理)；pve_type分布多系统(1/39/164/231/116等)；subject=角色(role_id)按列名推断，无user_type列未实测核验。
+dimension_refs:
+  - dim_table: dim_10000251_trans_stage_df
+    join_keys:
+      - dws_column: stage_id
+        dim_column: id
+    derivation: DWS stage_id (comment 关卡ID(主键)) is the stage identifier and matches dim_10000251_trans_stage_df primary key id, which is described as '每行一个关卡，主键 id（关卡id）' — a canonical 关卡(stage)配置维度表.
+pref_label: PVE阵容统计日表
+alt_labels:
+  - 阵容

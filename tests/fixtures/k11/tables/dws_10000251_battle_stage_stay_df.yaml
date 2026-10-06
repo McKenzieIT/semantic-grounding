@@ -1,0 +1,110 @@
+table_name: dws_10000251_battle_stage_stay_df
+engine: maxcompute
+table_comment: K11-关卡停留表
+description: |-
+  K11-关卡停留表（角色级日全量快照）。
+  记录每日停留在某关卡的角色级明细，每行一个 (角色, 停留关卡) 记录；区分玩法功能层(stay_type=1)与章节主题层(stay_type=2)停留。
+  粒度：角色级 日全量快照(_df)，按 ds 分区。
+  主要字段：account_id, server_id, role_id, stay_type, play_func_id, stay_chapter_id, stay_stage_id, fst_pass_lineup_level, fst_pass_pv_std, fst_pass_dur, ds 等11列。
+domains:
+  - 战斗关卡
+  - 用户生命周期
+granularity: 角色级 日全量快照(_df)，按 ds 分区
+columns:
+  - name: account_id
+    type: string
+    comment: 账号id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: stay_type
+    type: bigint
+    comment: 关卡停留类型，1-玩法功能层面的停留关卡 2-章节主题层面的停留关卡
+    role: dimension
+  - name: play_func_id
+    type: string
+    comment: 玩法功能id
+    role: dimension
+  - name: stay_chapter_id
+    type: bigint
+    comment: 章节主题id，当关卡停留类型是玩法功能层面的停留关卡时，展示停留关卡对应的的章节主题；当关卡停留类型是章节主题层面的停留时，这里表示在某章停留在哪个关卡
+    role: dimension
+  - name: stay_stage_id
+    type: string
+    comment: 停留关卡id，已通关的关卡
+    role: dimension
+  - name: fst_pass_lineup_level
+    type: bigint
+    comment: 停留关卡首通时阵容平均等级
+    role: measure
+  - name: fst_pass_pv_std
+    type: bigint
+    comment: 停留关卡首通时累计挑战次数
+    role: measure
+  - name: fst_pass_dur
+    type: bigint
+    comment: 停留关卡首通时挑战时长
+    role: measure
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  stay_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 停留角色数 UV（按 role_id 去重）
+  stay_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 停留账号数 UV（按 account_id 去重）
+  stay_record_cnt:
+    expression: COUNT(*)
+    description: 停留关卡记录总数（角色×停留关卡行数）
+  avg_fst_pass_lineup_level:
+    expression: AVG(fst_pass_lineup_level)
+    description: 停留关卡首通阵容平均等级的均值
+  avg_fst_pass_dur:
+    expression: AVG(fst_pass_dur)
+    description: 停留关卡首通挑战时长的均值（秒）
+coverage:
+  scenarios:
+    - 各关卡/章节/玩法功能停留角色数与账号数分布，识别卡点关卡
+    - 停留关卡首通阵容等级与挑战时长均值，评估关卡难度与推进节奏
+    - 按 stay_type 拆分玩法功能层 vs 章节主题层停留结构
+  limitations:
+    - _df 为日全量快照，跨日累计需自行多日聚合；同一角色同日可有多条（多停留关卡）记录
+    - 仅对最新 ds=20250508 做了 5 个指标的 SELECT spot 验证（role_uv=30357, acc_uv=20343, rec_cnt=375489, avg_lvl=34.33, avg_dur=64.90），未做全量 maxc 实测复核
+    - 无 user_type 列，主体按 role_id 推断为角色级；stay_chapter_id 在 stay_type=1/2 下语义不同，跨类型聚合需谨慎
+    - 缺少区服维度属性表 JOIN（受 SELECT-only/无 JOIN 限制），区服名称需在下游关联
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 已在最新 ds=20250508 对 5 个指标做 spot 验证，数值合理；结构化补全完成。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: "DWS column server_id (comment: 区服id) is an exact match to PK server_id of dim_10000251_server_info (服务器维度配置表)."
+    origin: deterministic
+  - dim_table: dim_10000251_function_info
+    join_keys:
+      - dws_column: play_func_id
+        dim_column: function_id
+    derivation: "DWS column play_func_id (comment: 玩法功能id) semantically matches PK function_id of dim_10000251_function_info (功能配置维度表)."
+  - dim_table: dim_10000251_trans_stage_df
+    join_keys:
+      - dws_column: stay_stage_id
+        dim_column: id
+    derivation: "DWS column stay_stage_id (comment: 停留关卡id) semantically matches PK id (关卡id) of dim_10000251_trans_stage_df (关卡配置维度表)."
+pref_label: 关卡停留表
+alt_labels:
+  - 停留
+  - 卡关
+  - 瓶颈

@@ -1,0 +1,62 @@
+table_name: dim_10000251_trans_resource_df_arch
+engine: maxcompute
+kind: dim
+table_comment: '资源产销/系统配置维度表：每 (type, id) 一行的资源配置维度表，记录资源类型、资源值、名称、引用表、品质、备注、道具价值。'
+description: '资源配置维度表（dim）。每 (资源类型 type, 资源值 id) 一行的配置/维度表，用于按资源类型与资源值关联事实表，提供资源名称、引用表、品质、备注、道具价值等属性。主键 (type, id) 复合唯一，已实测唯一。'
+domains:
+- 资源产销
+granularity: '每 (资源类型 type, 资源值 id) 一行的资源配置维度表'
+primary_key:
+- type
+- id
+label_columns:
+- name
+- remark
+primary_key_unique: true
+columns:
+- name: type
+  type: string
+  comment: 资源类型
+  role: dimension
+- name: id
+  type: string
+  comment: 资源值
+  role: dimension
+- name: name
+  type: string
+  comment: 资源名称
+  role: dimension
+- name: table
+  type: string
+  comment: 引用表
+  role: dimension
+- name: quality
+  type: bigint
+  comment: 品质
+  role: dimension
+- name: remark
+  type: string
+  comment: 备注
+  role: dimension
+- name: price
+  type: double
+  comment: 道具价值
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+coverage:
+  scenarios:
+  - '按资源类型(type)+资源值(id)关联事实表，补充资源名称(name)、引用表(table)、品质(quality)、备注(remark)、道具价值(price)等维度属性'
+  - '支撑资源产销分析：按资源类型分组聚合，统计各类资源配置数量与价值分布'
+  - '通过引用表(table)字段追溯资源所属配置表，辅助配置血缘梳理'
+  limitations:
+  - '配置类维度表，无值度量（price 为配置属性值，非事实度量）'
+  - '主键为复合 (type, id)，单 id 列不唯一（同一 id 在不同 type 下重复），JOIN 时须同时带 type'
+  - '按 ds 分区，不同分区配置可能存在版本差异；分析时建议指定最新分区或按 ds 切片'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'dim 建模草稿。主键 (type, id) 已实测唯一（r=92, d_tid=92, d_id=59）。id 单列不唯一故采用复合键。角色均为 dimension（dim 配置表无事实度量）。域归属资源产销（资源产销配置）。'

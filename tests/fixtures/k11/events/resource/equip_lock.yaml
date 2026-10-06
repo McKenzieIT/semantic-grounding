@@ -1,0 +1,124 @@
+name: game.equip.lock
+event_filter: event = 'game.equip.lock'
+description: 装备锁定/解锁操作埋点(game.equip.lock)，记录角色对某件装备执行锁定或解锁动作。携带装备uid(euid)、操作状态(lock=1锁定/0解锁)、角色等级/vip/战力/经验及24项角色与货币参数。分析主体为role_id(角色粒度)，可关联account_id与server_id做跨服/跨账号聚合。ds=20260729单日scout实测cnt=153、role_uv=39、acc_uv=39、server_uv=31。
+domains:
+  - 装备道具
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  euid:
+    type: int
+    description: 装备uid
+  lock:
+    type: int
+    description: 锁定or解锁
+metrics:
+  game_equip_lock_cnt:
+    expression: COUNT(*)
+    description: 装备锁定/解锁事件总次数
+  game_equip_lock_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发装备锁定/解锁操作的去重角色数
+  game_equip_lock_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发装备锁定/解锁操作的去重账号数
+  game_equip_lock_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发装备锁定/解锁操作的去重游戏服数
+  game_equip_lock_lock_cnt:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params,'$.lock') AS BIGINT)=1 THEN 1 ELSE 0 END)
+    description: 装备锁定操作次数(lock=1)
+  game_equip_lock_unlock_cnt:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params,'$.lock') AS BIGINT)=0 THEN 1 ELSE 0 END)
+    description: 装备解锁操作次数(lock=0)
+  game_equip_lock_lock_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN CAST(GET_JSON_OBJECT(params,'$.lock') AS BIGINT)=1 THEN role_id END)
+    description: 执行过锁定的去重角色数
+  game_equip_lock_unlock_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN CAST(GET_JSON_OBJECT(params,'$.lock') AS BIGINT)=0 THEN role_id END)
+    description: 执行过解锁的去重角色数
+  game_equip_lock_per_role_avg:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均装备锁定/解锁操作次数(总次数/去重角色数)
+coverage:
+  scenarios:
+    - 装备锁定/解锁功能的使用量(总次数、去重角色、去重账号、去重服)
+    - 锁定与解锁两种操作类型的分布对比(次数与覆盖角色)
+    - 人均装备锁定/解锁操作频次，定位重度使用用户
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - ds=20260729 当日仅观察到 lock=0(解锁) 操作153次，未出现 lock=1(锁定) 记录，锁定指标当日为0，需跨多日样本验证锁定行为
+    - 分析主体默认 role_id(角色粒度)，未验证 account_id 是否为更优主体
+    - 参数字段 euid 为装备uid，可用于单装备维度分析，但本次scout未做去重装备数验证
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "ds=20260729 scout 实测: cnt=153, role_uv=39, acc_uv=39, server_uv=31；当日 lock_state 全为0(解锁)"
+coverage_status: analyst_confirmed
+external_refs: []

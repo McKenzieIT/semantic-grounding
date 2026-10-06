@@ -1,0 +1,63 @@
+table_name: dim_10000251_trans_test_df_arch
+engine: maxcompute
+kind: dim
+primary_key:
+- id
+primary_key_unique: false
+label_columns:
+- name
+- name1
+- name2
+table_comment: '游戏 10000251 关卡/章节配置维度表（dim）：每行描述一个关卡配置项，含章节编码 chapter_id、关卡名称 name（形如 1-1恶霸张宝宝）、拆分字段 name1/name2 及三类通关需求 requirement1/2/3。按 ds 分区存放每日配置快照。'
+description: '游戏 10000251 关卡/章节配置维度表（dim_10000251_trans_test_df_arch）。配置类维度表，存放关卡 chapter 配置：每行一个关卡配置项，键为 id（章节内关卡编码），并按 ds（日期分区）保存每日配置快照。主要字段：id（关卡配置编码，章节内唯一但跨分区重复）、chapter_id（章节编码）、name（关卡全名，形如 1-1恶霸张宝宝）、name1（章节-节序号，如 1-1）、name2（关卡中文名，如 恶霸张宝宝）、requirement1/2/3（三类通关需求编码串，如 400003_12）、ds（日期分区，如 20230529）。'
+domains:
+- 系统监控
+granularity: 每个关卡配置项一行（按 ds 分区存放每日快照；同一 id 在不同 ds 分区重复出现）
+coverage:
+  scenarios:
+  - '用于在事实表（如玩家关卡进度/通关流水）中通过 id 或 chapter_id JOIN 查找关卡的名称、章节归属与通关需求配置；支持按章节 chapter_id 聚合统计关卡数、按 requirement1/2/3 解析通关需求类型分布等维度分析。'
+  limitations:
+  - '配置类维度表，无值度量（requirement1/2/3 为编码串，需二次解码才能得到需求类型与数值）。'
+  - 'id 在表内非唯一（实测 r=49053 行 vs COUNT(DISTINCT id)=572，因按 ds 分区存放每日快照导致同一 id 跨分区重复）；真正粒度为 (id, ds)。primary_key_unique=false，status 保持 draft。'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'kind=dim 配置类维度表，primary_key=id（关卡配置编码，章节内自然键），label_columns=name/name1/name2（关卡名称及拆分）。primary_key_unique=false（实测非唯一，因 ds 分区快照重复），故 status=draft。requirement1/2/3 为编码串需二次解码。'
+columns:
+- name: id
+  type: string
+  comment: id
+  role: dimension
+- name: chapter_id
+  type: string
+  comment: chapter_id
+  role: dimension
+- name: name
+  type: string
+  comment: name
+  role: dimension
+- name: name1
+  type: string
+  comment: ' name1'
+  role: dimension
+- name: name2
+  type: string
+  comment: name2
+  role: dimension
+- name: requirement2
+  type: string
+  comment: requirement2
+  role: dimension
+- name: requirement3
+  type: string
+  comment: requirement3
+  role: dimension
+- name: requirement1
+  type: string
+  comment: requirement1
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition

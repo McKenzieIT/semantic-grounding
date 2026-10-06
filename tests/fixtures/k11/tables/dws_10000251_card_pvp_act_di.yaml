@@ -1,0 +1,163 @@
+table_name: dws_10000251_card_pvp_act_di
+engine: maxcompute
+table_comment: DWS PVP卡牌使用日增量表：角色×玩法×卡牌粒度的PVP参与/胜负/ban-pick行为(_di)
+description: |-
+  PVP卡牌使用日增量表：角色×区服×玩法×子玩法×卡牌粒度的PVP参与/胜负/ban-pick行为明细（_di）。
+  分析主体=角色（role_id 为 key；表无 user_type 列，由 role_id 推断主体为角色，user_type=3）。
+  主要字段：role_id, server_id, play_id, sub_play_id, card_id, part_pv, part_pv2, part_pv3, win_pv, win_pv2, win_pv3, role_part_pv, role_win_pv, box_pv, ban1_pv, ban2_pv, pick1_pv, pick2_pv, pick3_pv 等23列。
+domains:
+  - 战斗关卡
+  - 装备道具
+granularity: 日增量(_di)，按 role_id+server_id+play_id+sub_play_id+card_id 聚合，主体=角色
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id，key
+    role: dimension
+  - name: play_id
+    type: string
+    comment: 玩法id，key，缺省值0
+    role: dimension
+  - name: sub_play_id
+    type: string
+    comment: 子玩法id，key，缺省值0
+    role: dimension
+  - name: card_id
+    type: string
+    comment: 卡牌id，key
+    role: dimension
+  - name: part_pv
+    type: int
+    comment: 参与次数，0表示未参与
+    role: measure
+  - name: part_pv2
+    type: int
+    comment: 同级参与次数
+    role: measure
+  - name: part_pv3
+    type: int
+    comment: 越级参与次数
+    role: measure
+  - name: win_pv
+    type: int
+    comment: 胜利次数
+    role: measure
+  - name: win_pv2
+    type: int
+    comment: 同级胜利次数
+    role: measure
+  - name: win_pv3
+    type: int
+    comment: 越级胜利次数
+    role: measure
+  - name: force_diff31
+    type: string
+    comment: 越级最大战力差，我方战力-对方战力-战力差
+    role: attribute
+  - name: force_diff32
+    type: string
+    comment: 越级最大战力比，我方战力-对方战力-战力比
+    role: attribute
+  - name: role_part_pv
+    type: int
+    comment: 角色参与次数，用于计算总参与次数，0表示未参与
+    role: measure
+  - name: role_win_pv
+    type: int
+    comment: 角色胜利次数，用于计算胜利总次数
+    role: measure
+  - name: box_pv
+    type: int
+    comment: 入盒次数
+    role: measure
+  - name: ban1_pv
+    type: int
+    comment: 1ban次数
+    role: measure
+  - name: ban2_pv
+    type: int
+    comment: 2ban次数
+    role: measure
+  - name: pick1_pv
+    type: int
+    comment: 1pick次数
+    role: measure
+  - name: pick2_pv
+    type: int
+    comment: 2pick次数
+    role: measure
+  - name: pick3_pv
+    type: int
+    comment: 3pick次数
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  card_pvp_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日PVP卡牌参与角色数（role_id 去重）
+  part_pv_total:
+    expression: SUM(part_pv)
+    description: 当日PVP总参与次数
+  win_pv_total:
+    expression: SUM(win_pv)
+    description: 当日PVP总胜利次数
+  win_rate:
+    expression: SUM(win_pv) / NULLIF(SUM(part_pv), 0)
+    description: 当日PVP胜率（胜利次数/参与次数）
+  pick_total:
+    expression: SUM(pick1_pv) + SUM(pick2_pv) + SUM(pick3_pv)
+    description: 当日ban-pick总pick次数（1pick+2pick+3pick）
+coverage:
+  scenarios:
+    - PVP卡牌参与角色规模（card_pvp_role_uv）
+    - PVP参与/胜利总次数与胜率（part_pv_total / win_pv_total / win_rate）
+    - ban-pick 行为频次（pick_total）
+  limitations:
+    - 表为空/无数据（MAX(ds) NULL，maxc 实测 20260731 查询无数据），指标为结构化草案，未抽样验证。
+    - _di 为日增量，每 role_id+server_id+play_id+sub_play_id+card_id 一行；跨日聚合 UV 需按 ds 切分去重，不可直接跨日 SUM(UV)。
+    - 表无 user_type 列，分析主体由 role_id 推断为角色（user_type=3），未实测验证。
+    - force_diff31/force_diff32 为字符串存储的战力差/比，非规范化数值维度，未纳入聚合指标。
+    - 仅 scout 推断字段语义，未做全量 maxc 实测复核（表空）。
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表为空（MAX(ds) NULL），指标为结构化草案未抽样验证；待有数据后复核。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (区服id) exactly matches the DIM PK server_id; dim_10000251_server_info is the 区服 dimension providing server name and open-time attributes.
+    origin: deterministic
+  - dim_table: dim_10000251_trans_card_df
+    join_keys:
+      - dws_column: card_id
+        dim_column: id
+    derivation: DWS card_id (卡牌id) semantically maps to trans_card_df PK id (武将/卡牌配置主键); trans_card_df is the card/武将 config dimension for this game.
+  - dim_table: dim_10000251_trans_play_df
+    join_keys:
+      - dws_column: play_id
+        dim_column: id
+    derivation: DWS play_id (玩法id) semantically maps to trans_play_df PK id (玩法 id); trans_play_df is the canonical 玩法 config dimension.
+  - dim_table: dim_10000251_trans_sub_play_od
+    join_keys:
+      - dws_column: sub_play_id
+        dim_column: sub_play_id
+    derivation: DWS sub_play_id (子玩法id) exactly matches the DIM PK sub_play_id; dim_10000251_trans_sub_play_od is the canonical 子玩法 config dimension.
+    origin: deterministic
+pref_label: PVP卡牌使用日表
+alt_labels:
+  - ban
+  - pick

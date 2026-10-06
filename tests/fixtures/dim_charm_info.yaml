@@ -1,0 +1,38 @@
+table_name: dim_charm_info
+table_comment: 道具配置维表
+description: 道具维度
+domains:
+  - 装备道具
+granularity: 维表(非分区,全量参考,无时间维度)
+engine: maxcompute
+columns:
+  - name: charm_id
+    type: string
+    comment: 道具id
+    role: dimension
+  - name: charm_name
+    type: string
+    comment: 道具名称
+    role: dimension
+  - name: quality
+    type: string
+    comment: 品质
+    role: attribute
+metrics: {}
+partitions: []
+confirmation:
+  status: draft
+  confirmed_by: ''
+  confirmed_at: ''
+coverage: null
+supersedes: []
+disambiguation: null
+kind: dim
+primary_key:
+  - charm_id
+primary_key_unique: null
+duplicate_sample: []
+label_columns:
+  - charm_name
+freshness: static_reference
+dimension_refs: []

@@ -1,0 +1,140 @@
+name: game.autoPvp.changeScore
+event_filter: event = 'game.autoPvp.changeScore'
+description: 自动PVP（自动战斗PVP）分数变化事件：记录角色在自动PVP对战中分数的增减，携带对战双方(atkUid/defUid)旧新分数与排名、角色自身score/rank及基础属性(等级/VIP/战力/货币)。主体粒度 role_id（角色）。实测 ds=20260729：cnt=63142 / role_uv=2769 / acc_uv=2647。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  uid:
+    type: int
+    description: uid
+  score:
+    type: int
+    description: score
+  rank:
+    type: int
+    description: rank
+  atkUid:
+    type: int
+    description: atkUid
+  defUid:
+    type: int
+    description: defUid
+  atkOldScore:
+    type: int
+    description: atkOldScore
+  atkCurrScore:
+    type: int
+    description: atkCurrScore
+  defOldScore:
+    type: int
+    description: defOldScore
+  defCurrScore:
+    type: int
+    description: defCurrScore
+  atkOldRank:
+    type: int
+    description: atkOldRank
+  atkCurrRank:
+    type: int
+    description: atkCurrRank
+  defOldRank:
+    type: int
+    description: defOldRank
+  defDefRank:
+    type: int
+    description: defDefRank
+metrics:
+  game_autoPvp_changeScore_cnt:
+    expression: COUNT(*)
+    description: 自动PVP分数变化事件总次数
+  game_autoPvp_changeScore_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发自动PVP分数变化的去重角色数
+  game_autoPvp_changeScore_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发自动PVP分数变化的去重账号数
+  game_autoPvp_changeScore_score_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.score') AS BIGINT))
+    description: 自动PVP事件中角色当前score累计总量（按事件汇总）
+coverage:
+  scenarios:
+    - 衡量自动PVP玩法的活跃度（事件次数、参与角色/账号数）
+    - 通过score累计评估PVP分数流转规模
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id（角色），跨日累计未去重
+    - score_sum 为事件时刻角色当前score累计，非净增量
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 实测 cnt=63142 / role_uv=2769 / acc_uv=2647 / server_uv=398
+  coverage_status: analyst_confirmed
+external_refs: []

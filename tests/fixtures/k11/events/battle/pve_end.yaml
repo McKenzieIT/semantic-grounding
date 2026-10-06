@@ -1,0 +1,359 @@
+name: game.pve.end
+event_filter: event = 'game.pve.end'
+description: 副本（PVE）战斗结束事件：记录玩家在副本/关卡中一场战斗结束时的结果与明细，含战斗结果(胜/负/平/退出)、首次通关、战斗评分、回合数、时长、双方阵容与战力、武将/装备/灵器等快照。分析主体为 role_id（角色粒度），同一角色多次战斗会产生多条事件。scout 实测 ds=20260729 单日 cnt=127237、role_uv=4291、acc_uv=4049、server_uv=466。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  playType:
+    type: int
+    description: 副本类型
+  playName:
+    type: string
+    description: 关卡名称
+  stageId:
+    type: int
+    description: 关卡id
+  chapter:
+    type: int
+    description: 章节id
+  stageType:
+    type: int
+    description: 关卡类型 @1:精英 2:头目 3:普通
+  suggestLevel:
+    type: int
+    description: 推荐等级
+  battleRes:
+    type: int
+    description: 战斗结果 1:胜/2:负/3:平/4:主动退出/5:其他原因退出
+  win:
+    type: int
+    description: 之前是否已经通关 1：是，0：否
+  starTaskList:
+    type: array
+    description: 星级列表
+  starTaskList.id:
+    type: int
+    description: id
+  starTaskList.name:
+    type: string
+    description: 成就名称
+  starTaskList.finish:
+    type: int
+    description: 是否达成
+  starTaskList.new:
+    type: int
+    description: 是否新达成
+  achieveList:
+    type: array
+    description: 成就列表
+  achieveList.id:
+    type: int
+    description: id
+  achieveList.name:
+    type: string
+    description: 成就名称
+  achieveList.finish:
+    type: int
+    description: 是否达成
+  achieveList.new:
+    type: int
+    description: 是否新达成
+  firstPass:
+    type: int
+    description: 首次通关。首次通关：1；非首次通关：0 战斗失败记为空
+  score:
+    type: int
+    description: 战斗评分，其他玩法比如奇策、只有要战斗评分的都记在这里，没有战斗评分的记为空
+  back:
+    type: int
+    description: 悔棋次数
+  round:
+    type: int
+    description: 战斗回合数
+  duration:
+    type: int
+    description: 战斗时长（s）
+  battleId:
+    type: string
+    description: 唯一标识一次战斗
+  lineupPower:
+    type: int
+    description: 阵容战力
+  beKilled:
+    type: int
+    description: 被击杀单位数
+  blood:
+    type: int
+    description: 剩余血量百分比
+  relBeKilled:
+    type: int
+    description: 对方被击杀单位数
+  relBlood:
+    type: int
+    description: 对方剩余血量百分比
+  lineupLevel:
+    type: int
+    description: 阵容平均等级
+  cardList:
+    type: array
+    description: 己方阵容的卡牌列表
+  cardList.id:
+    type: int
+    description: 武将id
+  cardList.name:
+    type: string
+    description: 武将名
+  cardList.pos:
+    type: int
+    description: 站位
+  cardList.power:
+    type: int
+    description: 武将战力
+  cardList.level:
+    type: int
+    description: 武将等级
+  cardList.quality:
+    type: int
+    description: 武将品质
+  cardList.star:
+    type: int
+    description: 武将星级
+  cardList.piece:
+    type: int
+    description: 武将碎片
+  cardList.awakeList:
+    type: array
+    description: 觉醒点列表
+  cardList.awakeList.lvl:
+    type: int
+    description: 节点等级
+  cardList.awakeList.id:
+    type: int
+    description: 节点id
+  cardList.equip:
+    type: array
+    description: 装备列表
+  cardList.equip.pos:
+    type: int
+    description: 装备部位 1：武器/2：头盔/3：护具/4：饰品
+  cardList.equip.id:
+    type: int
+    description: 装备id
+  cardList.equip.uid:
+    type: int
+    description: 装备uid
+  cardList.equip.level:
+    type: int
+    description: 装备等级
+  cardList.equip.quality:
+    type: int
+    description: 装备品质id
+  cardList.ability:
+    type: array
+    description: 潜能列表
+  cardList.ability.id:
+    type: int
+    description: 天赋模板id
+  cardList.ability.num:
+    type: int
+    description: 消耗潜能点数量
+  cardList.ability.value:
+    type: int
+    description: 加成效果
+  cardList.ability.name:
+    type: string
+    description: 名称
+  cardList.abilityPoints:
+    type: int
+    description: 潜能点数量
+  cardList.tactic:
+    type: json
+    description: 战法信息
+  cardList.tactic.tacticId:
+    type: int
+    description: 战法id
+  cardList.tactic.tacticName:
+    type: string
+    description: 战法名称
+  cardList.tactic.tacticLevel:
+    type: int
+    description: 战法等级
+  cardList.tactic.tacticStar:
+    type: int
+    description: 战法星级
+  cardList.job:
+    type: int
+    description: 武将职业
+  cardList.assistRoleId:
+    type: int
+    description: 助战uid
+  cardList.assistType:
+    type: int
+    description: 助战类型
+  cardList.wushuangLevel:
+    type: int
+    description: 觉醒无双等级
+  cardList.isKey:
+    type: bool
+    description: 是否是主力武将
+  cardList.natalchartScheme:
+    type: int
+    description: 当前方案
+  cardList.natalcharts:
+    type: array
+    description: 天命方案（2个）
+  cardList.natalcharts.idx:
+    type: int
+    description: 索引
+  cardList.natalcharts.name:
+    type: string
+    description: 方案名字
+  cardList.natalcharts.nodes:
+    type: array
+    description: id
+  cardList.wsRoad:
+    type: int
+    description: 无双之路
+  cardList.bondKnight:
+    type: int
+    description: 羁绊武将
+  mainCharm:
+    type: array
+    description: 己方上阵的主灵器
+  mainCharm.id:
+    type: int
+    description: mainCharm.id
+  mainCharm.star:
+    type: int
+    description: mainCharm.star
+  mainCharm.power:
+    type: int
+    description: mainCharm.power
+  assistCharm:
+    type: array
+    description: 己方上阵的助灵器
+  assistCharm.id:
+    type: int
+    description: assistCharm.id
+  assistCharm.star:
+    type: int
+    description: assistCharm.star
+  assistCharm.power:
+    type: int
+    description: assistCharm.power
+  spCaptain:
+    type: int
+    description: sp队长
+metrics:
+  game_pve_end_cnt:
+    expression: COUNT(*)
+    description: 副本战斗结束事件总次数
+  game_pve_end_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与副本战斗的去重角色数（分析主体粒度）
+  game_pve_end_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与副本战斗的去重账号数
+  game_pve_end_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的游戏服去重数
+  game_pve_end_win_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.battleRes') = '1' THEN 1 ELSE 0 END)
+    description: 战斗胜利次数（battleRes=1 胜）
+  game_pve_end_win_rate:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.battleRes') = '1' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 副本胜率（胜利次数/总场次）
+  game_pve_end_first_pass_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.firstPass') = '1' THEN 1 ELSE 0 END)
+    description: 首次通关次数（firstPass=1）
+  game_pve_end_duration_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.duration') AS BIGINT))
+    description: 战斗时长（秒）总和
+  game_pve_end_round_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.round') AS BIGINT))
+    description: 战斗回合数总和
+coverage:
+  scenarios:
+    - 衡量副本/PVE战斗规模与活跃（场次、角色/账号/服 UV）
+    - 通关效率（胜率、首次通关数）
+    - 战斗消耗（时长、回合数）
+    - 支持按 server_id/role_id 下钻分析副本参与度与难度分布
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度）
+    - coinList/starTaskList/cardList 等数组型快照未纳入聚合指标
+    - battleRes 各枚举(2负/3平/4主动退出/5其他)未单独拆分，仅统计胜与胜率
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=127237、role_uv=4291、acc_uv=4049、server_uv=466，数据合理且高频，确认为真实在线事件。
+external_refs: []

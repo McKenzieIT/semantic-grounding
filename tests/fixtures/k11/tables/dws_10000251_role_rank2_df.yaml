@@ -1,0 +1,256 @@
+table_name: dws_10000251_role_rank2_df
+engine: maxcompute
+table_comment: 角色排行榜2
+description: |-
+  角色排行榜2。
+  粒度：日全量快照(_df)。分析主体=角色（user_type=3）。
+  主要字段：role_id, server_id, role_level, role_level_tm, role_level_rank, role_force, role_force_tm, role_force_rank 等50列。
+domains:
+  - 角色成长
+  - 战斗关卡
+granularity: 日全量快照(_df)
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id，key
+    role: dimension
+  - name: role_level
+    type: int
+    comment: 角色等级
+    role: dimension
+  - name: role_level_tm
+    type: datetime
+    comment: 角色等级达成时间
+    role: dimension
+  - name: role_level_rank
+    type: int
+    comment: 角色等级排名
+    role: dimension
+  - name: role_force
+    type: int
+    comment: 角色战力
+    role: measure
+  - name: role_force_tm
+    type: datetime
+    comment: 角色战力达成时间
+    role: dimension
+  - name: role_force_rank
+    type: int
+    comment: 角色战力排名
+    role: measure
+  - name: p0101_goals
+    type: int
+    comment: 普通主线当日星数
+    role: measure
+  - name: p0101_goals_std
+    type: int
+    comment: 普通主线累计星数
+    role: measure
+  - name: p0101_goals2
+    type: int
+    comment: 普通主线当日成就数
+    role: measure
+  - name: p0101_goals2_std
+    type: int
+    comment: 普通主线累计成就数
+    role: measure
+  - name: p0101_goals_tm
+    type: datetime
+    comment: 普通主线达成时间
+    role: dimension
+  - name: p0111_goals
+    type: int
+    comment: 困难主线当日星数
+    role: measure
+  - name: p0111_goals_std
+    type: int
+    comment: 困难主线累计星数
+    role: measure
+  - name: p0111_goals2
+    type: int
+    comment: 困难主线当日星数
+    role: measure
+  - name: p0111_goals2_std
+    type: int
+    comment: 困难主线累计星数
+    role: measure
+  - name: p0111_goals_tm
+    type: datetime
+    comment: 困难主线达成时间
+    role: dimension
+  - name: p01_goals
+    type: int
+    comment: 主线当日星数
+    role: measure
+  - name: p01_goals_std
+    type: int
+    comment: 主线累计星数
+    role: measure
+  - name: p01_goals_tm
+    type: datetime
+    comment: 主线达成时间
+    role: dimension
+  - name: p01_goals_rank
+    type: int
+    comment: 主线星数排名
+    role: measure
+  - name: p0201_goals
+    type: int
+    comment: 普通无尽塔当日星数
+    role: measure
+  - name: p0201_goals_std
+    type: int
+    comment: 普通无尽塔累计星数
+    role: measure
+  - name: p0201_goals_tm
+    type: datetime
+    comment: 普通无尽塔达成时间
+    role: dimension
+  - name: p0211_goals
+    type: int
+    comment: 困难无尽塔当日星数
+    role: measure
+  - name: p0211_goals_std
+    type: int
+    comment: 困难无尽塔累计星数
+    role: measure
+  - name: p0211_goals_tm
+    type: datetime
+    comment: 困难无尽塔达成时间
+    role: dimension
+  - name: p0221_goals
+    type: int
+    comment: 噩梦无尽塔当日星数
+    role: measure
+  - name: p0221_goals_std
+    type: int
+    comment: 噩梦无尽塔累计星数
+    role: measure
+  - name: p0221_goals_tm
+    type: datetime
+    comment: 噩梦无尽塔达成时间
+    role: dimension
+  - name: p02_goals
+    type: int
+    comment: 无尽塔当日星数
+    role: measure
+  - name: p02_goals_std
+    type: int
+    comment: 无尽塔累计星数
+    role: measure
+  - name: p02_goals_tm
+    type: datetime
+    comment: 无尽塔达成时间
+    role: dimension
+  - name: p02_goals_rank
+    type: int
+    comment: 无尽塔星数排名
+    role: measure
+  - name: goals
+    type: int
+    comment: PVE当日星数
+    role: measure
+  - name: goals_std
+    type: int
+    comment: PVE累计星数
+    role: measure
+  - name: goals_tm
+    type: datetime
+    comment: PVE达成时间
+    role: dimension
+  - name: goals_rank
+    type: int
+    comment: PVE星数排名
+    role: measure
+  - name: apvp_score
+    type: int
+    comment: 异步PVP积分
+    role: measure
+  - name: apvp_level
+    type: int
+    comment: 异步PVP段位
+    role: measure
+  - name: apvp_score_tm
+    type: datetime
+    comment: 异步PVP达成时间
+    role: dimension
+  - name: apvp_coin_limit
+    type: int
+    comment: 异步PVP货币上限
+    role: measure
+  - name: apvp_rank
+    type: int
+    comment: 异步PVP排名
+    role: measure
+  - name: spvp_score
+    type: int
+    comment: 同步PVP积分
+    role: measure
+  - name: spvp_level
+    type: int
+    comment: 同步PVP段位
+    role: measure
+  - name: spvp_score_tm
+    type: datetime
+    comment: 同步PVP达成时间
+    role: dimension
+  - name: spvp_rank
+    type: int
+    comment: 同步PVP排名
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 角色UV（当日快照去重角色数，_df 全量）
+  role_force_sum:
+    expression: SUM(role_force)
+    description: 全服角色总战力
+  role_force_avg:
+    expression: AVG(NULLIF(role_force, 0))
+    description: 全服角色平均战力
+  pve_goals_std_sum:
+    expression: SUM(goals_std)
+    description: PVE 累计星数总和（当日快照）
+  apvp_top1_cnt:
+    expression: COUNT_IF(apvp_rank = 1)
+    description: 异步PVP 排名第一角色数
+coverage:
+  scenarios:
+    - 全服角色战力/等级分布与排行盘点（_df 日全量快照）
+    - PVE 主线/无尽塔累计星数及排名 Top 盘点
+    - 异步/同步 PVP 段位与排名头部角色盘点
+  limitations:
+    - 表为空/无数据（MAX(ds) NULL，2026-07-31 探测），所有指标为结构性定义未实测
+    - 仅 scout 抽样验证，未做全量 maxc 实测复核
+    - _df 为日全量快照，UV/sum 为快照截面值，非当日新增
+    - 缺 server 维度聚合（server_id 已存在，可按区服切片）
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表为空，仅完成结构性丰富，待有数据后实测复核
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (comment 区服id) is an exact name match to the primary key server_id of dim_10000251_server_info, the 服务器(区服)维度配置表 described as purpose-built for fact-table server_id JOIN.
+    origin: deterministic
+pref_label: 角色排行榜2
+alt_labels:
+  - 排行
+  - 排名
+  - 榜单
+  - 竞争

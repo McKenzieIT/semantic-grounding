@@ -1,0 +1,162 @@
+name: game.item.change
+event_filter: event = 'game.item.change'
+description: |-
+  道具资源变化日志：角色获得(action=1)或消耗(action=2)道具时触发，记录道具类型/itemId/唯一id/变化前后数量及改变量，附带角色等级/vip/战力等33个参数。分析主体为 role_id（角色粒度），每条记录代表一次道具增减。
+  实测单日体量(ds=20260729)：事件 4,323,232 条，覆盖 4,750 角色 / 4,414 账号 / 483 服务器；其中获得类 2,591,241 条(amount合计 51,034,542)，消耗类 1,731,991 条(amount合计 42,003,409)。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等33个
+domains:
+  - 装备道具
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  action:
+    type: int
+    description: 1获得2消耗
+  itemType:
+    type: int
+    description: 道具类型
+  itemId:
+    type: int
+    description: 物品id
+  itemUid:
+    type: int
+    description: 唯一id
+  beforeAmount:
+    type: int
+    description: 旧数量
+  afterAmount:
+    type: int
+    description: 新数量
+  amount:
+    type: int
+    description: 改变的数量
+  reason1:
+    type: int
+    description: reason1
+  reason2:
+    type: int
+    description: reason2
+  reason3:
+    type: int
+    description: reason3
+  reason4:
+    type: int
+    description: reason4
+metrics:
+  game_item_change_cnt:
+    expression: COUNT(*)
+    description: 道具变化事件总次数（含获得与消耗）
+  game_item_change_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发道具变化的角色数
+  game_item_change_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发道具变化的账号数
+  game_item_change_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发道具变化的游戏服数
+  game_item_change_obtain_cnt:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params, '$.action') AS BIGINT) = 1 THEN 1 ELSE 0 END)
+    description: 获得类道具变化事件次数(action=1)
+  game_item_change_consume_cnt:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params, '$.action') AS BIGINT) = 2 THEN 1 ELSE 0 END)
+    description: 消耗类道具变化事件次数(action=2)
+  game_item_change_obtain_amount:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params, '$.action') AS BIGINT) = 1 THEN CAST(GET_JSON_OBJECT(params, '$.amount') AS BIGINT) ELSE 0 END)
+    description: 获得类道具数量合计(action=1)
+  game_item_change_consume_amount:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params, '$.action') AS BIGINT) = 2 THEN CAST(GET_JSON_OBJECT(params, '$.amount') AS BIGINT) ELSE 0 END)
+    description: 消耗类道具数量合计(action=2)
+  game_item_change_amount_per_role:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.amount') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均道具变化数量（总变化量/活跃角色数）
+coverage:
+  scenarios:
+    - 道具产出与消耗的总体规模、获得/消耗结构占比
+    - 角色人均道具变化量，识别道具囤积/消耗异常角色
+    - 按服务器/账号分布的道具流转活跃度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度），未做 account_id 维度交叉验证
+    - reason1-reason4 维度未在本日校验，明细归因需按 reason 切片复核
+    - itemId/itemType 明细 TOP-N 未实测，建议按道具类型二次下钻
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "measured ds=20260729: cnt=4323232, role_uv=4750, acc_uv=4414, server_uv=483; obtain(action=1) cnt=2591241 amount_sum=51034542; consume(action=2) cnt=1731991 amount_sum=42003409"
+coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_trans_reason1_df
+    join_keys:
+      - dws_column: reason1
+        dim_column: reason1
+    derivation: 确定性：事件字段 reason1 与 dim_10000251_trans_reason1_df 主键精确同名
+    origin: deterministic
+alt_labels:
+  - 道具变动

@@ -1,0 +1,6 @@
+name: 用户生命周期
+description: 注册、登录、活跃、留存、流失、回流相关
+pref_label: 用户生命周期
+alt_labels:
+  - 回归
+  - 回流

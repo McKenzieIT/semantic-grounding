@@ -1,0 +1,111 @@
+table_name: dws_10000251_algo_role_churn_train
+engine: maxcompute
+table_comment: 角色流失预测训练样本表（算法训练）。每行=某分区样本下的一个角色，含 role_info 历史活跃序列、sample_info 特征 JSON、tag/label 流失标签，sample_type=train。
+description: |-
+  粒度：角色级（每行=一个训练样本角色）。分析主体=角色（role）。
+  角色流失预测模型的训练样本快照表。每个 ds 分区按 sample_type=train 抽样角色，记录 role_info 历史活跃序列、sample_info 特征 JSON、tag=流失标记(0/1)、label=真实流失标签(0/1)，用于训练流失预测模型。ds 形如 20260730_7_0（含窗口编码，非自然日）。主要字段：role_id, acc_id, server_ds, server_id, act_ds, role_info, sample_info, tag, label, server_nday, role_nday, sample_nday, start_nday, ds 等14列。
+domains:
+  - 用户生命周期
+  - 角色成长
+granularity: 角色级训练样本快照（每行=一个角色训练样本，ds 为带窗口编码的分区，非自然日）
+columns:
+  - name: role_id
+    type: string
+    comment: 角色ID（主键）
+    role: dimension
+  - name: acc_id
+    type: string
+    comment: 账号ID
+    role: dimension
+  - name: server_ds
+    type: string
+    comment: 进服日期(yyyymmdd)
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 服务器ID
+    role: dimension
+  - name: act_ds
+    type: string
+    comment: 角色激活日期(yyyymmdd)
+    role: dimension
+  - name: role_info
+    type: string
+    comment: 角色历史活跃序列(yyyymmdd,活跃天数,某指标 反引号分隔多日)
+    role: attribute
+  - name: sample_info
+    type: string
+    comment: 样本特征JSON(pay/login/buy/act last/before N 等聚合特征 + 玩家进度/服进度，sample_type=train)
+    role: attribute
+  - name: tag
+    type: bigint
+    comment: 流失标记(1=标记流失，训练标签之一)
+    role: measure
+  - name: label
+    type: bigint
+    comment: 真实流失标签(1=实际流失)
+    role: measure
+  - name: server_nday
+    type: bigint
+    comment: 服开服至样本日的天数
+    role: measure
+  - name: role_nday
+    type: bigint
+    comment: 角色创角至样本日的天数
+    role: measure
+  - name: sample_nday
+    type: bigint
+    comment: 样本日期相对基准的天数偏移
+    role: measure
+  - name: start_nday
+    type: bigint
+    comment: 创角起始天偏移
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区键，形如 20260730_7_0(含窗口编码，非自然日)
+    role: partition
+columns_meta: {}
+metrics:
+  train_sample_role_uv:
+    description: 训练样本角色去重数(UV)，按 role_id 去重
+    expression: COUNT(DISTINCT role_id)
+  train_sample_cnt:
+    description: 训练样本条数(每角色跨多预测窗口)
+    expression: COUNT(*)
+  churn_label_cnt:
+    description: 实际流失正样本数(label=1)
+    expression: SUM(label)
+  churn_label_rate:
+    description: 训练集流失率=流失正样本数/训练样本条数
+    expression: SUM(label) / NULLIF(COUNT(*), 0)
+  avg_role_nday:
+    description: 训练样本角色平均天数(创角至样本日)
+    expression: AVG(role_nday)
+coverage:
+  scenarios:
+    - 训练流失预测模型：统计最新 ds 分区训练样本规模(train_sample_role_uv/train_sample_cnt)与正负样本分布(churn_label_cnt/churn_label_rate)，评估训练集可用性与类别平衡
+    - 角色生命周期刻画：avg_role_nday 反映训练样本角色的生命周期长度分布，辅助流失预测特征工程
+  limitations:
+    - ds 为带窗口编码的分区键(如 20260730_7_0)，非自然日，按日聚合前需先解析窗口段
+    - 本表无 user_type 列，主体=角色由表名 algo_role 与 role_id 主键推断，未直接验证
+    - role_info/sample_info 为字符串/JSON，需在应用层解析后才能做维度下钻
+    - 仅对最新 ds(20260730_7_0)做了 5 指标抽样实测复核，未做跨分区全量校验
+  coverage_status: analyst_reviewed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 最新 ds(20260730_7_0) 实测：train_sample_role_uv=1662044, train_sample_cnt=8305304, churn_label_cnt=177920, churn_label_rate≈2.14%, avg_role_nday≈405.3，值合理。表非空。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: "DWS column server_id (comment: 服务器ID) is an exact match to the primary key server_id of dim_10000251_server_info, the 服务器/区服维度配置表 explicitly designed for fact tables to JOIN via server_id to retrieve server name and open-date attributes."
+    origin: deterministic
+pref_label: 流失训练样本表
+alt_labels:
+  - 训练
+  - 算法
+  - 样本

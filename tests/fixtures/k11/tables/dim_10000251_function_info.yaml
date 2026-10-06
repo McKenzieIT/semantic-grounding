@@ -1,0 +1,70 @@
+table_name: dim_10000251_function_info
+engine: maxcompute
+kind: dim
+table_comment: 游戏功能配置维度表（每个 function_id 一行，记录功能名称/解锁条件/前置功能/解锁提示等配置属性）
+description: '游戏 10000251 的功能（function）配置维度表。每行描述一个功能的标识、名称、解锁条件（open_value/open_day）、前置功能依赖（per_function）、解锁提示与新手引导开关（unlock_show/novice_guidance）以及是否纳入参与数统计（log_function）。主要用作事实表的功能维度回查（按 function_id JOIN 取 function_name1/function_name2 等属性）。'
+primary_key:
+- function_id
+primary_key_unique: true
+label_columns:
+- function_name1
+- function_name2
+domains:
+- 系统监控
+granularity: 每个功能（function_id）一行的配置维度表
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 按 function_id 回查事实表对应的功能名称（function_name1/function_name2）做维度下钻/展示
+  - 通过 per_function 解析功能依赖链路（前置功能 -> 解锁条件）分析功能解锁路径
+  - 按 open_value/open_day 分析功能解锁条件分布（配置层视角，非运行时实际解锁）
+  - 按 log_function 筛选纳入参与数统计的功能子集，校验埋点覆盖范围
+  limitations:
+  - 配置类维度表，无值度量（金额/次数等度量需在事实表中计算）
+  - per_function/open_value 为编码串，需在下游按业务编码规则二次解码才能关联具体功能或条件
+  - 仅反映静态配置，不反映玩家实际解锁状态（运行时解锁需结合玩家事实表）
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '依据 meta describe 列与唯一性实测（r=260,d=260 一致）；status 保持 draft 待业务确认。'
+columns:
+- name: function_id
+  type: string
+  comment: 功能ID
+  role: dimension
+- name: function_name1
+  type: string
+  comment: 功能名称1
+  role: dimension
+- name: function_name2
+  type: string
+  comment: 功能名称2
+  role: dimension
+- name: open_value
+  type: string
+  comment: 解锁条件
+  role: dimension
+- name: open_day
+  type: string
+  comment: 解锁天数
+  role: dimension
+- name: per_function
+  type: string
+  comment: 前置功能ID
+  role: dimension
+- name: unlock_show
+  type: string
+  comment: 是否弹出解锁提示
+  role: dimension
+- name: novice_guidance
+  type: string
+  comment: 解锁后强制查看
+  role: dimension
+- name: log_function
+  type: string
+  comment: 是否需要进行参与数的数据统计
+  role: dimension

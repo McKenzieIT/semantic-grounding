@@ -1,0 +1,112 @@
+name: game.tactic.composite
+event_filter: event = 'game.tactic.composite'
+description: 角色成长域-战法合成事件。玩家在游戏内合成/打造战法时触发，记录目标战法 tacticId 与玩家快照（角色等级/vip/战力/经验/各类货币）。分析主体粒度为 role_id（角色）。ds=20260729 实测：259 次合成，覆盖 251 角色、250 账号、87 服。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  tacticId:
+    type: int
+    description: 战法id
+metrics:
+  game_tactic_composite_cnt:
+    expression: COUNT(*)
+    description: 战法合成总次数
+  game_tactic_composite_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 合成战法的去重角色数（分析主体）
+  game_tactic_composite_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 合成战法的去重账号数
+  game_tactic_composite_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的游戏服数量
+  game_tactic_composite_tactic_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.tacticId'))
+    description: 被合成的去重战法种类数（tacticId）
+  game_tactic_composite_per_role_avg:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均合成次数（总次数/去重角色数）
+coverage:
+  scenarios:
+    - 战法合成整体规模与参与度（总次数/角色数/账号数/服数）
+    - 不同战法 tacticId 的合成覆盖广度
+    - 人均合成次数反映战法产出密度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体粒度默认 role_id（角色），账号级聚合须改用 account_uv 指标
+    - coinList 各货币字段为合成时刻的持有快照，非本次合成消耗量，未单列消耗指标
+    - tacticId 经 params 解析，依赖客户端上报完整性
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: ds=20260729 实测：cnt=259, role_uv=251, acc_uv=250, server_uv=87。单日数据合理（人均约1.03次），确认事件在线。
+coverage_status: analyst_confirmed
+external_refs: []

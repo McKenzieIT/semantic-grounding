@@ -1,0 +1,113 @@
+name: game.springfestival.preheatdecoratereward
+event_filter: event = 'game.springfestival.preheatdecoratereward'
+description: 春节活动-预热装饰奖励。记录玩家在春节预热活动阶段领取装饰奖励的行为，参数包含装饰id(decorateId)、活动id(activityId)、角色基础属性(roleId/roleName/roleLevel/vipLevel/roleForce/exp)、货币余额(coinList.gold/sendgold/freegold/diamond/expCoin/energy)等24个字段。分析主体为 role_id（角色级事件），可按活动id/装饰id维度评估奖励发放量与覆盖面。真实测得体量：ds=20260729 与 ds=20260728 双日 scout 均零命中(cnt=0)，事件疑似下线或本期未触发。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  activityId:
+    type: int
+    description: 活动id
+  decorateId:
+    type: int
+    description: 装饰id
+metrics:
+  game_springfestival_preheatdecoratereward_cnt:
+    expression: COUNT(*)
+    description: 春节预热装饰奖励事件总记录数（按日志行计）
+  game_springfestival_preheatdecoratereward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发该事件的不重复角色数（分析主体为 role_id）
+  game_springfestival_preheatdecoratereward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发该事件的不重复账号数
+  game_springfestival_preheatdecoratereward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发该事件的不重复游戏服数
+  game_springfestival_preheatdecoratereward_activity_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.activityId'))
+    description: 该事件涉及的不重复活动id数（params.activityId，含NULL计数）
+  game_springfestival_preheatdecoratereward_decorate_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.decorateId'))
+    description: 该事件涉及的不重复装饰id数（params.decorateId，含NULL计数）
+coverage:
+  scenarios:
+    - 春节预热活动装饰奖励的整体发放量与覆盖面：事件总次数/角色UV/账号UV/游戏服数
+    - 按 activityId、decorateId 维度评估不同活动与不同装饰奖励的发放分布
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 日志中零命中(ds=20260729 与 ds=20260728 均为 cnt=0)，事件疑似下线或本期未触发
+    - 分析主体粒度默认 role_id（事件 params 含 roleId），未做跨服/跨账号去重验证
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 cnt=0/role_uv=0/acc_uv=0/server_uv=0；retry ds=20260728 仍 cnt=0；事件疑似下线或本期未触发，维持 draft
+coverage_status: draft
+external_refs: []

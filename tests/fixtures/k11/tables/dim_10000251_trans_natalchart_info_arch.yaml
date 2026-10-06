@@ -1,0 +1,70 @@
+table_name: dim_10000251_trans_natalchart_info_arch
+engine: maxcompute
+kind: dim
+table_comment: '命盘词条配置维度表（natalchart info archive）：按 ds 日分区快照的配置/维度表，每行一个命盘词条属性条目。'
+description: '游戏 10000251 命盘（natalchart）词条配置维度表。存储命盘各 module（词条集合）下 attr_id（属性类型）对应的 attr_value（类型值）、weight（权重）、quality（稀有度）、show_position（显示点位）及 directions（备注），作为星盘/命盘相关分析的配置维度 lookup 表。主键 id（词条id），但因按 ds 日分区快照，同一 id 跨分区重复（113952 行 / 272 distinct id），故 primary_key_unique=false；label 列为 module 与 attr_value。'
+domains:
+- 系统监控
+granularity: '每 条目（id）× 日分区（ds）一行；同一 id 在不同 ds 快照下重复。'
+primary_key:
+- id
+primary_key_unique: false
+label_columns:
+- module
+- attr_value
+columns:
+- name: id
+  type: string
+  comment: 词条id
+  role: dimension
+- name: module
+  type: string
+  comment: 词条集合
+  role: dimension
+- name: attr_id
+  type: string
+  comment: 词条属性类型
+  role: dimension
+- name: attr_value
+  type: string
+  comment: 类型值
+  role: dimension
+- name: weight
+  type: string
+  comment: 权重
+  role: dimension
+- name: quality
+  type: string
+  comment: 稀有度
+  role: dimension
+- name: show_position
+  type: string
+  comment: 显示点位
+  role: dimension
+- name: directions
+  type: string
+  comment: 备注
+  role: dimension
+- name: ds
+  type: string
+  comment: '日分区（快照日期，yyyyMMdd）'
+  role: partition
+coverage:
+  scenarios:
+  - 'JOIN 到事实表（按 id + ds）获取命盘词条的 module/attr_value/weight/quality 等维度属性，用于星盘/命盘属性分布与稀有度分析。'
+  - '按 module 聚合统计该词条集合下的属性条目数与权重分布。'
+  - '按 quality（稀有度）分组统计各稀有度词条数量。'
+  limitations:
+  - '配置类维度表，无值度量（无 measure 字段）。'
+  - '主键 id 跨 ds 分区不唯一（每日快照重复），JOIN 时须带 ds 限定到目标日期分区，否则产生一对多重复。'
+  - 'attr_value/weight/quality 等为字符串编码，需结合业务字典二次解码其含义。'
+  - 'primary_key_unique=false 已实测（r=113952 != d=272），未声明为唯一。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含所有 ds 快照）
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'dim 建模草稿。主键 id 跨 ds 不唯一（已实测），label=module/attr_value，未做 analyst 确认。'

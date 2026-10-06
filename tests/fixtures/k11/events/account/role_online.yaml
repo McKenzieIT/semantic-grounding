@@ -1,0 +1,105 @@
+name: game.role.online
+event_filter: event = 'game.role.online'
+description: 角色上线事件：玩家角色登录游戏服时上报，记录上线时刻的账号、角色、游戏服、角色等级、VIP等级、战力、经验及关键货币快照。主体粒度为 role_id（角色级），同时携带 account_id 用于账号维度的活跃统计。单日 ds=20260729 scout 实测 cnt=14009 / role_uv=4734 / acc_uv=4396，反映角色真实上线登录的活跃体量。
+domains:
+  - 用户生命周期
+domain: account
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  loginIp:
+    type: string
+    description: 登录ip
+metrics:
+  game_role_online_cnt:
+    expression: COUNT(*)
+    description: 角色上线事件总次数（按角色粒度，每次登录上报一条）
+  game_role_online_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日登录游戏服的去重角色数（主体指标，role_id 粒度）
+  game_role_online_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 当日登录游戏服的去重账号数（account_id 粒度，用于账号维度的活跃统计）
+  game_role_online_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 当日有角色登录的去重游戏服数（server_id 粒度，反映服务器活跃分布）
+coverage:
+  scenarios:
+    - 角色上线登录活跃规模：当日登录总次数 game_role_online_cnt 与去重角色 UV game_role_online_role_uv（主体）
+    - 账号级活跃量 game_role_online_account_uv，回答“每日多少账号登录游戏”
+    - 服务器活跃分布 game_role_online_server_uv，回答“多少服务器有玩家在线/服务器活跃广度”
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测(cnt=14009/role_uv=4734/acc_uv=4396/server_uv=484)，未做全量复核
+    - 分析粒度默认 role_id（角色级，account 域 role_* 事件），account_id 仅作辅助维度，未逐事件实测角色级聚合准确性
+    - 仅统计登录事件本身，不含在线时长/下线留存，无法直接计算人均在线时长
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 scout 实测：cnt=14009 / role_uv=4734 / acc_uv=4396 / server_uv=484，事件命中真实可信
+  coverage_status: analyst_confirmed
+external_refs: []

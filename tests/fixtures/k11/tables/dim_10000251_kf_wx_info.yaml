@@ -1,0 +1,54 @@
+table_name: dim_10000251_kf_wx_info
+engine: maxcompute
+kind: dim
+table_comment: 企微客服维度配置表。每行一个企微客服员工及其端内客服身份映射。业务咨询：褚勤(null)#
+description: '企微客服维度配置表。每行一个企微客服员工记录，映射端内客服ID/姓名与企微员工ID/名称。
+
+  用途：作为客服相关事实表的维度Lookup，提供客服身份标识（service_wshoto_user_id、service_id）与可读标签（service_name、service_wshoto_name）。
+
+  粒度：每企微客服员工一行的维度/配置表。
+
+  主要字段：service_wshoto_user_id(主键), service_name, service_id, service_wshoto_name。'
+primary_key:
+- service_wshoto_user_id
+primary_key_unique: true
+label_columns:
+- service_name
+- service_wshoto_name
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+domains:
+- 系统监控
+granularity: 每企微客服员工一行的维度/配置表
+columns:
+- name: service_wshoto_user_id
+  type: string
+  comment: 客服企微id
+  role: dimension
+- name: service_name
+  type: string
+  comment: 端内客服姓名
+  role: dimension
+- name: service_id
+  type: string
+  comment: 端内客服ID
+  role: dimension
+- name: service_wshoto_name
+  type: string
+  comment: 企微员工名称
+  role: dimension
+coverage:
+  scenarios:
+  - 维度Lookup：事实表通过 service_wshoto_user_id 或 service_id JOIN 获取客服可读姓名（service_name/service_wshoto_name）
+  - 客服身份映射：端内客服ID（service_id）与企微员工ID（service_wshoto_user_id）/企微员工名称（service_wshoto_name）双向映射
+  limitations:
+  - 配置类维度表，无值度量（measures），仅提供身份与标签
+  - 表行数极少（实测1行），仅覆盖当前在岗客服，历史客服需上游补充
+  - service_id 为字符串编码，如需数值运算需二次转换
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 基于meta describe确认列结构与主键，实测COUNT(*)=COUNT(DISTINCT service_wshoto_user_id)=1通过唯一性验证；尚未业务确认。

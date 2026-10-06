@@ -1,0 +1,48 @@
+table_name: dim_10000251_trans_task_df
+engine: maxcompute
+kind: dim
+table_comment: '游戏 10000251 任务配置维度表（日全量快照 _df），主键 id，每行一条任务配置'
+description: '游戏 10000251 的任务（trans_task）配置维度表，日全量快照(_df)。每行一条任务配置记录，主键 id 为任务唯一标识，name 为任务描述（人类可读标签），func_id 为解锁该任务的功能 id（可关联功能配置），type 为任务类型分类。作为任务维度表，供事实表按 id/func_id/type 做 JOIN 维度查询。'
+domains:
+- 系统监控
+granularity: 每条任务配置一行（日全量快照 _df）
+primary_key:
+- id
+label_columns:
+- name
+primary_key_unique: true
+columns:
+- name: id
+  type: string
+  comment: 任务id
+  role: dimension
+- name: name
+  type: string
+  comment: 任务描述
+  role: dimension
+- name: func_id
+  type: string
+  comment: 解锁任务的功能id
+  role: dimension
+- name: type
+  type: string
+  comment: 任务类型
+  role: dimension
+coverage:
+  scenarios:
+  - 任务事实表按 trans_id/id JOIN 获取任务名称(name)、类型(type)、解锁功能(func_id)
+  - 按任务类型(type)分组聚合，统计各类任务配置规模
+  - 按 func_id 关联功能配置，分析功能-任务映射关系
+  limitations:
+  - 配置类维度表，无值度量(metrics)，仅提供维度属性
+  - func_id/type 为编码字符串，需参照业务编码字典二次解码含义
+  - 日全量快照(_df)，配置变更随快照日期生效，无历史版本回溯
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 maxc meta describe 验证真实列(id/name/func_id/type)；主键唯一性实测 r=d=135 通过；domain=系统监控(配置类维度表)。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（任务配置条数）

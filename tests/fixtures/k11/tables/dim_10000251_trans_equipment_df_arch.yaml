@@ -1,0 +1,64 @@
+table_name: dim_10000251_trans_equipment_df_arch
+engine: maxcompute
+kind: dim
+table_comment: '装备配置维度归档表，按 ds 分区存储装备属性每日全量快照（id+ds 唯一）。'
+description: '游戏 10000251 的装备配置维度归档表（dim_10000251_trans_equipment_df_arch）。存储装备id、名称、品质、所属套装、阶数、部位类型等配置属性，按 ds 日期分区每日全量快照。用于装备属性维度查询，复合主键 (id, ds) 标识每条装备快照，name 为可读标签。'
+domains:
+- 装备道具
+granularity: '每 装备id+快照日期(ds) 一行的装备配置维度表'
+primary_key:
+- id
+- ds
+label_columns:
+- name
+primary_key_unique: true
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '装备配置维度归档表；复合主键 (id,ds) 经实测唯一（103145 行，0 重复对）；保持 draft 因快照表跨分区 id 非全局唯一。'
+coverage:
+  scenarios:
+  - 装备属性维度查询：按 id 关联装备id 查 name/quality/suit/level/part
+  - 装备配置历史快照对比：按 ds 取不同日期分区对比装备属性变更
+  limitations:
+  - 配置类维度表，无值度量（quality 为品质等级枚举，非可加度量）
+  - 按日全量快照归档，同一 id 在不同 ds 分区重复存在；跨分区 id 非唯一，需配合 ds 限定分区
+  - suit/level/part 为编码值，需二次解码映射名称
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含所有快照分区）
+columns:
+- name: id
+  type: string
+  comment: 装备id
+  role: dimension
+- name: name
+  type: string
+  comment: 装备名称
+  role: dimension
+- name: quality
+  type: bigint
+  comment: 品质
+  role: dimension
+- name: remark
+  type: string
+  comment: 备注
+  role: dimension
+- name: suit
+  type: string
+  comment: 所属套装
+  role: dimension
+- name: level
+  type: string
+  comment: 阶数
+  role: dimension
+- name: part
+  type: string
+  comment: 部位类型
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition

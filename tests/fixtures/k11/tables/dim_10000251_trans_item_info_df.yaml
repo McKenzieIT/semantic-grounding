@@ -1,0 +1,127 @@
+table_name: dim_10000251_trans_item_info_df
+engine: maxcompute
+kind: dim
+primary_key:
+- id
+label_columns:
+- name
+table_comment: 道具配置维度表（日全量快照 _df），按道具 id 提供道具名/类型/品质/分组/价格等静态属性
+description: '游戏 10000251 的道具（item）配置维度表，日全量快照(_df)。每行对应一个道具 id，提供道具名(name)、隶属系统(beizhu)、类型(type/value1/value2)、品质(quality)、使用等级(level_limit)、道具描述(directions)、icon(res/new_res)、背包标签(display/button_type)、GM可发(gm)、红点(is_redpoint)、回收(recycle/activity_recycle)、限时属性(limited_time 系列)、分组(group)、价值(price) 等静态配置属性。用于作为维度表与事实表 JOIN，解析背包/邮件/掉落/兑换等业务流水中的道具 id。'
+domains:
+- 装备道具
+granularity: 每个道具 id 一行的配置维度表（日全量快照 _df）
+columns:
+- name: id
+  type: bigint
+  comment: 道具id
+  role: dimension
+- name: name
+  type: string
+  comment: 道具名
+  role: dimension
+- name: beizhu
+  type: string
+  comment: 隶属系统
+  role: dimension
+- name: type
+  type: string
+  comment: 类型
+  role: dimension
+- name: value1
+  type: string
+  comment: 类型值1
+  role: dimension
+- name: value2
+  type: string
+  comment: 类型值2
+  role: dimension
+- name: quality
+  type: string
+  comment: 道具品质
+  role: dimension
+- name: level_limit
+  type: string
+  comment: 使用等级
+  role: dimension
+- name: directions
+  type: string
+  comment: 道具描述
+  role: dimension
+- name: res
+  type: string
+  comment: icon
+  role: dimension
+- name: new_res
+  type: string
+  comment: icon
+  role: dimension
+- name: gm
+  type: string
+  comment: GM后台是否可发
+  role: dimension
+- name: display
+  type: string
+  comment: 背包标签
+  role: dimension
+- name: is_redpoint
+  type: string
+  comment: 是否有红点提醒
+  role: dimension
+- name: button_type
+  type: string
+  comment: 背包按钮
+  role: dimension
+- name: recycle
+  type: string
+  comment: 回收获得
+  role: dimension
+- name: limited_time
+  type: string
+  comment: 是否限时道具
+  role: dimension
+- name: limited_time_parameter
+  type: string
+  comment: 限时参数
+  role: dimension
+- name: activity_recycle
+  type: string
+  comment: 活动转化获得
+  role: dimension
+- name: limited_time_autouse
+  type: string
+  comment: 限时是否自动使用
+  role: dimension
+- name: limited_time_mail
+  type: string
+  comment: 限时是否邮件提醒
+  role: dimension
+- name: group
+  type: string
+  comment: 道具分组
+  role: dimension
+- name: price
+  type: double
+  comment: 道具价值
+  role: measure
+primary_key_unique: false
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 背包/邮件/掉落/兑换/回收等业务事实表通过 item_id JOIN 本表，获取道具名/品质/分组/价值等静态属性
+  - 道具品质(quality)、道具分组(group)、隶属系统(beizhu) 等维度切片分析
+  - 限时道具(limited_time)、GM可发(gm) 等属性筛选与配置核查
+  limitations:
+  - 配置类维度表，无值度量（price 仅为道具配置价值，非事实度量）
+  - 唯一性实测：SELECT COUNT(*)=558, COUNT(DISTINCT id)=557，id=0 占位行存在 2 条重复，故 primary_key_unique=false（占位/异常 id 行）
+  - value1/value2/button_type/limited_time_parameter 等为编码字符串，需按业务规则二次解码后方可用于切片
+  - 日全量快照(_df)，无分区时间维度，仅反映最新配置；历史配置变更不保留版本
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 maxc meta describe 校真实列（23 列，id BIGINT/name STRING/price DOUBLE 等）；
+    primary_key=id（meta 标注的自然唯一 id），label_columns=name（道具名）；唯一性实测 r=558 d=557
+    因 id=0 占位行重复故 primary_key_unique=false，保持 draft。domain=装备道具（道具配置维度表）。'

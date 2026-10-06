@@ -1,0 +1,44 @@
+table_name: dim_10000251_user_tag_before_ob_info
+engine: maxcompute
+kind: dim
+primary_key:
+- user_id
+label_columns:
+- biz_name
+primary_key_unique: true
+table_comment: '游戏10000251用户标签(OB前)维度表：记录用户在 OB(公测/上线)前所携带的标签/批次属性，每用户标签一行，主键 user_id'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+description: '游戏10000251用户标签维度表(dim)：记录用户在 OB(公测)前所归属的标签/批次信息(如 CBT1 等测试批次标签)。主键 user_id(已实测唯一 r=d=98657)，标签列 biz_name，含 user_type 用户类型字段。用于通过 user_id 关联事实表，做标签维度下钻与分群。'
+domains:
+- 用户生命周期
+granularity: '每 用户标签(OB前) 一行的维度表'
+columns:
+- name: user_type
+  type: bigint
+  comment: '用户类型标识(整数编码)'
+  role: dimension
+- name: user_id
+  type: string
+  comment: '用户唯一标识(哈希串)，表主键'
+  role: dimension
+- name: biz_name
+  type: string
+  comment: '业务/标签名称(如 CBT1 等测试批次标签)，label 列'
+  role: dimension
+coverage:
+  scenarios:
+  - 通过 user_id 关联事实表，按 biz_name 标签(如 CBT1 测试批次)做用户分群与指标下钻
+  - 按 user_type 区分用户类型分布，做用户结构分析
+  limitations:
+  - 配置/标签类维度表，无值度量(metric)字段，仅作为 JOIN 维度使用
+  - biz_name 为编码串(如 CBT1)，需业务侧二次解读其确切含义
+  - user_type 整数编码语义未在表注释中说明，需业务确认
+  - 表无注释，字段语义基于命名与样本推断，待业务复核
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '自动化 dim 建模：primary_key 选 user_id(meta 标注且实测 r=d=98657 唯一)，label 选 biz_name；保持 draft 待业务确认 biz_name/user_type 语义。'

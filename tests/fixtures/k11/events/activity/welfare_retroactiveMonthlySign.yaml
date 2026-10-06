@@ -1,0 +1,111 @@
+name: game.welfare.retroactiveMonthlySign
+event_filter: event = 'game.welfare.retroactiveMonthlySign'
+description: 玩家补签领取月签奖励事件（welfare.retroactiveMonthlySign）。记录玩家对当月漏签日进行补签并领取对应奖励的行为，参数含游戏服/账号/角色基础信息、角色等级/vip/战力/经验、看板娘、关键货币列表（充值钻石、赠送钻石、免费钻石、紫金、经验卷轴、体力）及补签 day。分析主体为 role_id（角色粒度），account_id 为账号粒度。scout 实测 ds=20260729：cnt=1016, role_uv=204, acc_uv=201, server_uv=147。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  day:
+    type: int
+    description: day
+metrics:
+  retroactive_monthly_sign_cnt:
+    expression: COUNT(*)
+    description: 补签领取奖励事件总次数
+  retroactive_monthly_sign_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 补签去重角色数（分析主体 role_id 粒度）
+  retroactive_monthly_sign_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 补签去重账号数
+  retroactive_monthly_sign_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 补签覆盖游戏服数
+  retroactive_monthly_sign_per_role_avg:
+    expression: ROUND(COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0), 2)
+    description: 人均补签次数（总次数/去重角色数）
+  retroactive_monthly_sign_day_avg:
+    expression: ROUND(AVG(CAST(GET_JSON_OBJECT(params, '$.day') AS BIGINT)), 2)
+    description: 平均补签 day 值（补签的目标日序）
+coverage:
+  scenarios:
+    - 月签补签活跃与渗透：统计补签事件次数、参与角色/账号数，衡量补签功能使用热度。
+    - 人均补签强度：人均补签次数反映单角色补签频繁度，定位重度补签用户。
+    - 补签目标日分布：平均补签 day 揭示玩家倾向补签的日序。
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核（多日趋势/跨月对比未验证）。
+    - 分析主体默认 role_id（角色粒度）；account_id 供账号粒度交叉参考。
+    - metrics 仅基于 base view 列与 GET_JSON_OBJECT(params,'$.<field>')，未做 JOIN。
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=1016, role_uv=204, acc_uv=201, server_uv=147；数值合理，事件在线触发正常。
+external_refs: []

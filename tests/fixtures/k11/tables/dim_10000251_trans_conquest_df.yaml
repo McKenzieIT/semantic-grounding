@@ -1,0 +1,49 @@
+table_name: dim_10000251_trans_conquest_df
+engine: maxcompute
+kind: dim
+primary_key:
+- chapter_id
+- stage_id
+primary_key_unique: true
+label_columns:
+- name
+table_comment: '征服/推图关卡维度配置表（日全量快照 _df）：按章节-关卡粒度记录关卡名与推荐等级。'
+description: '征服/推图关卡维度配置表（日全量快照 _df）。每章节-关卡一行，提供关卡名(name)与推荐等级(reco_level)。主键为 chapter_id+stage_id 复合键；label 为 name。'
+domains:
+- 战斗关卡
+granularity: 每 章节-关卡(chapter_id+stage_id) 一行的关卡维度/配置表
+columns:
+- name: chapter_id
+  type: string
+  comment: 章节id
+  role: dimension
+- name: stage_id
+  type: string
+  comment: 关卡id
+  role: dimension
+- name: name
+  type: string
+  comment: 关卡名
+  role: dimension
+- name: reco_level
+  type: bigint
+  comment: 推荐等级
+  role: dimension
+coverage:
+  scenarios:
+  - 事实表/事件表通过 chapter_id+stage_id JOIN 查关卡名(name)与推荐等级(reco_level)的维度回填
+  - 按 chapter_id 聚合统计各章节关卡数与推荐等级分布
+  - 按 stage_id 跨章节对比同关卡编号下的推荐等级差异
+  limitations:
+  - 配置类维度表，无值度量(metrics)字段
+  - 主键为复合键(chapter_id+stage_id)，单列 chapter_id 或 stage_id 均非唯一
+  - 名称为通用串(如"10层")，跨章节可重复，需结合 chapter_id 语境使用
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '主键 chapter_id+stage_id 复合唯一性已实测(r=40=d_combo)；单列非唯一。配置类维度表，无度量字段。状态保持 draft 待业务确认。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数

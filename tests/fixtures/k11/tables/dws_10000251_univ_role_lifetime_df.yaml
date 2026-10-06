@@ -1,0 +1,86 @@
+table_name: dws_10000251_univ_role_lifetime_df
+engine: maxcompute
+table_comment: 通用数据-角色生命周期（N日）明细指标表
+description: |-
+  通用数据-角色生命周期（N日）明细指标表。按角色(user_id)记录累计付费、活跃、等级等生命周期累计快照指标。
+  粒度：日全量快照(_df)，每日全量保留所有角色累计状态。分析主体=角色（user_type=3，已实测最新分区单值）。
+  主要字段：user_type, user_id, daily_metrics(每日累计快照数组), pay_amt_std, act_days_std, act_dur_std, act_pv_std, role_level, ds 等9列。
+domains:
+  - 用户生命周期
+  - 付费经济
+granularity: 日全量快照(_df)
+columns:
+  - name: user_type
+    type: bigint
+    comment: 用户类型，1-设备、2-账号、3-角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户ID
+    role: dimension
+  - name: daily_metrics
+    type: array<struct<`pay_amt`:double,`pay_amt_std`:double,`act_dur`:bigint,`act_pv`:bigint,`role_level`:bigint,`login_days`:bigint,`act`:bigint,`pay`:bigint>>
+    comment: 每日累计快照
+    role: attribute
+  - name: pay_amt_std
+    type: double
+    comment: 累计付费金额
+    role: measure
+  - name: act_days_std
+    type: bigint
+    comment: 累计活跃天数
+    role: measure
+  - name: act_dur_std
+    type: bigint
+    comment: 累计活跃时长
+    role: measure
+  - name: act_pv_std
+    type: bigint
+    comment: 累计有角色登录次数
+    role: measure
+  - name: role_level
+    type: bigint
+    comment: 最大角色等级
+    role: dimension
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 角色累计去重数（日全量快照UV，分析主体=角色）
+  total_pay_amt:
+    expression: SUM(pay_amt_std)
+    description: 角色累计付费总金额（快照求和）
+  avg_act_days:
+    expression: AVG(act_days_std)
+    description: 角色平均累计活跃天数
+  avg_role_level:
+    expression: AVG(role_level)
+    description: 角色平均最大等级
+  pay_role_ratio:
+    expression: SUM(CASE WHEN pay_amt_std > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 付费角色占比（累计付费金额>0 的角色数 / 总角色数）
+coverage:
+  scenarios:
+    - 角色生命周期规模：通过 role_uv 衡量累计角色池规模
+    - 付费经济：total_pay_amt 与 pay_role_ratio 反映付费总额及付费渗透
+    - 活跃与留存深度：avg_act_days 衡量角色平均累计活跃天数
+    - 等级成长分布：avg_role_level 反映角色等级成长均值
+  limitations:
+    - 仅 scout 抽样验证（最新分区 ds=20260730 实测 role_uv=1668729, total_pay≈1.07亿, avg_act_days≈6.56, max_lvl=100），未做全量 maxc 实测复核
+    - 日全量快照(_df)语义：指标为截止分区的累计值，跨分区 SUM 会重复累加，时序聚合需按 ds 单分区取快照
+    - daily_metrics 为数组结构，未纳入 metrics 直接聚合，需 EXPLODE 后使用
+    - 缺少区服/渠道等分组维度，仅 user_type/user_id/role_level 可分组
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已在最新分区 ds=20260730 实测 role_uv/total_pay/avg_act_days 取值合理，user_type=3 单值确认分析主体=角色
+dimension_refs: []
+pref_label: 角色生命周期N日表
+alt_labels:
+  - 生命周期
+  - N日
+  - 回访

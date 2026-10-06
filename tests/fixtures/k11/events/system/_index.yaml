@@ -1,0 +1,274 @@
+domain: system
+events:
+- name: game.achievement.onekeyReward
+  description: '成就-一键领奖
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.achievement.reward
+  description: '领取成就奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.artifact.attuned
+  description: 'artifact.attuned
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等35个'
+- name: game.artifact.decompose
+  description: 'artifact.decompose
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.artifact.gacha
+  description: 'artifact.gacha
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.artifact.refinement
+  description: 'artifact.refinement
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等52个'
+- name: game.artifact.reinforce
+  description: 'artifact.reinforce
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等37个'
+- name: game.artifact.startup
+  description: 'artifact.startup
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等36个'
+- name: game.artifact.wear
+  description: 'artifact.wear
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等36个'
+- name: game.battlepass.buyExp
+  description: '战令-购买经验
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个'
+- name: game.battlepass.levelup
+  description: '战令-升级（主线、挑战塔战令）
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.battlepass.missionReward
+  description: '战令-任务领奖
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等28个'
+- name: game.battlepass.monthlevelup
+  description: '战令-玉简等级提升
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个'
+- name: game.battlepass.onekeyMissionReward
+  description: '战令-任务一键领奖
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等29个'
+- name: game.battlepass.reward
+  description: '战令-领取奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等28个'
+- name: game.battlepass.vipLevelup
+  description: '战令-vip等级购买
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等31个'
+- name: game.battlepassDungeon.onekeyReward
+  description: '战令—一键领取
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个'
+- name: game.battlepassDungeon.reward
+  description: '战令-领取奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个'
+- name: game.clientValue.set
+  description: '设置客户端值
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.commonflag.add
+  description: '记录flag
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.experienceMission.bonusReward
+  description: '无双历练，最终大奖
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.func.getReward
+  description: '领取功能奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.function.previewReward
+  description: '获取功能预告奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等28个'
+- name: game.function.previewSpecialReward
+  description: '新功能情报奖励领取
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等27个'
+- name: game.function.unlock
+  description: '功能解锁
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guide.finish
+  description: '完成引导
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.knight.awaken
+  description: '武将-觉醒
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.knight.chooseSeniorJob
+  description: '武将切换职业
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.knight.clearRemakeCd
+  description: '武将继承清除cd
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等22个'
+- name: game.knight.levelup
+  description: '武将-升级
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.knight.onekeyawaken
+  description: '武将-一键觉醒
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个'
+- name: game.knight.setBondKnight
+  description: '武将-sp设置羁绊武将
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.knight.setSkin
+  description: '武将-设置皮肤
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.knight.starupResourceComposite
+  description: '魂石合成武将
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等29个'
+- name: game.knight.swapEquipments
+  description: '武将-交换装备
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等28个'
+- name: game.knightnatalchart.choosescheme
+  description: '武将命盘-选择方案
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.knightnatalchart.refine
+  description: '武将命盘-改命
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个'
+- name: game.knightnatalchart.refineMulti
+  description: 'knightnatalchart.refineMulti
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等27个'
+- name: game.knightnatalchart.refinecancel
+  description: '武将命盘-取消
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.knightnatalchart.refinecancelMulti
+  description: '武将命盘-取消
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个'
+- name: game.knightnatalchart.refineconfirm
+  description: '武将命盘-确认
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.knightnatalchart.refineconfirmMulti
+  description: '武将命盘-确认
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等29个'
+- name: game.knightnatalchart.renamescheme
+  description: '武将命盘-方案命名
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.knightnatalchart.unlockattrslot
+  description: '武将命盘-解锁属性槽位
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.knightnatalchart.unlockscheme
+  description: '武将命盘-解锁方案
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.mission.beginnerFinalReward
+  description: '养成任务-组奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.mission.onekeyReward
+  description: '任务-一键领奖
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个'
+- name: game.mission.reward
+  description: '任务-领奖
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.mission.sectionReward
+  description: '阶段奖励-领奖
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.report.share
+  description: '战报分享
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等28个'
+- name: game.tactic.composite
+  description: '战法合成
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.tactic.exchange
+  description: '战法碎片兑换
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.tactic.levelup
+  description: '战法升级
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.tactic.reset
+  description: '战法重置
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.tactic.share
+  description: '战法-分享
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.tactic.train
+  description: '战法-战法特训
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.tactic.unwear
+  description: '战法脱下
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.tactic.wear
+  description: '战法穿戴
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.task.act
+  description: '任务行为
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等27个'
+- name: game.task.routinetask
+  description: '任务成就-日常任务
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等27个'
+- name: game.title.change
+  description: '称号：更换称号
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.train.card
+  description: '武将养成
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等58个'
+- name: game.train.charm
+  description: '灵器养成
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等32个'
+- name: game.train.collection
+  description: '藏品养成
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个'
+- name: game.train.equip
+  description: '装备养成
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等29个'
+- name: game.train.handbook
+  description: '图鉴养成
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.train.inherit
+  description: '武将继承
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等52个'
+- name: game.train.tactic
+  description: '战法操作
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'

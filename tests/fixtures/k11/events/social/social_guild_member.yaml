@@ -1,0 +1,139 @@
+name: game.social.guild.member
+event_filter: event = 'game.social.guild.member'
+description: 公会成员花名册快照事件：每条记录代表一个公会的完整成员名册（params.members 数组，含 uid/job/joinTs/wactive/wactiveTs/lastWactive/name 字段），按日上报。事件粒度为公会（guildId 为分析主体），基表 role_id/account_id 为空串，server_id 与 guildId 已填充。scout 实测 ds=20260729：cnt=13106 公会快照、guild_uv=13106、server_uv=235、成员记录合计 260600、平均每公会 19.88 人、零空公会。
+domains:
+  - 社交公会
+domain: social
+metrics:
+  game_social_guild_member_cnt:
+    expression: COUNT(*)
+    description: 公会成员花名册快照事件总条数（每条=一个公会的一次成员名册上报）
+  game_social_guild_member_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 上报公会花名册的去重游戏服数
+  game_social_guild_member_guild_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.guildId'))
+    description: 去重公会数（事件分析主体；实测每公会每日1条快照，与 cnt 接近相等）
+  game_social_guild_member_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 去重角色数（公会粒度事件基表 role_id 为空串，该指标退化为常数1，仅作结构占位，非分析主体）
+  game_social_guild_member_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 去重账号数（公会粒度事件基表 account_id 为空串，该指标退化为常数1，仅作结构占位，非分析主体）
+  game_social_guild_member_total_member_records:
+    expression: SUM(REGEXP_COUNT(params,'"uid":'))
+    description: 全部公会快照中成员记录总数（按 members 数组内 uid 键出现次数近似数组长度后求和）
+  game_social_guild_member_avg_per_guild:
+    expression: ROUND(CAST(SUM(REGEXP_COUNT(params,'"uid":')) AS DOUBLE) / NULLIF(COUNT(*), 0), 2)
+    description: 平均每公会上报成员数（NULLIF 防 0 除）
+coverage:
+  scenarios:
+    - 量化每日上报公会花名册的规模与覆盖区服/公会范围（社交公会域）
+    - 评估公会平均成员数与总成员记录规模，刻画公会活跃度分布
+    - 按 server_id 下钻识别公会覆盖密集服，辅助公会运营与跨服生态分析
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 本事件为公会粒度：基表 role_id/account_id 为空串，COUNT(DISTINCT role_id) 与 COUNT(DISTINCT account_id) 退化为常数1，不作为分析主体；分析主体为 GET_JSON_OBJECT(params,'$.guildId')
+    - 成员记录数通过 REGEXP_COUNT(params,'"uid":') 近似统计 members 数组长度，仅限事件级聚合，未 EXPLODE 展开到成员行级
+    - params_fields 中声明的 roleId/roleName/sex/createTime/roleLevel/vipLevel/roleForce/exp/image/coinList/sessionId/logUUID 在 ds=20260729 抽样 params 顶层未观察到（仅 members/serverId/guildId/_muid 顶层字段存在），疑似成员级字段误归顶层或不同触发路径差异，未深究
+coverage_status: analyst_confirmed
+params_fields:
+  serverId:
+    type: int
+    description: 区服ID
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  guildId:
+    type: int
+    description: 公会ID
+  members:
+    type: array
+    description: 公会成员
+  members.uid:
+    type: int
+    description: 玩家uid
+  members.job:
+    type: int
+    description: 职务：工会长，管理员，精英，普通成员
+  members.joinTs:
+    type: int
+    description: 加入公会时间
+  members.wactive:
+    type: int
+    description: 周活跃
+  members.wactiveTs:
+    type: int
+    description: 最新活跃修改时间
+  members.lastWactive:
+    type: int
+    description: 上周活跃
+  members.name:
+    type: string
+    description: 玩家名字
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=13106 公会快照，guild_uv=13106，server_uv=235，成员记录合计 260600，平均每公会 19.88 人，零空公会；role_id/account_id 为空串（公会粒度事件，主体为 guildId）
+external_refs: []

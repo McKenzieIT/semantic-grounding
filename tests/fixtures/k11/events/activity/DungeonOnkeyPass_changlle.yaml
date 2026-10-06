@@ -1,0 +1,142 @@
+name: game.DungeonOnkeyPass.changlle
+event_filter: event = 'game.DungeonOnkeyPass.changlle'
+description: 副本一键扫荡/挑战成功事件（game.DungeonOnkeyPass.changlle）：仅当角色成功完成副本一键扫荡挑战时记录。包含副本类型/ID、当前层、星级任务与成就达成列表等副本进度信息。主体粒度为 role_id（角色级事件）。ds=20260729 实测单日 165181 次事件、1598 角色、1531 账号、143 服。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  dungeonType:
+    type: int
+    description: 副本类型
+  floor:
+    type: int
+    description: 当前层
+  dungeonId:
+    type: int
+    description: 副本ID
+  starTaskList:
+    type: array
+    description: 星级列表
+  starTaskList.id:
+    type: int
+    description: id
+  starTaskList.name:
+    type: string
+    description: 成就名称
+  starTaskList.finish:
+    type: int
+    description: 是否达成
+  starTaskList.new:
+    type: int
+    description: 是否新达成
+  achieveList:
+    type: array
+    description: 成就列表
+  achieveList.id:
+    type: int
+    description: id
+  achieveList.name:
+    type: string
+    description: 成就名称
+  achieveList.finish:
+    type: int
+    description: 是否达成
+  achieveList.new:
+    type: int
+    description: 是否新达成
+metrics:
+  game_DungeonOnkeyPass_changlle_cnt:
+    expression: COUNT(*)
+    description: 副本一键扫荡挑战成功事件总次数
+  game_DungeonOnkeyPass_changlle_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 完成副本一键扫荡的去重角色数
+  game_DungeonOnkeyPass_changlle_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 完成副本一键扫荡的去重账号数
+  game_DungeonOnkeyPass_changlle_floor_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.floor') AS BIGINT))
+    description: 一键扫荡累计通过的副本楼层总数（floor 之和）
+coverage:
+  scenarios:
+    - 副本一键扫荡玩法参与度与成功次数
+    - 角色级副本挑战活跃（主体 role_id）
+    - 扫荡覆盖的账号与服务器分布
+    - 累计扫荡楼层数衡量副本推进量
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认主体粒度为 role_id（角色级事件）
+    - floor 为当前层快照，floor_sum 为各事件楼层累加，非去重通关进度
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 scout cnt=165181 role_uv=1598 acc_uv=1531 server_uv=143
+  coverage_status: analyst_confirmed
+external_refs: []

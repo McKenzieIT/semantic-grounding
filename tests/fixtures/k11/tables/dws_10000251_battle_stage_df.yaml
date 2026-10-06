@@ -1,0 +1,155 @@
+table_name: dws_10000251_battle_stage_df
+engine: maxcompute
+table_comment: K11-关卡通关总表
+description: |-
+  K11-关卡通关总表（角色粒度关卡通关明细）。
+  粒度：日全量快照(_df)，每行=一个角色在一个关卡上的通关状态与首通快照。
+  主体：角色(role_id)+账号(account_id)粒度，无 user_type 列。
+  主要字段：account_id, server_id, role_id, play_func_id, chapter_id, stage_id, stay_status, part_pv_di/pass_pv_di(当日), part_pv_std/pass_pv_std(累计), fst_pass_* 首通系列 等22列。
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 日全量快照(_df)，角色粒度
+columns:
+  - name: account_id
+    type: string
+    comment: 账号id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: play_func_id
+    type: string
+    comment: 玩法功能id
+    role: dimension
+  - name: chapter_id
+    type: bigint
+    comment: 章节id
+    role: dimension
+  - name: stage_id
+    type: string
+    comment: 关卡id
+    role: dimension
+  - name: stay_status
+    type: bigint
+    comment: 关卡停留状态，同一关卡类型下，玩家是否停留在此关卡，0-停留未通关 1-停留已通关 2-未停留已通关
+    role: dimension
+  - name: part_pv_di
+    type: bigint
+    comment: 当日挑战次数
+    role: measure
+  - name: pass_pv_di
+    type: bigint
+    comment: 当日通关次数
+    role: measure
+  - name: part_pv_std
+    type: bigint
+    comment: 累计挑战次数
+    role: measure
+  - name: pass_pv_std
+    type: bigint
+    comment: 累计通关次数
+    role: measure
+  - name: fst_pass_battle_id
+    type: string
+    comment: 首通挑战id
+    role: dimension
+  - name: fst_pass_tm
+    type: datetime
+    comment: 首通时间
+    role: dimension
+  - name: fst_pass_pv_std
+    type: bigint
+    comment: 首通时累计挑战次数
+    role: measure
+  - name: fst_pass_lineup_force
+    type: bigint
+    comment: 首通时部队战力
+    role: measure
+  - name: fst_pass_lineup
+    type: string
+    comment: 首通时队伍阵容
+    role: attribute
+  - name: fst_pass_lineup_level
+    type: bigint
+    comment: 首通时阵容等级
+    role: measure
+  - name: fst_pass_card_list
+    type: string
+    comment: 首通时阵容列表
+    role: attribute
+  - name: fst_pass_params
+    type: string
+    comment: 首通时行为参数
+    role: attribute
+  - name: fst_pass_dur
+    type: bigint
+    comment: 首通时挑战时长，单位秒
+    role: measure
+  - name: fst_pass_params2
+    type: string
+    comment: 首通时结算参数
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 快照角色UV（当日快照内不重复角色数）
+  account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 快照账号UV（当日快照内不重复账号数）
+  total_pass_pv:
+    expression: SUM(pass_pv_std)
+    description: 累计通关总次数（全快照求和）
+  total_part_pv:
+    expression: SUM(part_pv_std)
+    description: 累计挑战总次数（全快照求和）
+  pass_rate:
+    expression: SUM(pass_pv_std) / NULLIF(SUM(part_pv_std), 0)
+    description: 累计通关率=累计通关次数/累计挑战次数
+coverage:
+  scenarios:
+    - 关卡通关规模：role_uv/account_uv 度量快照内活跃角色与账号规模，结合 stay_status 分布可分析停留/已通关漏斗。
+    - 通关深度：total_pass_pv/total_part_pv/pass_rate 反映全服累计通关量与通关率，可按 chapter_id/stage_id/play_func_id 下钻。
+    - 首通画像：fst_pass_lineup_force/fst_pass_lineup_level/fst_pass_dur（首通时战力/等级/时长）支撑首通难度与门槛分析（指标在 metrics 未单列，可直接 SUM/AVG 列）。
+  limitations:
+    - 仅抽样验证：对 ds=20250508 跑了 role_uv/account_uv/total_pass_pv/total_part_pv 五项指标的合并查询并得到合理值（uv=30357, auv=20343, pass_std=4320643, rows=3522770），未做全量 maxc 实测逐指标复核。
+    - _df 日全量快照：part_pv_di/pass_pv_di 为当日增量列，在最新 ds 上当日通关/挑战次数偏低（pass_pv=44/part_pv=64），分析关卡日活应以 _std 累计列或当日 _di 列配合 ds 过滤为准，避免跨快照直接 SUM(_di)。
+    - 无 user_type 列，主体由 role_id/account_id 推断为角色+账号粒度；表名无 acc/role/dev 前缀，未做 user_type 取值校验。
+    - fst_pass_card_list/fst_pass_params/fst_pass_params2 为长 JSON 字符串，未结构化展开，需调用方自行解析。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 对 latest ds=20250508 抽样跑 role_uv/account_uv/total_pass_pv/total_part_pv 四项指标合并查询，结果合理（uv=30357, auv=20343, pass_std=4320643, rows=3522770），故置 analyst_confirmed；仅抽样验证，未做全量逐指标复核。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: "DWS column server_id (comment: 区服id) is an exact match to PK server_id of dim_10000251_server_info (服务器维度配置表)."
+    origin: deterministic
+  - dim_table: dim_10000251_function_info
+    join_keys:
+      - dws_column: play_func_id
+        dim_column: function_id
+    derivation: "DWS column play_func_id (comment: 玩法功能id) semantically matches PK function_id of dim_10000251_function_info (功能配置维度表), used for function dimension lookup via function_id."
+  - dim_table: dim_10000251_trans_stage_df
+    join_keys:
+      - dws_column: stage_id
+        dim_column: id
+    derivation: "DWS column stage_id (comment: 关卡id) semantically matches PK id (关卡id) of dim_10000251_trans_stage_df (关卡配置维度表, 战斗关卡域), the canonical stage dimension."
+pref_label: 关卡通关表
+alt_labels:
+  - 关卡
+  - 通关
+  - 副本
+  - 挑战

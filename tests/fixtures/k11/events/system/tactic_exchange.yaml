@@ -1,0 +1,122 @@
+name: game.tactic.exchange
+event_filter: event = 'game.tactic.exchange'
+description: |-
+  战法碎片兑换事件：角色使用碎片/货币兑换战法时上报，记录兑换的战法id(tacticId)与数量(tacticNum)，以及兑换时刻角色状态(等级/战力/vip/货币)。
+  分析主体粒度为 role_id（角色级），同一角色多次兑换计多次事件。真实测得 ds=20260729 单日：cnt=5、role_uv=4、acc_uv=4、server_uv=4、tactic_id_uv=4、tactic_num_sum=360（单次兑换量区间 60-120）。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验、看板娘、关键货币列表(充值钻石/赠送钻石/免费钻石/紫金/经验卷轴/体力)、会话id、logUUID、战法id、数量 等24个
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  tacticId:
+    type: int
+    description: 战法id
+  tacticNum:
+    type: int
+    description: 数量
+metrics:
+  game_tactic_exchange_cnt:
+    expression: COUNT(*)
+    description: 战法碎片兑换事件总次数（每次兑换计1）
+  game_tactic_exchange_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与战法碎片兑换的去重角色数
+  game_tactic_exchange_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与战法碎片兑换的去重账号数
+  game_tactic_exchange_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 发生战法碎片兑换的去重游戏服数
+  game_tactic_exchange_tactic_id_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.tacticId'))
+    description: 被兑换的去重战法id数（战法覆盖广度）
+  game_tactic_exchange_tactic_num_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.tacticNum') AS BIGINT))
+    description: 战法碎片兑换总数量（按 tacticNum 求和）
+  game_tactic_exchange_avg_num_per_role:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.tacticNum') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 参与兑换角色的平均兑换数量（总量/去重角色数）
+coverage:
+  scenarios:
+    - 各游戏服战法碎片兑换热度排行与趋势（cnt/tactic_num_sum by server_id）
+    - 高频兑换角色识别与兑换量分布（role_uv / avg_num_per_role）
+    - 战法兑换广度：被兑换战法种类数（tactic_id_uv），辅助判断战法培养偏好
+    - 角色等级段与战法兑换行为关联（roleLevel 维度交叉）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核与多日趋势验证
+    - 分析主体粒度默认为 role_id（角色级），未单独验证 account 级聚合口径
+    - 测得样本量较小（cnt=5、role_uv=4），单日统计存在波动，不代表稳态水平
+    - tacticNum 字段类型依赖 GET_JSON_OBJECT + CAST(BIGINT)，若上报缺失或非数值将被 CAST 静默置 0
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729：cnt=5、role_uv=4、acc_uv=4、server_uv=4、tactic_id_uv=4、tactic_num_sum=360(单次60-120)、lvl_max=100；事件真实触发且数值合理，置 analyst_confirmed
+coverage_status: analyst_confirmed
+external_refs: []

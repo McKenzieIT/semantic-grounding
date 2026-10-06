@@ -1,0 +1,78 @@
+domain: account
+events:
+- name: game.role.backup.rollback
+  description: '玩家数据回退指定模块
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个'
+- name: game.role.backup.rollbackAll
+  description: '玩家数据全部回退
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.role.backup.rollbackPurchase
+  description: '玩家数据回滚：重新发货
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.role.backup.save
+  description: '玩家数据备份
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.role.battlepassSign.onBuy
+  description: '三日奖励：购买
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.role.battlepassSign.oneKeyGetReward
+  description: '一键领取三日奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.role.changeBadges
+  description: '修改玩家徽章
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.role.changeCard
+  description: '修改玩家名帖
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.role.changeHead
+  description: '修改头像头像框
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.role.changename
+  description: '改名
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.role.changesign
+  description: '修改签名
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.role.create
+  description: '创角：创建角色
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.role.firstOnline
+  description: '首次登陆：每天首次登陆
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.role.gmRepurchase
+  description: 'Gm重新发货
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.role.levelup
+  description: '玩家-升级
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等22个'
+- name: game.role.offline
+  description: '下线：登出游戏
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等78个'
+- name: game.role.online
+  description: '登陆
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.role.snapshot
+  description: '在线玩家快照
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等72个'
+- name: game.role.viewPlayerShow
+  description: '查看玩家展示道具
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'

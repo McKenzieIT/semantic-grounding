@@ -1,0 +1,166 @@
+name: game.report.share
+event_filter: event = 'game.report.share'
+description: 战报分享事件：玩家在游戏内将战斗战报(reportId)分享至世界频道(shareWorld)或好友列表(shareFriends)。分析主体粒度为 role_id（单角色触发一次分享），account_id 仅作辅助 UV。实测 ds=20260729：cnt=4，role_uv=4，acc_uv=4，server_uv=4。参数涵盖游戏服、账号/角色、性别、创角/上线时间、等级、vip、战力、经验及关键货币列表等 28 个字段。
+domains:
+  - 系统监控
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  detailType:
+    type: int
+    description: 详细类型
+  type:
+    type: int
+    description: 类型
+  reportId:
+    type: string
+    description: 战报ID
+  timeout:
+    type: int
+    description: 过期时间
+  shareWorld:
+    type: bool
+    description: 是否分享到世界频道
+  shareFriends:
+    type: array
+    description: 好友ID列表
+metrics:
+  report_share_cnt:
+    expression: COUNT(*)
+    description: 战报分享事件总次数
+  report_share_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 分享战报的去重角色数（分析主体粒度）
+  report_share_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 分享战报的去重账号数
+  report_share_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 分享战报涉及的去重游戏服数
+  report_share_world_cnt:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params,'$.shareWorld') AS BOOLEAN) THEN 1 ELSE 0 END)
+    description: 分享至世界频道的次数（按事件逐条计数）
+coverage:
+  scenarios:
+    - 战报分享的日活/总次数与角色/账号/服务器渗透（report_share_cnt / _role_uv / _account_uv / _server_uv）
+    - 世界频道分享 vs 好友分享的渠道分布（report_share_world_cnt 占比）
+    - 各游戏服战报分享热度对比
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体粒度默认 role_id；account_id 仅作辅助 UV
+    - 单日样本量较小(cnt=4)，趋势性结论需多日聚合后判断
+    - shareWorld 布尔值与 shareFriends 数组的解析依赖日志端写入格式，逐事件口径需复核
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=4, role_uv=4, acc_uv=4, server_uv=4（战报分享为低频事件，量级合理）
+coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_trans_gacha_mission_group_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_gacha_mission_group_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df_arch 主键精确同名
+    origin: deterministic

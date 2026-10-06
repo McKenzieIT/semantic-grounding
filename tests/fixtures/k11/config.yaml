@@ -1,0 +1,88 @@
+project:
+  name: game_10000251
+  description: Game 10000251 事件分析配置
+  scope_id: '10000251'
+maxcompute:
+  config_file: /Users/mckenzie/Documents/game-data-analysis/odps-cli/config/odps.json
+  environment: domestic-prod
+event_view:
+  workspace: ieu_ods
+  view_name: ods_10000251_all_view
+  full_name: ieu_ods.ods_10000251_all_view
+  base_columns:
+    identity:
+    - name: account_id
+      type: string
+      description: 游戏账号ID
+    - name: role_id
+      type: string
+      description: 角色ID（分析主体）
+    - name: role_name
+      type: string
+      description: 角色名
+    server:
+    - name: server_id
+      type: string
+      description: 区服ID
+    - name: server_name
+      type: string
+      description: 区服名
+    time:
+    - name: ds
+      type: string
+      description: 业务日期 (yyyyMMdd)
+    - name: hh
+      type: string
+      description: 小时 (00-23)
+    - name: tm
+      type: datetime
+      description: 行为时间
+    - name: ts
+      type: bigint
+      description: 行为时间戳（毫秒）
+    device:
+    - name: os_id
+      type: bigint
+      description: 平台 2=安卓/3=iOS/5=Windows
+    - name: dev_brand
+      type: string
+      description: 设备品牌
+    - name: dev_model
+      type: string
+      description: 设备型号
+    app:
+    - name: app_ver
+      type: string
+      description: 客户端版本
+    - name: ch_type
+      type: string
+      description: 渠道
+    - name: ch_id
+      type: string
+      description: 渠道ID
+    event_meta:
+    - name: event
+      type: string
+      description: 事件名称
+    - name: domain
+      type: string
+      description: 数据域（技术分类）
+    - name: params
+      type: string
+      description: 事件参数JSON
+  params_extract_template: GET_JSON_OBJECT(params, '$.{field_name}')
+  freshness:
+    today_complete: false
+    latest_complete_partition: T-1
+    eta_minutes: 10
+    today_until_phrase_required: true
+partition:
+  field: ds
+  format: yyyyMMdd
+guards:
+  max_scan_bytes: 536870912000
+  max_query_timeout_seconds: 300
+  max_time_range_days: 90
+  select_only: true
+runtime:
+  model: Peach-07-17-DogFooding

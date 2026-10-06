@@ -1,0 +1,119 @@
+name: game.DungeonOnkeyPass.end
+event_filter: event = 'game.DungeonOnkeyPass.end'
+description: 副本一键推关结束事件：玩家在副本中使用一键推关功能通关至结束层时上报，记录副本类型、开始层/结束层、是否全部通关与是否中途退出。统计粒度为角色（role_id），单日实测 ds=20260729 共 52973 条事件、1868 个角色、1773 个账号、181 个游戏服。参数含游戏服id/名字、账号id、角色id/名/等级/vip/战力、货币列表、副本类型与楼层等 27 个字段。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  dungeonType:
+    type: int
+    description: 副本类型
+  beginFloor:
+    type: int
+    description: 开始层
+  endFloor:
+    type: int
+    description: 最后的一层
+  isOver:
+    type: bool
+    description: 是否全部通关
+  isQuit:
+    type: bool
+    description: 是退出的
+metrics:
+  game_DungeonOnkeyPass_end_cnt:
+    expression: COUNT(*)
+    description: 副本一键推关结束事件总触发次数
+  game_DungeonOnkeyPass_end_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发一键推关结束的去重角色数
+  game_DungeonOnkeyPass_end_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发一键推关结束的去重账号数
+  game_DungeonOnkeyPass_end_endfloor_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.endFloor') AS BIGINT))
+    description: 一键推关结束累计到达的楼层总数（endFloor 求和，未区分副本类型）
+coverage:
+  scenarios:
+    - 一键推关功能的使用规模与触达角色/账号/游戏服分布
+    - 单日推关结束的累计楼层进度，评估功能消耗与推进效率
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认统计主体为 role_id；账号级与游戏服级为补充维度
+    - endFloor 求和未区分 dungeonType，不同副本类型楼层口径不一，仅供总量参考
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 scout 实测：cnt=52973, role_uv=1868, acc_uv=1773, server_uv=181，数值合理，标记 analyst_confirmed
+  coverage_status: analyst_confirmed
+external_refs: []
+alt_labels:
+  - 副本
+  - 地下城

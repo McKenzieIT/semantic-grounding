@@ -1,0 +1,118 @@
+name: game.equip.ware
+event_filter: event = 'game.equip.ware'
+description: 装备-穿上事件：玩家为武将（knightId）穿上/装备装备件（uids 列表）， 常见 subEvent=equip.usePresets（一键套装预设）。分析主体为角色（role_id）， 按角色/账号/服务器维度统计装备穿戴行为频次与覆盖。 实测 ds=20260729：cnt=96、role_uv=22、acc_uv=22、server_uv=20、knight 去重 26 组合。
+domains:
+  - 装备道具
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  uids:
+    type: array
+    description: 要穿上的装备列表
+  knightId:
+    type: int
+    description: 武将id
+  subEvent:
+    type: int
+    description: 副事件
+metrics:
+  equip_ware_cnt:
+    expression: COUNT(*)
+    description: 装备穿戴事件总次数
+  equip_ware_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发装备穿戴的去重角色数（分析主体粒度）
+  equip_ware_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发装备穿戴的去重账号数
+  equip_ware_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发装备穿戴的去重服务器数
+  equip_ware_knight_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.knightId'))
+    description: 被穿戴装备的去重武将(knightId)数
+  equip_ware_avg_per_role:
+    expression: ROUND(COUNT(*)*1.0/NULLIF(COUNT(DISTINCT role_id),0),2)
+    description: 人均装备穿戴次数（cnt/role_uv，NULLIF 防 0 除）
+coverage:
+  scenarios:
+    - 装备活跃度：通过 cnt/role_uv 衡量单日装备穿戴频次与人均穿戴次数
+    - 装备覆盖广度：account_uv/server_uv 衡量装备穿戴行为在账号与服务器上的扩散
+    - 武将装备画像：knight_uv 反映被穿戴装备的武将种类覆盖
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（已与 role_uv=22/acc_uv=22 对齐，1:1 关系）
+    - uids（穿戴装备列表）为数组，未在指标中展开逐件计数，仅按事件级聚合
+    - subEvent 声明为 int 实测为字符串(如 equip.usePresets)，参数类型待上游校正
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "实测 ds=20260729: cnt=96, role_uv=22, acc_uv=22, server_uv=20；knight/subEvent 分布合理(26组合，subEvent 多为 equip.usePresets)。"
+coverage_status: analyst_confirmed
+external_refs: []

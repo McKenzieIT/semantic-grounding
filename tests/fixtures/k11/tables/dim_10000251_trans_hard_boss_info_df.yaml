@@ -1,0 +1,52 @@
+table_name: dim_10000251_trans_hard_boss_info_df
+engine: maxcompute
+kind: dim
+table_comment: '副本硬BOSS配置维度表：id 对应 pve.end的chapterId，level对应 pve.end的stageId，dungeon才是真正的关卡ID。日全量快照(_df)。'
+description: '副本硬BOSS配置维度表，每行描述一个硬难度BOSS关卡(对应 pve.end 的 dungeon_id)。主要字段：boss_id(BOSS编号)、boss_level(难度等级)、section(所属篇)、dungeon_id(真实关卡ID,为表主键)、name(BOSS名称)。'
+domains:
+- 战斗关卡
+granularity: 每 硬难度BOSS关卡(dungeon_id) 一行的配置维度表
+columns:
+- name: boss_id
+  type: string
+  comment: bossID
+  role: dimension
+- name: boss_level
+  type: string
+  comment: boss难度
+  role: dimension
+- name: section
+  type: string
+  comment: 所属篇
+  role: dimension
+- name: dungeon_id
+  type: string
+  comment: 关卡id
+  role: dimension
+- name: name
+  type: string
+  comment: boss名称
+  role: dimension
+primary_key:
+- dungeon_id
+primary_key_unique: true
+label_columns:
+- name
+- boss_level
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 通过 dungeon_id 与 pve.end 事件表 JOIN 查询BOSS关卡维度属性（boss_id/boss_level/section/name）
+  - 通过 boss_id 聚合同一BOSS在不同难度下的关卡分布
+  - 通过 section 聚合各篇（章节）BOSS分布
+  limitations:
+  - 配置类维度表，无度量值；boss_id 在多难度下重复（非唯一），需以 dungeon_id 或 (boss_id,boss_level) 组合作为唯一键
+  - section 为复合编码串，需二次解码以获取章节序号
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '依据 meta describe + 唯一性实测(SELECT COUNT(*)=18, COUNT(DISTINCT dungeon_id)=18, r=d) 确认 dungeon_id 唯一；boss_id 不唯一(d=6)故不作为主键。status=draft 未业务确认。'

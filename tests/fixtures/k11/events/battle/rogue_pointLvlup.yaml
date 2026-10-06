@@ -1,0 +1,113 @@
+name: game.rogue.pointLvlup
+event_filter: event = 'game.rogue.pointLvlup'
+description: 古战场-军功升级事件（rogue 军功点等级提升）。记录角色在古战场玩法中军功点等级提升到 newLevel 的时刻，并附带角色等级、vip等级、角色战力、经验、各货币余额等 24 个参数快照。分析粒度为角色（role_id 为分析主体，account_id 用于账号维去重）。ds=20260729 单日 scout 实测：事件 179 条、角色 97 个、账号 96 个、游戏服 41 个。
+domains:
+  - 战斗关卡
+domain: battle
+metrics:
+  game_rogue_pointLvlup_cnt:
+    expression: COUNT(*)
+    description: 古战场军功升级事件总次数
+  game_rogue_pointLvlup_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发军功升级的去重角色数（分析主体）
+  game_rogue_pointLvlup_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发军功升级的去重账号数
+  game_rogue_pointLvlup_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 有军功升级行为发生的去重游戏服数
+  game_rogue_pointLvlup_new_level_max:
+    expression: MAX(CAST(GET_JSON_OBJECT(params, '$.newLevel') AS BIGINT))
+    description: 周期内角色达到的最高军功新等级
+  game_rogue_pointLvlup_new_level_avg:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.newLevel') AS BIGINT)) / NULLIF(COUNT(*), 0)
+    description: 平均军功新等级（事件维度平均）
+coverage:
+  scenarios:
+    - 古战场军功等级提升的整体规模与去重角色/账号/游戏服覆盖
+    - 周期内角色达到的最高军功等级及平均新等级，用于评估玩家在古战场玩法的进度推进
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析粒度默认 role_id（事件本身为角色级触发）；account_id 仅用于账号维去重统计
+    - newLevel 字段为参数快照值，未做跨日时序对齐
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  theme:
+    type: int
+    description: 主题
+  newLevel:
+    type: int
+    description: 新等级
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=179, role_uv=97, acc_uv=96, server_uv=41，数据合理
+coverage_status: analyst_confirmed
+external_refs: []

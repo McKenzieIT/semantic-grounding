@@ -1,0 +1,58 @@
+table_name: dim_10000251_com_activity_info
+engine: maxcompute
+kind: dim
+table_comment: 商业化-活动信息配置维表，每行一个活动档期配置
+primary_key:
+- activity_id
+primary_key_unique: true
+label_columns:
+- activity_name
+description: '商业化-活动信息配置维表：每行记录一个商业活动的档期配置（活动类型/ID/名称/起止时间）及礼匣礼包扩展信息(ext_info JSON 串)。
+
+  主键: activity_id (实测唯一, 83 行 83 distinct)。标签列: activity_name。粒度: 每 activity 一行。'
+domains:
+- 付费经济
+granularity: 每 activity_id 一行的活动档期配置维度表
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - '事实表按 activity_id JOIN 查活动名称/类型/档期等维度属性'
+  - '活动期间分析: 按 start_tm/end_tm 圈定时段内的活动明细'
+  - '礼匣礼包分析: 解析 ext_info JSON 取 hot_giftbags_v2 价位/奖励'
+  limitations:
+  - 配置类维度表，无值度量（金额/数量等需解析 ext_info 或关联事实表）
+  - ext_info 为 JSON 串，需二次解码方可分析礼包明细
+  - activity_name 可同名重复（同一活动多档期），主键以 activity_id 为准
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'maxc meta describe 校验列；SELECT COUNT(*)=COUNT(DISTINCT activity_id)=83 实测唯一(status=draft)。'
+columns:
+- name: activity_type
+  type: bigint
+  comment: 活动类型
+  role: dimension
+- name: activity_id
+  type: bigint
+  comment: 活动ID
+  role: dimension
+- name: activity_name
+  type: string
+  comment: 活动名称
+  role: dimension
+- name: start_tm
+  type: string
+  comment: 活动开始时间
+  role: dimension
+- name: end_tm
+  type: string
+  comment: 活动结束时间
+  role: dimension
+- name: ext_info
+  type: string
+  comment: 额外信息
+  role: dimension

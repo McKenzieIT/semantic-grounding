@@ -1,0 +1,118 @@
+name: game.guild.bargainBuy
+event_filter: event = 'game.guild.bargainBuy'
+description: 公会砍价-购买：玩家在公会砍价玩法中完成折扣购买的事件，每次事件对应当日 1 次砍价购买(dailyBuyCnt=1)。记录购买时货币快照(充值钻石 gold、免费钻石 freegold、紫金 diamond 等)与角色经济画像。分析主体粒度为 role_id。参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个。scout 实测 ds=20260729 单日 cnt=1267、role_uv=1267、acc_uv=1223、server_uv=125。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  dailyBuyCnt:
+    type: int
+    description: 每日购买次数
+metrics:
+  game_guild_bargain_buy_cnt:
+    expression: COUNT(*)
+    description: 公会砍价购买事件总次数
+  game_guild_bargain_buy_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与公会砍价购买的去重角色数（分析主体粒度 role_id）
+  game_guild_bargain_buy_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与公会砍价购买的去重账号数
+  game_guild_bargain_buy_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 参与公会砍价购买的去重游戏服数
+  game_guild_bargain_buy_daily_cnt_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.dailyBuyCnt') AS BIGINT))
+    description: 当日累计砍价购买次数之和（基于 dailyBuyCnt，ds=20260729 每人 1 次）
+  game_guild_bargain_buy_gold_snapshot_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 砍价购买发生时持有充值钻石(gold)合计，购买者经济画像快照（货币余额，非收入）
+  game_guild_bargain_buy_freegold_snapshot_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.freegold') AS BIGINT))
+    description: 砍价购买发生时持有免费钻石(freegold)合计，购买者经济画像快照（货币余额，非收入）
+  game_guild_bargain_buy_gold_per_buyer:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 砍价购买者人均持有充值钻石(gold)，购买时经济画像（货币快照非收入）
+coverage:
+  scenarios:
+    - 公会砍价玩法的日参与规模与渗透：购买次数(cnt/daily_cnt_sum)、参与角色/账号/服数
+    - 砍价购买者经济画像：购买时持有充值钻石/免费钻石水平（gold/freegold 快照）
+    - 跨服参与分布与活跃游戏服识别（server_uv）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id；ds=20260729 当日每角色恰好触发 1 次（dailyBuyCnt_max=1），多日累计行为未复核
+    - coinList.* 为购买时货币快照（余额），非购买花费或收入，仅作经济画像用途
+    - dailyBuyCnt 为玩家上报的当日累计值，跨天重置与跨日累加行为未复核
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=1267, role_uv=1267, acc_uv=1223, server_uv=125; dailyBuyCnt_sum=1267(每人1次); gold快照sum=11287, sendgold快照sum=3017, freegold快照sum=15309523"
+external_refs: []

@@ -1,0 +1,60 @@
+table_name: dim_10000251_tactic_info_arch
+engine: maxcompute
+kind: dim
+table_comment: 风物（tactic）配置维度表，按 ds 日分区存放每个风物的 ID/名称/品质/佩戴上限/标签/推荐武将
+description: '游戏 10000251 的风物（tactic）配置维度表。每行描述一个风物条目：tactic_id 为风物主键，tactic_name 为风物名称，quality 为品质等级，knight_limit 为单个武将最大佩戴数，tag 为风物分类标签，knight 为推荐搭配武将编码串（以下划线分隔的武将 ID）。ds 为日期分区，存放每日快照。该表用于在事实表分析时按风物维度做 JOIN 下钻。'
+primary_key:
+- tactic_id
+label_columns:
+- tactic_name
+primary_key_unique: false
+domains:
+- 装备道具
+granularity: 每个风物（tactic_id）一行、按 ds 日分区的配置维度表
+columns:
+- name: tactic_id
+  type: bigint
+  comment: 风物ID
+  role: dimension
+- name: tactic_name
+  type: string
+  comment: 风物名称
+  role: dimension
+- name: quality
+  type: bigint
+  comment: 品质
+  role: dimension
+- name: knight_limit
+  type: bigint
+  comment: 最大佩戴数
+  role: dimension
+- name: tag
+  type: string
+  comment: 标签
+  role: dimension
+- name: knight
+  type: string
+  comment: 推荐武将
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+coverage:
+  scenarios:
+  - 事实表按 tactic_id JOIN 本表，下钻风物名称、品质、佩戴上限等风物属性
+  - 按风物 quality/tag 维度聚合，分析各品质/标签下风物数量与佩戴分布
+  - 通过 knight 推荐武将编码与武将维表关联，分析风物-武将搭配关系
+  limitations:
+  - 配置类维度表，无业务度量值，metrics 仅可选 row_count
+  - knight 字段为以下划线分隔的武将 ID 编码串，需二次解码才能逐武将拆分
+  - primary_key_unique=false：tactic_id 在单个 ds 分区内唯一，但跨分区（多日快照）不唯一，JOIN 时需指定 ds 分区
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含多日快照）
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'dim 建模完成；primary_key=tactic_id，label=tactic_name；跨分区实测非唯一故 primary_key_unique=false，未达 analyst_confirmed；knight 为编码串需二次解码'

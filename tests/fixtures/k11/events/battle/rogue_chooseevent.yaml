@@ -1,0 +1,201 @@
+name: game.rogue.chooseevent
+event_filter: event = 'game.rogue.chooseevent'
+description: |-
+  古战场（rogue）副本挑战中触发的事件选择（choice）埋点；每次玩家在古战场挑战过程中遇到随机事件并选择选项时上报一条记录。分析主体为 role_id（角色粒度），单条记录粒度为 角色×playId×step×choice。ds=20260729 scout 实测：6497 条事件，覆盖 119 角色 / 118 账号 / 47 服务器。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等46个
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  playId:
+    type: string
+    description: 唯一标识一次古战场副本挑战
+  chapter:
+    type: int
+    description: 章节
+  difficulty:
+    type: int
+    description: 难度
+  step:
+    type: int
+    description: 步数
+  choice:
+    type: array
+    description: 选项
+  choice.id:
+    type: int
+    description: 事件id
+  choice.name:
+    type: string
+    description: 事件名称
+  battleId:
+    type: string
+    description: 唯一标识一场战斗
+  coin:
+    type: int
+    description: 剩余战场币数量
+  buff:
+    type: array
+    description: buff列表
+  buff.id:
+    type: int
+    description: buff的id
+  buff.name:
+    type: string
+    description: buff名称
+  buff.level:
+    type: int
+    description: 强化等级
+  buff.quality:
+    type: int
+    description: buff品质
+  buff.suitId:
+    type: int
+    description: 套装id
+  soul:
+    type: array
+    description: 将魂列表
+  soul.id:
+    type: int
+    description: 将魂id
+  soul.suitId:
+    type: int
+    description: 套装id
+  soul.suitNum:
+    type: int
+    description: 套装下将魂数量
+  treasure:
+    type: array
+    description: 奇珍列表
+  treasure.id:
+    type: int
+    description: 奇珍id
+  treasure.name:
+    type: string
+    description: 奇珍名
+  treasure.quality:
+    type: int
+    description: 奇珍品质
+  rogueStage:
+    type: int
+    description: 阶段
+metrics:
+  game_rogue_chooseevent_cnt:
+    expression: COUNT(*)
+    description: 古战场事件选择总记录数
+  game_rogue_chooseevent_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发事件选择的角色去重数
+  game_rogue_chooseevent_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发事件选择的账号去重数
+  game_rogue_chooseevent_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发事件选择的服务器去重数
+  game_rogue_chooseevent_play_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.playId'))
+    description: 涉及的古战场副本挑战场次去重数（playId）
+  game_rogue_chooseevent_chapter_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.chapter'))
+    description: 涉及的章节去重数
+  game_rogue_chooseevent_step_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params,'$.step') AS BIGINT))
+    description: 事件选择发生时的平均步数（step）
+  game_rogue_chooseevent_coin_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params,'$.coin') AS BIGINT))
+    description: 事件选择发生时剩余战场币（coin）的平均数量
+coverage:
+  scenarios:
+    - 古战场事件选择的参与角色/账号/服务器覆盖
+    - 事件选择发生的副本场次（playId）数量与章节分布
+    - 事件选择发生时的平均步数与平均剩余战场币
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度），未单独校验 accountId 与 roleId 的 1:1 关系
+    - 事件选择内容（choice.id/name）与 buff/soul/treasure 等结构化字段未在指标层展开，仅做计数/去重维度
+    - step/coin 字段依赖客户端上报准确性，未做异常值清洗
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=6497 / role_uv=119 / acc_uv=118 / server_uv=47，数量合理；事件在 ds=20260729 正常触发
+coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_trans_rogue_df
+    join_keys:
+      - dws_column: difficulty
+        dim_column: difficulty
+    derivation: 确定性：事件字段 difficulty 与 dim_10000251_trans_rogue_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_rogue_df_arch
+    join_keys:
+      - dws_column: difficulty
+        dim_column: difficulty
+    derivation: 确定性：事件字段 difficulty 与 dim_10000251_trans_rogue_df_arch 主键精确同名
+    origin: deterministic

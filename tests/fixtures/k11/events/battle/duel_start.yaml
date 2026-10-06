@@ -1,0 +1,122 @@
+name: game.duel.start
+event_filter: event = 'game.duel.start'
+description: 切磋(竞技对决)开始事件：记录角色发起/进入一场切磋对决的瞬间，携带攻击方与防守方玩家id及 duel 状态(@ShareConst.DUAL_STATUS)、双方角色等级/vip等级/角色战力/经验，以及关键货币(钻石/紫金/经验卷轴/体力)等28个参数。分析主体粒度为 role_id(角色)；2026-07-29 单日 scout 实测 cnt=32、role_uv=20、acc_uv=20、server_uv=12。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  attack:
+    type: json
+    description: 攻击方
+  attack.uid:
+    type: int
+    description: 玩家id
+  attack.status:
+    type: int
+    description: 状态 @ShareConst.DUAL_STATUS
+  defence:
+    type: json
+    description: 防守方
+  defence.uid:
+    type: int
+    description: 玩家id
+  defence.status:
+    type: int
+    description: 状态 @ShareConst.DUAL_STATUS
+metrics:
+  game_duel_start_cnt:
+    expression: COUNT(*)
+    description: 切磋开始事件总记录数(每行=一次切磋发起瞬间)
+  game_duel_start_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与切磋的不重复角色数
+  game_duel_start_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与切磋的不重复账号数
+  game_duel_start_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及切磋的不重复游戏服数
+  game_duel_start_per_role_attempts:
+    expression: COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 平均每个参与角色的切磋发起次数(人次/角色UV)
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+coverage:
+  scenarios:
+    - 切磋玩法每日发起量与参与角色规模(角色UV/账号UV/服务器分布)
+    - 单角色切磋频次(人均发起次数)反映切磋玩法的粘性
+    - 攻击方/防守方玩家id(attack.uid/defence.uid)与 duel 状态(attack.status/defence.status)可用于后续胜率/平局分析
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体粒度默认 role_id(角色)，未逐行核对 attack.uid/defence.uid 与 role_id 的对应关系
+    - attack.status/defence.status 状态码语义(@ShareConst.DUAL_STATUS)未在样本中确认，胜率类指标暂未落库
+  coverage_status: analyst_confirmed
+external_refs: []

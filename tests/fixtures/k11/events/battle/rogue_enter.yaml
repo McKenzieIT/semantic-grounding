@@ -1,0 +1,127 @@
+name: game.rogue.enter
+event_filter: event = 'game.rogue.enter'
+description: 玩家进入古战场(Rogue)玩法时上报的事件，记录角色进入特定主题(rogueTheme)与难度(rogueLevel/challengeLevel)的时机及角色快照(等级/战力/vip/货币)。分析主体为 role_id(角色)；单日 ds=20260729 scout 实测 cnt=206、role_uv=113、acc_uv=112、server_uv=46。用于古战场关卡参与度、角色构成与挑战难度分布分析。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  rogueTheme:
+    type: int
+    description: 主题
+  rogueLevel:
+    type: int
+    description: 难度
+  challengeLevel:
+    type: int
+    description: 挑战等级
+  areaList:
+    type: array
+    description: 生成区域列表
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=206, role_uv=113, acc_uv=112, server_uv=46; 数量合理(古战场进入为周期性副本事件)"
+coverage_status: analyst_confirmed
+metrics:
+  game_rogue_enter_cnt:
+    expression: COUNT(*)
+    description: 古战场进入事件总次数
+  game_rogue_enter_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 进入古战场的去重角色数(分析主体 role_id)
+  game_rogue_enter_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 进入古战场的去重账号数
+  game_rogue_enter_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及古战场进入的游戏服数
+  game_rogue_enter_theme_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.rogueTheme'))
+    description: 进入过的不同古战场主题数
+  game_rogue_enter_avg_role_level:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS BIGINT))
+    description: 进入古战场角色的平均角色等级
+  game_rogue_enter_avg_rogue_level:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.rogueLevel') AS BIGINT))
+    description: 进入古战场的平均难度等级
+  game_rogue_enter_avg_per_role:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均古战场进入次数(总次数/去重角色数)
+coverage:
+  scenarios:
+    - 古战场参与度与活跃角色规模(role_uv/account_uv)
+    - 不同主题(rogueTheme)的覆盖广度与热门主题分布(theme_uv)
+    - 跨服参与情况(server_uv)与人均进入频次(avg_per_role)
+    - 进入者角色构成(avg_role_level)与挑战难度(avg_rogue_level)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认为 role_id(角色)；account_id 与 role_id 实测基本一致(acc_uv=112 vs role_uv=113，存在个别多角色并号情形)
+    - 仅验证事件命中与量级，未对 params 内货币(coinList)字段做金额聚合复核
+external_refs: []

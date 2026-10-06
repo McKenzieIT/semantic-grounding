@@ -1,0 +1,190 @@
+name: game.recharge
+event_filter: event = 'game.recharge'
+description: |-
+  充值
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等32个；money 字段=消费人民币(单位分), moneyType=1 真实付费购买(计入营收), moneyType=2 现金券消费(不计营收) 分析主体: account_id(付费账号)为主, role_id 兼顾角色粒度; 详见 metrics 中 arpu_fen(按账号)/arppu_fen(按付费账号) scout 实测 ds=20260729: cnt=20657, role_uv=4227, acc_uv=3978, server_uv=477; moneyType=1 营收 3999200分(¥39992), moneyType=2 现金券 2777600分(¥27776)
+  与 DWS 表 com_pay_order_di 覆盖同一类业务问题(充值/付费)但不是同一记录集,不可自由互推——已验证的唯一对齐口径:本表 moneyType=1 且 orderId 非空 ≡ com_pay_order_di 的 pay_type=1(两侧 role_uv 均为288,ds=20260806实测);moneyType=2(现金券)不对应 pay_type 任何干净子集("moneyType=2⊇pay_type∈{2,3,4}"假设已被证伪,25,691≠34,419)。选数据源前先确认业务问题要哪种口径,不要假设两表可互相替代或换算(2026-08-07,D16/D18,与10000329同构)
+domains:
+  - 付费经济
+domain: payment
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  cfgId:
+    type: int
+    description: 配置ID
+  money:
+    type: int
+    description: 消费人民币 单位分
+  accuMoney:
+    type: int
+    description: 累计充值
+  time:
+    type: int
+    description: 时间
+  type:
+    type: int
+    description: 0 基本充值 1 月卡 2 礼包 3 gm活动
+  uid:
+    type: string
+    description: 中台UID
+  orderId:
+    type: string
+    description: 订单ID
+  productId:
+    type: string
+    description: 商品ID
+  channel:
+    type: string
+    description: 渠道
+  moneyType:
+    type: int
+    description: 充值类型 1 付费购买 2 现金券（2026-07-22 MaxCompute 实测 ds=20260720 确认仅这两档：moneyType=1 cnt=14731/money_sum=773500分，moneyType=2 cnt=432/money_sum=555000分；口径与同族游戏10000329一致）
+metrics:
+  recharge_cnt:
+    expression: COUNT(CASE WHEN CAST(GET_JSON_OBJECT(params, '$.money') AS BIGINT) > 0 THEN 1 END)
+    description: 充值事件触发次数(含 moneyType=1/2 全部;D18已过滤money<=0的零金额打点噪声,该噪声只出现在moneyType=1且orderId为空的行,不影响moneyType=2)
+  recharge_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN CAST(GET_JSON_OBJECT(params, '$.money') AS BIGINT) > 0 THEN role_id END)
+    description: 充值独立角色数(去重 role_id,含全部 moneyType;D18已过滤money<=0的零金额打点噪声)
+  recharge_account_uv:
+    expression: COUNT(DISTINCT CASE WHEN CAST(GET_JSON_OBJECT(params, '$.money') AS BIGINT) > 0 THEN account_id END)
+    description: 充值独立账号数(去重 account_id,含全部 moneyType;D18已过滤money<=0的零金额打点噪声)
+  total_revenue_fen:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params, '$.moneyType') AS BIGINT) = 1 THEN CAST(GET_JSON_OBJECT(params, '$.money') AS BIGINT) ELSE 0 END)
+    description: 真实营收(单位分,除以100转元);用户2026-07-22确认**仅 moneyType=1(付费购买)计入营收**，moneyType=2(现金券)是消费已持有的代金券非新增现金，不计入
+  voucher_redeemed_amt_fen:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params, '$.moneyType') AS BIGINT) = 2 THEN CAST(GET_JSON_OBJECT(params, '$.money') AS BIGINT) ELSE 0 END)
+    description: 现金券(moneyType=2)充值金额合计(单位分,除以100转元);不计入营收，反映代金券消耗规模而非现金流水
+  arpu_fen:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params, '$.moneyType') AS BIGINT) = 1 THEN CAST(GET_JSON_OBJECT(params, '$.money') AS BIGINT) ELSE 0 END) / NULLIF(COUNT(DISTINCT CASE WHEN CAST(GET_JSON_OBJECT(params, '$.money') AS BIGINT) > 0 THEN account_id END), 0)
+    description: ARPU(分/账号,真实营收/全部真实充值账号去重数;D18已过滤money<=0的零金额打点噪声,否则分母虚高导致ARPU虚低;单位分,除以100转元)
+  arppu_fen:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params, '$.moneyType') AS BIGINT) = 1 THEN CAST(GET_JSON_OBJECT(params, '$.money') AS BIGINT) ELSE 0 END) / NULLIF(COUNT(DISTINCT CASE WHEN CAST(GET_JSON_OBJECT(params, '$.moneyType') AS BIGINT) = 1 AND CAST(GET_JSON_OBJECT(params, '$.money') AS BIGINT) > 0 THEN account_id END), 0)
+    description: ARPPU(分/真实付费账号,真实营收/moneyType=1且money>0账号去重数;D18已过滤零金额打点噪声;单位分,除以100转元)
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729(ieu_ods.ods_10000251_all_view, event=game.recharge): cnt=20657, role_uv=4227, acc_uv=3978, server_uv=477; 独立复算 moneyType=1 营收 money_sum=3999200分(¥39992)、moneyType=2 现金券 money_sum=2777600分(¥27776),与 metrics 表达式一致。保留原 business_confirmed(2026-07-22 moneyType 营收口径用户确认)。"
+coverage:
+  scenarios:
+    - 真实营收(total_revenue_fen,仅 moneyType=1)与 ARPU/ARPPU
+    - 现金券(moneyType=2)消耗规模追踪(voucher_redeemed_amt_fen),用于区分"营收"与"代金券消费"
+    - 充值事件次数与独立角色/账号数
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测(cnt=20657/role_uv=4227/acc_uv=3978/server_uv=477;moneyType=1 营收 ¥39992,moneyType=2 现金券 ¥27776),metrics 表达式已与日志复算一致,未做多日全量复核;本事件无预聚合 daily_count/total_count 字段(按需用 metrics 表达式聚合)
+    - 分析主体默认 account_id(付费账号),role_id 为角色粒度补充;ARPU 按全部充值账号去重,ARPPU 仅按 moneyType=1 真实付费账号去重
+    - total_revenue_fen 仅计 moneyType=1；moneyType=2(现金券)对应的现金收入记录在购买代金券的另一事件/表，本表重复计会虚增（用户2026-07-22确认，与 DWS 表 com_pay_order_di 的 pay_type 口径原则一致）
+    - 2026-08-07(D18,maxc实测ds=20260806)：本表存在moneyType=1但orderId为空、money恒为0的非充值打点噪声(10000251单日16,572行，与10000329同构)，会虚增行数/去重类指标；recharge_cnt/recharge_role_uv/recharge_account_uv/arpu_fen/arppu_fen已改为money>0过滤，total_revenue_fen/voucher_redeemed_amt_fen是金额SUM不受影响。判别键选money>0而非orderId结构判别（用户2026-08-07拍板）。10000147/10000312未核实同类污染，留待后续。
+external_refs:
+  - dim_table: dim_10000251_trans_gacha_mission_group_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_gacha_mission_group_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df_arch 主键精确同名
+    origin: deterministic
+alt_labels:
+  - 氪金
+  - 充值
+  - 付费

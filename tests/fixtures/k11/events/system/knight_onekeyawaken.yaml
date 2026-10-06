@@ -1,0 +1,126 @@
+name: game.knight.onekeyawaken
+event_filter: event = 'game.knight.onekeyawaken'
+description: 武将一键觉醒事件。记录玩家对武将(knightId)执行一键觉醒操作，触发后武将按 orders 觉醒点位顺序批量提升节点等级/节点id；事件携带角色基础属性(roleLevel/vipLevel/roleForce/exp)与关键货币(coinList.gold/diamond/energy 等)。分析主体为 role_id(角色)，20260729 单日 scout 实测 cnt=224/role_uv=49/acc_uv=48/server_uv=14。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightId:
+    type: int
+    description: 武将id
+  orders:
+    type: array
+    description: 觉醒点位
+  orders.lvl:
+    type: int
+    description: 节点等级
+  orders.id:
+    type: int
+    description: 节点id
+metrics:
+  game_knight_onekeyawaken_cnt:
+    description: 武将一键觉醒操作总次数(以事件行为计)
+    expression: COUNT(*)
+  game_knight_onekeyawaken_role_uv:
+    description: 执行武将一键觉醒的去重角色数
+    expression: COUNT(DISTINCT role_id)
+  game_knight_onekeyawaken_account_uv:
+    description: 执行武将一键觉醒的去重账号数
+    expression: COUNT(DISTINCT account_id)
+  game_knight_onekeyawaken_server_uv:
+    description: 触发武将一键觉醒的去重游戏服数
+    expression: COUNT(DISTINCT server_id)
+  game_knight_onekeyawaken_knight_uv:
+    description: 被一键觉醒的去重武将数(按 params.knightId)
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.knightId'))
+  game_knight_onekeyawaken_per_role:
+    description: 人均觉醒操作次数(cnt/role_uv)
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+  game_knight_onekeyawaken_with_knight_rate:
+    description: 携带 knightId 的操作占比(数据完整性指标)
+    expression: CAST(SUM(CASE WHEN GET_JSON_OBJECT(params, '$.knightId') IS NOT NULL THEN 1 ELSE 0 END) AS DOUBLE) / NULLIF(COUNT(*), 0)
+coverage:
+  scenarios:
+    - 角色成长：武将觉醒参与度与渗透(操作角色数/总活跃角色)
+    - 角色成长：人均觉醒频次，识别高频/批量觉醒玩家
+    - 角色成长：被觉醒武将(knightId)覆盖广度，评估不同武将觉醒热度
+    - 资源产销：觉醒对 coinList.gold/diamond/energy 等关键货币的消耗(配合货币余额事件)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id(角色)；account_id 仅作账号去重补充
+    - orders(觉醒点位数组)未展开为节点级明细指标，仅以操作事件行计数
+    - coinList 字段非本事件直接 SUM 计量(应配合资源产销域货币流水事件)，本事件指标不含货币 SUM
+    - server_uv 等指标受当日开服分布影响，非稳态
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout MAXC 实测 ds=20260729：cnt=224 / role_uv=49 / acc_uv=48 / server_uv=14，数值合理(多服多角色一键觉醒)。仅单日 scout，未做全量复核。
+coverage_status: analyst_confirmed
+external_refs: []

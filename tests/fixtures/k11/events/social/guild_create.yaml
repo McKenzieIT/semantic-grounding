@@ -1,0 +1,112 @@
+name: game.guild.create
+event_filter: event = 'game.guild.create'
+description: "公会创建事件(game.guild.create)：角色发起创建公会操作并成功落库时触发，参数携带公会名 name、标签 tag、图标 icon、宣言 manifesto 以及创建者角色/账号/服务器与角色快照属性(等级/vip/战力/经验)。分析主体为 role_id(角色粒度)。MAXC scout ds=20260729 实测: cnt=10, role_uv=10, acc_uv=10, server_uv=2。"
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  name:
+    type: string
+    description: 名字
+  tag:
+    type: int
+    description: 标签
+  icon:
+    type: array
+    description: 图标
+  manifesto:
+    type: string
+    description: 宣言
+metrics:
+  game_guild_create_cnt:
+    expression: COUNT(*)
+    description: 公会创建事件触发总次数
+  game_guild_create_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 创建公会的去重角色数（分析主体默认 role_id）
+  game_guild_create_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 创建公会的去重账号数
+  game_guild_create_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 发生公会创建的去重游戏服数
+coverage:
+  scenarios:
+    - 衡量每日公会创建事件触发规模(cnt)及去重角色/账号/服务器覆盖
+    - 用于社交公会域的新建公会拉新与首日活跃分析
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认为 role_id(角色)，未与公会维度实体对账
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "MAXC scout ds=20260729 实测: cnt=10, role_uv=10, acc_uv=10, server_uv=2"
+external_refs: []

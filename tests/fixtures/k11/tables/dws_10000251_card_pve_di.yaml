@@ -1,0 +1,113 @@
+table_name: dws_10000251_card_pve_di
+engine: maxcompute
+table_comment: PVE卡牌使用表
+description: |-
+  PVE卡牌使用表（角色维度）。记录角色在 PVE 玩法中对各卡牌的参与及胜负次数。
+  粒度：日增量(_di)，角色(role_id) × 区服 × 玩法 × 子玩法 × 卡牌。
+  主要字段：role_id, server_id, play_id, sub_play_id, card_id, part_pv, win_pv, role_part_pv 等11列。
+domains:
+  - 战斗关卡
+  - 装备道具
+granularity: 日增量(_di)，角色(role_id)维度
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id，key
+    role: dimension
+  - name: play_id
+    type: string
+    comment: 玩法id，key，缺省值0
+    role: dimension
+  - name: sub_play_id
+    type: string
+    comment: 子玩法id，key，缺省值0
+    role: dimension
+  - name: card_id
+    type: string
+    comment: 卡牌id，key
+    role: dimension
+  - name: part_pv
+    type: bigint
+    comment: 参与次数，0表示未参与
+    role: measure
+  - name: win_pv
+    type: bigint
+    comment: 胜利次数
+    role: measure
+  - name: role_part_pv
+    type: bigint
+    comment: 角色参与次数，用于计算参与总次数
+    role: measure
+  - name: role_win_pv
+    type: bigint
+    comment: 角色胜利次数，用于计算胜利总次数
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  card_pve_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与 PVE 卡牌玩法的角色数（UV）
+  card_pve_part_pv:
+    expression: SUM(part_pv)
+    description: 卡牌参与总次数
+  card_pve_win_pv:
+    expression: SUM(win_pv)
+    description: 卡牌胜利总次数
+  card_pve_win_rate:
+    expression: SUM(win_pv) / NULLIF(SUM(part_pv), 0)
+    description: 卡牌胜率（胜利次数/参与次数）
+  card_distinct_cnt:
+    expression: COUNT(DISTINCT card_id)
+    description: 被使用的卡牌种类数
+coverage:
+  scenarios:
+    - 各 PVE 玩法(play_id/sub_play_id)下卡牌的参与角色规模与活跃度
+    - 卡牌维度参与/胜利总次数与胜率对比，评估卡牌强度与使用偏好
+    - 角色级参与次数(role_part_pv/role_win_pv)汇总，衡量角色在卡牌玩法中的投入与战绩
+  limitations:
+    - 表为空/无数据(MAX(ds) NULL)，所有指标为结构性定义，未经实际数据验证
+    - 仅基于 meta describe 的列定义做静态推断，未做全量 maxc 实测复核
+    - 日增量(_di)语义下，跨日累计需在上层按 ds 求和，单日粒度不可直接跨期比较
+    - 缺少卡牌稀有度/品类等维度，无法做卡牌分层分析；ext_info 未解析
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表为空(MAX(ds)=NULL)，无法实测验证；指标为结构性定义，待有数据后复核
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (区服id) exactly matches the DIM PK server_id; dim_10000251_server_info is the 区服 dimension providing server name and open-time attributes.
+    origin: deterministic
+  - dim_table: dim_10000251_trans_card_df
+    join_keys:
+      - dws_column: card_id
+        dim_column: id
+    derivation: DWS card_id (卡牌id) semantically maps to trans_card_df PK id (武将/卡牌配置主键); trans_card_df is the card/武将 config dimension for this game.
+  - dim_table: dim_10000251_trans_play_df
+    join_keys:
+      - dws_column: play_id
+        dim_column: id
+    derivation: DWS play_id (玩法id) semantically maps to trans_play_df PK id (玩法 id); trans_play_df is the canonical 玩法 config dimension.
+  - dim_table: dim_10000251_trans_sub_play_od
+    join_keys:
+      - dws_column: sub_play_id
+        dim_column: sub_play_id
+    derivation: DWS sub_play_id (子玩法id) exactly matches the DIM PK sub_play_id; dim_10000251_trans_sub_play_od is the canonical 子玩法 config dimension.
+    origin: deterministic
+pref_label: PVE卡牌使用表
+alt_labels:
+  - 使用

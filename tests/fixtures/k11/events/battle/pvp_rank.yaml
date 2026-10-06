@@ -1,0 +1,120 @@
+name: game.pvp.rank
+event_filter: event = 'game.pvp.rank'
+description: 新服冲刺参与奖励 PvP 排行榜事件 game.pvp.rank：记录新服开服冲刺活动期间各 PvP 排行榜（rankId）的快照与进度奖励触发。 携带 serverId/serverName/accountId/roleId/roleName/sex/createTime/onlineTime/roleLevel/vipLevel/roleForce/exp/image/coinList/sessionId/logUUID/playType/playName/rankId/progressOrder 等 26 个参数。 分析主体默认为基表 role_id（角色维度），但实测 ds=20260729 基表 role_id/account_id/server_id 退化为单一值，params 中 rankId 有 37 个去重值（真正可度量维度），role 类身份字段（roleId/accountId/serverId）在 params 中为 NULL。 实测 ds=20260729 单日命中 190377 条、rankId 去重 37 个。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  playType:
+    type: int
+    description: 玩法类型
+  playName:
+    type: string
+    description: 玩法名称
+  rankId:
+    type: string
+    description: 排行榜ID
+  progressOrder:
+    type: int
+    description: 进度奖励
+metrics:
+  pvp_rank_cnt:
+    expression: COUNT(*)
+    description: PvP 排行榜事件总触发次数（含同一排行榜多次快照）
+  pvp_rank_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 命中角色数（实测退化为单一值，仅供口径记录）
+  pvp_rank_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 命中账号数（实测退化为单一值，仅供口径记录）
+  pvp_rank_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 命中游戏服数（实测退化为单一值，仅供口径记录）
+  pvp_rank_id_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.rankId'))
+    description: 去重排行榜 ID 数（真正可度量主体维度，实测 37）
+  pvp_rank_id_to_role_ratio:
+    expression: ROUND(COUNT(DISTINCT GET_JSON_OBJECT(params, '$.rankId')) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0), 4)
+    description: 排行榜数与角色数比值（基表 role_id 退化，仅供口径诊断）
+coverage:
+  scenarios:
+    - 新服冲刺 PvP 排行榜活跃度：pvp_rank_cnt 衡量事件触发总量，pvp_rank_id_uv 衡量参与排行榜数量。
+    - 活动期间排行榜覆盖范围：pvp_rank_id_uv 反映 37 个 rankId 的覆盖广度。
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核。
+    - 基表 role_id/account_id/server_id 实测退化为单一值（去重=1），疑似本事件以排行榜快照为主、身份字段未填充；以 role_id 作为分析主体不可靠，真正可度量主体为 params.rankId。
+    - params 中 roleId/accountId/serverId/progressOrder 实测为 NULL（去重=0），仅 rankId 有 37 个去重值；role 类身份指标（pvp_rank_role_uv 等）仅供口径记录，不代表真实活跃角色数。
+    - 无金额字段，未做营收核验。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=190377、role_uv=1（退化）、acc_uv=1（退化）、server_uv=1（退化）、rankId 去重=37。事件确有真实触发与可观量级，但基表身份维度退化、params 身份字段为 NULL。
+coverage_status: analyst_confirmed
+external_refs: []

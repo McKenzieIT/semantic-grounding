@@ -1,0 +1,63 @@
+table_name: dim_10000251_trans_goods_df_arch
+engine: maxcompute
+kind: dim
+table_comment: '交易/兑换商品配置归档维度表（按 ds 分区的每日商品配置快照）'
+description: '商品配置维度表：记录可交易/兑换商品（如鱼饵、战法券快捷购买等）的消耗与获得配置。
+  每行一个 (商品id, ds快照) 的商品配置记录。键字段：id（商品id）+ ds（快照日期分区）；
+  标签字段：name（商品备注/名称）。cost 为复合编码串（如 1_2_100_1），gain_resource 同样为复合编码串（如 1_63_5），需二次解码。'
+domains:
+- 系统监控
+granularity: '每 (商品id, ds快照日期) 一行的商品配置归档维度表'
+primary_key:
+- id
+- ds
+primary_key_unique: true
+label_columns:
+- name
+coverage:
+  scenarios:
+  - '通过 id JOIN 事实表，为交易/兑换流水提供商品配置维度（商品名称、消耗、获得）'
+  - '通过 ds 取特定日期的商品配置快照，做配置时序对比'
+  - '作为付费经济/资源产销域的商品维度字典'
+  limitations:
+  - '配置类维度表，无值度量（cost/gain_value 均为编码字符串，非数值度量）'
+  - 'cost 与 gain_resource 为复合编码串（如 1_2_100_1、1_63_5），需在下游二次解码才能解析资源类型与数量'
+  - 'id 单列非唯一（全表 24 个商品 × 1103 个 ds 快照 = 11813 行），主键为复合 (id, ds)，已实测唯一'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含全部 ds 快照）
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'LLM 自动建模 draft；主键 (id, ds) 经 SQL 实测唯一 (r=d=11813)；cost/gain_resource 为复合编码串需二次解码'
+columns:
+- name: id
+  type: string
+  comment: 商品id
+  role: dimension
+- name: name
+  type: string
+  comment: 商品备注
+  role: dimension
+- name: cost
+  type: string
+  comment: 资源消耗
+  role: dimension
+- name: gain_type
+  type: string
+  comment: 获得类型
+  role: dimension
+- name: gain_value
+  type: string
+  comment: 获得值
+  role: dimension
+- name: gain_resource
+  type: string
+  comment: 获得资源
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition

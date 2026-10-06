@@ -1,0 +1,242 @@
+domain: resource
+events:
+- name: game.card.gacha
+  description: '抽卡
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等43个'
+- name: game.charmStone.changeShape
+  description: '灵石-变形
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等35个'
+- name: game.charmStone.decompose
+  description: '灵石-分解
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.charmStone.onekeySynthesis
+  description: '灵石：一键合成
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等38个'
+- name: game.charmStone.refinement
+  description: '灵石-洗练
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等36个'
+- name: game.charmStone.refinementConfirm
+  description: '灵石-洗练替换确认
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等35个'
+- name: game.charmStone.setLock
+  description: '灵石-上锁(解锁)
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等35个'
+- name: game.charmStone.synthesis
+  description: '灵石：合成+重塑
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等41个'
+- name: game.charmStone.unwear
+  description: '灵石-卸下
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等29个'
+- name: game.charmStone.wear
+  description: '灵石-穿戴
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等29个'
+- name: game.charmactivity.buyitem
+  description: '灵器活动-购买道具
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个'
+- name: game.charmactivity.gacha
+  description: '灵器活动-抽卡
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等44个'
+- name: game.charmactivity.gachamission
+  description: '灵器活动-抽卡任务奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.charmactivity.gachaswitchactivity
+  description: '灵器活动-切换活动卡池
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.charmactivity.gachaswitchspecial
+  description: '灵器活动-切换新手集市卡池
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.charmactivity.setTeamParam
+  description: '灵器活动-设置队伍信息
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.charmactivity.setautoskillscheme
+  description: '灵器活动-设置技能方案
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.charmactivity.setteamcharm
+  description: '灵器活动-设置灵器
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个'
+- name: game.charmactivity.setteameffectgroup
+  description: '灵器活动-设置阵营光环
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.charmactivity.skipallbattle
+  description: '灵器活动-跳过所有战斗
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.equip.add
+  description: '装备-新获取
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.equip.autoBreak
+  description: '装备-自动突破
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.equip.autoReinforce
+  description: '装备-自动强化
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个'
+- name: game.equip.lock
+  description: '装备-锁定
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.equip.onekeyUnwear
+  description: '装备-一键脱下
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.equip.onekeyWear
+  description: '装备-一键穿戴
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.equip.preciseCancel
+  description: 'equip.preciseCancel
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.equip.preciseChoose
+  description: 'equip.preciseChoose
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等27个'
+- name: game.equip.preciseChooseMulti
+  description: 'equip.preciseChooseMulti
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等28个'
+- name: game.equip.preciseFlush
+  description: 'equip.preciseFlush
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等27个'
+- name: game.equip.preciseFlushMulti
+  description: 'equip.preciseFlushMulti
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等28个'
+- name: game.equip.share
+  description: '装备-分享
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.equip.starup
+  description: '装备-升星
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.equip.unware
+  description: '装备-脱下
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.equip.ware
+  description: '装备-穿上
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.gacha.buyupitem
+  description: '招募-购买up道具
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.gacha.chooseReturnActivity
+  description: '召唤-选择返场活动卡池
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.gacha.missionReward
+  description: '抽卡-任务奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等29个'
+- name: game.gacha.setGroupSelId
+  description: 'gacha.setGroupSelId
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.gacha.setWishId
+  description: '设置心愿目标
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.gacha.switchSpecial
+  description: '招募-切换新手集市卡池
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.item.change
+  description: '道具资源变化
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等33个'
+- name: game.item.compose
+  description: '道具合成
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.item.use
+  description: '道具使用
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.koiDraw.changeFloor
+  description: '锦鲤彩运-切换层
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.koiDraw.gacha
+  description: '锦鲤彩运-抽奖
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等31个'
+- name: game.pitchpot
+  description: '投壶-投壶
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等29个'
+- name: game.recycle
+  description: '回收
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等28个'
+- name: game.skin.addSkin
+  description: 'skin.addSkin
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.toy.gacha
+  description: '遗物抽卡
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等44个'
+- name: game.toy.gachaBuyItem
+  description: 'toy.gachaBuyItem
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.toy.gachaMissionOnekey
+  description: '抽卡任务领取
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个'
+- name: game.toy.onekeyStarup
+  description: 'toy.onekeyStarup
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个'
+- name: game.toy.resonanceLevelup
+  description: '遗物共鸣台升级
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等29个'
+- name: game.toy.resonanceLevelupOnekey
+  description: '遗物共鸣台升级
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等29个'
+- name: game.toy.sign
+  description: '幻谷：签到
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.toy.starup
+  description: '遗物升星
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个'
+- name: game.toy.techactive
+  description: 'toy.techactive
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.toy.techonekeyactive
+  description: 'toy.techonekeyactive
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.toy.wear
+  description: 'toy.wear
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等36个'

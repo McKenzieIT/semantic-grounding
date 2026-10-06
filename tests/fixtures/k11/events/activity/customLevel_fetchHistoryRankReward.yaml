@@ -1,0 +1,104 @@
+name: game.customLevel.fetchHistoryRankReward
+event_filter: event = 'game.customLevel.fetchHistoryRankReward'
+description: 演武场-领取历史最高排名奖励事件：玩家在演武场(customLevel)玩法中领取历史最高排名对应的奖励。携带 23 个参数，含角色基础信息(角色id/账号id/角色名/性别/创角时间/上线时间/角色等级/vip等级/角色战力/经验/看板娘)、游戏服信息(serverId/serverName)、关键货币(充值钻石/赠送钻石/免费钻石/紫金/经验卷轴/体力)、会话id/logUUID 及本次领取到的奖励 id 列表(ids)。subject 粒度为 role_id(角色)，scout 实测 ds=20260729 单日 cnt=0(同 ds=20260728 亦为 0)，零命中，疑似事件下线或当日未触发。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  ids:
+    type: array
+    description: 领取到的id列表
+metrics:
+  game_customLevel_fetchHistoryRankReward_cnt:
+    description: 演武场领取历史最高排名奖励事件总次数
+    expression: COUNT(*)
+  game_customLevel_fetchHistoryRankReward_role_uv:
+    description: 领取历史最高排名奖励的去重角色数(role_id)
+    expression: COUNT(DISTINCT role_id)
+  game_customLevel_fetchHistoryRankReward_account_uv:
+    description: 领取历史最高排名奖励的去重账号数(account_id)
+    expression: COUNT(DISTINCT account_id)
+  game_customLevel_fetchHistoryRankReward_server_uv:
+    description: 领取历史最高排名奖励的去重游戏服数(server_id)
+    expression: COUNT(DISTINCT server_id)
+coverage:
+  scenarios:
+    - 演武场历史最高排名奖励领取次数与参与角色/账号/游戏服规模
+    - 自定义玩法(customLevel)奖励领取活跃度监控
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 日志中零命中(ds=20260729 cnt=0/role_uv=0/acc_uv=0；ds=20260728 亦为 0)，疑似事件下线或当日未触发
+    - metrics 默认 subject 粒度为 role_id(角色)
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: "scout ds=20260729: cnt=0, role_uv=0, acc_uv=0, server_uv=0；ds=20260728 同样零命中。事件疑似下线/未触发，保持 draft。"
+  coverage_status: draft
+external_refs: []

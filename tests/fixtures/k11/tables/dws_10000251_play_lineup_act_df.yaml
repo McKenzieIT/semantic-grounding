@@ -1,0 +1,114 @@
+table_name: dws_10000251_play_lineup_act_df
+engine: maxcompute
+table_comment: 玩法阵容表(角色粒度日全量快照)
+description: |-
+  玩法阵容活跃表，记录角色在玩法/子玩法/关卡下的阵容参与明细。
+  主体类型：角色(role，role_id 维度，对应 user_type=3 角色表)。
+  粒度：日全量快照(_df)，按 ds 分区，每日全量镜像角色-阵容参与状态。
+  主要字段：role_id, server_id, play_id, sub_play_id, stage_id, lineup, part_pv, pass_pv, ext_info 等10列。
+  注意：MAX(ds) 实测为 NULL，表当前无数据(空表)，仅做结构性丰富。
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 日全量快照(_df)，角色粒度
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id，key
+    role: dimension
+  - name: play_id
+    type: string
+    comment: 玩法id，key
+    role: dimension
+  - name: sub_play_id
+    type: string
+    comment: 子玩法id，key
+    role: dimension
+  - name: stage_id
+    type: string
+    comment: 关卡id，key
+    role: dimension
+  - name: lineup
+    type: string
+    comment: 阵容，key
+    role: dimension
+  - name: part_pv
+    type: bigint
+    comment: 参与次数
+    role: measure
+  - name: pass_pv
+    type: bigint
+    comment: 首通参与次数
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与角色UV，按 role_id 去重统计角色数
+  total_part_pv:
+    expression: SUM(part_pv)
+    description: 总参与次数，对所有角色的 part_pv 求和
+  total_pass_pv:
+    expression: SUM(pass_pv)
+    description: 总首通参与次数，对所有角色的 pass_pv 求和
+  pass_rate:
+    expression: SUM(pass_pv) / NULLIF(SUM(part_pv), 0)
+    description: 首通率，首通参与次数/参与次数，分母为0时返回NULL
+  lineup_cnt:
+    expression: COUNT(DISTINCT lineup)
+    description: 阵容数，按 lineup 去重统计当日活跃阵容数量
+coverage:
+  scenarios:
+    - 各玩法/子玩法/关卡的角色参与UV与阵容分布(按 play_id/sub_play_id/stage_id 分组)
+    - 首通率(首通参与次数/参与次数)评估关卡难度与通关转化
+    - 阵容热度排行(COUNT DISTINCT lineup)分析主流阵容
+    - 区服维度(server_id)对比各服玩法参与与首通表现
+  limitations:
+    - MAX(ds) 实测为 NULL，表当前无数据(空表)，所有指标为结构性定义，未做全量 maxc 实测复核
+    - 主体类型按表名 role_id 推断为角色表(user_type=3)，因表空未做 SELECT DISTINCT user_type 校验
+    - _df 为日全量快照，指标为快照时点口径，非增量累计(_di 才是日增量)
+    - ext_info 为文本属性，未纳入指标
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表为空(MAX(ds) NULL)，仅做结构性丰富，未做全量 maxc 实测复核；指标口径按列定义与玩法阵容语义推断
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (区服id，key) exactly matches dim_10000251_server_info primary key server_id (区服维度配置表)，用于按区服切片阵容活跃分析。
+    origin: deterministic
+  - dim_table: dim_10000251_trans_play_df
+    join_keys:
+      - dws_column: play_id
+        dim_column: id
+    derivation: DWS play_id (玩法id，key) semantically matches dim_10000251_trans_play_df primary key id (玩法配置维度表，主键 id=玩法 id，标签列 name=玩法名)。
+  - dim_table: dim_10000251_trans_sub_play_od
+    join_keys:
+      - dws_column: sub_play_id
+        dim_column: sub_play_id
+    derivation: DWS sub_play_id (子玩法id，key) exactly matches dim_10000251_trans_sub_play_od primary key sub_play_id (子玩法配置维度表，键为 sub_play_id)。
+    origin: deterministic
+  - dim_table: dim_10000251_trans_stage_df
+    join_keys:
+      - dws_column: stage_id
+        dim_column: id
+    derivation: DWS stage_id (关卡id，key) semantically matches dim_10000251_trans_stage_df primary key id (关卡配置维度表，主键 id=关卡id，供事实表按 id 关联做关卡维度查找)。
+pref_label: 玩法阵容活跃表
+alt_labels:
+  - 阵容
+  - 玩法
+  - 编队

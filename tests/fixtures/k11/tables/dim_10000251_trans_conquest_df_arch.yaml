@@ -1,0 +1,48 @@
+table_name: dim_10000251_trans_conquest_df_arch
+engine: maxcompute
+kind: dim
+table_comment: '征服/远征章节-关卡配置归档维度表（按 ds 分区的历史快照）'
+description: '游戏征服(conquest)玩法章节-关卡配置维度表，按 ds 日分区归档每日快照。键：chapter_id(章节) + stage_id(关卡) + ds(快照日)；标签：name(关卡名)。每行描述一个章节-关卡在某日的配置：推荐等级(reco_level)等。'
+primary_key: [chapter_id, stage_id, ds]
+primary_key_unique: true
+label_columns: [name]
+domains:
+- 战斗关卡
+granularity: '每 章节-关卡-快照日 一行的配置/维度归档表'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含全部日分区）
+columns:
+- name: chapter_id
+  type: string
+  comment: 章节id
+  role: dimension
+- name: stage_id
+  type: string
+  comment: 关卡id
+  role: dimension
+- name: name
+  type: string
+  comment: 关卡名
+  role: dimension
+- name: reco_level
+  type: bigint
+  comment: 推荐等级
+  role: dimension
+- name: ds
+  type: string
+  comment: 日分区/快照日(yyyymmdd)
+  role: partition
+coverage:
+  scenarios:
+  - '通过 chapter_id+stage_id 关联事实表，查找关卡名(name)与推荐等级(reco_level)；ds 用于按日快照回溯关卡配置历史。'
+  limitations:
+  - '配置类维度表，无值度量。'
+  - '按 ds 分区的日快照归档，同一 (chapter_id,stage_id) 跨分区存在多份历史快照，查询时需指定 ds 分区裁剪。'
+  - 'chapter_id 单列不唯一（仅 4 个章节），复合键 (chapter_id,stage_id,ds) 已实测唯一。'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'meta describe 核对列与类型一致；PK 取复合键 (chapter_id,stage_id,ds)，实测 COUNT(*)=COUNT(DISTINCT concat)=27433 唯一；label=name；域=战斗关卡；保持 draft 待业务确认。'

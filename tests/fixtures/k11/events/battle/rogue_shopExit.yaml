@@ -1,0 +1,116 @@
+name: game.rogue.shopExit
+event_filter: event = 'game.rogue.shopExit'
+description: 古战场（rogue）退出商店事件：玩家在古战场玩法的商店节点完成购买或主动关闭/退出商店时上报。分析主体为 role_id（角色）。参数含角色等级/vip等级/角色战力/经验，以及退出时刻的 coinList 货币余额快照（充值钻石gold、赠送钻石sendgold、免费钻石freegold、紫金diamond、经验卷轴expCoin、体力energy）。ds=20260729 scout 实测：当日 386 次退出商店、104 角色、103 账号、43 服务器。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=386, role_uv=104, acc_uv=103, server_uv=43，gold_sum=458, freegold_sum=2933675, diamond_sum=null，数值合理，事件在线
+metrics:
+  game_rogue_shopExit_cnt:
+    expression: COUNT(*)
+    description: 退出商店总次数
+  game_rogue_shopExit_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 退出商店的角色数（分析主体 role_id）
+  game_rogue_shopExit_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 退出商店的账号数
+  game_rogue_shopExit_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 发生退出商店的服务器数
+  game_rogue_shopExit_gold_balance_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 退出商店时刻角色充值钻石余额合计
+  game_rogue_shopExit_freegold_balance_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.freegold') AS BIGINT))
+    description: 退出商店时刻角色免费钻石余额合计
+  game_rogue_shopExit_diamond_balance_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.diamond') AS BIGINT))
+    description: 退出商店时刻角色紫金余额合计
+  game_rogue_shopExit_per_role_avg_cnt:
+    expression: COUNT(*)::FLOAT / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均退出商店次数（总次数/角色UV）
+coverage:
+  scenarios:
+    - 古战场退出商店的频次与角色UV，衡量商店节点曝光与参与深度
+    - 退出商店时货币余额（gold/freegold/diamond）合计，反映玩家资源存量与消费后状态
+    - 各服务器退出商店热度对比
+    - 人均退出次数衡量商店节点重复访问行为
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度），未逐字段核对 params 类型
+    - coinList.gold/freegold/diamond 来自 params JSON，scout 当日 diamond 全 null（紫金字段当日无值）
+    - 退出商店仅记录离开时刻的余额快照，未关联购买前后差额
+coverage_status: analyst_confirmed
+external_refs: []

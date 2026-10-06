@@ -1,0 +1,155 @@
+name: game.charmStone.refinement
+event_filter: event = 'game.charmStone.refinement'
+description: |-
+  灵石洗练事件 - 角色对灵石（charmStone）执行洗练，生成 stagedAttrs 待替换属性，支持对槽位上锁（lockList）。记录洗练前后属性快照（charmStone.attrs / stagedAttrs）、关键货币余额（coinList）与角色/服务器上下文。分析主体为 role_id（角色粒度）。scout 实测 ds=20260729 与 ds=20260728 均零命中（事件疑似下线/未触发）。原描述：灵石-洗练
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等36个
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  charmStone:
+    type: json
+    description: 灵石信息
+  charmStone.uid:
+    type: int
+    description: charmStone.uid
+  charmStone.id:
+    type: int
+    description: charmStone.id
+  charmStone.shape:
+    type: int
+    description: 对应charm_stone_shape_info
+  charmStone.isLock:
+    type: bool
+    description: 是否被上锁
+  charmStone.attrs:
+    type: array
+    description: 灵石实际属性
+  charmStone.attrs.id:
+    type: int
+    description: 第几个槽
+  charmStone.attrs.attrId:
+    type: int
+    description: 属性id
+  charmStone.attrs.attrValue:
+    type: int
+    description: 属性值
+  charmStone.stagedAttrs:
+    type: array
+    description: 洗练待替换属性（空表or nil为没有）
+  charmStone.stagedAttrs.id:
+    type: int
+    description: 第几个槽
+  charmStone.stagedAttrs.attrId:
+    type: int
+    description: 属性id
+  charmStone.stagedAttrs.attrValue:
+    type: int
+    description: 属性值
+  lockList:
+    type: array
+    description: 上锁了哪些格子
+metrics:
+  charm_stone_refinement_cnt:
+    expression: COUNT(*)
+    description: 灵石洗练操作总记录数
+  charm_stone_refinement_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与灵石洗练的去重角色数
+  charm_stone_refinement_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与灵石洗练的去重账号数
+  charm_stone_refinement_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及灵石洗练的去重游戏服数
+  charm_stone_refinement_charmstone_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.charmStone.uid'))
+    description: 被洗练的去重灵石数（按 charmStone.uid）
+  charm_stone_refinement_locked_ratio:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.charmStone.isLock') = 'true' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 对已上锁灵石进行洗练的占比（isLock=true 次数 / 总洗练次数）
+coverage:
+  scenarios:
+    - 灵石洗练参与度与目标分布（cnt / role_uv / account_uv / server_uv / charmstone_uv）
+    - 锁定洗练占比分析（locked_ratio，反映付费锁定洗练倾向）
+    - 灵石洗练跨服分布与活跃服数（server_uv）
+  limitations:
+    - 仅 ds=20260729 与 ds=20260728 两日 scout 实测，均零命中，事件疑似下线/未触发，未做全量复核
+    - 实测 ds=20260729：cnt=0, role_uv=0, acc_uv=0, server_uv=0；ds=20260728 同样全零
+    - 指标定义基于 params_fields 结构推断，零命中下无法用真实数据校验取值合理性
+    - 分析主体默认 role_id（角色粒度），因零命中未实际验证粒度
+    - isLock 布尔取值 true/false 依据 params_fields 描述，未抽样核对原始枚举
+  granularity: role_id
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 与 ds=20260728 均零命中（cnt=0/role_uv=0/acc_uv=0/server_uv=0），事件疑似下线或当日未触发，保持 draft。
+coverage_status: draft
+external_refs: []

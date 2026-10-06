@@ -1,0 +1,130 @@
+table_name: dws_10000251_univ_dev_whole_df
+engine: maxcompute
+table_comment: ""
+description: |
+  日全量快照表(_df)，每天对每个分析主体生成一行汇总记录。本表固定为 user_type=1 的【设备表】，分析主体=设备，标识字段=user_id(存设备ID)；DISTINCT user_type 仅返回单一值 1(建议用 SELECT DISTINCT user_type 复核)。
+  记录每个设备主体的首次活跃时间、最近活跃时间、首次付费时间、最近付费时间、累计付费金额(pay_amt_std，标准化货币口径)，以及记录各首次数据日志索引的附加信息(ext_info)。
+  粒度：每设备每天一行，全量快照。
+  能回答的业务问题：
+  - 新增设备数量与趋势(按 act_tm_fst 统计首活)
+  - 活跃召回与流失分析(按 act_tm_lst 判断最近活跃距今天数)
+  - 付费转化时长(首活到首付 pay_tm_fst - act_tm_fst)
+  - 累计付费金额分布与头部付费设备识别
+  - 沉默付费设备(曾付费但长期未活跃)识别
+  - LTV / 累计 ARPU 粗算(累计付费 / 设备数)
+  - 付费转化率与付费设备人均累计付费
+  注意事项：
+  - 本表主体固定为设备(user_type=1)，无需按 user_type 过滤即可直接聚合；user_type 列在表内为常量 1，仅作主体类型标记，不可用于切换层级
+  - ext_info 为非结构化日志索引串，不可直接作为分组键，需解析后使用
+  - pay_amt_std 为标准化货币口径累计值，跨币种已折算，不等同于原始流水金额
+  - 日全量快照，查询某设备历史变化需跨 ds 取多日记录；计算留存/活跃召回时同一 user_id 跨 ds 会出现多次，需按 user_id 去重(取 max(ds))
+  - act_tm_fst/act_tm_lst/pay_tm_fst/pay_tm_lst 为时点口径，跨日统计需注意时区一致性
+domains:
+  - 用户生命周期
+  - 付费经济
+granularity: 日全量快照(_df)，每设备每天一行；本表固定为 user_type=1 的【设备表】，分析主体=设备，标识字段=user_id(存设备ID)；DISTINCT user_type 仅返回单一值 1(建议用 SELECT DISTINCT user_type 复核)。
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: act_tm_fst
+    type: datetime
+    comment: 首次活跃时间
+    role: attribute
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近活跃时间
+    role: attribute
+  - name: pay_tm_fst
+    type: datetime
+    comment: 首次付费时间
+    role: attribute
+  - name: pay_tm_lst
+    type: datetime
+    comment: 最近付费时间
+    role: attribute
+  - name: pay_amt_std
+    type: decimal
+    comment: 累计付费金额
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 附加信息，记录各个首次数据的日志索引
+    role: attribute
+  - name: ds
+    type: string
+    comment: 日期分区，格式 yyyyMMdd，表示该全量快照所属日期；每天一份全量
+    role: dimension
+metrics:
+  new_dev_cnt:
+    expression: COUNT(DISTINCT user_id)
+    description: 新增设备数；配合 WHERE act_tm_fst 当日过滤，统计当日(或区间)新增的设备数量
+  active_dev_cnt:
+    expression: COUNT(DISTINCT user_id)
+    description: 活跃设备数；配合 WHERE act_tm_lst 当日过滤，统计截至快照日仍活跃的设备数量
+  paid_dev_cnt:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN user_id ELSE NULL END)
+    description: 累计曾付费设备数；统计截至快照日累计付费金额>0 的付费设备数量；作为付费率/ARPU 的分母
+  total_pay_amt_std:
+    expression: SUM(pay_amt_std)
+    description: 累计付费总额(标准化货币口径)；截至快照日所有设备的历史累计付费金额之和，反映全量付费盘子
+  arpu:
+    expression: SUM(pay_amt_std) * 1.0 / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 累计 ARPU(全体设备人均累计付费)；累计付费总额 / 全体设备数，用 NULLIF 防除零；分母为全体设备(含免费)，与 ARPPU 区分
+  pay_conversion_rate:
+    expression: AVG(CASE WHEN pay_amt_std > 0 THEN 1 ELSE 0 END)
+    description: 付费转化率；付费设备占全体设备的比例，用 AVG(CASE WHEN pay_amt_std>0 THEN 1 ELSE 0 END) 计算
+  avg_pay_amt_per_payer:
+    expression: SUM(pay_amt_std) * 1.0 / NULLIF(COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN user_id ELSE NULL END), 0)
+    description: 付费设备人均累计付费金额(ARPPU，标准化口径)；累计付费总额 / 付费设备数，反映付费深度；与 arpu(全体人均) 区分
+  churned_dev_cnt:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std > 0 AND act_tm_lst < DATE_SUB(CURRENT_DATE(), 30) THEN user_id ELSE NULL END)
+    description: 沉默付费设备数(曾付费但近 30 天未活跃)；用于沉默付费/流失召回识别，时间窗口可按业务调整
+partitions:
+  - name: ds
+    type: string
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: 真实数据验证通过(ds=20260729)。meta describe 确认全部列存在(user_type BIGINT/user_id STRING/act_tm_fst DATETIME/act_tm_lst DATETIME/pay_tm_fst DATETIME/pay_tm_lst DATETIME/pay_amt_std DOUBLE/ext_info STRING/ds STRING)。SELECT DISTINCT user_type WHERE ds='20260729' 仅返回 {1}，符合设备表(user_type=1)主张。核心指标实测合理且自洽：active_dev_cnt=2016356、paid_dev_cnt=292274、total_pay_amt_std=107312082.32、arpu=53.22(= SUM/COUNT)、pay_conversion_rate=0.145(与 paid_dev_cnt/active_dev_cnt≈0.145 一致)。粒度实测 COUNT(*)=COUNT(DISTINCT user_id)=2016356，每设备每天正好1行，1:1 全量快照成立。act_tm_fst/act_tm_lst 为正常 datetime、pay_amt_std 为正常 decimal(样本 0.0/6.0)，无移植时间戳错误。域=用户生命周期/付费经济(无活动运营)。
+coverage:
+  scenarios:
+    - 新增设备数量与趋势分析(按 act_tm_fst 统计首活日期)
+    - 活跃召回与流失分析(按 act_tm_lst 计算最近活跃距今天数，识别流失/沉默设备)
+    - 付费转化时长分析(计算 pay_tm_fst - act_tm_fst，首活到首付的间隔分布)
+    - 累计付费金额分布与头部付费设备识别(按 pay_amt_std 排序找高额付费设备)
+    - 沉默付费设备识别(曾付费 pay_amt_std>0 但 act_tm_lst 距今长期未活跃)
+    - 累计 ARPU 与付费转化率粗算(累计付费 / 设备数、付费设备占比)
+    - 付费设备人均累计付费深度分析(ARPPU)
+    - 累计付费盘子总量监控(SUM(pay_amt_std) 全量付费金额趋势)
+  limitations:
+    - 本表主体固定为设备(user_type=1)，不提供账号/角色层级视角；如需账号或角色层级汇总须改用对应 acc/role 表
+    - ext_info 为非结构化日志索引串，不可直接作为分组键
+    - 日全量快照，单日查询不反映历史变化趋势，需跨 ds 取多日记录；同一 user_id 跨 ds 会出现多次，计算留存/去重需按 user_id 取 max(ds)
+    - pay_amt_std 为标准化口径累计值，不等于原始流水金额，不可用于逐笔流水核对或还原单次订单
+    - 仅记录累计值与首末次时点，无法回答单日活跃明细事件序列、逐日留存曲线(需跨 ds 多日拼接近似)
+    - act_tm_fst/act_tm_lst/pay_tm_fst/pay_tm_lst 为时点口径，跨日/跨时区统计需注意时区一致性
+    - 无渠道/礼包/订单维度，无法做付费结构归因
+  coverage_status: draft
+supersedes:
+  - source: daily_active_query
+    when: 当只需统计"截至某快照日的累计活跃设备数、最近活跃距今天数、新增首活设备"等生命周期汇总指标时，此全量快照可替代逐日活跃事件查询
+    advantage: 避免逐日活跃事件全表扫描与跨日拼接，单日 ds 快照即可得出设备级生命周期结论，查询成本与 LLM 解析复杂度更低
+dimension_refs:
+  - dim_table: dim_10000251_user_tag_before_ob_info
+    join_keys:
+      - dws_column: user_id
+        dim_column: user_id
+    derivation: DWS user_id (用户id) is the device-table (user_type=1) identifier; dim_10000251_user_tag_before_ob_info has PK user_id and carries a user_type field, explicitly stating it is used to join fact tables via user_id for tag drill-down, so the device grain aligns.
+    origin: deterministic
+pref_label: 设备全量快照表
+alt_labels:
+  - 设备
+  - 全量
+  - 快照

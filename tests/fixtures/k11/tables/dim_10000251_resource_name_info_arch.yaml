@@ -1,0 +1,49 @@
+table_name: dim_10000251_resource_name_info_arch
+engine: maxcompute
+kind: dim
+table_comment: '游戏 10000251 资源/道具名称维度配置归档表：按 (item_type, item_value) 复合主键映射 item_name 道具名称，按 ds 分区存档历史快照。'
+description: '游戏 10000251 的资源/道具名称维度配置归档表（dim）。每行记录一个 (item_type, item_value) -> item_name 的道具名称映射；按 ds 分区保留历史快照。主键为复合键 [item_type, item_value]（配置实体自然唯一标识），标签列为 item_name（道具名称，人类可读）。'
+primary_key:
+- item_type
+- item_value
+primary_key_unique: false
+label_columns:
+- item_name
+domains:
+- 资源产销
+granularity: '每 (item_type, item_value) 道具配置一行、按 ds 分区归档历史快照的维度/配置表'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含历史分区快照）
+columns:
+- name: item_type
+  type: BIGINT
+  comment: 道具类型（主键之一）
+  role: dimension
+- name: item_value
+  type: BIGINT
+  comment: 道具值/道具ID（主键之一）
+  role: dimension
+- name: item_name
+  type: STRING
+  comment: 道具名称（标签列）
+  role: dimension
+- name: ds
+  type: STRING
+  comment: 分区字段（日期快照 yyyyMMdd）
+  role: partition
+coverage:
+  scenarios:
+  - 事实表（如资源产出/消耗明细、道具流水）通过 (item_type, item_value) JOIN 本表，将道具ID翻译为人类可读的 item_name 道具名称，用于资源产销看板分组与钻取
+  - 按 item_type 分组统计各类道具配置数量与命名分布
+  - 取特定 ds 分区快照还原某日的资源/道具命名配置
+  limitations:
+  - 配置类维度表，无值度量；item_value 是配置ID（道具值）非数值度量，不参与 SUM/AVG 聚合
+  - 按 ds 分区存档历史快照，同一 (item_type, item_value) 跨分区重复，全表范围内复合键非唯一（实测 r=1342799, d=4273），故 primary_key_unique=false，仅单分区视图内 (item_type, item_value) 唯一
+  - item_name 为中文展示名，未做唯一性实测；不同道具类型下可能存在重名
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'dim 建模：复合主键 [item_type, item_value]，标签列 item_name；归档配置表跨分区非唯一故 unique=false 保持 draft；列类型已对齐 meta describe (BIGINT/STRING)。'

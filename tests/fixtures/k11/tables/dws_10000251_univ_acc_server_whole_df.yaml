@@ -1,0 +1,141 @@
+table_name: dws_10000251_univ_acc_server_whole_df
+engine: maxcompute
+table_comment: 账号-区服日全量宽表（累计活跃与付费生命周期快照）
+description: |
+  【账号表】该表为日全量快照(_df)，粒度为"每个账号(user_id)在每个区服(server_id)每天一行"。
+  本表固定为 user_type=2 的【账号表】(表名含 acc 约定)，主体=账号，标识字段 user_id 存账号ID；DISTINCT user_type 仅返回单一值 2(建议用 SELECT DISTINCT user_type 复核)。
+  记录账号在某区服下的生命周期关键时点与累计付费：首次/最近活跃时间、首次/最近付费时间、累计付费金额。
+  能回答的业务问题：账号在某区服的首次与最近活跃时间、是否/何时付费、累计付费金额、活跃与付费间隔、按区服聚合的累计在册账号数与付费账号数、当日活跃账号数、付费率与客单价、当日新增付费账号数等。
+  注意事项：1) 这是全量快照而非增量，每次查询按分区 ds 取当日全量；2) 累计付费金额 pay_amt_std 为截至快照日的累计值，非当日发生额，求流水需取相邻两日 ds 的差值；3) COUNT(DISTINCT user_id) 统计的是快照内累计在册账号数(历史曾出现账号全集)，非当日活跃；当日活跃需用 act_tm_lst 日期=ds 过滤(见 daily_active_user_cnt)；4) ext_info 为日志索引附加信息，通常不直接用于聚合；5) 指标已在 metrics 字典预置可直接引用。
+domains:
+  - 用户生命周期
+  - 付费经济
+granularity: |
+  日全量快照(_df)：每账号(user_id)每区服(server_id)每天一行，按分区 ds 取当日全量快照。
+  分析主体=账号(本表固定为 user_type=2 的【账号表】，表名含 acc 约定)，标识字段=user_id(存账号ID)；DISTINCT user_type 仅返回单一值 2(建议用 SELECT DISTINCT user_type 复核)。
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: act_tm_fst
+    type: datetime
+    comment: 首次活跃时间
+    role: attribute
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近活跃时间
+    role: attribute
+  - name: pay_tm_fst
+    type: datetime
+    comment: 首次付费时间
+    role: attribute
+  - name: pay_tm_lst
+    type: datetime
+    comment: 最近付费时间
+    role: attribute
+  - name: pay_amt_std
+    type: decimal
+    comment: 累计付费金额
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 附加信息，记录各个首次数据的日志索引
+    role: attribute
+  - name: ds
+    type: string
+    comment: ""
+    role: dimension
+partitions:
+  - name: ds
+    type: string
+disambiguation:
+  term_defaults:
+    paying_users: 有 moneyType=1 真实充值（排除沙盒）的账号
+    active_users: 统计周期内有登录/行为事件的账号
+metrics:
+  pay_amt_total:
+    expression: SUM(pay_amt_std)
+    description: 累计付费总金额(截至快照日累计流水，单位元)；按 server_id 分组可得各区服累计流水
+  pay_amt_avg:
+    expression: AVG(pay_amt_std)
+    description: 账号平均累计付费金额(客单价口径，基于有记录账号)；反映账号付费深度
+  pay_user_cnt:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN user_id END)
+    description: 累计付费账号数(截至快照日已产生付费的账号去重数)；仅统计 pay_amt_std>0 的账号
+  active_user_cnt:
+    expression: COUNT(DISTINCT user_id)
+    description: 快照内累计在册账号数(历史曾出现账号全集去重数，非当日活跃)；当日活跃请用 daily_active_user_cnt
+  daily_active_user_cnt:
+    expression: COUNT(DISTINCT CASE WHEN SUBSTR(CAST(act_tm_lst AS STRING),1,10) = CONCAT(SUBSTR(ds,1,4),'-',SUBSTR(ds,5,2),'-',SUBSTR(ds,7,2)) THEN user_id END)
+    description: 当日活跃账号数(最近活跃时间 act_tm_lst 落在快照日的账号去重数)；用于评估当日活跃规模。注意 ds 分区值为 yyyymmdd 无连字符，需用 CONCAT(SUBSTR(ds,1,4),'-',SUBSTR(ds,5,2),'-',SUBSTR(ds,7,2)) 转为 yyyy-mm-dd 后再与 SUBSTR(CAST(act_tm_lst AS STRING),1,10) 比较，否则恒为 0
+  pay_ratio:
+    expression: AVG(CASE WHEN pay_amt_std > 0 THEN 1.0 ELSE 0 END)
+    description: 累计付费率(付费账号数/快照内账号总数)；用 AVG(CASE WHEN pay_amt_std>0 THEN 1.0 ELSE 0 END) 避免除零，区间[0,1]
+  acc_server_cnt:
+    expression: COUNT(DISTINCT user_id || '_' || server_id)
+    description: 账号-区服组合记录数；反映账号跨区服分布广度
+  new_pay_user_cnt:
+    expression: COUNT(DISTINCT CASE WHEN pay_tm_fst IS NOT NULL AND SUBSTR(CAST(pay_tm_fst AS STRING),1,10) = CONCAT(SUBSTR(ds,1,4),'-',SUBSTR(ds,5,2),'-',SUBSTR(ds,7,2)) THEN user_id END)
+    description: 当日新增付费账号数(首次付费时间落在快照日的账号去重数)；用于评估当日付费转化。注意 ds 为 yyyymmdd 需转为 yyyy-mm-dd 再比较(见 daily_active_user_cnt)；数据中未付费账号的 pay_tm_fst 实测存为 1970-01-01 哨兵值而非 NULL，IS NOT NULL 仍通过但 1970 日期不会匹配当日 ds
+  new_active_user_cnt:
+    expression: COUNT(DISTINCT CASE WHEN act_tm_fst IS NOT NULL AND SUBSTR(CAST(act_tm_fst AS STRING),1,10) = CONCAT(SUBSTR(ds,1,4),'-',SUBSTR(ds,5,2),'-',SUBSTR(ds,7,2)) THEN user_id END)
+    description: 当日新增活跃账号数(首次活跃时间落在快照日的账号去重数)；用于评估当日拉新效果。注意 ds 为 yyyymmdd 需转为 yyyy-mm-dd 再比较(见 daily_active_user_cnt)
+  arppu:
+    expression: SUM(pay_amt_std) / NULLIF(COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN user_id END), 0)
+    description: 付费账号平均累计付费金额(ARPPU=累计流水/付费账号数)；用 NULLIF 防除零
+coverage:
+  scenarios:
+    - 按区服统计累计付费总金额(pay_amt_total)与账号平均累计付费(pay_amt_avg)
+    - 统计各区服的累计付费账号数(pay_user_cnt)与快照内累计在册账号数(active_user_cnt)
+    - 统计当日活跃账号数(daily_active_user_cnt，act_tm_lst 日期=ds)，评估当日活跃规模
+    - 统计当日新增活跃账号数(new_active_user_cnt，act_tm_fst 日期=ds)与当日新增付费账号数(new_pay_user_cnt，pay_tm_fst 日期=ds)
+    - 计算区服维度的累计付费率(pay_ratio)与 ARPPU(arppu)，评估付费渗透与付费深度
+    - 查询某账号在某区服的首次活跃/最近活跃时间、首次付费/最近付费时间及累计付费金额
+    - 计算账号从首次活跃到首次付费的间隔天数(派生自 act_tm_fst 与 pay_tm_fst)
+    - 判断账号在某区服是否曾付费、最近一次活跃/付费距今多久(派生自 act_tm_lst/pay_tm_lst 与 ds)
+    - 跨区服对比账号的累计付费与活跃生命周期分布
+  limitations:
+    - 本表为日全量快照而非增量，pay_amt_std 为截至 ds 的累计值，非当日发生额；求当日流水需取相邻两日 ds 的累计值差值
+    - COUNT(DISTINCT user_id)(active_user_cnt) 统计的是快照内累计在册账号数(历史曾出现账号全集)，非当日活跃；当日活跃需用 daily_active_user_cnt(act_tm_lst 日期=ds)
+    - 当日新增活跃(首次活跃)需通过 act_tm_fst 日期=ds 间接识别，无明细事件日志；当日活跃可通过 act_tm_lst 日期=ds 识别
+    - 不含留存率(次日/7日/30日留存)字段，留存分析需跨多日 ds 快照关联计算
+    - 不含付费渠道、付费道具、订单明细等拆分维度，无法做付费结构分析
+    - 不含账号基础属性(注册渠道、设备型号、地域等)，需与账号维表关联
+    - 历史回溯能力取决于 ds 快照保留情况，删除的快照日期无法重建
+    - 数据质量：未付费账号的 pay_tm_fst/pay_tm_lst 实测存为 1970-01-01 哨兵值而非 NULL(Round 5 实测)，依赖 IS NULL 判定付费与否的下游逻辑需改为 pay_amt_std>0 或 pay_tm_fst>'1970-01-02' 判定
+  coverage_status: draft
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: Round 5 真实数据验证(2026-07-30)：最新分区 ds=20260729(数据当日仍在更新，updated_at 2026-07-30T02:38:12Z)。列核对：meta describe 10列(user_type BIGINT/user_id STRING/server_id STRING/act_tm_fst DATETIME/act_tm_lst DATETIME/pay_tm_fst DATETIME/pay_tm_lst DATETIME/pay_amt_std DOUBLE/ext_info STRING/ds STRING)与YAML完全一致，无缺失列。user_type 核对：SELECT DISTINCT user_type WHERE ds=20260729 仅返回 {2}，账号表声明成立。核心指标实测：pay_amt_total=107314524.32(累计流水元)、pay_user_cnt=279280(累计付费账号)、active_user_cnt=1153784(快照内累计在册)、daily_active_user_cnt=4438(当日活跃，远小于累计在册，印证快照=累计全集而非当日活跃的语义)、pay_ratio=0.1931、arppu=384.25元，均非NULL且量级合理(付费率~19%、客单价~384元)。粒度核对：rows=1668070 == COUNT(DISTINCT user_id||server_id)=1668070 > COUNT(DISTINCT user_id)=1153784，即每(账号,区服)每天恰好一行(部分账号跨多区服)，粒度声明成立。已确认移植自10000312的pay_tm_fst/pay_tm_lst在未付费账号存1970-01-01哨兵值而非NULL(coverage.limitations已记录)。domains={用户生命周期,付费经济}无活动运营(本游戏10域)，无需修正。
+supersedes:
+  - source: 账号累计付费查询事件源
+    when: 需要某账号/区服截至某日的累计付费金额或区服累计流水时(取分区 ds)
+    advantage: 本表为全量累计快照，pay_amt_std 已是截至 ds 的累计值，可直接 SUM/AVG 聚合，无需对付费流水逐日滚动求和，查询更轻量
+  - source: 账号最近活跃时间查询事件源
+    when: 需要账号在某区服的最近一次活跃时间或判断账号是否仍活跃时(取分区 ds)
+    advantage: 本表 act_tm_lst 已是截至快照日的最近活跃时间，免去对活跃日志的全量扫描与 MAX 聚合，直接读取快照即可
+dimension_refs:
+  - dim_table: dim_10000251_user_tag_before_ob_info
+    join_keys:
+      - dws_column: user_id
+        dim_column: user_id
+    derivation: "DWS column user_id (comment: 用户id) is the account identifier, same namespace as the PK user_id of dim_10000251_user_tag_before_ob_info, which is explicitly meant for joining fact tables via user_id to provide pre-OB tag dimensions."
+    origin: deterministic
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: "DWS column server_id (comment: 区服id) exactly matches the PK server_id of dim_10000251_server_info, the canonical 区服 dimension used to backfill server name and open-server time."
+    origin: deterministic
+pref_label: 账号区服全量表

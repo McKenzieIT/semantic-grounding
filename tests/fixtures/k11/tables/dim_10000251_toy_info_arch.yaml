@@ -1,0 +1,96 @@
+table_name: dim_10000251_toy_info_arch
+engine: maxcompute
+kind: dim
+primary_key:
+- toy_id
+label_columns:
+- toy_name
+primary_key_unique: false
+table_comment: '遗物(toy)配置维度表：按 ds 日分区存放每个遗物的基础属性（名称/品质/阵营/套装/属性分类/升星/分组等），供事实表按遗物id关联查询遗物维度信息。'
+description: '遗物配置维度表(dim_10000251_toy_info_arch)：每行描述一个遗物(toy)实体的配置属性，按 ds 日分区存放快照。
+
+  主要字段：toy_id(遗物id，主键), toy_name(名称，标签), res(icon), directions(道具描述), country_type(阵营分类), quality(品质), suit(套装id), attr_type(属性分类), level_attr_id(等级属性模板), starup_id(升星模板), group(遗物分组), script_id(所属剧本), prefeb(模型), texture(贴图), ds(分区)。'
+domains:
+- 装备道具
+granularity: 每 遗物(toy) 一行的配置维度表（按 ds 日分区快照）
+columns:
+- name: toy_id
+  type: string
+  comment: 遗物id
+  role: dimension
+- name: toy_name
+  type: string
+  comment: 名称
+  role: dimension
+- name: res
+  type: string
+  comment: icon
+  role: dimension
+- name: directions
+  type: string
+  comment: 道具描述
+  role: dimension
+- name: country_type
+  type: string
+  comment: 阵营分类
+  role: dimension
+- name: quality
+  type: string
+  comment: 品质
+  role: dimension
+- name: suit
+  type: string
+  comment: 套装id
+  role: dimension
+- name: attr_type
+  type: string
+  comment: 属性分类
+  role: dimension
+- name: level_attr_id
+  type: string
+  comment: 等级属性模板
+  role: dimension
+- name: starup_id
+  type: string
+  comment: 升星模板
+  role: dimension
+- name: group
+  type: string
+  comment: 遗物分组
+  role: dimension
+- name: script_id
+  type: string
+  comment: 所属剧本
+  role: dimension
+- name: prefeb
+  type: string
+  comment: 模型
+  role: dimension
+- name: texture
+  type: string
+  comment: 贴图
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+coverage:
+  scenarios:
+  - 事实表/明细表按 toy_id 关联查询遗物名称、品质、阵营、套装、属性分类等维度属性
+  - 遗物配置属性分析：按 quality(品质)、country_type(阵营)、attr_type(属性分类)、group(分组)、script_id(剧本) 切片统计遗物分布
+  - 套装(suit)、升星模板(starup_id)、等级属性模板(level_attr_id) 关联查询对应模板明细
+  limitations:
+  - 配置类维度表，无值度量（无金额/计数度量字段，仅维度属性）
+  - 表按 ds 日分区存放快照，跨分区查询同一遗物会出现多行；事实表关联时需指定 ds 分区或取最新快照
+  - primary_key toy_id 在单分区内唯一（实测 ds=20260106 时 r=d=218），但跨全表(多分区)不唯一，故 primary_key_unique=false，未做全表唯一性实测
+  - 复合编码字段如 group(遗物分组, 形如 "1_4_7")、prefeb(模型) 为编码字符串，需按业务规则二次解码
+  - res/prefeb/texture 为资源引用字段，仅作展示用途
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '配置类维度表自动建模：主键 toy_id(遗物id)、标签 toy_name(名称)。单分区唯一性实测通过(r=d=218)，跨分区不唯一故 primary_key_unique=false。域归属 装备道具。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含全部分区快照）

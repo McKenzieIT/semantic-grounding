@@ -1,0 +1,126 @@
+table_name: dim_10000251_trans_item_info_df_arch
+engine: maxcompute
+kind: dim
+table_comment: '游戏道具配置维度表（归档快照，按 ds 分区）。每行描述一个道具 id 的静态配置属性：名称、隶属系统、类型、品质、等级限制、icon、限时/GM/红点等开关与参数、回收/活动转化、分组、价值。'
+description: '道具配置维度表（_df_arch 为按 ds 分区的归档快照）。每行一个道具 id 的静态配置记录，提供背包/道具相关维度的查找：道具名、隶属系统、类型、品质、使用等级、icon、GM 可发/红点/背包按钮/限时等开关、回收与活动转化、分组、价值。主键 id 在单分区 ds 内唯一，跨分区因快照重复故全表非唯一。'
+domains:
+- 装备道具
+granularity: '每 道具id（单 ds 分区内） 一行的配置/维度表'
+primary_key: [id]
+primary_key_unique: false
+label_columns: [name]
+columns:
+- name: id
+  type: bigint
+  comment: 道具id
+  role: dimension
+- name: name
+  type: string
+  comment: 道具名
+  role: dimension
+- name: beizhu
+  type: string
+  comment: 隶属系统
+  role: dimension
+- name: type
+  type: string
+  comment: 类型
+  role: dimension
+- name: value1
+  type: string
+  comment: 类型值1
+  role: dimension
+- name: value2
+  type: string
+  comment: 类型值2
+  role: dimension
+- name: quality
+  type: string
+  comment: 道具品质
+  role: dimension
+- name: level_limit
+  type: string
+  comment: 使用等级
+  role: dimension
+- name: directions
+  type: string
+  comment: 道具描述
+  role: dimension
+- name: res
+  type: string
+  comment: icon
+  role: dimension
+- name: new_res
+  type: string
+  comment: icon
+  role: dimension
+- name: gm
+  type: string
+  comment: GM后台是否可发
+  role: dimension
+- name: display
+  type: string
+  comment: 背包标签
+  role: dimension
+- name: is_redpoint
+  type: string
+  comment: 是否有红点提醒
+  role: dimension
+- name: button_type
+  type: string
+  comment: 背包按钮
+  role: dimension
+- name: recycle
+  type: string
+  comment: 回收获得
+  role: dimension
+- name: limited_time
+  type: string
+  comment: 是否限时道具
+  role: dimension
+- name: limited_time_parameter
+  type: string
+  comment: 限时参数
+  role: dimension
+- name: activity_recycle
+  type: string
+  comment: 活动转化获得
+  role: dimension
+- name: limited_time_autouse
+  type: string
+  comment: 限时是否自动使用
+  role: dimension
+- name: limited_time_mail
+  type: string
+  comment: 限时是否邮件提醒
+  role: dimension
+- name: group
+  type: string
+  comment: 道具分组
+  role: dimension
+- name: price
+  type: double
+  comment: 道具价值
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+coverage:
+  scenarios:
+  - '通过 JOIN dim_10000251_trans_item_info_df_arch (ON id, 限定 ds) 为事实表提供道具维度的属性查找：道具名、隶属系统、类型、品质、等级限制、icon、分组等。'
+  - '背包/道具分析：按 beizhu(隶属系统)、type、quality、group 切片统计道具数量与价值。'
+  - '限时道具/GM可发/红点提醒等开关型属性的筛选与下钻。'
+  limitations:
+  - '配置类维度表，无值度量；price 为配置价非交易度量。'
+  - '主键 id 在单 ds 分区内唯一，跨分区因归档快照重复（实测 r=118925, d=560），故 primary_key_unique=false；JOIN 时须限定 ds 取最新快照。'
+  - 'type/value1/value2/button_type/limited_time_parameter 等为编码字符串，需二次解码方可与外部维度表对齐。'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '依据 meta describe 校正列类型(id bigint/price double)与角色(id 由 measure 改为 dimension)；主键=id、标签=name；实测非唯一故 primary_key_unique=false 且 status=draft。待业务确认标签列与限定 ds 取数策略。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含多 ds 快照）

@@ -1,0 +1,51 @@
+table_name: dim_10000251_trans_rogue_suit_df
+engine: maxcompute
+kind: dim
+table_comment: BUFF套装配置维度表（rogue_suit），日全量快照(_df)
+description: '游戏 10000251 的 BUFF套装(rogue_suit)配置维度表（_df 日全量快照）。每行描述一个 BUFF套装：唯一 id（BUFF套装id）、name（套装名）及 desc1/desc2/desc3 分别为两件套/四件套/六件套效果描述文本。用于事实表（如玩家装备/战斗日志）按套装 id 联表获取套装名与各档位效果说明。
+
+  粒度：每 BUFF套装 一行的配置/维度表（_df 日全量快照）。'
+domains:
+- 系统监控
+granularity: 每 BUFF套装 一行（_df 日全量快照）
+primary_key: [id]
+primary_key_unique: true
+label_columns: [name]
+columns:
+- name: id
+  type: string
+  comment: BUFF套装id
+  role: dimension
+- name: name
+  type: string
+  comment: BUFF套装名
+  role: dimension
+- name: desc1
+  type: string
+  comment: 两件套效果
+  role: dimension
+- name: desc2
+  type: string
+  comment: 四件套效果
+  role: dimension
+- name: desc3
+  type: string
+  comment: 六件套效果
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（BUFF套装配置条数）
+coverage:
+  scenarios:
+  - 事实表（玩家装备/战斗/养成日志）按 BUFF套装 id 联表，获取套装名 name 与两件套/四件套/六件套效果文本（desc1/desc2/desc3），用于分套装维度的统计与展示
+  - 作为 BUFF套装 维度字典，支持按套装名筛选与分组聚合
+  limitations:
+  - 配置类维度表，无值度量（不含数值指标字段）
+  - desc1/desc2/desc3 为富文本效果描述，含复合条件表述，需二次解析/解码后方可用于结构化比较
+  - _df 为日全量快照，同一 id 的历史版本不保留（无 start/end 生效区间）
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '依据 maxc meta describe 校验列（id/name/desc1/desc2/desc3，STRING）；唯一性实测 r=5 d=5 -> primary_key_unique=true；label 选 name（套装名）。状态 draft，待业务复核。'

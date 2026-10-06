@@ -1,0 +1,62 @@
+table_name: dws_10000251_risk_role_identification_df
+engine: maxcompute
+table_comment: 用户风险标识总表
+description: |-
+  用户风险标识总表。
+  粒度：日全量快照(_df)。分析主体=角色（user_type=3）。
+  主要字段：user_type, user_id, risk_level, ds。
+domains:
+  - 系统监控
+granularity: 日全量快照(_df)，分析主体=角色（user_type=3），每日全量记录每个角色的风险等级标识
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: risk_level
+    type: int
+    comment: 风险等级
+    role: dimension
+  - name: ds
+    type: string
+    comment: 分区字段
+    role: partition
+metrics:
+  total_role_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 识别角色UV总数（日全量快照中去重角色数，user_type=3）
+  risk_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN risk_level >= 2 THEN user_id END)
+    description: 风险角色数（risk_level>=2 的去重角色数）
+  high_risk_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN risk_level >= 3 THEN user_id END)
+    description: 高危角色数（risk_level>=3 的去重角色数）
+  risk_role_ratio:
+    expression: ROUND(COUNT(DISTINCT CASE WHEN risk_level >= 2 THEN user_id END) * 1.0 / NULLIF(COUNT(DISTINCT user_id), 0), 4)
+    description: 风险角色占比（risk_level>=2 角色数 / 总角色数，NULLIF 防除零）
+coverage:
+  scenarios:
+    - 每日识别角色总量与风险角色分布，用于反作弊/风控监控
+    - 高危角色数与占比趋势，支撑风控策略评估
+    - 各 risk_level 角色规模对比
+  limitations:
+    - 仅对最新 ds（20260730）做 scout 抽样验证，未做全量 maxc 实测复核
+    - 最新 ds 仅有 risk_level=1 数据（31174 角色），risk_level>=2 指标为 0，历史是否存在更高级别风险未核查
+    - _df 为日全量快照，UV/汇总按当日快照口径，非增量；跨日对比需注意快照口径差异
+    - 缺少风险来源维度（如封禁类型、违规行为），仅 risk_level 单维度
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 已在最新 ds=20260730 上 spot-verify total_role_uv=31174、risk_role_uv=0、high_risk_role_uv=0，数值合理（当日全部角色为 risk_level=1）；结构与列经 meta describe 核实
+dimension_refs: []
+pref_label: 角色风险标识表
+alt_labels:
+  - 风险
+  - 作弊
+  - 异常
+  - 封号

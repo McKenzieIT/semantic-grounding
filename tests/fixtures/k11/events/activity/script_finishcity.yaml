@@ -1,0 +1,132 @@
+name: game.script.finishcity
+event_filter: event = 'game.script.finishcity'
+description: 剧本（残章）系统-完成城池事件：玩家在剧本推进中完成（激活残章）一座城池时上报，记录完成行为本身、完成方角色画像（等级/VIP/战力）、所完成剧本 id（scriptId）与城池 id（cityId）及完成时货币快照（coinList）。事件名 game.script.finishcity，分析主体粒度为 role_id（完成城池的角色）。scout 实测 ds=20260729：单日 cnt=4746 / role_uv=737 / acc_uv=728 / server_uv=182。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  scriptId:
+    type: int
+    description: 剧本id
+  cityId:
+    type: int
+    description: 城池id
+metrics:
+  script_finishcity_cnt:
+    expression: COUNT(*)
+    description: 完成城池事件总次数（每完成一座城池计一次）
+  script_finishcity_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 去重完成方角色数（完成城池的角色，分析默认主体）
+  script_finishcity_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 去重完成方账号数
+  script_finishcity_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 覆盖的去重游戏服数
+  script_finishcity_script_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.scriptId'))
+    description: 去重被完成的剧本 id 数（scriptId）
+  script_finishcity_city_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.cityId'))
+    description: 去重被完成的城池 id 数（cityId）
+  script_finishcity_finishes_per_role:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 每个角色的平均完成城池次数（>1 表示同角色当日完成多座城池/多剧本）
+  script_finishcity_finishes_per_server:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT server_id), 0)
+    description: 每个游戏服的平均完成城池次数（衡量各服剧本推进热度，NULLIF 防除零）
+  script_finishcity_role_level_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS BIGINT))
+    description: 完成方角色的平均角色等级
+  script_finishcity_vip_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.vipLevel') AS BIGINT))
+    description: 完成方角色的平均 VIP 等级
+  script_finishcity_role_force_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleForce') AS BIGINT))
+    description: 完成方角色的平均战力
+coverage:
+  granularity: 单次完成城池事件（role_id 为完成方默认主体粒度，scriptId/cityId 为被完成客体粒度）
+  scenarios:
+    - 剧本残章系统单日推进规模（完成次数 / 完成方 role_uv / acc_uv / 覆盖游戏服数）
+    - 剧本与城池覆盖广度（去重 scriptId / cityId 数）
+    - 单角色重复完成（finishes_per_role>1）识别推进活跃角色
+    - 不同 VIP / 等级 / 战力玩家完成城池的画像分布
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认主体粒度为 role_id（完成方），未逐事件实测 role_id 是否为最细主体
+    - coinList 为完成时货币快照（余额态），非完成城池产出的资源量，未做 SUM 收入统计
+    - scriptId/cityId 已去重计数，但未下钻到单剧本/单城池的完成分布
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=4746 / role_uv=737 / acc_uv=728 / server_uv=182；人均完成约 6.44 次（4746/737），覆盖 182 个游戏服，数值合理，事件在线正常触发
+coverage_status: analyst_confirmed
+external_refs: []

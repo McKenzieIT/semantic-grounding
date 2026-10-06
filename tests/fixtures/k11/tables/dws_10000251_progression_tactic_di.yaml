@@ -1,0 +1,79 @@
+table_name: dws_10000251_progression_tactic_di
+engine: maxcompute
+table_comment: 风物培养详情日表
+description: |-
+  风物培养详情日表（角色粒度，日增量_di）。
+  记录角色在风物培养系统中各行为（action）对风物（tactic_id）的操作及对应星级（star）。
+  粒度：角色 + 风物 + 行为 + 行为时间，日增量(_di)。 主体：角色(role_id, user_type=3 推断)。
+domains:
+  - 角色成长
+  - 探索收集
+granularity: 角色+风物+行为，日增量(_di)
+columns:
+  - name: role_id
+    type: STRING
+    comment: 角色id
+    role: dimension
+  - name: action
+    type: BIGINT
+    comment: 行为
+    role: dimension
+  - name: tactic_id
+    type: BIGINT
+    comment: 风物ID
+    role: dimension
+  - name: star
+    type: BIGINT
+    comment: 星级
+    role: measure
+  - name: tm
+    type: DATETIME
+    comment: 行为时间
+    role: dimension
+  - name: ds
+    type: STRING
+    comment: 分区
+    role: partition
+metrics:
+  progression_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日参与风物培养的角色UV
+  progression_action_count:
+    expression: COUNT(*)
+    description: 当日风物培养行为总次数
+  tactic_count:
+    expression: COUNT(DISTINCT tactic_id)
+    description: 当日被操作的风物数
+  avg_star:
+    expression: AVG(star)
+    description: 当日风物培养行为平均星级
+  max_star:
+    expression: MAX(star)
+    description: 当日风物培养行为最高星级
+coverage:
+  scenarios:
+    - 监控每日风物培养参与角色规模与行为热度
+    - 评估各风物(tactic_id)被操作覆盖广度与星级分布
+    - 按action拆解培养行为类型构成
+  limitations:
+    - _di为日增量，跨日去重需在外层按role_id汇总，不可直接累加UV
+    - 仅scout抽样验证(latest ds=20260730)，未做全量maxc实测复核
+    - action/tactic_id为编码值，语义需业务字典补全
+    - star为行为发生时星级，非角色当前总星级快照
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: latest ds=20260730 实测 progression_role_uv=2231、progression_action_count=10894、tactic_count=55、avg_star=1.82，数值合理
+dimension_refs:
+  - dim_table: dim_10000251_tactic_info
+    join_keys:
+      - dws_column: tactic_id
+        dim_column: tactic_id
+    derivation: DWS column tactic_id (comment 风物ID) is an exact-name foreign key to dim_10000251_tactic_info primary key tactic_id, the 风物(tactic)配置维度表 recording each 风物's config attributes.
+    origin: deterministic
+pref_label: 风物培养日表
+alt_labels:
+  - 风物
+  - 培养
+  - 养成

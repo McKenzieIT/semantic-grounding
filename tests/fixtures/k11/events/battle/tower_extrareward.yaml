@@ -1,0 +1,113 @@
+name: game.tower.extrareward
+event_filter: event = 'game.tower.extrareward'
+description: 烽火台（爬塔）关卡领取额外奖励事件：玩家在烽火台玩法中触发额外奖励发放时上报，参数含角色/账号/服务器/等级/战力/货币快照 coinList 与奖励id列表 idlist。分析主体 role_id（角色粒度，账号粒度辅助）。ds=20260729 单日 scout 实测 cnt=4202, role_uv=1461, acc_uv=1405, server_uv=133。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  idlist:
+    type: array
+    description: 奖励id列表
+metrics:
+  game_tower_extrareward_cnt:
+    expression: COUNT(*)
+    description: 烽火台额外奖励领取事件总次数（每条日志=一次额外奖励发放）
+  game_tower_extrareward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取额外奖励的去重角色数（分析主体粒度）
+  game_tower_extrareward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取额外奖励的去重账号数
+  game_tower_extrareward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取额外奖励涉及的游戏服去重数
+  game_tower_extrareward_session_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.sessionId'))
+    description: 去重奖励会话 sessionId 数（粗略反映独立奖励批次）
+  game_tower_extrareward_avg_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 角色人均额外奖励领取次数（总次数 / 去重角色数，NULLIF 防零除）
+coverage:
+  scenarios:
+    - 烽火台额外奖励玩法的日活角色/账号参与规模
+    - 不同游戏服额外奖励触发的覆盖广度
+    - 角色人均额外奖励领取次数（活跃度分布）
+    - 额外奖励批次（sessionId）量级监控
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度），未在日志侧确认 account 维度是否同账号下多角色
+    - idlist/coinList 为数组/对象字段，仅以 sessionId 粗粒度统计批次，未解析明细 id
+    - 量级合理但样本单日，日间波动/季节性未评估
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: maxc scout ds=20260729 实测 cnt=4202 / role_uv=1461 / acc_uv=1405 / server_uv=133，量级合理且去重比例正常，事件持续在线触发
+external_refs: []

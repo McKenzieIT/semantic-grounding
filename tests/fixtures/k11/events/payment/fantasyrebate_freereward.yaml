@@ -1,0 +1,123 @@
+name: game.fantasyrebate.freereward
+event_filter: event = 'game.fantasyrebate.freereward'
+description: |-
+  幻想服返利-领取免费奖励：角色在幻想服返利活动中领取每日免费奖励，按 day 标识领取的是第几天奖励， 发放代金券(voucherNum)及关键货币(coinList：充值钻石/赠送钻石/免费钻石/紫金/经验卷轴/体力)。主体粒度为角色(role_id)， 每次领取记1条日志。实测 ds=20260729：cnt=1/role_uv=1/acc_uv=1/server_uv=1，代金券合计167。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个
+domains:
+  - 付费经济
+domain: payment
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  day:
+    type: int
+    description: 哪天的奖励
+  voucherNum:
+    type: int
+    description: 领取的代金券数量
+metrics:
+  fantasyrebate_freereward_cnt:
+    expression: COUNT(*)
+    description: 领取免费奖励事件触发次数(每次每日免费奖励领取记1条)
+  fantasyrebate_freereward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取免费奖励的独立角色数(去重 role_id；主体粒度为角色)
+  fantasyrebate_freereward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取免费奖励的独立账号数(去重 account_id)
+  fantasyrebate_freereward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的区服数(去重 server_id，反映返利活动覆盖面)
+  fantasyrebate_freereward_voucher_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.voucherNum') AS BIGINT))
+    description: 领取代金券总数量(voucherNum 求和；核心付费经济产出指标，代金券可在商城抵扣)
+  fantasyrebate_freereward_voucher_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN GET_JSON_OBJECT(params, '$.voucherNum') IS NOT NULL THEN role_id END)
+    description: 领取代金券的独立角色数(去重 role_id 且 voucherNum 非空)
+  fantasyrebate_freereward_day_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.day'))
+    description: 涉及的返利天数数(去重 day；day 标识领取的是第几天奖励)
+  fantasyrebate_freereward_voucher_per_role:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.voucherNum') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 平均每角色领取代金券数(代金券总量/独立角色数；衡量单人领取强度)
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+coverage:
+  scenarios:
+    - 返利免费奖励领取规模(fantasyrebate_freereward_cnt / fantasyrebate_freereward_role_uv / fantasyrebate_freereward_account_uv)
+    - 活动覆盖面(fantasyrebate_freereward_server_uv 区服数、fantasyrebate_freereward_day_uv 返利天数)
+    - 代金券产出(fantasyrebate_freereward_voucher_sum 总量、fantasyrebate_freereward_voucher_role_uv 领取角色数)
+    - 单人领取强度(fantasyrebate_freereward_voucher_per_role)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测(cnt=1/role_uv=1/acc_uv=1/server_uv=1/voucher_sum=167)，未做全量多日复核，建议接入生产流量前抽查
+    - 主体粒度默认 role_id 未逐事件实测角色归属正确性，按 base view 同时含 account_id+role_id 推断为角色级
+    - voucherNum/day 仅做 SUM/COUNT(DISTINCT) 实测，未枚举各 day 档业务含义与代金券面值规则(需配置表/产品确认)
+    - 本游戏无 MaxCompute 事件分布查询，无 daily_count/total_count/active_days
+  coverage_status: analyst_reviewed
+external_refs: []

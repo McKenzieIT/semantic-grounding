@@ -1,0 +1,51 @@
+table_name: dim_10000251_trans_rogue_df_arch
+engine: maxcompute
+kind: dim
+primary_key:
+- id
+- difficulty
+primary_key_unique: false
+label_columns:
+- name
+table_comment: 肉鸽装备塔难度配置维度表（每日快照分区 ds）
+description: '肉鸽模式装备塔（trans_rogue_df_arch）的难度配置维度表：每行描述一座装备塔在某一难度档位下的配置（id=装备塔id、name=装备塔名、difficulty=难度档位、reco_level=推荐等级），按 ds 日期分区做每日快照。键：id+difficulty 为单分区内的自然唯一键；标签：name。'
+domains:
+- 战斗关卡
+granularity: 每个装备塔×难度档位一行（单 ds 分区内唯一）的配置/维度表
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（跨所有 ds 快照分区）
+coverage:
+  scenarios:
+  - '支持事实表通过 id（及 difficulty）JOIN 查找装备塔名称 name、推荐等级 reco_level、难度档位 difficulty 等维度属性；用于肉鸽装备塔战斗/通关分析的场景名解析与难度档位标注。'
+  limitations:
+  - '配置类维度表，无值度量（difficulty/reco_level 为描述性数值属性，按需可作分组键而非可加度量）。'
+  - '跨 ds 全表 id+difficulty 非唯一（同配置在多日快照中重复，r=1559 vs 去重 9），primary_key_unique=false；单 ds 分区内 id+difficulty 唯一（实测 ds=20230918：r=8,d=8）。'
+  - '未做全表唯一性，故保持 draft。'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '基于 meta describe 实测列与唯一性查询（全表非唯一、单分区唯一）；自然键 id+difficulty，标签 name；保持 draft 待业务确认。'
+columns:
+- name: id
+  type: string
+  comment: 装备塔id
+  role: dimension
+- name: name
+  type: string
+  comment: 装备塔名
+  role: dimension
+- name: difficulty
+  type: bigint
+  comment: 难度
+  role: dimension
+- name: reco_level
+  type: bigint
+  comment: 推荐等级
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition

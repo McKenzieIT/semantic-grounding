@@ -1,0 +1,159 @@
+name: game.toy.wear
+event_filter: event = 'game.toy.wear'
+description: 玩具-穿戴事件：玩家执行 toy.wear 操作为角色（看板娘）穿戴某件玩具时上报。记录本次新穿戴玩具 wearToy（含 wearToy.id/星级/wearCellId 穿戴位）与替换下的旧玩具 oldToy（含 oldToy.id/星级/wearCellId），同时携带共振分组 resonance.group 与共振槽位 resonance.cell（cellId/toyId/level）以及 coinList 关键货币与角色基础信息（role_id/role_name/level/vip/force 等）。分析主体粒度为 role_id（角色级），账号粒度 account_id 用于关联同账号多角色。scout 实测 ds=20260729 单日 cnt=8517、role_uv=1000、acc_uv=976、server_uv=114，量级合理（活跃角色多次调整玩具搭配与共振）。
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  wearToy:
+    type: json
+    description: wearToy
+  wearToy.id:
+    type: int
+    description: wearToy.id
+  wearToy.star:
+    type: int
+    description: wearToy.star
+  wearToy.wearCellId:
+    type: int
+    description: wearToy.wearCellId
+  oldToy:
+    type: json
+    description: oldToy
+  oldToy.id:
+    type: int
+    description: oldToy.id
+  oldToy.star:
+    type: int
+    description: oldToy.star
+  oldToy.wearCellId:
+    type: int
+    description: oldToy.wearCellId
+  resonance:
+    type: json
+    description: resonance
+  resonance.group:
+    type: int
+    description: resonance.group
+  resonance.cell:
+    type: array
+    description: resonance.cell
+  resonance.cell.cellId:
+    type: int
+    description: resonance.cell.cellId
+  resonance.cell.toyId:
+    type: int
+    description: resonance.cell.toyId
+  resonance.cell.level:
+    type: int
+    description: resonance.cell.level
+metrics:
+  toy_wear_cnt:
+    expression: COUNT(*)
+    description: 玩具穿戴操作总次数（每次 wear 上报 1 条）
+  toy_wear_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发玩具穿戴的去重角色数（分析主体粒度）
+  toy_wear_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发玩具穿戴的去重账号数
+  toy_wear_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及玩具穿戴的去重游戏服数
+  toy_wear_per_role_avg:
+    expression: ROUND(CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0), 3)
+    description: 人均穿戴次数（总次数 / 去重角色数，NULLIF 防零除）
+  toy_wear_distinct_weartoy_cnt:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.wearToy.id'))
+    description: 当日被穿戴的去重玩具 id 数（params.wearToy.id，反映玩具流转活跃度）
+  toy_wear_distinct_oldtoy_cnt:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.oldToy.id'))
+    description: 当日被替换下的去重旧玩具 id 数（params.oldToy.id）
+  toy_wear_resonance_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN GET_JSON_OBJECT(params, '$.resonance.group') IS NOT NULL THEN role_id END)
+    description: 触发共振（resonance.group 非空）的去重角色数
+coverage:
+  scenarios:
+    - 玩具穿戴玩法日常活跃度量：单日穿戴次数/参与角色数/涉及服数，判断玩法渗透与频次
+    - 人均穿戴次数 per_role_avg 反映核心玩家玩具搭配调整强度，配合 distinct_weartoy_cnt 观察玩具流转广度
+    - distinct_oldtoy_cnt 反映替换下来的旧玩具规模，辅助观察玩具更新换代速率
+    - resonance_role_uv 反映共振触发渗透，定位玩具搭配激活共振的玩家占比
+    - 跨服分布 server_uv 与角色/账号 UV 对比，定位玩法热度集中的服务器
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核（多日趋势/周环比未验证）
+    - 分析主体默认 role_id（角色级），account_id 仅用于关联同账号多角色，未单独验证账号粒度业务口径
+    - wearToy.id / oldToy.id 取自 GET_JSON_OBJECT(params,'$.wearToy.id'/'$.oldToy.id')，依赖上报端 params 完整性；若个别上报缺字段会落入 NULL，distinct 计数偏低
+    - resonance.group 假设为对象字段且非空即视为触发共振；若上报共振结构变化需复核口径
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=8517, role_uv=1000, acc_uv=976, server_uv=114，量级合理（活跃角色多次调整玩具搭配与共振）。
+coverage_status: analyst_confirmed
+external_refs: []

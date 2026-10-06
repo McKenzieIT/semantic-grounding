@@ -1,0 +1,154 @@
+name: game.artifact.attuned
+event_filter: event = 'game.artifact.attuned'
+description: |
+  兵符鉴定完成事件 game.artifact.attuned：角色完成兵符（artifact）鉴定， 产出含 uid/cfgId/star 及附加属性(addAttrs)、随机属性(randAttrs) 的兵符列表 artifactList， 同时快照角色等级(roleLevel)、vip等级(vipLevel)、角色战力(roleForce)、经验(exp) 及多种货币(coinList)。 分析主体为 role_id（角色粒度，account_id 为账号粒度补充）。ds=20260729 单日实测 cnt=3385 / role_uv=2021 / acc_uv=1956 / server_uv=311。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  artifactList:
+    type: array
+    description: 鉴定获得兵符列表
+  artifactList.uid:
+    type: int
+    description: artifactList.uid
+  artifactList.cfgId:
+    type: int
+    description: artifactList.cfgId
+  artifactList.star:
+    type: int
+    description: artifactList.star
+  artifactList.addAttrs:
+    type: array
+    description: artifactList.addAttrs
+  artifactList.addAttrs.attrId:
+    type: int
+    description: artifactList.addAttrs.attrId
+  artifactList.addAttrs.attrValue:
+    type: int
+    description: artifactList.addAttrs.attrValue
+  artifactList.randAttrs:
+    type: array
+    description: artifactList.randAttrs
+  artifactList.randAttrs.cellId:
+    type: int
+    description: artifactList.randAttrs.cellId
+  artifactList.randAttrs.attrId:
+    type: int
+    description: artifactList.randAttrs.attrId
+  artifactList.randAttrs.attrValue:
+    type: int
+    description: artifactList.randAttrs.attrValue
+  artifactList.randAttrs.cfgId:
+    type: int
+    description: artifactList.randAttrs.cfgId
+  artifactList.randAttrs.type:
+    type: int
+    description: artifactList.randAttrs.type
+metrics:
+  artifact_attuned_cnt:
+    expression: COUNT(*)
+    description: 兵符鉴定事件总次数（含同一角色多次鉴定）
+  artifact_attuned_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 鉴定兵符的去重角色数（分析主体）
+  artifact_attuned_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 鉴定兵符的去重账号数（账号粒度补充）
+  artifact_attuned_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 发生兵符鉴定的去重游戏服数
+  artifact_attuned_cnt_per_role:
+    expression: ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0), 3)
+    description: 人均兵符鉴定次数（事件次数 / 去重角色数）
+  artifact_attuned_avg_role_level:
+    expression: ROUND(AVG(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS BIGINT)), 2)
+    description: 鉴定时刻角色平均等级（基于 roleLevel 快照）
+  artifact_attuned_avg_role_force:
+    expression: ROUND(AVG(CAST(GET_JSON_OBJECT(params, '$.roleForce') AS BIGINT)), 2)
+    description: 鉴定时刻角色平均战力（基于 roleForce 快照）
+coverage:
+  scenarios:
+    - 兵符鉴定参与度：事件次数、参与角色/账号/游戏服覆盖（artifact_attuned_cnt / _role_uv / _account_uv / _server_uv）
+    - 鉴定强度：人均鉴定次数（artifact_attuned_cnt_per_role）评估单角色鉴定频率
+    - 鉴定时刻角色画像：平均角色等级、平均战力（artifact_attuned_avg_role_level / _avg_role_force）反映触发鉴定时的角色发育阶段
+    - 兵符产出结构：通过 artifactList(uid/cfgId/star/addAttrs/randAttrs) 进一步分析产出分布（需 explode 展开，本事件度量未含）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核；多日趋势需后续按 ds 序列补查
+    - 分析主体默认 role_id（角色粒度）；account_id 仅作账号粒度补充，未做主体粒度二次验证
+    - artifactList 为数组，本事件度量未展开其元素级聚合（star 分布、属性词条分布），如需可后续通过 explode 派生
+    - coinList 货币快照未做 SUM 聚合，仅作为事件参数保留
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: |
+    scout 实测 ds=20260729：cnt=3385, role_uv=2021, acc_uv=1956, server_uv=311； 数量合理（角色级鉴定事件，单日数千次），状态置 analyst_confirmed。
+coverage_status: analyst_confirmed
+external_refs: []

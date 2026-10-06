@@ -1,0 +1,53 @@
+table_name: dim_10000251_trans_sub_play_od
+engine: maxcompute
+kind: dim
+table_comment: 子玩法配置维度表，每行一个子玩法编码与名称
+description: |
+  子玩法配置维度表。每行一个子玩法记录，键为 sub_play_id（自编子玩法编码，唯一），
+  显示标签为 sub_play_name（子玩法名）/ play_name（所属玩法名）。
+  通过 play_id 可上卷到所属玩法，func_id 为玩法功能分组标识。
+  主要字段：play_id, sub_play_id, play_name, sub_play_name, func_id。
+domains:
+- 系统监控
+granularity: 每个子玩法一行的配置维度表
+primary_key:
+- sub_play_id
+primary_key_unique: true
+label_columns:
+- sub_play_name
+- play_name
+columns:
+- name: play_id
+  type: string
+  comment: 自编玩法id,ID
+  role: dimension
+- name: sub_play_id
+  type: string
+  comment: 自编子玩法id,ID
+  role: dimension
+- name: play_name
+  type: string
+  comment: 玩法名,属性
+  role: dimension
+- name: sub_play_name
+  type: string
+  comment: 子玩法名,显示名称
+  role: dimension
+- name: func_id
+  type: string
+  comment: 玩法id,属性
+  role: dimension
+coverage:
+  scenarios:
+  - 事务/指标表通过 sub_play_id JOIN 查询子玩法名称与所属玩法
+  - 通过 play_id 上卷汇总到玩法层级
+  - 通过 func_id 关联玩法功能分组做横向归类
+  limitations:
+  - 配置类维度表，无值度量（无 measure 字段）
+  - play_id 为自编玩法编码串，非外键，关联上游事务表需以同源编码对齐
+  - 字段均为字符串编码，func_id 等复合编码串需按业务编码规则二次解读
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 meta describe 真实列与 COUNT/COUNT(DISTINCT) 唯一性实测（r=d=20）建模；sub_play_id 唯一性已验证。'

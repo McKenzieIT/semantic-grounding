@@ -1,0 +1,54 @@
+table_name: dim_10000251_sync_platform_reward_item_df
+engine: maxcompute
+kind: dim
+primary_key: [id]
+label_columns: [name]
+primary_key_unique: true
+table_comment: '平台奖励物品维度表 - 每个奖励物品一行的配置/维度表，存储物品名称/图标/类别/单价等属性，供活动奖励发放按 id 关联查询'
+description: 'dim_10000251_sync_platform_reward_item_df 是平台奖励物品的日全量快照(_df)维度/配置表。粒度：每个平台奖励物品(id)一行，记录物品名称、图标、单价(value)、类别(catalogue)、边框图片等静态属性。供活动奖励发放与日志事实表通过 id 关联进行物品维度查询。'
+domains:
+- 装备道具
+granularity: 每个平台奖励物品(id)一行的维度/配置表，日全量快照(_df)
+columns:
+- name: name
+  type: string
+  comment: 物品名称
+  role: dimension
+- name: icon
+  type: string
+  comment: 选填，物品图片
+  role: dimension
+- name: id
+  type: bigint
+  comment: 物品ID，平台奖励发放的是此id
+  role: dimension
+- name: value
+  type: double
+  comment: 选填，物品单价，支持配置到小数点后五位，默认为0
+  role: dimension
+- name: catalogue
+  type: string
+  comment: 物品类别,用于活动中选择奖励时的筛选
+  role: dimension
+- name: icon_border
+  type: string
+  comment: 选填，物品边框图片
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - '活动奖励发放日志事实表通过 id 关联查询物品维度属性(名称/图标/类别/单价/边框)'
+  - '按 catalogue 筛选奖励物品类别'
+  - '活动选择奖励时的物品属性展示(name/icon/icon_border)'
+  limitations:
+  - '配置类维度表，无值度量(value 为静态单价属性，非度量指标)'
+  - '日全量快照(_df)粒度为物品，跨日变更需以快照日为准'
+  - 'id 与 value/icon 等 N:1 属性关联需注意版本时效'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'dim 建模：primary_key=id(实测 r=d=4124 唯一)；label_columns=name；domain=装备道具(奖励物品配置)；status=draft 待业务确认。'

@@ -1,0 +1,48 @@
+kind: dim
+table_name: dim_10000251_trans_pvp_rank_df
+engine: maxcompute
+table_comment: PVP段位配置维表，按 (play_func_id, id) 联合唯一；日全量快照(_df)
+description: 'PVP 段位配置维表（dim）：存储各玩法(play_func_id)下 PVP 段位等级(id)与段位名称(name)的映射配置，按 (play_func_id, id) 联合唯一。
+
+  用途：作为段位维度供事实表按 play_func_id + 段位 id 关联取段位名称(name)做维度切片。
+
+  粒度：日全量快照(_df)，每玩法+段位等级一行。'
+domains:
+- 系统监控
+granularity: 每玩法(play_func_id)+段位等级(id)一行，(play_func_id, id) 联合唯一的 PVP 段位配置维表；日全量快照(_df)
+primary_key:
+- play_func_id
+- id
+label_columns:
+- name
+primary_key_unique: true
+columns:
+- name: play_func_id
+  type: string
+  comment: 玩法id
+  role: dimension
+- name: id
+  type: string
+  comment: 段位等级
+  role: dimension
+- name: name
+  type: string
+  comment: 段位名称
+  role: dimension
+coverage:
+  scenarios:
+  - 事实表按 play_func_id + 段位 id JOIN 本表取段位名称(name)做维度切片
+  - 按 play_func_id 筛选特定 PVP 玩法的段位列表
+  limitations:
+  - 配置类维度表，无值度量（无 measure 字段）
+  - 段位 id 为字符串编码，排序语义需业务侧确认
+  - play_func_id 单列非唯一（同玩法含多段位），id 单列跨玩法可重复，须 (play_func_id, id) 联用
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 唯一性已实测（r=28=d_combo(play_func_id,id)）；待业务确认段位排序与玩法映射。
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数

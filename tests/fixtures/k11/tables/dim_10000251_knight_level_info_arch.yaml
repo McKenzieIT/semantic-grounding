@@ -1,0 +1,51 @@
+table_name: dim_10000251_knight_level_info_arch
+engine: maxcompute
+table_comment: 骑士等级配置归档维度表（每骑士等级一行，按 ds 日期分区快照）
+kind: dim
+primary_key:
+- level
+primary_key_unique: false
+label_columns:
+- develop
+- cost
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+description: '骑士等级配置归档维度表。粒度：每骑士等级(level)一行，按 ds 日期分区做历史快照归档。主要字段：level(等级)、develop(成长系数)、cost(升级需求资源串)、ds(分区日期)。cost 为复合编码串(如 1_18_100)，需二次解码后用于度量。'
+domains:
+- 角色成长
+granularity: 每骑士等级(level)一行，按 ds 日期分区做历史快照的配置维度表
+columns:
+- name: level
+  type: string
+  comment: 等级
+  role: dimension
+- name: develop
+  type: string
+  comment: 成长系数
+  role: dimension
+- name: cost
+  type: string
+  comment: 升级需求资源
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+coverage:
+  scenarios:
+  - 以 level 关联事实表，按骑士等级维度展开成长系数(develop)/升级需求资源(cost)配置属性
+  - 以 level 精确查找某等级的升级消耗与成长系数，用于成长曲线/资源消耗分析
+  - 按 ds 日期分区回溯某等级配置的历史快照演变
+  - 按 level 聚合统计各等级升级资源消耗区间与成长系数分布
+  limitations:
+  - 配置类维度表，无值度量；develop 为数值系数可参与计算，cost 为编码串需二次解码
+  - cost 为复合编码串(如 1_18_100)，不能直接 SUM/AVG，须拆解后取明细
+  - primary_key_unique=false：level 在单 ds 分区内唯一，跨全表多分区不唯一(历史归档快照，240 个等级 x 多 ds 快照)
+  - develop/cost 为配置展示值，无业务唯一性校验
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '自动建模：基于 meta describe 与全表唯一性实测(全表 115920 行/240 个 distinct level)推断 level 为单分区自然唯一键；跨全表多 ds 快照不唯一，故 primary_key_unique=false 且保持 draft 未做分析师确认。'

@@ -1,0 +1,46 @@
+table_name: dim_10000251_collection_suit_info
+engine: maxcompute
+table_comment: '收藏套装配置维度表：每条记录为一个收藏套装的配置信息（ID、名称、类型、品质）'
+description: '游戏 10000251 的收藏套装配置维度表，存储每个收藏套装的 ID、名称、类型与品质。用于通过 suit_id 关联事实表，提供套装名称/类型/品质等维度属性。'
+domains:
+- 探索收集
+granularity: '每 收藏套装(suit_id) 一行的配置维度表'
+kind: dim
+primary_key:
+- suit_id
+label_columns:
+- suit_name
+primary_key_unique: true
+columns:
+- name: suit_id
+  type: bigint
+  comment: 套装ID
+  role: dimension
+- name: suit_name
+  type: string
+  comment: 套装名称
+  role: dimension
+- name: suit_type
+  type: string
+  comment: 套装类型
+  role: dimension
+- name: quality
+  type: string
+  comment: 套装品质
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 通过 suit_id 与收藏相关事实表 JOIN，提供套装名称、类型、品质维度标签
+  - 用于按套装类型/品质分组统计收藏品分布
+  limitations:
+  - 配置类维度表，无值度量（金额/数量等度量需从事实表获取）
+  - suit_type/quality 为编码值，业务含义需二次解码
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '基于 maxc meta describe 真实列建模；primary_key_unique 已实测（r=d=16）。待业务方确认维度语义与套装类型编码映射。'

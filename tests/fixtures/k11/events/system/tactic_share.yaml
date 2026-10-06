@@ -1,0 +1,111 @@
+name: game.tactic.share
+event_filter: event = 'game.tactic.share'
+description: 战法-分享事件：角色在游戏中分享战法（tactic）时触发的系统埋点，记录分享者角色、所在游戏服、被分享的战法id(tacticId)及角色当前状态（等级/战力/vip/货币等）。分析主体为 role_id（角色级行为）。scout 实测 ds=20260729：触发 2 次，去重角色 2、账号 2、游戏服 2，属低频长尾事件。参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  tacticId:
+    type: int
+    description: 战法id
+metrics:
+  game_tactic_share_cnt:
+    expression: COUNT(*)
+    description: 战法分享事件总触发次数
+  game_tactic_share_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 分享战法的去重角色数（分析主体：role_id）
+  game_tactic_share_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 分享战法的去重账号数
+  game_tactic_share_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 覆盖的去重游戏服数
+  game_tactic_share_tactic_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.tacticId'))
+    description: 被分享的去重战法id数（tacticId）
+  game_tactic_share_per_role:
+    expression: COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均分享战法次数（按角色）
+coverage:
+  scenarios:
+    - 角色战法分享行为活跃度：通过 _cnt / _role_uv 衡量战法分享功能的使用热度
+    - 战法分享覆盖广度：通过 _tactic_uv / _server_uv 评估不同战法、不同服的分享覆盖
+    - 人均分享深度：通过 _per_role 评估单角色分享频次
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体粒度默认 role_id（战法分享为角色级行为，role_id 为分析主体）
+    - ds=20260729 实测量级较小（cnt=2, role_uv=2），属低频长尾事件，统计结论需更长周期验证
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=2, role_uv=2, acc_uv=2, server_uv=2；量级合理（战法分享为低频行为），事件真实存在"
+coverage_status: analyst_confirmed
+external_refs: []

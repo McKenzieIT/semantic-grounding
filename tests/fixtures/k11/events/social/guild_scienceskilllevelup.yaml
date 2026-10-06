@@ -1,0 +1,137 @@
+name: game.guild.scienceskilllevelup
+event_filter: event = 'game.guild.scienceskilllevelup'
+description: 公会科技升级事件：角色(role_id 为分析主体)提升公会科技技能等级，按 group 组别 + order 等级记录被升级的科技节点。用于分析公会科技参与度、各科技组升级次数与等级分布。ds=20260729 实测 183 次升级，覆盖 68 个角色/68 个账号/34 个服务器，涉及 15 个科技组别，order 取值 1-3。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  group:
+    type: int
+    description: 组
+  order:
+    type: int
+    description: 等级
+metrics:
+  guild_scienceskilllevelup_cnt:
+    expression: COUNT(*)
+    description: 公会科技升级总次数（按 event+ds 过滤后的全部记录数）
+  guild_scienceskilllevelup_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发公会科技升级的去重角色数（角色为分析主体）
+  guild_scienceskilllevelup_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发公会科技升级的去重账号数
+  guild_scienceskilllevelup_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发公会科技升级的去重游戏服数
+  guild_scienceskilllevelup_max_order:
+    expression: MAX(CAST(GET_JSON_OBJECT(params, '$.order') AS BIGINT))
+    description: 当日公会科技升级达到的最高 order 等级
+  guild_scienceskilllevelup_group_cnt:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.group'))
+    description: 当日被升级涉及的科技组别(group)数量
+  guild_scienceskilllevelup_cnt_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均公会科技升级次数（总次数/去重角色数，分母 NULLIF 防除零）
+coverage:
+  scenarios:
+    - 公会科技升级活跃度：通过总升级次数与去重角色/账号/服务器数衡量当日公会科技参与规模
+    - 科技组别覆盖广度：通过被升级的科技组别数量(group_cnt)评估玩家对各类公会科技的投入分布
+    - 科技等级进展：通过最高 order 等级(max_order)反映当日公会科技等级推进的进度
+    - 人均升级强度：通过 cnt_per_role 衡量单角色平均升级科技节点的次数，刻画升级集中度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量历史复核或多日趋势校验
+    - 主体粒度默认 role_id（事件字段含 roleId/roleId 为触发角色），未与账号级聚合交叉验证
+    - max_order/group_cnt 为单日聚合快照，跨日趋势需另跑分日查询
+    - params 中 coinList.* 货币字段未纳入指标（事件语义为科技升级行为计数，非货币产销）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=183, role_uv=68, acc_uv=68, server_uv=34, group_cnt=15, order 范围 1-3(max=3)；数字合理，事件在线且稳定触发"
+coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_knight_awaken_info_arch
+    join_keys:
+      - dws_column: order
+        dim_column: order
+    derivation: 确定性：事件字段 order 与 dim_10000251_knight_awaken_info_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_story_df
+    join_keys:
+      - dws_column: order
+        dim_column: order
+    derivation: 确定性：事件字段 order 与 dim_10000251_trans_story_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_story_df_arch
+    join_keys:
+      - dws_column: order
+        dim_column: order
+    derivation: 确定性：事件字段 order 与 dim_10000251_trans_story_df_arch 主键精确同名
+    origin: deterministic

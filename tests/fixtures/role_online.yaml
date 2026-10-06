@@ -1,0 +1,26 @@
+name: role.online
+event_filter: event = 'role.online'
+description: 玩家上线
+domains:
+  - 用户生命周期
+params_fields:
+  role_id:
+    type: bigint
+    description: 角色id
+  level:
+    type: int
+    description: 等级
+  server_id:
+    type: string
+    description: 服务器id
+  amount:
+    type: double
+    description: 充值金额
+metrics: {}
+disambiguation: []
+external_refs: []
+confirmation:
+  status: draft
+  confirmed_by: ''
+  confirmed_at: ''
+coverage: null

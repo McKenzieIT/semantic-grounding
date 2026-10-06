@@ -1,0 +1,119 @@
+name: game.rogue.finishTask
+event_filter: event = 'game.rogue.finishTask'
+description: 古战场(rogue)模式中角色完成图鉴任务时上报的事件，每次完成一个 taskId 即上报一条。分析主体为 role_id（角色），事件同时携带 themeId、角色等级、战力、vip、货币余额(taskId/themeId/roleLevel/roleForce/vipLevel/coinList)等上下文。ds=20260729 单日实测：完成次数 257 次、参与角色 73 (账号 73)、覆盖 29 个游戏服、涉及 17 个 taskId / 1 个 themeId、角色等级区间 50-100。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  taskId:
+    type: int
+    description: taskId
+  themeId:
+    type: int
+    description: themeId
+metrics:
+  rogue_finishTask_cnt:
+    expression: COUNT(*)
+    description: 古战场图鉴任务完成总次数（每条事件=完成一次 taskId）
+  rogue_finishTask_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 完成图鉴任务的去重角色数（分析主体粒度=role_id）
+  rogue_finishTask_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 完成图鉴任务的去重账号数
+  rogue_finishTask_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发该事件的去重游戏服数
+  rogue_finishTask_task_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.taskId'))
+    description: 被完成的不同 taskId 数量（图鉴任务覆盖广度）
+  rogue_finishTask_theme_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.themeId'))
+    description: 被触发的不同 themeId 数量（主题覆盖广度）
+  rogue_finishTask_per_role_avg:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均完成图鉴任务次数（总次数/去重角色数，分母为0返回NULL）
+coverage:
+  scenarios:
+    - 衡量古战场图鉴任务的完成活跃度（总次数/参与角色/账号/游戏服广度）
+    - 通过 task_uv / theme_uv 评估图鉴任务与主题的覆盖广度及玩家推进进度
+    - per_role_avg 反映人均刷取图鉴任务的强度，可用于关卡投放与节奏调优
+    - 结合 roleLevel/vipLevel/roleForce 上下文（params）分析不同分层玩家的图鉴完成行为
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核；多日趋势/季节性未覆盖
+    - 分析主体默认 role_id（事件以角色完成 taskId 为主体，role_id 与 params.roleId 一致性已实测一致）
+    - 单日 theme_uv=1，多主题/多日表现需后续复核
+    - roleLevel/vipLevel/roleForce 为 params 上下文字段，未在 metrics 中聚合，需按分析场景单独引用
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=257 / role_uv=73 / acc_uv=73 / server_uv=29 / task_uv=17 / theme_uv=1 / roleLevel 区间 50-100，数据合理。"
+coverage_status: analyst_confirmed
+external_refs: []

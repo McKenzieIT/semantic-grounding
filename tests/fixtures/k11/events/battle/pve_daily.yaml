@@ -1,0 +1,131 @@
+name: game.pve.daily
+event_filter: event = 'game.pve.daily'
+description: 日常副本胜利/扫荡事件，记录玩家完成 PVE 日常副本（playName/stageId）的每一次行为，action=1 为战斗、action=2 为扫荡。分析主体粒度为 role_id（角色）。参数含游戏服、角色、VIP、战力、经验及关键货币列表(coinList)等共27个。实测 ds=20260729 单日 cnt=28516、role_uv=2560、acc_uv=2424、server_uv=222。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  playType:
+    type: int
+    description: 对应function id
+  playName:
+    type: string
+    description: pve名称
+  stageId:
+    type: int
+    description: 关卡id
+  action:
+    type: int
+    description: 行为 @1：战斗/2：扫荡
+  suggestLevel:
+    type: int
+    description: 推荐等级
+metrics:
+  game_pve_daily_cnt:
+    expression: COUNT(*)
+    description: 日常副本完成总次数
+  game_pve_daily_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 完成日常副本的去重角色数
+  game_pve_daily_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 完成日常副本的去重账号数
+  game_pve_daily_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及游戏服去重数
+  game_pve_daily_battle_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action')='1' THEN 1 ELSE 0 END)
+    description: action=1 战斗次数
+  game_pve_daily_sweep_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action')='2' THEN 1 ELSE 0 END)
+    description: action=2 扫荡次数
+  game_pve_daily_stage_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.stageId'))
+    description: 命中关卡去重数
+  game_pve_daily_per_role_cnt:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均完成次数（总次数/去重角色数）
+coverage:
+  scenarios:
+    - 日常副本参与度：通过 role_uv/account_uv 衡量每日参与日常副本的活跃角色规模
+    - 战斗/扫荡结构：通过 battle_cnt/sweep_cnt 区分玩家是手动战斗还是扫荡完成
+    - 关卡分布：通过 stage_uv 衡量当日被覆盖的关卡广度
+    - 人均强度：通过 per_role_cnt 衡量单角色日均完成副本次数
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体粒度默认为 role_id，跨账号合并需用 account_uv
+    - ds=20260729 实测 action 全部为 2（扫荡），battle_cnt 该日为 0，结构指标需多日累计才能反映战斗/扫荡分布
+    - 货币列表 coinList 等字段未在本事件 metrics 中聚合（属于资源产销域，见对应事件）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=28516, role_uv=2560, acc_uv=2424, server_uv=222; action 全为2(扫荡)"
+coverage_status: analyst_confirmed
+external_refs: []

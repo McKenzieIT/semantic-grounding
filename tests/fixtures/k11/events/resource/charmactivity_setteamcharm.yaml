@@ -1,0 +1,114 @@
+name: game.charmactivity.setteamcharm
+event_filter: event = 'game.charmactivity.setteamcharm'
+description: 灵器活动-设置队伍灵器事件：记录角色在灵器活动中配置队伍灵器（主灵器 mainCharm + 助战灵器 assistCharm）的操作行为。分析主体为 role_id（角色级）。scout 实测 ds=20260729 与 ds=20260728 双日 cnt=0（日志零命中，疑似事件下线/未触发）。
+domains:
+  - 探索收集
+domain: resource
+metrics:
+  game_charmactivity_setteamcharm_cnt:
+    expression: COUNT(*)
+    description: 灵器活动设置队伍灵器操作总次数（事件行数）
+  game_charmactivity_setteamcharm_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与设置队伍灵器的去重角色数（分析主体 role_id）
+  game_charmactivity_setteamcharm_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与设置队伍灵器的去重账号数
+  game_charmactivity_setteamcharm_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 产生设置队伍灵器行为的去重游戏服数
+coverage:
+  scenarios:
+    - 灵器配置热度：以 cnt 度量队伍灵器设置操作频次，定位活动高峰时段
+    - 活动参与度：以 role_uv/account_uv 度量灵器活动触达的角色与账号规模
+    - 服务器覆盖：以 server_uv 度量活动生效的游戏服范围
+  limitations:
+    - 日志中零命中（ds=20260729 与 ds=20260728 双日 cnt=0），疑似事件下线/未触发，所有指标实测均为 0
+    - 仅 ds=20260729/20260728 双日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色级），因零命中未在数据中实测验证账号粒度
+  coverage_status: draft
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  entries:
+    type: array
+    description: entries
+  entries.unitId:
+    type: int
+    description: entries.unitId
+  entries.mainCharm:
+    type: array
+    description: entries.mainCharm
+  entries.assistCharm:
+    type: array
+    description: entries.assistCharm
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 cnt=0/role_uv=0/acc_uv=0/server_uv=0；ds=20260728 重试仍 cnt=0（零命中）。保持 draft，疑似事件下线/未触发。
+external_refs: []

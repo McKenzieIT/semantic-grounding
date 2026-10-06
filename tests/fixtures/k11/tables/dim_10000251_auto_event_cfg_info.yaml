@@ -1,0 +1,53 @@
+table_name: dim_10000251_auto_event_cfg_info
+engine: maxcompute
+kind: dim
+table_comment: 自动化DWD事件配置表（每个自动化DWD事件一行的事件配置维度表）
+description: '自动化DWD事件配置表，记录每个自动化DWD埋点事件的元数据（事件名、所属域、生效起止日期）。
+
+  粒度：每条自动化DWD事件配置一行；主键 id；标签列 event/domain。
+
+  主要字段：id (主键), event (事件名), domain (所属域), start_ds (生效起始日期), end_ds (生效结束日期)。'
+domains:
+- 系统监控
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- event
+- domain
+granularity: 每条自动化DWD事件配置一行的维度/配置表
+coverage:
+  scenarios:
+  - 事实表 JOIN 本表按 event 关联回填事件所属域 domain，用于按域聚合埋点指标
+  - 按 start_ds/end_ds 过滤当前生效事件配置，筛选有效埋点维度
+  - 维度查询：列出所有自动化DWD事件名及所属域
+  limitations:
+  - 配置类维度表，无值度量（无 measure 列）
+  - start_ds/end_ds 为 yyyyMMdd 字符串格式，JOIN 时需做日期类型转换
+  - 仅覆盖自动化DWD事件，不含手动埋点配置
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'meta describe 校验列名/类型一致；唯一性实测 r=d=18 (id 唯一)；primary_key=id, label=event/domain；配置类维度，status 保持 draft。'
+columns:
+- name: id
+  type: string
+  comment: ID,ID
+  role: dimension
+- name: event
+  type: string
+  comment: 事件名,显示名称
+  role: dimension
+- name: domain
+  type: string
+  comment: 事件所属域,属性
+  role: dimension
+- name: start_ds
+  type: string
+  comment: 数据记录起始日期,属性
+  role: dimension
+- name: end_ds
+  type: string
+  comment: 数据记录结束日期,属性
+  role: dimension

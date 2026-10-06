@@ -1,0 +1,170 @@
+name: game.charmactivity.buyitem
+event_filter: event = 'game.charmactivity.buyitem'
+description: 灵器活动-购买道具事件：角色在灵器活动卡池购买道具的行为日志，记录每次购买的数量与所属活动/卡池。 分析主体粒度为 role_id（角色），账号主体 account_id。真实实测 ds=20260729：464 条事件，165 角色 UV，5 个游戏服。
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  activityId:
+    type: int
+    description: 活动id
+  gachaId:
+    type: int
+    description: 卡池id
+  count:
+    type: int
+    description: 数量
+  type:
+    type: int
+    description: 类型 1 活动 2 新手集市
+metrics:
+  game_charmactivity_buyitem_cnt:
+    expression: COUNT(*)
+    description: 灵器活动购买道具事件总记录数
+  game_charmactivity_buyitem_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与灵器活动购买道具的角色数（去重）
+  game_charmactivity_buyitem_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与灵器活动购买道具的账号数（去重）
+  game_charmactivity_buyitem_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的游戏服数量（去重）
+  game_charmactivity_buyitem_count_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.count') AS BIGINT))
+    description: 灵器活动购买道具的累计数量（count 求和）
+  game_charmactivity_buyitem_activity_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.activityId'))
+    description: 触发购买的活动数量（activityId 去重）
+  game_charmactivity_buyitem_gacha_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.gachaId'))
+    description: 涉及的卡池数量（gachaId 去重）
+  game_charmactivity_buyitem_per_role_qty:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.count') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均购买道具数量（count 求和/角色 UV，NULLIF 防除零）
+coverage:
+  scenarios:
+    - 灵器活动购买道具参与度与次数（cnt / role_uv / account_uv / server_uv）
+    - 灵器活动道具产出量与人均购买量（count_sum / per_role_qty）
+    - 灵器活动/卡池覆盖广度（activity_uv / gacha_uv）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度）；account_id 可作账号粒度补充
+    - count（数量）单次购买数量取值范围未抽样核对原始分布
+    - type（1 活动/2 新手集市）取值依据 params_fields 描述，未抽样核对枚举
+  granularity: role_id
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729：cnt=464 / role_uv=165 / acc_uv=165 / server_uv=5；count 求和=2588，activityId 去重=1，gachaId 去重=5，数值合理
+coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_trans_gacha_mission_group_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_gacha_mission_group_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df_arch 主键精确同名
+    origin: deterministic

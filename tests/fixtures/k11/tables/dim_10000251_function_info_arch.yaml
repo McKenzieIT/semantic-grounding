@@ -1,0 +1,72 @@
+table_name: dim_10000251_function_info_arch
+engine: maxcompute
+kind: dim
+table_comment: 游戏功能解锁配置归档维度表（按 ds 分区快照，每行一个功能在一个日期快照下的解锁配置）
+description: '游戏 10000251 的功能解锁配置归档维度表。每行记录一个游戏功能（function_id）在某日快照（ds 分区）下的解锁配置：功能名称、解锁条件（open_value 编码串）、解锁天数、前置功能、是否弹出解锁提示、是否强制新手查看、是否参与数据统计等。该表为按日归档的配置类维度表，同一 function_id 在不同 ds 分区下存在多份历史快照；自然主键为复合键 (function_id, ds)。用于按功能 ID 关联事实表并下钻/过滤功能名称、解锁条件、前置功能等维度属性。'
+domains:
+- 系统监控
+granularity: 每个 function_id 在每个 ds 快照分区下一行的功能解锁配置归档维度表（复合粒度 function_id + ds）
+primary_key: [function_id, ds]
+primary_key_unique: true
+label_columns: [function_name1, function_name2]
+columns:
+- name: function_id
+  type: string
+  comment: 功能ID
+  role: dimension
+- name: function_name1
+  type: string
+  comment: 功能名称1
+  role: dimension
+- name: function_name2
+  type: string
+  comment: 功能名称2
+  role: dimension
+- name: open_value
+  type: string
+  comment: 解锁条件
+  role: dimension
+- name: open_day
+  type: string
+  comment: 解锁天数
+  role: dimension
+- name: per_function
+  type: string
+  comment: 前置功能ID
+  role: dimension
+- name: unlock_show
+  type: string
+  comment: 是否弹出解锁提示
+  role: dimension
+- name: novice_guidance
+  type: string
+  comment: 解锁后强制查看
+  role: dimension
+- name: log_function
+  type: string
+  comment: 是否需要进行参与数的数据统计
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+coverage:
+  scenarios:
+  - 按 function_id 关联事实表，下钻/过滤功能名称（function_name1/function_name2）维度的指标
+  - 按解锁条件 open_value、解锁天数 open_day、前置功能 per_function 分析功能解锁路径与依赖关系
+  - 按是否弹出解锁提示 unlock_show、是否强制新手查看 novice_guidance、是否参与统计 log_function 筛选功能子集
+  - 按 ds 分区取某日快照还原历史功能解锁配置（归档时间游走）
+  limitations:
+  - 配置类维度表，无值度量（无金额/次数等度量字段），仅支持维度属性下钻与过滤
+  - 归档表跨多 ds 分区，同一 function_id 存在多份历史快照；JOIN 事实表时须显式指定 ds 分区或按功能去重，否则会产生跨快照笛卡尔放大
+  - open_value（如 101_300、400032_3）与 per_function 为复合编码串，需在下游二次解码方能按子条件拆分
+  - 复合主键 (function_id, ds) 唯一性已实测（r=d=104493）；单列 function_id 跨全表不唯一（仅单分区内唯一）
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含全部 ds 快照分区）
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'meta describe 已核对 10 列与类型/注释一致；复合主键 (function_id, ds) 唯一性实测通过 (r=d=104493)，单列 function_id 仅在单分区内唯一故采用复合键；domains 取系统监控（配置/维度表）；status 保持 draft 待业务侧复核功能名称与解锁条件语义。'

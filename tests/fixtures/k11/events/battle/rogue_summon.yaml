@@ -1,0 +1,108 @@
+name: game.rogue.summon
+event_filter: event = 'game.rogue.summon'
+description: 古战场(Rogue)模式-招募武将事件：玩家在古战场玩法中进行招募(抽将)操作时上报，记录招募发生时的角色快照(等级/vip/战力/经验)及当前关键货币余额、本次招募获得的武将id列表(knightList)。分析主体为 role_id(角色级事件，同一角色可多次招募)。真实实测 ds=20260729：cnt=181 / role_uv=73 / acc_uv=72 / server_uv=36。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightList:
+    type: array
+    description: 武将id列表
+metrics:
+  game_rogue_summon_cnt:
+    expression: COUNT(*)
+    description: 古战场招募事件总次数(每条日志=1次招募操作)
+  game_rogue_summon_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 发起招募的去重角色数
+  game_rogue_summon_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 发起招募的去重账号数
+  game_rogue_summon_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 出现招募行为的去重游戏服数
+  game_rogue_summon_per_role_avg:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均招募次数(总次数/去重角色数)
+coverage:
+  scenarios:
+    - 古战场玩法招募活跃度(总次数/去重角色/去重账号/去重服)
+    - 人均招募次数衡量玩家在古战场抽将的投入程度
+    - 按 server_id / role_id 下钻定位高招募用户
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id(角色级事件)，account_id 用于跨角色去重
+    - knightList 为武将id数组，未对数组长度(单次招募武将数)做聚合校验
+    - 货币字段(coinList.*)为招募时角色余额快照，非本次招募消耗金额，未做金额聚合
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+external_refs: []

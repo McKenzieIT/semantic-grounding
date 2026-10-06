@@ -1,0 +1,78 @@
+table_name: dim_10000251_knight_starup_info
+engine: maxcompute
+kind: dim
+primary_key: [knight_id, star]
+primary_key_unique: true
+label_columns: [knight_name, star]
+table_comment: '武将升星配置维度表（每武将每星级一行）'
+description: '武将升星配置维度表。存储每个武将在不同星级下的升星属性提升、成长率增加值、资源消耗、碎片数量、潜能点数及获得资源等配置参数。主键为 (knight_id, star) 复合键，label 列为 knight_name 与 star。属于角色成长域的配置类维度表，无值度量。'
+domains:
+- 角色成长
+granularity: 每（武将, 星级）一行 的升星配置维度表
+columns:
+- name: knight_id
+  type: string
+  comment: 武将ID
+  role: dimension
+- name: knight_name
+  type: string
+  comment: 武将名称
+  role: dimension
+- name: star
+  type: string
+  comment: 武将星级
+  role: dimension
+- name: develop_times
+  type: string
+  comment: 属性增长倍数
+  role: dimension
+- name: cost_resource01
+  type: string
+  comment: 升星资源消耗数量01
+  role: dimension
+- name: attr_up
+  type: string
+  comment: 升星提升属性
+  role: dimension
+- name: develop
+  type: string
+  comment: 成长率增加值
+  role: dimension
+- name: reward
+  type: string
+  comment: 获得资源
+  role: dimension
+- name: per
+  type: string
+  comment: 升星百分比
+  role: dimension
+- name: grade
+  type: string
+  comment: 资质
+  role: dimension
+- name: number
+  type: string
+  comment: 碎片数量
+  role: dimension
+- name: talent_number
+  type: string
+  comment: 潜能点数
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（武将×星级配置条数）
+coverage:
+  scenarios:
+    - 通过 (knight_id, star) 复合键 JOIN 事实表，按武将星级查询升星所需碎片数量、资源消耗、属性提升等配置参数
+    - 支持武将成长/升星系统的成本与收益配置查询（cost_resource01、number、attr_up、develop、per 等）
+    - 提供 knight_name 作为可读标签，便于报表展示武将名称及对应星级
+  limitations:
+    - 配置类维度表，无值度量（所有字段均为 STRING 类型配置参数，无聚合度量）
+    - cost_resource01、attr_up、reward 等为复合编码串（如 "8_1001_100"），需二次解码方可获取明细资源类型与数量
+    - knight_id 单列不唯一（73 个武将对应 727 行），必须以 (knight_id, star) 复合键作为唯一标识
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '配置类维度表，复合主键 (knight_id, star) 已实测唯一（r=727, distinct=727），primary_key_unique=true。所有字段为 STRING 配置参数，role 均设为 dimension。复合编码串字段需二次解码。未做业务侧语义确认，保持 draft。'

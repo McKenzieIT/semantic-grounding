@@ -1,0 +1,72 @@
+table_name: dim_10000251_trans_exp_coll_df
+engine: maxcompute
+table_comment: '游戏 10000251 藏品（探索收集）维度配置表，日全量快照(_df)，每行一个藏品。'
+description: '游戏 10000251 的藏品配置维度表（日全量快照 _df）。每行一个藏品，主键 id=藏品id，标签列 name=藏品名。键/属性：city 所属城市、type 藏品类型、quality 品质、story_id 剧本id、suit_id 套装id、level 初始等级_上限等级、desc1/desc2 描述。用于按藏品做 JOIN 维度查找，无值度量。'
+domains:
+- 探索收集
+kind: dim
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+granularity: 每个藏品一行的配置/维度表（日全量快照 _df）
+columns:
+- name: id
+  type: string
+  comment: 藏品id
+  role: dimension
+- name: name
+  type: string
+  comment: 藏品名
+  role: dimension
+- name: city
+  type: string
+  comment: 所属城市名
+  role: dimension
+- name: type
+  type: string
+  comment: 藏品类型
+  role: dimension
+- name: quality
+  type: string
+  comment: 品质
+  role: dimension
+- name: story_id
+  type: string
+  comment: 剧本id
+  role: dimension
+- name: suit_id
+  type: string
+  comment: 套装id
+  role: dimension
+- name: level
+  type: string
+  comment: 初始等级_上限等级
+  role: dimension
+- name: desc1
+  type: string
+  comment: 描述1
+  role: dimension
+- name: desc2
+  type: string
+  comment: 描述2
+  role: dimension
+coverage:
+  scenarios:
+  - 按 id JOIN 藏品维度，取 name/city/type/quality 等属性做报表筛选与分组
+  - 按品质 quality、所属城市 city 做藏品分布分析
+  - 通过 story_id/suit_id 关联剧本/套装维度展开藏品上下文
+  limitations:
+  - 配置类维度表，无值度量（无 measures）
+  - level 为 "初始等级_上限等级" 复合编码串，需二次解码拆分使用
+  - _df 日全量快照，无时间分区，取最新即可
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 藏品维度表总行数
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 meta describe 校验列与注释；primary_key=id、label=name；实测 COUNT(*)=COUNT(DISTINCT id)=60 唯一性通过；配置类维度表无值度量；level 复合编码串需二次解码。'

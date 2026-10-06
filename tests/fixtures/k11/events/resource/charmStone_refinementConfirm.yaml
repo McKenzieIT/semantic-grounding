@@ -1,0 +1,145 @@
+name: game.charmStone.refinementConfirm
+event_filter: event = 'game.charmStone.refinementConfirm'
+description: |
+  灵石洗练属性替换确认事件：角色在灵石洗练流程中确认以 stagedAttrs（待替换属性）替换当前灵石 attrs 属性时触发。分析主体为 role_id（角色粒度），可按 account_id 聚合到账号维度。日志中零命中(ds=20260729 cnt=0、ds=20260728 cnt=0)，事件疑似下线或未触发，待后续复核。参数含灵石 uid/id/shape/isLock、当前属性 attrs[]、待替换属性 stagedAttrs[] 及角色货币 coinList。
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  charmStone:
+    type: json
+    description: 灵石信息
+  charmStone.uid:
+    type: int
+    description: charmStone.uid
+  charmStone.id:
+    type: int
+    description: charmStone.id
+  charmStone.shape:
+    type: int
+    description: 对应charm_stone_shape_info
+  charmStone.isLock:
+    type: bool
+    description: 是否被上锁
+  charmStone.attrs:
+    type: array
+    description: 灵石实际属性
+  charmStone.attrs.id:
+    type: int
+    description: 第几个槽
+  charmStone.attrs.attrId:
+    type: int
+    description: 属性id
+  charmStone.attrs.attrValue:
+    type: int
+    description: 属性值
+  charmStone.stagedAttrs:
+    type: array
+    description: 洗练待替换属性（空表or nil为没有）
+  charmStone.stagedAttrs.id:
+    type: int
+    description: 第几个槽
+  charmStone.stagedAttrs.attrId:
+    type: int
+    description: 属性id
+  charmStone.stagedAttrs.attrValue:
+    type: int
+    description: 属性值
+metrics:
+  charm_stone_refinement_confirm_cnt:
+    expression: COUNT(*)
+    description: 灵石洗练替换确认事件总次数
+  charm_stone_refinement_confirm_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发洗练替换确认的去重角色数（分析主体 role_id）
+  charm_stone_refinement_confirm_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发洗练替换确认的去重账号数
+  charm_stone_refinement_confirm_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发洗练替换确认的去重游戏服数
+  charm_stone_refinement_confirm_charm_stone_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.charmStone.uid'))
+    description: 被洗练替换确认的去重灵石数（按 charmStone.uid）
+coverage:
+  scenarios:
+    - 评估灵石洗练替换确认的活跃规模（事件次数/角色UV/账号UV/服UV）
+    - 按角色与游戏服拆解洗练替换确认热度，识别高参与度服务器
+    - 统计被洗练替换确认的去重灵石数量，反映灵石养成深度
+  limitations:
+    - 日志中零命中(ds=20260729 cnt=0、ds=20260728 cnt=0)，疑似事件下线/未触发，未做全量复核
+    - 仅 ds=20260729 + ds=20260728 两日 scout 实测均零命中；待事件恢复后重测
+    - 分析主体默认 role_id（角色粒度），账号维度按 account_id 聚合
+  coverage_status: draft
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 cnt=0/role_uv=0/acc_uv=0/server_uv=0；retry ds=20260728 同样 cnt=0；判定零命中，保持 draft
+external_refs: []

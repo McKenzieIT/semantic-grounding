@@ -1,0 +1,109 @@
+name: game.role.changename
+event_filter: event = 'game.role.changename'
+description: 角色改名事件：玩家使用改名功能将旧角色名(oldName)替换为新角色名(newName)，同时上报角色基础属性（等级、战力、VIP、性别等）与关键货币列表。主体粒度为 role_id，单日 ds=20260729 scout 实测改名次数 30 次，涉及 28 个角色、28 个账号、16 个游戏服。
+domains:
+  - 用户生命周期
+domain: account
+metrics:
+  game_role_changename_cnt:
+    expression: COUNT(*)
+    description: 角色改名事件总次数（每条日志计 1 次，同一角色多次改名分别计数）
+  game_role_changename_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 发起改名的去重角色数（主体粒度，默认统计口径）
+  game_role_changename_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 发起改名的去重账号数
+  game_role_changename_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 发生改名行为的去重游戏服数
+coverage:
+  scenarios:
+    - 监控角色改名功能的日常使用规模与活跃度（总次数、角色/账号/游戏服覆盖）
+    - 识别改名高发的游戏服或账号，辅助异常行为排查（如批量改名、洗号）
+    - 作为用户生命周期中角色身份变更的标记事件，可与改名前后的留存/付费变化关联
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认为 role_id；同账号多角色改名在 role_uv 口径下计为多角色
+    - 未关联改名道具消耗或货币变动（coinList 字段未在本事件聚合）
+    - server_uv 受当日活跃游戏服范围影响，非全量游戏服口径
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: scout 验证(ds=20260729)：cnt=30, role_uv=28, acc_uv=28, server_uv=16；数据量合理，改名事件真实触发
+  coverage_status: analyst_confirmed
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  oldName:
+    type: string
+    description: 旧名字
+  newName:
+    type: string
+    description: 新名字
+external_refs: []

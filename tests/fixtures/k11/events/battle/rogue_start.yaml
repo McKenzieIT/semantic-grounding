@@ -1,0 +1,188 @@
+name: game.rogue.start
+event_filter: event = 'game.rogue.start'
+description: "玩家发起古战场（rogue）副本挑战的开始事件。记录挑战开始时的章节、难度、阵容战力/等级、上阵卡牌、古战场天赋等快照；分析主体为 role_id（角色级事件）。实测 ds=20260729: cnt=197 / role_uv=111 / acc_uv=110 / server_uv=45。"
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  chapter:
+    type: int
+    description: 章节
+  difficulty:
+    type: int
+    description: 难度
+  lineupPower:
+    type: int
+    description: 阵容战力
+  lineupLevel:
+    type: int
+    description: 阵容平均等级
+  suggestLevel:
+    type: int
+    description: 推荐等级
+  playId:
+    type: string
+    description: 唯一标识一次古战场副本挑战
+  cardList:
+    type: array
+    description: 上阵的卡牌列表
+  cardList.id:
+    type: int
+    description: 卡牌id
+  cardList.name:
+    type: string
+    description: 卡片名称
+  cardList.power:
+    type: int
+    description: 卡牌战力
+  cardList.level:
+    type: int
+    description: 卡牌等级
+  cardList.quality:
+    type: int
+    description: 卡牌品质
+  cardList.star:
+    type: int
+    description: 卡牌星级
+  cardList.job:
+    type: int
+    description: 武将职业
+  talentPointsStd:
+    type: int
+    description: 古战场历史累计天赋点数
+  talentList:
+    type: array
+    description: 古战场天赋列表
+  talentList.id:
+    type: int
+    description: 古战场天赋id
+  talentList.level:
+    type: int
+    description: 古战场天赋等级
+  rogueStage:
+    type: int
+    description: 阶段
+metrics:
+  game_rogue_start_cnt:
+    expression: COUNT(*)
+    description: 古战场挑战开始事件总次数
+  game_rogue_start_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 发起古战场挑战的角色去重数（分析主体）
+  game_rogue_start_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 发起古战场挑战的账号去重数
+  game_rogue_start_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的游戏服去重数
+  game_rogue_start_play_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.playId'))
+    description: 古战场挑战对局去重数（playId 标识一次副本挑战）
+  game_rogue_start_chapter_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.chapter'))
+    description: 涉及章节去重数
+  game_rogue_start_difficulty_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.difficulty'))
+    description: 涉及难度去重数
+  game_rogue_start_avg_lineup_power:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.lineupPower') AS BIGINT)) / NULLIF(COUNT(*),0)
+    description: 单次挑战平均阵容战力
+  game_rogue_start_avg_lineup_level:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.lineupLevel') AS BIGINT)) / NULLIF(COUNT(*),0)
+    description: 单次挑战平均阵容等级
+coverage:
+  scenarios:
+    - 古战场副本参与度（次数/角色UV/账号UV/服务器UV）
+    - 各章节、各难度的挑战分布
+    - 阵容战力/等级基线（衡量挑战门槛与玩家实力匹配）
+    - playId 对局粒度去重（衡量真实挑战局数）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（roleId 为角色级事件）
+    - 嵌套数组字段 cardList / talentList / coinList 未在 scout 中聚合，相关卡牌/天赋/货币指标需另行设计
+    - lineupPower/lineupLevel 依赖客户端上报，可能存在缺失或异常值
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "实测 ds=20260729: cnt=197 / role_uv=111 / acc_uv=110 / server_uv=45；45 个游戏服分布，角色级事件。"
+coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_trans_rogue_df
+    join_keys:
+      - dws_column: difficulty
+        dim_column: difficulty
+    derivation: 确定性：事件字段 difficulty 与 dim_10000251_trans_rogue_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_rogue_df_arch
+    join_keys:
+      - dws_column: difficulty
+        dim_column: difficulty
+    derivation: 确定性：事件字段 difficulty 与 dim_10000251_trans_rogue_df_arch 主键精确同名
+    origin: deterministic

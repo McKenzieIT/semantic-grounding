@@ -1,0 +1,835 @@
+table_name: dws_10000251_role_tag_pbt2_df
+engine: maxcompute
+table_comment: pbt2角色宽表
+description: |-
+  pbt2角色宽表。
+  粒度：日全量快照(_df)。分析主体=角色（user_type=3）。
+  主要字段：account_id, role_id, server_id, os_id, ch_type, act_tm_fst, act_tm_lst, act_days_std 等195列。
+domains:
+  - 角色成长
+  - 付费经济
+granularity: 日全量快照(_df)，分析主体=角色（user_type=3）
+columns:
+  - name: account_id
+    type: string
+    comment: 账号id
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id，key
+    role: dimension
+  - name: os_id
+    type: bigint
+    comment: 平台id
+    role: dimension
+  - name: ch_type
+    type: string
+    comment: 渠道，区分九游和tap
+    role: dimension
+  - name: act_tm_fst
+    type: datetime
+    comment: 首次活跃时间
+    role: dimension
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近活跃时间
+    role: dimension
+  - name: act_days_std
+    type: bigint
+    comment: 累计活跃天数
+    role: measure
+  - name: act_days_1w
+    type: bigint
+    comment: 最近7日活跃天数
+    role: measure
+  - name: act_days_1m
+    type: bigint
+    comment: 最近30日活跃天数
+    role: measure
+  - name: pay_amt_std
+    type: decimal
+    comment: 累计付费金额
+    role: measure
+  - name: pay_amt_1w
+    type: decimal
+    comment: 最近7日付费金额
+    role: measure
+  - name: pay_amt_1m
+    type: decimal
+    comment: 最近30日付费金额
+    role: measure
+  - name: vip_level
+    type: int
+    comment: VIP等级，缺省值0
+    role: dimension
+  - name: pay_level
+    type: string
+    comment: 付费等级，0-非R，1-小R，2-中R，3-大R
+    role: dimension
+  - name: role_name
+    type: string
+    comment: 角色名
+    role: dimension
+  - name: role_level
+    type: bigint
+    comment: 角色等级
+    role: measure
+  - name: role_force
+    type: int
+    comment: 角色战力
+    role: measure
+  - name: role_level_rank
+    type: int
+    comment: 角色等级排名，缺省值0
+    role: dimension
+  - name: role_force_rank
+    type: int
+    comment: 角色战力排名，缺省值0
+    role: measure
+  - name: goals_rank
+    type: int
+    comment: 星数排名，缺省值0
+    role: measure
+  - name: act_dur
+    type: int
+    comment: 游戏时长
+    role: measure
+  - name: vit_buy_pv
+    type: int
+    comment: 购买体力次数
+    role: measure
+  - name: vit_net_amt
+    type: int
+    comment: 剩余体力，下线累计
+    role: measure
+  - name: vit_item_net_amt
+    type: int
+    comment: 包子余量，下线累计
+    role: measure
+  - name: vit_use_amt
+    type: int
+    comment: 体力使用量
+    role: measure
+  - name: vit_use_amt2
+    type: int
+    comment: 材料本体力使用量
+    role: measure
+  - name: coin_net_amt
+    type: int
+    comment: 元宝余量，下线累计
+    role: measure
+  - name: gacha_ticket_net_amt
+    type: int
+    comment: 普通招募券余量，下线累计
+    role: measure
+  - name: gacha_ticket2_net_amt
+    type: int
+    comment: 阵容招募券余量，下线累计
+    role: measure
+  - name: gacha_cnt
+    type: int
+    comment: 普池抽卡次数
+    role: measure
+  - name: gacha_cnt2
+    type: int
+    comment: 阵营池抽卡次数
+    role: measure
+  - name: reborn_cnt
+    type: int
+    comment: 重生次数
+    role: measure
+  - name: own_card_list
+    type: string
+    comment: 武将拥有list，下线累计
+    role: dimension
+  - name: lineup_avg_level
+    type: int
+    comment: 阵容平均等级，下线累计，取等级前6的武将的等级均值
+    role: measure
+  - name: lineup_max_level
+    type: int
+    comment: 最高武将等级，下线累计
+    role: dimension
+  - name: friends_add_cnt
+    type: int
+    comment: 添加好友总数，下线累计
+    role: measure
+  - name: borrow_cnt
+    type: int
+    comment: 借将次数
+    role: measure
+  - name: lend_set_cnt
+    type: int
+    comment: 助战设置次数
+    role: measure
+  - name: p0101_part_pv
+    type: int
+    comment: 普通主线参与次数，当日
+    role: measure
+  - name: p0101_pass_pv
+    type: int
+    comment: 普通主线通关次数，当日
+    role: measure
+  - name: p0101_stay_stage_id
+    type: string
+    comment: 普通主线停留关卡，只看主线
+    role: dimension
+  - name: p0101_stay_part_pv
+    type: int
+    comment: 普通主线停留关卡参与次数，累计
+    role: measure
+  - name: p0101_stay_status
+    type: int
+    comment: 普通主线停留关卡状态， -1 缺省，0-负 1-平 3-胜
+    role: dimension
+  - name: p0101_stay_reco_level
+    type: int
+    comment: 普通主线停留关卡推荐等级
+    role: dimension
+  - name: p0101_lst_stage_id
+    type: string
+    comment: 普通主线最后关卡
+    role: dimension
+  - name: p0101_lst_status
+    type: int
+    comment: 普通主线最后关卡状态
+    role: dimension
+  - name: p0101_limit_status
+    type: int
+    comment: 普通主线是否推到上限，只看主线，-1表示缺省值，一般不存在缺省值
+    role: dimension
+  - name: p0101_goals
+    type: int
+    comment: 普通主线当日星数
+    role: measure
+  - name: p0101_goals_std
+    type: int
+    comment: 普通主线累计星数
+    role: measure
+  - name: p0101_goals2
+    type: int
+    comment: 普通主线当日成就数，当日获得的成就数
+    role: measure
+  - name: p0101_goals2_std
+    type: int
+    comment: 普通主线累计成就数
+    role: measure
+  - name: p0111_unlock_status
+    type: int
+    comment: 困难主线解锁状态，0表示未解锁，1表示解锁
+    role: dimension
+  - name: p0111_part_pv
+    type: int
+    comment: 困难主线参与次数，当日
+    role: measure
+  - name: p0111_pass_pv
+    type: int
+    comment: 困难主线通关次数，当日
+    role: measure
+  - name: p0111_pass_hst_stage_id
+    type: string
+    comment: 困难主线最高通关关卡，困难主线是可以先打第二章，再打第一章
+    role: dimension
+  - name: p0111_pass_hst_reco_level
+    type: int
+    comment: 困难主线最高通关关卡的推荐等级
+    role: dimension
+  - name: p0111_stay_stage_id
+    type: string
+    comment: 困难主线停留关卡
+    role: dimension
+  - name: p0111_stay_part_pv
+    type: int
+    comment: 困难主线停留关卡参与次数，累计
+    role: measure
+  - name: p0111_stay_status
+    type: int
+    comment: 困难主线停留关卡状态
+    role: dimension
+  - name: p0111_stay_reco_level
+    type: int
+    comment: 困难主线停留关卡推荐等级
+    role: dimension
+  - name: p0111_limit_status
+    type: int
+    comment: 困难主线是否推到上限
+    role: dimension
+  - name: p0111_goals
+    type: int
+    comment: 困难主线当日星数
+    role: measure
+  - name: p0111_goals_std
+    type: int
+    comment: 困难主线累计星数
+    role: measure
+  - name: p0111_goals2
+    type: int
+    comment: 困难主线当日获得成就数，当日获得的成就数
+    role: measure
+  - name: p0111_goals2_std
+    type: int
+    comment: 困难主线累计成就数
+    role: measure
+  - name: p0201_unlock_status
+    type: int
+    comment: 普通无尽塔解锁状态，0表示未解锁，1表示解锁
+    role: dimension
+  - name: p0201_part_pv
+    type: int
+    comment: 普通无尽塔参与次数，当日
+    role: measure
+  - name: p0201_pass_pv
+    type: int
+    comment: 普通无尽塔通关次数，当日
+    role: measure
+  - name: p0201_stay_stage_id
+    type: string
+    comment: 普通无尽塔停留关卡
+    role: dimension
+  - name: p0201_stay_part_pv
+    type: int
+    comment: 普通无尽塔停留关卡参与次数，累计
+    role: measure
+  - name: p0201_stay_status
+    type: int
+    comment: 普通无尽塔停留关卡状态
+    role: dimension
+  - name: p0201_stay_reco_level
+    type: int
+    comment: 普通无尽塔停留关卡推荐等级
+    role: dimension
+  - name: p0201_limit_status
+    type: int
+    comment: 普通无尽塔是否推到上限
+    role: dimension
+  - name: p0201_goals
+    type: int
+    comment: 普通无尽塔当日星数
+    role: measure
+  - name: p0201_goals_std
+    type: int
+    comment: 普通无尽塔累计星数
+    role: measure
+  - name: p0211_unlock_status
+    type: int
+    comment: 困难无尽塔解锁状态，0表示未解锁，1表示解锁
+    role: dimension
+  - name: p0211_part_pv
+    type: int
+    comment: 困难无尽塔参与次数，当日
+    role: measure
+  - name: p0211_pass_pv
+    type: int
+    comment: 困难无尽塔通关次数，当日
+    role: measure
+  - name: p0211_stay_stage_id
+    type: string
+    comment: 困难无尽塔停留关卡
+    role: dimension
+  - name: p0211_stay_part_pv
+    type: int
+    comment: 困难无尽塔停留关卡参与次数，累计
+    role: measure
+  - name: p0211_stay_status
+    type: int
+    comment: 困难无尽塔停留关卡状态
+    role: dimension
+  - name: p0211_stay_reco_level
+    type: int
+    comment: 困难无尽塔停留关卡推荐等级
+    role: dimension
+  - name: p0211_limit_status
+    type: int
+    comment: 困难无尽塔是否推到上限
+    role: dimension
+  - name: p0211_goals
+    type: int
+    comment: 困难无尽塔当日星数，当日获得的成就数
+    role: measure
+  - name: p0211_goals_std
+    type: int
+    comment: 困难无尽塔累计成星数
+    role: measure
+  - name: p0221_unlock_status
+    type: int
+    comment: 噩梦无尽塔解锁状态，0表示未解锁，1表示解锁
+    role: dimension
+  - name: p0221_part_pv
+    type: int
+    comment: 噩梦无尽塔参与次数，当日
+    role: measure
+  - name: p0221_pass_pv
+    type: int
+    comment: 噩梦无尽塔通关次数，当日
+    role: measure
+  - name: p0221_stay_stage_id
+    type: string
+    comment: 噩梦无尽塔停留关卡
+    role: dimension
+  - name: p0221_stay_part_pv
+    type: int
+    comment: 噩梦无尽塔停留关卡参与次数，累计
+    role: measure
+  - name: p0221_stay_status
+    type: int
+    comment: 噩梦无尽塔停留关卡状态
+    role: dimension
+  - name: p0221_stay_reco_level
+    type: int
+    comment: 噩梦无尽塔停留关卡推荐等级
+    role: dimension
+  - name: p0221_limit_status
+    type: int
+    comment: 噩梦无尽塔是否推到上限
+    role: dimension
+  - name: p0221_goals
+    type: int
+    comment: 噩梦无尽塔当日成星数
+    role: measure
+  - name: p0221_goals_std
+    type: int
+    comment: 噩梦无尽塔累计成星数
+    role: measure
+  - name: apvp_unlock_status
+    type: int
+    comment: 演武场解锁状态，0表示未解锁，1表示解锁
+    role: measure
+  - name: apvp_part_pv
+    type: int
+    comment: 演武场参与次数，当日
+    role: measure
+  - name: apvp_win_pv
+    type: int
+    comment: 演武场通关次数，当日
+    role: measure
+  - name: apvp_score
+    type: int
+    comment: 演武场积分
+    role: measure
+  - name: apvp_level
+    type: int
+    comment: 演武场段位
+    role: measure
+  - name: apvp_rank
+    type: int
+    comment: 演武场排名
+    role: measure
+  - name: apvp_coin_get_amt
+    type: int
+    comment: 演武币获得数量
+    role: measure
+  - name: apvp_coin_net_amt
+    type: int
+    comment: 演武币余额
+    role: measure
+  - name: apvp_coin_limit
+    type: int
+    comment: 演武币上限
+    role: measure
+  - name: spvp_unlock_status
+    type: int
+    comment: 竞技场解锁状态，0表示未解锁，1表示解锁
+    role: measure
+  - name: spvp1_match_pv
+    type: int
+    comment: 演武场匹配次数，当日
+    role: measure
+  - name: spvp1_match_dur
+    type: int
+    comment: 竞技场普通模式匹配时长，时长/次数即平均匹配时长
+    role: measure
+  - name: spvp1_part_pv
+    type: int
+    comment: 竞技场普通模式参与次数，当日
+    role: measure
+  - name: spvp1_win_pv
+    type: int
+    comment: 竞技场普通模式获胜次数，当日
+    role: measure
+  - name: spvp2_match_pv
+    type: int
+    comment: 竞技场休闲模式匹配次数，当日
+    role: measure
+  - name: spvp2_match_dur
+    type: int
+    comment: 竞技场休闲模式匹配时长，时长/次数即平均匹配时长
+    role: measure
+  - name: spvp2_part_pv
+    type: int
+    comment: 竞技场休闲模式参与次数，当日
+    role: measure
+  - name: spvp2_win_pv
+    type: int
+    comment: 竞技场休闲模式通关次数，当日
+    role: measure
+  - name: spvp_playback_pv
+    type: int
+    comment: 竞技场回放次数
+    role: measure
+  - name: spvp_read_report_pv
+    type: int
+    comment: 竞技场战报查看次数，当日
+    role: measure
+  - name: spvp_score
+    type: int
+    comment: 竞技场得分
+    role: measure
+  - name: spvp_level
+    type: int
+    comment: 竞技场段位
+    role: measure
+  - name: spvp_rank
+    type: int
+    comment: 竞技场排名
+    role: measure
+  - name: rank_visit_pv
+    type: int
+    comment: 竞技场榜打开次数，当日
+    role: measure
+  - name: p0401_unlock_status
+    type: int
+    comment: 古战场解锁状态，0表示未解锁，1表示解锁
+    role: dimension
+  - name: p0401_part_pv
+    type: int
+    comment: 古战场参与次数，当日
+    role: measure
+  - name: p0401_part_pv_valid
+    type: int
+    comment: 古战场有效参与次数，10步及以上 or 成功通关 or 战力前6的武将有3个阵亡(发生3次战斗以上），当日
+    role: measure
+  - name: p0401_reward_pv
+    type: int
+    comment: 古战场奖励兑换次数，40体力兑换或者钥匙兑换，当日
+    role: measure
+  - name: p0401_vit_use_amt
+    type: int
+    comment: 古战场体力消耗
+    role: measure
+  - name: p0401_vit_item_net_amt
+    type: int
+    comment: 古战场钥匙余量
+    role: measure
+  - name: p0401_stay_stage_id
+    type: string
+    comment: 古战场停留关卡，记录层数
+    role: dimension
+  - name: p0401_stay_part_pv
+    type: int
+    comment: 古战场停留关卡参与次数，累计
+    role: measure
+  - name: p0401_stay_part_pv_valid
+    type: int
+    comment: 古战场停留关卡有效参与次数，累计
+    role: measure
+  - name: p0401_stay_status
+    type: int
+    comment: 古战场停留关卡状态
+    role: dimension
+  - name: p0401_stay_reco_level
+    type: int
+    comment: 古战场停留关卡推荐等级
+    role: dimension
+  - name: p0401_pass_hst_stage_id
+    type: string
+    comment: 古战场最高通关关卡，记录层数
+    role: dimension
+  - name: p0401_pass_hst_reco_level
+    type: int
+    comment: 古战场最高通关关卡推荐等级
+    role: dimension
+  - name: p0401_pass_hst_part_pv
+    type: int
+    comment: 古战场最高通关关卡参与次数，当日
+    role: measure
+  - name: p0401_pass_hst_part_pv_valid
+    type: int
+    comment: 古战场最高通关关卡有效参与次数，当日
+    role: measure
+  - name: p0401_score
+    type: int
+    comment: 古战场今日获得军功
+    role: measure
+  - name: p0401_score_1w
+    type: int
+    comment: 古战场本周累积军功
+    role: measure
+  - name: p0501_unlock_status
+    type: int
+    comment: 奇策解锁状态，0表示未解锁，1表示解锁
+    role: dimension
+  - name: p0501_part_pv
+    type: int
+    comment: 奇策参与次数，当日
+    role: measure
+  - name: p0501_part_buff_types
+    type: int
+    comment: 奇策尝试过多少种buff组合
+    role: dimension
+  - name: p0501_pass_hst_stars
+    type: int
+    comment: 奇策通关的最高星数
+    role: measure
+  - name: p0501_pass_hst_score
+    type: int
+    comment: 奇策通关的最高星数对应的得分
+    role: measure
+  - name: p0501_part_hst_stars
+    type: int
+    comment: 奇策挑战的最高星数
+    role: measure
+  - name: p0501_read_rank_pv
+    type: int
+    comment: 奇策排行榜打开次数，当日
+    role: measure
+  - name: explore_part_pv
+    type: int
+    comment: 探索-游历次数，当日
+    role: measure
+  - name: explore_item_net_amt
+    type: int
+    comment: 探索-罗盘余量
+    role: measure
+  - name: explore_item2_net_amt
+    type: int
+    comment: 探索-行囊余量
+    role: measure
+  - name: p0601_part_pv
+    type: int
+    comment: 探索-轶事关卡参与次数，当日
+    role: measure
+  - name: p0602_part_pv
+    type: int
+    comment: 探索-据点参与次数，当日
+    role: measure
+  - name: explore_coll_level
+    type: int
+    comment: 探索-收藏等级
+    role: dimension
+  - name: explore_exp_level
+    type: string
+    comment: 探索-探索等级，数组
+    role: dimension
+  - name: explore_exp_proc
+    type: string
+    comment: "探索-探索进度，json格式，{city_id : exp_proc}"
+    role: dimension
+  - name: explore_skill1
+    type: string
+    comment: 探索-装配的技能id1，-1 未解锁 0-解锁未携带
+    role: dimension
+  - name: explore_skill2
+    type: string
+    comment: 探索-装备的技能id2，-1 未解锁 0-解锁未携带
+    role: dimension
+  - name: p01_card_list
+    type: string
+    comment: 主线使用卡牌列表
+    role: dimension
+  - name: p02_card_list
+    type: string
+    comment: 挑战塔使用卡牌列表
+    role: dimension
+  - name: p05_card_list
+    type: string
+    comment: 奇策使用卡牌列表
+    role: dimension
+  - name: apvp_card_list
+    type: string
+    comment: 演武使用卡牌列表
+    role: measure
+  - name: spvp_box_list
+    type: string
+    comment: 竞技场入盒卡牌列表
+    role: measure
+  - name: spvp_card_list
+    type: string
+    comment: 竞技场使用卡牌列表
+    role: measure
+  - name: refine1_get_amt
+    type: int
+    comment: 初级洗炼券获得数量，四个部位
+    role: measure
+  - name: refine1_use_amt
+    type: int
+    comment: 初级洗炼券使用数量，四个部位
+    role: measure
+  - name: refine1_net_amt
+    type: int
+    comment: 初级洗炼券剩余数量，四个部位
+    role: measure
+  - name: refine2_get_amt
+    type: int
+    comment: 中级洗炼券获得数量，四个部位
+    role: measure
+  - name: refine2_use_amt
+    type: int
+    comment: 中级洗炼券使用数量，四个部位
+    role: measure
+  - name: refine2_net_amt
+    type: int
+    comment: 中级洗炼券剩余数量，四个部位
+    role: measure
+  - name: refine3_get_amt
+    type: int
+    comment: 高级洗练券获得数量，四个部位
+    role: measure
+  - name: refine3_use_amt
+    type: int
+    comment: 高级洗练券使用数量，四个部位
+    role: measure
+  - name: refine3_net_amt
+    type: int
+    comment: 高级洗练券剩余数量，四个部位
+    role: measure
+  - name: daily_task_list
+    type: string
+    comment: 日常任务列表
+    role: dimension
+  - name: daily_task_cnt
+    type: int
+    comment: 日常任务个数
+    role: measure
+  - name: daily_task_cnt2
+    type: int
+    comment: 日常任务完成个数
+    role: measure
+  - name: daily_task_point
+    type: int
+    comment: 日常任务获得点数
+    role: measure
+  - name: battle_rule_pv
+    type: int
+    comment: 战场详情打开次数
+    role: measure
+  - name: battle_lineup_visit_pv
+    type: int
+    comment: 通关阵容打开次数
+    role: measure
+  - name: battle_lineup_use_pv
+    type: int
+    comment: 通关阵容套用次数
+    role: measure
+  - name: battle_lineup_playback_pv
+    type: int
+    comment: 通关阵容回放次数
+    role: measure
+  - name: stra1_act_pv
+    type: int
+    comment: 高阶_复杂策略_行为次数
+    role: measure
+  - name: stra1_pass_pv
+    type: int
+    comment: 高阶_复杂策略_通关次数
+    role: measure
+  - name: stra2_act_pv
+    type: int
+    comment: 高阶_养成战斗1_行为次数
+    role: measure
+  - name: stra2_pass_pv
+    type: int
+    comment: 高阶_养成战斗1_通关次数
+    role: measure
+  - name: stra3_act_pv
+    type: int
+    comment: 高阶_养成战斗2_行为次数
+    role: measure
+  - name: stra3_pass_pv
+    type: int
+    comment: 高阶_养成战斗2_通关次数
+    role: measure
+  - name: stra4_act_pv
+    type: int
+    comment: 高阶_阵容调整1_行为次数
+    role: measure
+  - name: stra4_pass_pv
+    type: int
+    comment: 高阶_阵容调整1_通关次数
+    role: measure
+  - name: stra5_act_pv
+    type: int
+    comment: 高阶_换位置_行为次数
+    role: measure
+  - name: stra5_pass_pv
+    type: int
+    comment: 高阶_换位置_通关次数
+    role: measure
+  - name: stra6_act_pv
+    type: int
+    comment: 高阶_再次尝试_行为次数
+    role: measure
+  - name: stra6_pass_pv
+    type: int
+    comment: 高阶_再次尝试_通关次数
+    role: measure
+  - name: battle_regret_pv
+    type: int
+    comment: 悔棋次数
+    role: measure
+  - name: report_share_pv
+    type: int
+    comment: 战报分享次数
+    role: measure
+  - name: report_share_read_pv
+    type: int
+    comment: 查看别人分享战报次数
+    role: measure
+  - name: internal_flag
+    type: int
+    comment: 内部用户标识，1表示内部用户
+    role: dimension
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: dimension
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 角色UV（去重角色数），_df日全量快照口径
+  active_role_uv_1w:
+    expression: COUNT(DISTINCT CASE WHEN act_days_1w > 0 THEN role_id END)
+    description: 近7日活跃角色UV
+  total_pay_amt_std:
+    expression: SUM(pay_amt_std)
+    description: 累计付费金额合计
+  avg_role_level:
+    expression: AVG(role_level)
+    description: 平均角色等级
+  avg_role_force:
+    expression: AVG(role_force)
+    description: 平均角色战力
+coverage:
+  scenarios:
+    - 角色规模与活跃度（角色UV、近7日活跃角色UV）回答角色盘子与近期留存
+    - 付费能力（累计付费金额）回答角色付费盘子
+    - 角色成长水平（平均等级、平均战力）回答角色养成进度
+  limitations:
+    - 表为空/无数据(MAX(ds) NULL)，所有指标为结构化定义未实测
+    - 仅 scout 抽样验证，未做全量 maxc 实测复核
+    - user_type=3 为按表名推断，空表未做 SELECT DISTINCT 验证
+    - _df 日全量快照，跨日累计不去重；跨区服/渠道聚合需先按 server_id/ch_type 分组
+    - 195列宽表，本版本仅覆盖5个核心指标，未覆盖关卡/PVP/抽卡/资源等子域
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表为空(MAX(ds) NULL)，无法跑数实测；指标为结构化定义，待有数据后复核
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (区服id，key) joins to dim_10000251_server_info (PK server_id), the 服务器/区服维度配置表 used for fact-table server attribute lookup.
+    origin: deterministic
+pref_label: 角色PBT2宽表
+alt_labels:
+  - PBT2
+  - 宽表

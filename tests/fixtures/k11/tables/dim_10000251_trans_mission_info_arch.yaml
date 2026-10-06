@@ -1,0 +1,82 @@
+table_name: dim_10000251_trans_mission_info_arch
+engine: maxcompute
+kind: dim
+table_comment: 通行证任务配置维度归档表（按 ds 分区的任务配置快照）
+description: 通行证(battlepass)任务配置维度归档表，每行对应一个任务(mission)在某个 ds 分区下的配置快照。主键为 (mission_id, ds) 复合键；标签列 mission_id(任务ID)/tips(任务描述)/mission_group(任务组号)。包含任务类型(type/mission_type)、目标值(mission_value/value_type)、积分(mission_exp)、奖励(reward)、从属通行证(battlepass_id)与顺序(order)等属性。
+primary_key:
+- mission_id
+- ds
+primary_key_unique: true
+label_columns:
+- mission_id
+- tips
+- mission_group
+domains:
+- 系统监控
+granularity: 每 (mission_id, ds) 一行的任务配置归档维度表
+columns:
+- name: mission_id
+  type: string
+  comment: 任务ID
+  role: dimension
+- name: type
+  type: string
+  comment: 任务类型
+  role: dimension
+- name: battlepass_id
+  type: string
+  comment: 从属通行证ID
+  role: dimension
+- name: order
+  type: string
+  comment: 顺序ID
+  role: dimension
+- name: mission_group
+  type: string
+  comment: 任务组号
+  role: dimension
+- name: tips
+  type: string
+  comment: 任务描述
+  role: dimension
+- name: mission_type
+  type: string
+  comment: mission类型
+  role: dimension
+- name: mission_value
+  type: string
+  comment: mission类型值
+  role: dimension
+- name: value_type
+  type: string
+  comment: 条件数值类型
+  role: dimension
+- name: mission_exp
+  type: string
+  comment: 任务积分
+  role: dimension
+- name: reward
+  type: string
+  comment: 额外奖励
+  role: dimension
+- name: ds
+  type: string
+  comment: 归档分区日期(yyyyMMdd)
+  role: partition
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（跨分区快照）
+coverage:
+  scenarios:
+    - 通过 JOIN mission_id 提供通行证任务配置维度查找（任务名/描述 tips、任务组 mission_group、任务类型 type/mission_type、目标值 mission_value/value_type、积分 mission_exp、奖励 reward、从属通行证 battlepass_id、顺序 order 等属性的反查与归类）
+    - 可按 ds 取特定日期的任务配置快照
+  limitations:
+    - 配置类维度归档表，无值度量
+    - type/mission_type/mission_value/value_type/battlepass_id/reward 等为编码字符串，需业务方二次解码其含义
+    - 跨 ds 分区存在多版本快照，按日期切片查询时需显式指定 ds
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 自动建模：meta describe 验证列；primary_key (mission_id, ds) 经 SELECT COUNT(*)=COUNT(DISTINCT mission_id,ds)=44832 实测唯一，故 primary_key_unique=true；status 保持 draft。

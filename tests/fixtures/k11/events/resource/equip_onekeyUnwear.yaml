@@ -1,0 +1,111 @@
+name: game.equip.onekeyUnwear
+event_filter: event = 'game.equip.onekeyUnwear'
+description: 装备-一键脱下：玩家通过一键操作卸下角色（含武将 knightId）身上的装备，触发 game.equip.onekeyUnwear 事件，params.uids 记录本次卸下的装备 uid 列表。分析主体为 role_id（角色），可按 account_id、server_id 维度拆分。实测 ds=20260729 单日：cnt=3128、role_uv=635、acc_uv=621、server_uv=119。
+domains:
+  - 装备道具
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  uids:
+    type: array
+    description: 卸下的装备列表
+  knightId:
+    type: int
+    description: 武将id
+metrics:
+  equip_onekey_unwear_cnt:
+    expression: COUNT(*)
+    description: 一键脱下事件总次数（按 ds 切片为单日触发量）
+  equip_onekey_unwear_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发一键脱下的去重角色数（分析主体粒度：role_id）
+  equip_onekey_unwear_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发一键脱下的去重账号数
+  equip_onekey_unwear_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发一键脱下覆盖的去重游戏服数
+  equip_onekey_unwear_per_role_cnt:
+    expression: CASE WHEN COUNT(DISTINCT role_id) = 0 THEN NULL ELSE COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0) END
+    description: 人均触发次数 = 总次数 / 去重角色数（分母为 0 时返回 NULL）
+coverage:
+  scenarios:
+    - 单日/累计一键脱下使用量与去重角色数（衡量一键卸装功能的渗透与活跃）
+    - 按游戏服、账号、角色拆分的卸装行为分布
+    - 人均触发次数用于识别批量卸装操作倾向
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核（无 7 日/30 日趋势）
+    - 分析主体粒度默认 role_id（角色），未对武将 knightId 维度单独核对
+    - params.uids（卸下装备列表）为 JSON 数组，未在指标中聚合其元素个数（避免对数组长度函数的方言依赖）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=3128、role_uv=635、acc_uv=621、server_uv=119，数据合理，事件在线触发正常
+coverage_status: analyst_confirmed
+external_refs: []

@@ -1,0 +1,56 @@
+table_name: dim_10000251_k11_recharge_info
+engine: maxcompute
+table_comment: k11商品礼包维表（包含凤翎和RMB）。业务咨询：洞主(null)#
+kind: dim
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+description: 'k11 游戏的商品/礼包维度配置表，覆盖充值礼包与凤翎购买两类商品，记录每个商品的名称、所属模块大类、核心内容、分类、类型与价格。用于在付费与充值分析中作为商品维度的 JOIN 查询表，将事实表的 id 关联到可读的礼包名称及属性。粒度：每条商品/礼包一行。'
+domains:
+- 付费经济
+granularity: 每条商品/礼包一行的维度配置表
+columns:
+- name: id
+  type: string
+  comment: 商品id
+  role: dimension
+- name: name
+  type: string
+  comment: 礼包名称
+  role: dimension
+- name: shop
+  type: string
+  comment: 礼包模块大类
+  role: dimension
+- name: topic
+  type: string
+  comment: 核心商品内容
+  role: dimension
+- name: topic_type
+  type: string
+  comment: 商品分类
+  role: dimension
+- name: type
+  type: string
+  comment: 商品类型，1-充值礼包 2-凤翎购买
+  role: dimension
+- name: price
+  type: string
+  comment: 礼包价格
+  role: dimension
+coverage:
+  scenarios:
+  - 通过 id 关联充值/凤翎消费事实表，将商品 id 解析为可读的礼包名称 (name) 及所属模块大类 (shop)
+  - 按 shop/topic_type/type 维度对付费流水做分组聚合，分析各商品分类的充值金额与购买量
+  - 以 price 作为分组键查看不同价位档位礼包的销售分布
+  limitations:
+  - 配置类维度表，本身不包含金额或次数度量，需与事实表 JOIN 后聚合
+  - price 字段为字符串类型且单位混用（凤翎数值与 RMB 金额并存），跨类型比较前需结合 type 字段区分
+  - topic 核心商品内容字段为业务编码/文案，复合编码串需二次解码以拆解具体道具构成
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 maxc meta describe 核对列名/类型/注释；主键 id 经 SELECT COUNT(*)=178、COUNT(DISTINCT id)=178 实测唯一；领域归属付费经济（商品/礼包配置维度）。状态保持 draft 待业务方复核。'

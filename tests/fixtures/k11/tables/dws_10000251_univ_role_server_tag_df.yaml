@@ -1,0 +1,279 @@
+table_name: dws_10000251_univ_role_server_tag_df
+engine: maxcompute
+table_comment: ""
+description: |
+  角色×区服粒度的通用标签日全量快照表（_df，每日全量）。每行表示一个角色在某区服截至分区日期 ds 的累计标签状态，
+  记录该角色的累计活跃天数/时长、累计与首日/首付付费金额、最近活跃时间、首末次活跃/付费时间、首末次关联设备/账号/角色、
+  设备品牌型号、活跃 IP 与地理位置、买量归因（广告ID/媒体）、角色等级、内部用户标记等。
+  【主体类型：角色表】本表固定为 user_type=3 的【角色表】（表名含 role），分析主体=角色；user_id 列实际存储角色ID（role_id），
+  配合 server_id 联合标识角色主体；DISTINCT user_type 仅返回单一值 3（建议用 SELECT DISTINCT user_type 复核）。
+  能回答的业务问题：角色生命周期累计活跃与回流间隔、付费金额与首日/首付付费、角色等级分布、设备/账号/角色跨主体关联、
+  买量归因带来的角色质量、地域与平台/渠道分布、内部用户剔除。
+  注意事项：1) _df 为日全量快照，所有累计指标截至 ds 当日，跨日对比需用快照差量；2) 本表仅含角色行（user_type 固定为 3），不存在设备/账号行，无需也不应按 user_type 切换或过滤层级；
+  3) act_*_fst/lst、rel_*_fst/lst、pay_tm_fst/lst 为成对首末次快照，不可聚合；4) 无独立 role_id 列，跨表关联角色需用 user_id（角色ID）+server_id；
+  5) 指标口径：角色数统计用 COUNT(DISTINCT user_id)；留存率为基于累计活跃天数的近似口径（act_days_std>=N），非逐日精确留存；
+  付费率/首付率用 pay_amt_p1d>0 判定；累计付费金额用 pay_amt_std。
+domains:
+  - 用户生命周期
+  - 付费经济
+  - 角色成长
+granularity: |
+  日全量快照（_df），每角色每区服每天一行；分析主体=角色（角色表，表名含 role，固定 user_type=3）。
+  标识字段：user_id（实际存储角色ID role_id）+ server_id 联合标识角色主体（本表无独立 role_id 列）。
+  本表仅含角色行，DISTINCT user_type 仅返回单一值 3（建议用 SELECT DISTINCT user_type 复核），不存在设备/账号层级切换。
+  分区字段 ds 为快照日期（yyyyMMdd），全量覆盖历史所有角色×区服组合。
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: os_id
+    type: int
+    comment: 平台
+    role: dimension
+  - name: ch_type
+    type: string
+    comment: 渠道
+    role: dimension
+  - name: pkg_name
+    type: string
+    comment: 包
+    role: dimension
+  - name: act_tm_fst
+    type: datetime
+    comment: 首次活跃时间
+    role: attribute
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近活跃时间
+    role: attribute
+  - name: pay_tm_fst
+    type: datetime
+    comment: 首次付费时间
+    role: attribute
+  - name: pay_tm_lst
+    type: datetime
+    comment: 最近付费时间
+    role: attribute
+  - name: act_days_std
+    type: int
+    comment: 累计活跃天数
+    role: measure
+  - name: act_dur_std
+    type: int
+    comment: 累计活跃时长
+    role: measure
+  - name: pay_amt_std
+    type: decimal
+    comment: 累计付费金额
+    role: measure
+  - name: act_ymd_prev
+    type: string
+    comment: 上一个活跃日期
+    role: dimension
+  - name: act_ymd_diff
+    type: int
+    comment: 最近2个活跃日期间隔
+    role: measure
+  - name: attr_ad_id
+    type: string
+    comment: 买量标识
+    role: dimension
+  - name: rel_dev_id_fst
+    type: string
+    comment: 首次关联设备id
+    role: dimension
+  - name: rel_dev_tm_fst
+    type: datetime
+    comment: 首次关联设备时间
+    role: attribute
+  - name: rel_dev_id_lst
+    type: string
+    comment: 最近关联设备id
+    role: dimension
+  - name: rel_dev_tm_lst
+    type: datetime
+    comment: 最近关联设备时间
+    role: attribute
+  - name: rel_acc_id_fst
+    type: string
+    comment: 首次关联账号id
+    role: dimension
+  - name: rel_acc_tm_fst
+    type: datetime
+    comment: 首次关联账号时间
+    role: attribute
+  - name: rel_acc_id_lst
+    type: string
+    comment: 最近关联账号id
+    role: dimension
+  - name: rel_acc_tm_lst
+    type: datetime
+    comment: 最近关联账号时间
+    role: attribute
+  - name: rel_role_id_fst
+    type: string
+    comment: 首次关联角色id
+    role: dimension
+  - name: rel_role_tm_fst
+    type: datetime
+    comment: 首次关联角色时间
+    role: attribute
+  - name: rel_role_id_lst
+    type: string
+    comment: 最近关联角色id
+    role: dimension
+  - name: rel_role_tm_lst
+    type: datetime
+    comment: 最近关联角色时间
+    role: attribute
+  - name: act_ip_fst
+    type: string
+    comment: 首次活跃ip
+    role: dimension
+  - name: act_location_fst
+    type: string
+    comment: 首次活跃地理位置
+    role: dimension
+  - name: act_ip_lst
+    type: string
+    comment: 最近活跃ip
+    role: dimension
+  - name: act_location_lst
+    type: string
+    comment: 最近活跃地理位置
+    role: dimension
+  - name: region_id
+    type: string
+    comment: 地区
+    role: dimension
+  - name: fellow_flag
+    type: int
+    comment: 内部用户标记，1-内部用户、0-非内部用户
+    role: dimension
+  - name: pay_amt_f1d
+    type: decimal
+    comment: 新增当日付费金额
+    role: measure
+  - name: pay_amt_p1d
+    type: decimal
+    comment: 首付当日付费金额
+    role: measure
+  - name: dev_brand_fst
+    type: string
+    comment: 首次活跃设备品牌
+    role: dimension
+  - name: dev_model_fst
+    type: string
+    comment: 首次活跃设备型号
+    role: dimension
+  - name: dev_brand_lst
+    type: string
+    comment: 最近活跃设备品牌
+    role: dimension
+  - name: dev_model_lst
+    type: string
+    comment: 最近活跃设备型号
+    role: dimension
+  - name: role_level
+    type: int
+    comment: 角色等级
+    role: measure
+  - name: ds
+    type: string
+    comment: ""
+    role: dimension
+metrics:
+  role_active_count:
+    expression: COUNT(DISTINCT user_id)
+    description: 截至 ds 的活跃角色数（角色粒度，本表固定 user_type=3，统计在册角色主体数）
+  avg_act_days:
+    expression: AVG(act_days_std)
+    description: 角色平均累计活跃天数（截至 ds，衡量生命周期活跃深度）
+  avg_act_dur:
+    expression: AVG(act_dur_std)
+    description: 角色平均累计活跃时长（单位秒，截至 ds）
+  retention_rate_d3:
+    expression: SUM(CASE WHEN act_days_std>=3 THEN 1 ELSE 0 END)*1.0/NULLIF(COUNT(*),0)
+    description: 3日留存近似率（基于累计活跃天数>=3 的近似口径，非逐日精确留存；本表全为角色行，分母为角色总数）
+  retention_rate_d7:
+    expression: SUM(CASE WHEN act_days_std>=7 THEN 1 ELSE 0 END)*1.0/NULLIF(COUNT(*),0)
+    description: 7日留存近似率（基于累计活跃天数>=7，近似口径）
+  retention_rate_d30:
+    expression: SUM(CASE WHEN act_days_std>=30 THEN 1 ELSE 0 END)*1.0/NULLIF(COUNT(*),0)
+    description: 30日留存近似率（基于累计活跃天数>=30，近似口径）
+  return_interval_avg:
+    expression: AVG(act_ymd_diff)
+    description: 角色平均回流间隔天数（最近两次活跃间隔，衡量活跃节奏）
+  return_interval_max:
+    expression: MAX(act_ymd_diff)
+    description: 角色最大回流间隔天数（识别流失边缘角色）
+  pay_amt_total:
+    expression: SUM(pay_amt_std)
+    description: 累计付费总金额（单位元，截至 ds，角色粒度）
+  pay_amt_avg:
+    expression: AVG(pay_amt_std)
+    description: 角色平均累计付费金额（单位元，截至 ds）
+  first_pay_rate:
+    expression: SUM(CASE WHEN pay_amt_p1d>0 THEN 1 ELSE 0 END)*1.0/NULLIF(COUNT(*),0)
+    description: 首付率（首付金额>0 的角色占比，衡量付费转化；本表全为角色行，分母为角色总数）
+  paid_role_share:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std>0 THEN user_id END)*1.0/NULLIF(COUNT(DISTINCT user_id),0)
+    description: 付费角色占比（付费角色数/角色总数，付费渗透率，NULLIF 防除零）
+  arpu:
+    expression: SUM(pay_amt_std)*1.0/NULLIF(COUNT(DISTINCT user_id),0)
+    description: 角色累计 ARPU（每角色累计付费金额，单位元，NULLIF 防除零）
+  avg_role_level:
+    expression: AVG(role_level)
+    description: 角色平均等级（截至 ds）
+  max_role_level:
+    expression: MAX(role_level)
+    description: 角色最高等级（截至 ds）
+  internal_role_count:
+    expression: COUNT(DISTINCT CASE WHEN fellow_flag=1 THEN user_id END)
+    description: 内部角色数（fellow_flag=1，用于剔除内部用户前的盘点）
+partitions:
+  - name: ds
+    type: string
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: 真实数据验证通过（MAX(ds)=20260729 最新）。列校验：metrics 引用的 8 列(user_id/act_days_std/act_dur_std/act_ymd_diff/pay_amt_std/pay_amt_p1d/role_level/fellow_flag)均存在于真实 schema(42列)。user_type 校验：DISTINCT user_type={3} 单一值，与 YAML 角色表(user_type=3)声明一致。粒度校验：rows=1,668,110 vs DISTINCT(user_id,server_id)=1,668,110，严格 1 行/角色×区服/天；608 个区服。核心指标实测合理：role_active_count=1,668,110；avg_act_days=6.56；avg_act_dur=31,319秒≈8.7小时累计(非Unix时间戳，无移植时序bug)；pay_amt_total=107,314,524元；arpu=64.33元；first_pay_rate=0.193；paid_role_share=0.193；avg_role_level=4.06；max_role_level=100；internal_role_count=1,369；return_interval_avg=4.63天/最大439天；retention_d3/d7/d30=0.304/0.180/0.047 均∈[0,1]单调递减。所有指标非NULL且合理，无 verified-broken 指标需移除。domains(用户生命周期/付费经济/角色成长)无活动运营，无需调整。
+coverage:
+  scenarios:
+    - 角色累计活跃深度分析：按区服/渠道/平台分组统计角色平均累计活跃天数与时长（avg_act_days/avg_act_dur），识别高活跃区服与流失边缘区服
+    - 角色回流与活跃节奏分析：用 act_ymd_diff 的均值/最大值衡量回流间隔，定位长期未活跃即将流失的角色
+    - 角色付费金额与首付率分析：按区服/媒体/渠道统计累计付费总额、角色付费均值、首付率（first_pay_rate）、付费渗透率（paid_role_share）与 ARPU（arpu）
+    - 角色等级分布分析：按等级分桶或均值/最大值（avg_role_level/max_role_level）刻画区服角色成长进度
+    - 地域与平台/渠道分布分析：按 region_id/os_id/ch_type/pkg_name 分组统计角色数与付费金额，刻画用户画像
+    - 设备/账号/角色跨主体关联分析：通过 rel_dev_id_*/rel_acc_id_*/rel_role_id_* 首末次关联ID还原角色与设备/账号的绑定关系与切换行为
+    - 内部用户剔除分析：用 fellow_flag 过滤内部角色（internal_role_count 盘点），正式分析须 fellow_flag=0
+  limitations:
+    - _df 为日全量快照，所有累计指标截至 ds 当日；跨日对比须用两日快照差量，本表不直接提供日增量
+    - 本表无独立 role_id 列，角色主体由 user_id（角色ID）+server_id 联合标识，跨表关联角色须带齐两字段
+    - 本表固定 user_type=3 仅含角色行，不包含设备/账号层级数据；如需设备/账号粒度分析须回对应设备/账号表（univ_dev/univ_acc）
+    - retention_rate_dX 为基于累计活跃天数（act_days_std>=N）的近似留存口径，非逐日精确留存；精确逐日留存需回 dwd/ods 事件明细
+    - 本表无逐日活跃/付费明细事件，无法回答"某日活跃/付费事件流"类问题，需回 dwd/ods 事件源
+    - 累计指标（act_days_std/pay_amt_std 等）为截至 ds 的历史累计，不可与日增量指标混用或直接相加
+    - 内部用户标记 fellow_flag=1 的角色会污染正式分析，统计外部用户时须过滤 fellow_flag=0
+    - act_*_fst/lst、rel_*_fst/lst、pay_tm_fst/lst 为成对首末次快照，不可 SUM/AVG 聚合
+    - 多区服角色精确占比（同一账号跨区服去重）超出单表单 SQL 片段能力，需配合 server_id 分组或回 dwd 子查询
+  coverage_status: draft
+supersedes: []
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (comment 区服id) exactly matches dim_10000251_server_info.primary_key server_id, the 服务器/区服配置维度表 used to resolve 区服名称与开服时间.
+    origin: deterministic
+pref_label: 角色区服标签表

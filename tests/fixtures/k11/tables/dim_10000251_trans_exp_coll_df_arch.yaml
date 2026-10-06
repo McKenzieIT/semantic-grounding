@@ -1,0 +1,75 @@
+table_name: dim_10000251_trans_exp_coll_df_arch
+engine: maxcompute
+kind: dim
+table_comment: '探索收集-藏品档案配置维度表（按 ds 分区快照）。每行描述一个藏品的基础配置：名称、所属城市、类型、品质、关联剧本/套装、等级区间及描述文本。'
+description: '游戏 10000251 探索收集域的藏品档案配置维度表（dim）。每行对应一个藏品 id 在某 ds 分区快照下的静态配置属性，包括藏品名 name、所属城市 city、藏品类型 type、品质 quality、关联剧本 story_id、套装 suit_id、初始/上限等级 level、描述 desc1/desc2。粒度为「每藏品 × 每分区快照一行」的配置维度表，无值度量。用于按藏品 id JOIN 提供藏品维度属性。'
+primary_key: [id]
+primary_key_unique: false
+label_columns: [name]
+domains:
+- 探索收集
+granularity: '每藏品(id) × 每分区快照(ds)一行的配置维度表；全表 id 非唯一（ds 分区快照导致重复），单分区内 id 唯一。'
+columns:
+- name: id
+  type: string
+  comment: 藏品id
+  role: dimension
+- name: name
+  type: string
+  comment: 藏品名
+  role: dimension
+- name: city
+  type: string
+  comment: 所属城市名
+  role: dimension
+- name: type
+  type: string
+  comment: 藏品类型
+  role: dimension
+- name: quality
+  type: string
+  comment: 品质
+  role: dimension
+- name: story_id
+  type: string
+  comment: 剧本id
+  role: dimension
+- name: suit_id
+  type: string
+  comment: 套装id
+  role: dimension
+- name: level
+  type: string
+  comment: 初始等级_上限等级
+  role: dimension
+- name: desc1
+  type: string
+  comment: 描述1
+  role: dimension
+- name: desc2
+  type: string
+  comment: 描述2
+  role: dimension
+- name: ds
+  type: string
+  comment: '分区日期(快照日 yyyymmdd)'
+  role: partition
+coverage:
+  scenarios:
+  - '按藏品 id JOIN 事实表，提供藏品维度属性（name/city/type/quality）用于探索收集分析'
+  - '按 story_id/suit_id 关联剧本、套装维度，支持藏品分组聚合'
+  - '按 city/quality/type 做藏品分布维度切片'
+  limitations:
+  - '配置类维度表，无值度量（measures）；不承载指标计算'
+  - 'primary_key_unique=false：全表 id 非唯一，因按 ds 分区快照重复；JOIN 时需指定 ds 分区或加 ds 去重'
+  - 'level 字段为「初始等级_上限等级」复合编码串（如 1_4），需二次解码拆分；type/quality 为编码值，需配合码表解读'
+  - 'desc2 含 HTML <br> 标签文本，分析前需清洗'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '自动 dim 建模；primary_key=id 取自 meta describe；primary_key_unique=false 经 COUNT(*)=10600 / COUNT(DISTINCT id)=70 实测（ds 快照导致重复）；待业务确认 ds 分区选取策略与码表。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数(含分区快照)

@@ -1,0 +1,77 @@
+table_name: dim_10000251_equipment_detail_info
+engine: maxcompute
+table_comment: '游戏 10000251 装备明细配置维度表：每件装备一行的配置维度表，含装备ID/名称/品质/部位/品阶及所属套装信息'
+description: '游戏 10000251 的装备明细配置维度表（dim）。每件装备一行，记录装备基础属性（名称/品质/部位/品阶/品质索引）及其所属套装（套装ID/名称/索引/详细名称）。作为装备维度的查找表，供事实表通过 equip_id JOIN 获取装备的名称、品质、部位等维度属性。粒度：每件装备（equip_id）一行的配置维度表。'
+domains:
+- 装备道具
+granularity: 每件装备（equip_id）一行的配置维度表
+kind: dim
+primary_key:
+- equip_id
+label_columns:
+- equip_name
+- equip_full_name
+primary_key_unique: true
+columns:
+- name: equip_id
+  type: bigint
+  comment: 装备ID
+  role: dimension
+- name: equip_name
+  type: string
+  comment: 装备名称
+  role: dimension
+- name: equip_full_name
+  type: string
+  comment: 装备详细名称
+  role: dimension
+- name: quality
+  type: bigint
+  comment: 装备品质
+  role: dimension
+- name: part
+  type: bigint
+  comment: 装备部位
+  role: dimension
+- name: equip_grade
+  type: bigint
+  comment: 装备品阶
+  role: dimension
+- name: quality_index
+  type: bigint
+  comment: 装备品质索引 橙装为5 6 7 无双为8 9 10
+  role: dimension
+- name: equip_suit_id
+  type: bigint
+  comment: 装备套装ID
+  role: dimension
+- name: equip_suit_name
+  type: string
+  comment: 装备套装名称
+  role: dimension
+- name: equip_suit_index
+  type: bigint
+  comment: 装备套装索引
+  role: dimension
+- name: equip_suit_full_name
+  type: string
+  comment: 装备套装详细名称
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 事实表（如装备获得/穿戴/强化流水）通过 equip_id JOIN 本表，获取装备名称、品质、部位、品阶等维度属性，用于装备分布、品质占比、部位构成分析
+  - 通过 equip_suit_id/equip_suit_name 关联套装维度，分析套装覆盖与组成
+  - 通过 quality_index 区分橙装/无双等品质档位进行分层统计
+  limitations:
+  - 配置类维度表，无值度量；分析需与事实表 JOIN
+  - quality/equip_grade/part 等为编码值，分组展示时需结合业务字典二次解读
+  - equip_id 已实测唯一（COUNT=244, DISTINCT=244），primary_key_unique=true
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 maxc meta describe 校正列类型与注释；equip_id 经 SELECT COUNT(*)/COUNT(DISTINCT) 实测唯一（244=244）故 primary_key_unique=true；status=draft 待业务确认'

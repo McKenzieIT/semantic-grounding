@@ -1,0 +1,140 @@
+table_name: dws_10000251_univ_dev_server_whole_df
+engine: maxcompute
+disambiguation:
+  term_defaults:
+    active_users: 统计周期内有登录/行为事件的设备
+table_comment: 设备-区服维度日全量快照表（设备主体×区服×日期的活跃与付费累计快照）
+description: |
+  该表是【设备表】（表名含 dev 判定，固定 user_type=1，分析主体=设备，标识字段=user_id 存设备ID）。
+  本表固定为设备主体，DISTINCT user_type 仅返回单一值 1（建议用 SELECT DISTINCT user_type 复核）。
+  每台设备在每个区服(server_id)每天保留一行全量快照，记录该设备的首次活跃时间、最近活跃时间、首次付费时间、最近付费时间以及历史累计付费金额。
+  能回答的业务问题：某设备在某区服何时首次活跃与最近活跃、何时首次付费与最近付费、累计付费金额多少、活跃与付费的时间跨度、是否存在付费但无活跃等异常。
+  注意事项：user_id 在本表中恒为设备ID，可直接按 user_id 去重统计设备数；pay_amt_std 为历史累计口径，同一设备多日快照值会随时间单调非减，跨日聚合需先取最新分区值再求和，勿重复累加；ext_info 为 JSON 串记录首次数据日志索引，不可聚合；_df 为日全量快照，非增量；该快照为累计口径（记录历史首末时点与累计金额），非当日活跃/付费明细。
+domains:
+  - 付费经济
+  - 用户生命周期
+granularity: |
+  【设备表】（表名含 dev 判定）。本表固定 user_type=1，分析主体=设备，标识字段=user_id（恒为设备ID）；DISTINCT user_type 仅返回单一值 1（建议用 SELECT DISTINCT user_type 复核）。
+  粒度：每台设备(user_id)×区服(server_id)×每天(ds 分区)一行，日全量快照(_df)。
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: act_tm_fst
+    type: datetime
+    comment: 首次活跃时间
+    role: attribute
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近活跃时间
+    role: attribute
+  - name: pay_tm_fst
+    type: datetime
+    comment: 首次付费时间
+    role: attribute
+  - name: pay_tm_lst
+    type: datetime
+    comment: 最近付费时间
+    role: attribute
+  - name: pay_amt_std
+    type: decimal
+    comment: 累计付费金额
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 附加信息，记录各个首次数据的日志索引
+    role: attribute
+  - name: ds
+    type: string
+    comment: 分区日期，格式 yyyyMMdd（如 20260629），快照日期
+    role: dimension
+metrics:
+  pay_amt_total:
+    expression: SUM(pay_amt_std)
+    description: 区服维度的累计付费总额（元）。pay_amt_std 为历史累计口径，跨多日分区聚合前需先按设备取最新分区值，避免重复累加；单分区(单日快照)内可直接 SUM。
+  pay_user_cnt:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN user_id END)
+    description: 有付费记录的去重设备数。本表未付费设备的 pay_tm_fst 为 1970-01-01 哨兵值而非 NULL，故付费判定统一用 pay_amt_std>0。
+  active_user_cnt:
+    expression: COUNT(DISTINCT CASE WHEN act_tm_fst IS NOT NULL THEN user_id END)
+    description: 去重活跃设备数（act_tm_fst 非空即曾活跃的设备）。基于累计全量快照，统计该快照中 act_tm_fst 非空的设备，非当日活跃口径。
+  pay_rate:
+    expression: AVG(CASE WHEN pay_amt_std > 0 THEN 1 ELSE 0 END)
+    description: 付费渗透率=付费设备数/快照设备总数。按 server_id 分组计算，分母为该分组快照内全部设备(含付费无活跃异常设备)；付费判定用 pay_amt_std>0；如需严格"付费/活跃"口径请用 pay_to_active_ratio。
+  active_but_unpaid_cnt:
+    expression: COUNT(DISTINCT CASE WHEN act_tm_fst IS NOT NULL AND pay_amt_std = 0 THEN user_id END)
+    description: 有活跃(act_tm_fst 非空)但未付费(pay_amt_std=0)的去重设备数，用于识别区服内未转化付费的潜在设备规模。本表未付费设备 pay_tm_fst 为哨兵值非 NULL，故用 pay_amt_std=0 判定未付费。
+  pay_to_active_ratio:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN user_id END)*1.0/NULLIF(COUNT(DISTINCT CASE WHEN act_tm_fst IS NOT NULL THEN user_id END),0)
+    description: 付费设备占活跃设备(act_tm_fst 非空)的比例，即严格意义的付费率(付费/活跃)。付费判定用 pay_amt_std>0；与 pay_rate(付费/快照设备)在存在"付费无活跃"异常设备时会有差异，本指标更符合常规付费转化率口径。
+  avg_pay_amt_per_payer:
+    expression: SUM(pay_amt_std)*1.0/NULLIF(COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN user_id END),0)
+    description: 付费设备平均累计付费金额（元/台），即付费客单价。单日快照口径，跨日需先取设备最新分区值；分母用 pay_amt_std>0 的去重设备数。
+  pay_duration_days:
+    expression: AVG(CASE WHEN pay_amt_std > 0 THEN DATEDIFF(pay_tm_lst, pay_tm_fst, 'dd') END)
+    description: 付费设备从首次付费到最近付费的平均间隔天数，反映付费生命周期跨度。仅对有付费记录(pay_amt_std>0)的设备计算，AVG 自动忽略 NULL；未付费设备的 pay_tm_fst/pay_tm_lst 为 1970 哨兵值须排除。
+  active_to_pay_lag_days:
+    expression: AVG(CASE WHEN pay_amt_std > 0 THEN DATEDIFF(pay_tm_fst, act_tm_fst, 'dd') END)
+    description: 付费设备从首次活跃到首次付费的平均间隔天数，反映付费转化速度。仅对有付费记录(pay_amt_std>0)且 act_tm_fst 非空的设备计算；未付费设备 pay_tm_fst 为 1970 哨兵值须排除，否则会出现负值。
+  new_payer_cnt:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std > 0 AND pay_tm_fst = act_tm_fst THEN user_id END)
+    description: 当日新增付费设备数（首次付费时间等于首次活跃时间，即活跃当天即付费的设备）。基于累计快照口径，识别即时转化设备；需加 pay_amt_std>0 前置过滤排除未付费哨兵行。
+  server_cnt:
+    expression: COUNT(DISTINCT server_id)
+    description: 有快照记录的去重区服数，用于评估设备覆盖的区服广度。
+partitions:
+  - name: ds
+    type: string
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: "真实数据验证通过(2026-07-30, latest ds=20260729)。meta describe确认全部10列存在且类型一致(user_type BIGINT/user_id STRING/server_id STRING/act_tm_fst DATETIME/act_tm_lst DATETIME/pay_tm_fst DATETIME/pay_tm_lst DATETIME/pay_amt_std DOUBLE/ext_info STRING/ds STRING)，metrics引用列全部命中。SELECT DISTINCT user_type WHERE ds=20260729 仅返回单一值 1，与YAML设备表固定user_type=1声明一致。核心metrics实测(全表单分区 ds=20260729): SUM(pay_amt_std)=107,312,082.32元(付费总额合理)、COUNT(DISTINCT CASE WHEN pay_amt_std>0 THEN user_id END)=292,274(付费设备数)、COUNT(DISTINCT CASE WHEN act_tm_fst IS NOT NULL THEN user_id END)=1,717,033(活跃设备数),付费率≈17%合理无异常。粒度验证: rows=2,240,884 与 DISTINCT(user_id|server_id)=2,240,884 严格相等，即每台设备×区服×每天恰好一行，日全量快照(_df)粒度声明成立。pay_amt_std 为历史累计口径符合快照表语义。domains=[付费经济,用户生命周期]均属白名单且无活动运营，无需剔除。"
+coverage:
+  scenarios:
+    - 按区服(server_id)统计累计付费总额、付费设备数、付费率，评估各区服付费规模与转化质量
+    - 查询某设备在某区服的首次/最近活跃与首次/最近付费时点，定位其生命周期节点
+    - 计算付费设备从首次活跃到首次付费的间隔天数，分析付费转化速度
+    - 计算付费设备首末付费时间跨度，评估付费生命周期长度
+    - 识别"有付费记录但活跃时间为空或异常"的设备，发现数据异常或回流付费设备
+    - 统计有活跃但未付费的设备规模，量化区服未转化付费的潜在空间
+    - 按区服对比付费设备平均累计付费金额(付费客单价)，定位高价值区服
+    - 按 server_id 计算严格付费率(付费设备/活跃设备)，对比各区服付费转化效率
+    - 统计即时转化付费设备数(pay_tm_fst=act_tm_fst)，评估活跃当日付费转化能力
+    - 统计设备覆盖的区服数，评估设备跨服活跃广度
+  limitations:
+    - 该表为日全量快照(_df)，存在 T+1 时效滞后，不支持当日实时活跃/付费查询
+    - 不记录日内或小时级活跃/付费明细，无法做分时活跃分布或单笔订单流水分析
+    - pay_amt_std 为历史累计口径且随快照日期单调非减，跨多日分区聚合前必须先按设备取最新分区值，否则会重复累加导致金额虚高
+    - 本表固定为设备主体(user_type=1)，user_id 恒为设备ID，不含账号/角色层级数据；如需账号或角色维度分析请使用对应 univ_acc/univ_role 表
+    - 不含留存率、LTV、ARPU、ROI 等衍生指标，需配合其他生命周期/收入宽表计算
+    - 不含渠道、设备型号、注册时间、地理位置等用户画像属性，无法做渠道归因或画像分群
+    - ext_info 为 JSON 串日志索引，仅用于追溯原始日志，不可用于聚合或数值分析
+    - 仅覆盖已产生活跃或付费记录的设备，无法反映从未进入区服的潜在设备
+    - act_tm_fst 为空但 pay_tm_fst 非空的"付费无活跃"设备属数据异常，计入付费设备但不应计入活跃设备，相关比率指标已按 act_tm_fst 非空过滤活跃口径
+    - 本表未付费设备的 pay_tm_fst/pay_tm_lst 使用 1970-01-01 08:00:00(UTC+8 零点)哨兵值而非 NULL，所有付费判定指标统一改用 pay_amt_std>0；直接用 pay_tm_fst IS NOT NULL 会把全部设备误计为付费，导致 pay_rate=1、付费间隔为负等错误
+  coverage_status: draft
+supersedes:
+  - source: 设备首次活跃与最近活跃事件查询
+    when: 需要获取某设备在某区服的首末活跃时点且接受 T-1 截止的全量快照口径时
+    advantage: 该表 act_tm_fst/act_tm_lst 已在全量快照中直接记录首末活跃时间，无需扫描海量原始活跃事件日志逐日比对，查询效率高且口径统一
+  - source: 设备首次付费与最近付费事件查询
+    when: 需要获取某设备在某区服的首末付费时点且接受 T-1 截止的全量快照口径时
+    advantage: 该表 pay_tm_fst/pay_tm_lst 已在全量快照中直接记录首末付费时间，无需扫描海量原始付费事件日志逐日比对，并附带累计付费金额，一站可得付费时点与金额
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (comment '区服id') exactly matches the primary_key server_id of dim_10000251_server_info, the canonical 区服 dimension whose description states it is used by fact tables to JOIN via server_id to backfill server attributes.
+    origin: deterministic
+pref_label: 设备区服全量表

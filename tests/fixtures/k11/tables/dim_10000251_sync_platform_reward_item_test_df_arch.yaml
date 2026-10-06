@@ -1,0 +1,60 @@
+table_name: dim_10000251_sync_platform_reward_item_test_df_arch
+engine: maxcompute
+table_comment: 平台奖励物品配置维度表（按 ds 日快照），存储物品ID/名称/图标/类别/单价等配置属性，供活动奖励发放与筛选使用。
+kind: dim
+description: 平台奖励物品配置维度表。每行描述一个平台奖励物品的配置项：物品ID(id)、物品名称(name)、物品图标(icon)、物品边框图标(icon_border)、物品类别(catalogue)、物品单价(value)。按 ds（日期分区）做日快照，相同物品 id 在不同 ds 分区下重复存储。用于活动奖励发放、奖励筛选及事实表 JOIN 物品属性查表。
+primary_key:
+- id
+primary_key_unique: false
+label_columns:
+- name
+domains:
+- 装备道具
+granularity: 每 (id, ds) 一行的平台奖励物品配置日快照；同一物品 id 跨多个 ds 分区重复存在。
+columns:
+- name: name
+  type: string
+  comment: 物品名称
+  role: dimension
+- name: icon
+  type: string
+  comment: 选填，物品图片
+  role: dimension
+- name: id
+  type: bigint
+  comment: 物品ID，平台奖励发放的是此id
+  role: dimension
+- name: value
+  type: double
+  comment: 选填，物品单价，支持配置到小数点后五位，默认为0
+  role: dimension
+- name: catalogue
+  type: string
+  comment: 物品类别,用于活动中选择奖励时的筛选
+  role: dimension
+- name: icon_border
+  type: string
+  comment: 选填，物品边框图片
+  role: dimension
+- name: ds
+  type: string
+  comment: 日期分区，日快照分区键
+  role: partition
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含跨 ds 快照重复行）
+coverage:
+  scenarios:
+  - 用于事实表（平台奖励发放记录、活动奖励选择记录）按物品 id JOIN 查表，获取物品名称、图标、边框、类别、单价等维度属性
+  - 支持按 catalogue 筛选物品、按 id 聚合奖励价值等分析场景
+  limitations:
+  - 配置类维度表，无业务值度量；value 仅为物品单价配置属性，非度量指标
+  - 按 ds 日快照，同一物品 id 跨分区重复，primary_key [id] 在全表范围非唯一（实测 r=1151775, d=4388，r!=d）
+  - JOIN 时需指定 ds 分区或取最新快照以避免一对多膨胀
+  - 复合编码字段（如 icon/icon_border 资源路径串）需前端二次解码渲染
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: dim 建模草稿。primary_key[id] 经实测在全表范围非唯一（跨 ds 快照重复），故 primary_key_unique=false，保持 draft；JOIN 需带 ds 分区裁剪或取最新快照。

@@ -1,0 +1,74 @@
+table_name: dws_10000251_vip_acc_tag_df
+engine: maxcompute
+table_comment: 账号级VIP标签日全量快照(支付金额/天数 l30d/l1m)
+description: 账号级VIP标签日全量快照表（_df，分析主体=账号，user_type=2，已实测20260730分区DISTINCT user_type仅=2）。每账号一行，记录最近30天(l30d)与上月(l1m)的支付金额(pay_amt)及支付天数(pay_days)标签值。用于付费经济与用户生命周期分析：VIP账号规模、付费转化、ARPU、付费频次。分区字段ds=业务日期(yyyymmdd)。
+domains:
+  - 付费经济
+  - 用户生命周期
+granularity: 日全量快照(_df)；分析主体=账号(user_type=2)，每账号一行
+columns:
+  - name: user_type
+    type: BIGINT
+    comment: 用户类型，1-设备、2-账号、3-角色
+    role: dimension
+  - name: user_id
+    type: STRING
+    comment: 用户id
+    role: dimension
+  - name: pay_amt_l30d
+    type: DOUBLE
+    comment: 最近30天支付金额
+    role: measure
+  - name: pay_days_l30d
+    type: BIGINT
+    comment: 最近30天支付天数
+    role: measure
+  - name: pay_amt_l1m
+    type: DOUBLE
+    comment: 上个月支付金额
+    role: measure
+  - name: pay_days_l1m
+    type: BIGINT
+    comment: 上个月支付天数
+    role: measure
+  - name: ds
+    type: STRING
+    comment: 分区字段，业务日期yyyymmdd
+    role: partition
+metrics:
+  vip_account_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 账号级VIP快照UV（每日全量账号数，user_type=2主体）
+  paying_uv_l30d:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_l30d > 0 THEN user_id END)
+    description: 最近30天有付费金额的账号数（快照口径）
+  pay_amt_l30d_total:
+    expression: SUM(pay_amt_l30d)
+    description: 最近30天账号支付总金额（快照口径求和）
+  pay_arpu_l30d:
+    expression: SUM(pay_amt_l30d) / NULLIF(COUNT(DISTINCT CASE WHEN pay_amt_l30d > 0 THEN user_id END), 0)
+    description: 最近30天付费账号ARPU（总金额/付费账号数，NULLIF防除零）
+  paying_uv_l1m:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_l1m > 0 THEN user_id END)
+    description: 上月有付费金额的账号数（快照口径，用于月度环比）
+coverage:
+  scenarios:
+    - VIP账号规模与付费渗透（vip_account_uv / paying_uv_l30d 转化率）
+    - 付费经济ARPU与总额趋势（pay_amt_l30d_total、pay_arpu_l30d）
+    - 月度付费账号环比（paying_uv_l30d vs paying_uv_l1m）
+  limitations:
+    - 仅 scout 抽样验证，未做全量 maxc 实测复核；仅对 vip_account_uv/paying_uv_l30d/pay_amt_l30d_total 三指标在 ds=20260730 单分区跑通（uv=279332、pay_uv=3359、amt=858434），pay_arpu_l30d/paying_uv_l1m 为结构化推导未单独跑数。
+    - _df 日全量快照口径，跨日去重需按多分区聚合；快照值为标签时点值，非累计新增。
+    - 缺少渠道/平台/区服维度列，无法细分下钻；pay_days 为聚合天数数值（已归为 measure），不可作分组键。
+    - l1m 为自然月口径、l30d 为滚动30天口径，两者不可直接相减。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 最新分区20260730实测user_type=2(账号)与3个核心指标取值合理，status=analyst_confirmed；指标/覆盖/口径已结构化补全，全量复核仍建议后续人工抽检。
+dimension_refs: []
+pref_label: VIP账号标签表
+alt_labels:
+  - VIP
+  - 大R
+  - 鲸鱼

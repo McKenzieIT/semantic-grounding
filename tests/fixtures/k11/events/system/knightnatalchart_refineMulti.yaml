@@ -1,0 +1,124 @@
+name: game.knightnatalchart.refineMulti
+event_filter: event = 'game.knightnatalchart.refineMulti'
+description: knightnatalchart.refineMulti 武将命格图批量精炼事件。玩家对武将命格图（knightNatalChart）进行一次批量精炼（refine multi），上报武将id(knightId)、精炼节点列表(nodeList)、消耗货币列表(coinList)等27个参数。分析主体为 role_id（玩家角色），account_id 用于账号级去重。实测 ds=20260729 单日 cnt=27539，role_uv=1375，acc_uv=1340，server_uv=335。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightId:
+    type: int
+    description: 武将id
+  nodeList:
+    type: array
+    description: nodeList
+  nodeList.staged:
+    type: array
+    description: nodeList.staged
+  nodeList.used:
+    type: bool
+    description: nodeList.used
+  threeOrangeCoe:
+    type: int
+    description: threeOrangeCoe
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "实测 ds=20260729: cnt=27539, role_uv=1375, acc_uv=1340, server_uv=335；数据合理，事件正常触发"
+metrics:
+  game_knightnatalchart_refineMulti_cnt:
+    expression: COUNT(*)
+    description: 武将命格图批量精炼事件总触发次数
+  game_knightnatalchart_refineMulti_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发该事件的不重复玩家角色数（分析主体 role_id）
+  game_knightnatalchart_refineMulti_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发该事件的不重复账号数
+  game_knightnatalchart_refineMulti_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发该事件的不重复游戏服数
+  game_knightnatalchart_refineMulti_knight_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.knightId'))
+    description: 被精炼的不重复武将 id 数（基于 params.knightId）
+  game_knightnatalchart_refineMulti_avg_per_role:
+    expression: ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0), 2)
+    description: 每个触发角色平均精炼事件次数（NULLIF 防除零）
+coverage:
+  scenarios:
+    - 武将命格图精炼参与度：通过 role_uv/account_uv 衡量角色与账号级参与度
+    - 武将命格图精炼热度：通过 cnt 与 avg_per_role 衡量精炼总次数与人均次数
+    - 多服分布：通过 server_uv 观察事件覆盖的游戏服范围
+    - 武将覆盖广度：通过 knight_uv 观察被精炼武将种类分布
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id，account_id 为账号去重维度
+    - coinList/nodeList 为数组结构，本批次未展开做逐元素聚合（如 SUM 消耗钻石）
+coverage_status: analyst_confirmed
+external_refs: []

@@ -1,0 +1,107 @@
+name: game.autoPvp.getSegsRewards
+event_filter: event = 'game.autoPvp.getSegsRewards'
+description: |-
+  自动PVP：角色领取段位奖励事件，记录领奖时角色在自动PVP系统中的段位结算与奖励获取行为，并附带角色快照（等级、VIP、战力、各货币余额）。
+  主体粒度：role_id（角色级事件）。实测 ds=20260729 单日 cnt=1348，覆盖 role_uv=721、acc_uv=708、server_uv=52。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  segs:
+    type: array
+    description: segs
+metrics:
+  game_autoPvp_getSegsRewards_cnt:
+    expression: COUNT(*)
+    description: 自动PVP领取段位奖励事件总记录数
+  game_autoPvp_getSegsRewards_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取段位奖励的去重角色数
+  game_autoPvp_getSegsRewards_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取段位奖励的去重账号数
+  game_autoPvp_getSegsRewards_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发领取段位奖励的去重游戏服数
+coverage:
+  scenarios:
+    - 通过 cnt 监控自动PVP段位奖励领取的整体频次与活跃度
+    - 通过 role_uv/account_uv 评估参与领奖的角色与账号规模
+    - 通过 server_uv 评估奖励覆盖的服务器分布广度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id（角色级事件），account_id 作为账号粒度补充
+    - segs 与 coinList 为数组/快照结构，未在指标中展开求和
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 实测 cnt=1348 / role_uv=721 / acc_uv=708 / server_uv=52，数值合理
+  coverage_status: analyst_confirmed
+external_refs: []

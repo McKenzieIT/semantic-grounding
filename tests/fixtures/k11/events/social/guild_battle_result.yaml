@@ -1,0 +1,188 @@
+name: game.guild.battle.result
+event_filter: event = 'game.guild.battle.result'
+description: |-
+  公会战单场结算事件：每次公会战（同盟战）一场战斗结束时上报，记录本方公会与对手公会的段位分、公会战积分、公会战力，以及参战成员明细（成员进攻/防守次数与胜负、进攻分数、防御积分）。
+  分析主体（subject 粒度）为 role_id（单场结算中的发起/参战角色），可按 guildId/server_id 维度聚合到公会或游戏服粒度。
+  Scout 实测（2026-07-30）：event=game.guild.battle.result 在加速视图 ds=20260729 与 ds=20260728 均零命中（cnt=0, role_uv=0, acc_uv=0），疑似该活动当日未开启或事件已下线/未触发。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  guildId:
+    type: int
+    description: 公会id
+  guildName:
+    type: string
+    description: 公会名字
+  guildLv:
+    type: int
+    description: 公会等级
+  guildPower:
+    type: int
+    description: 公会战力
+  guildRank:
+    type: int
+    description: 同盟段位分
+  battleScore:
+    type: int
+    description: 公会战积分
+  relGuildId:
+    type: int
+    description: 对手工会id
+  relGuildName:
+    type: string
+    description: 对手工会名
+  relGuildServerId:
+    type: int
+    description: 对手游戏服ID
+  relGuildRank:
+    type: int
+    description: 对手工会段位分
+  relBattleScore:
+    type: int
+    description: 对手公会战积分
+  memberList:
+    type: array
+    description: 工会此次战斗明细
+  memberList.id:
+    type: int
+    description: 成员的角色id
+  memberList.name:
+    type: string
+    description: 成员的角色名
+  memberList.attackNum:
+    type: int
+    description: 成员进攻次数
+  memberList.attackWinNum:
+    type: int
+    description: 成员进攻胜利次数
+  memberList.attackLoseNum:
+    type: int
+    description: 成员进攻失败次数
+  memberList.attackScore:
+    type: int
+    description: 成员进攻分数
+  memberList.defendNum:
+    type: int
+    description: 成员防守次数
+  memberList.defendWinNum:
+    type: int
+    description: 成员防守胜利次数
+  memberList.defendLoseNum:
+    type: int
+    description: 成员防守失败次数
+  memberList.defendkScore:
+    type: int
+    description: 成员防御积分
+metrics:
+  game_guild_battle_result_cnt:
+    expression: COUNT(*)
+    description: 公会战结算事件总记录数（按行计数，单日维度）
+  game_guild_battle_result_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 公会战结算涉及的去重角色数（subject 粒度，单日）
+  game_guild_battle_result_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 公会战结算涉及的去重账号数（单日）
+  game_guild_battle_result_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 公会战结算覆盖的去重游戏服数（单日）
+  game_guild_battle_result_guild_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.guildId'))
+    description: 公会战结算涉及的去重本方公会数（单日）
+  game_guild_battle_result_battle_score_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.battleScore') AS BIGINT))
+    description: 本方公会战积分合计（单日所有结算场次累加）
+  game_guild_battle_result_rel_battle_score_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.relBattleScore') AS BIGINT))
+    description: 对手公会战积分合计（单日所有结算场次累加）
+  game_guild_battle_result_guild_power_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.guildPower') AS BIGINT))
+    description: 本方公会战力合计（单日所有结算场次累加）
+  game_guild_battle_result_avg_battle_score:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.battleScore') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均本方公会战积分（积分合计/去重角色数，分母用 NULLIF 防除零）
+coverage:
+  scenarios:
+    - 公会战参与度：通过 role_uv/account_uv/server_uv/guild_uv 量化各游戏服与公会当日公会战结算的覆盖面与活跃角色规模。
+    - 公会战战力对比：通过 battle_score_sum 与 rel_battle_score_sum 对比本方与对手公会当日累计积分，衡量公会战胜负态势。
+    - 公会战力规模：通过 guild_power_sum 评估参战公会的整体战力水位。
+    - 人均贡献：通过 avg_battle_score 评估单角色平均公会战积分贡献（需结合场次解读，结算行计数非场次计数）。
+  limitations:
+    - 日志中零命中(ds=20260729 cnt=0/role_uv=0/acc_uv=0；ds=20260728 同样为 0)，疑似该公会战活动当日未开启或事件已下线/未触发，metrics 表达式未经真实数据验证。
+    - 仅 ds=20260729 单日 scout 实测（并补测 ds=20260728），未做全量复核；事件恢复触发后需重新验证数值水位。
+    - subject 粒度默认 role_id（事件按单场结算上报，role_id 为参战角色）；memberList 为数组型明细，本组 metrics 未对其做 EXPLODE 展开，成员级进攻/防守胜负指标需单独建模。
+    - avg_battle_score 的分母为去重角色数而非场次数，受单角色多场次结算影响，仅作粗粒度参考。
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "Scout 实测 ds=20260729: cnt=0, role_uv=0, acc_uv=0, server_uv=0；补测 ds=20260728 同样全零。事件疑似下线/未触发，维持 draft，待活动复现后重新验证。"
+coverage_status: draft
+external_refs: []

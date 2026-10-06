@@ -1,0 +1,117 @@
+name: game.maze.move
+event_filter: event = 'game.maze.move'
+description: 迷宫-移动：玩家在迷宫地图中移动到下一节点时触发的战斗关卡事件，上报迷宫id(dungeonId)与下一节点id(nextId)。 参数含游戏服id、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验、看板娘、关键货币列表(充值/赠送/免费钻石、紫金、经验卷轴、体力)、会话id、logUUID等24个字段。 分析主体粒度为 role_id（角色）。实测 ds=20260729 单日：cnt=4405、role_uv=109、acc_uv=109、server_uv=16，涉及 dungeon_uv=1、next_node_uv=38。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  dungeonId:
+    type: int
+    description: 迷宫的id
+  nextId:
+    type: int
+    description: 下一个节点id
+metrics:
+  maze_move_cnt:
+    expression: COUNT(*)
+    description: 迷宫移动事件总次数
+  maze_move_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发迷宫移动的去重角色数
+  maze_move_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发迷宫移动的去重账号数
+  maze_move_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发迷宫移动的去重游戏服数
+  maze_move_dungeon_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.dungeonId'))
+    description: 涉及的去重迷宫id数
+  maze_move_next_node_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.nextId'))
+    description: 移动到的去重下一节点id数
+  maze_move_avg_per_role:
+    expression: ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0), 2)
+    description: 人均迷宫移动次数（总次数/去重角色数）
+coverage:
+  scenarios:
+    - 迷宫移动活跃度：通过 maze_move_cnt/role_uv/account_uv 衡量迷宫玩法的日活与移动热度
+    - 迷宫探索广度：通过 dungeon_uv 与 next_node_uv 评估迷宫节点覆盖与推进进度
+    - 人均移动次数：maze_move_avg_per_role 反映单角色迷宫推进强度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体粒度默认 role_id（角色）；账号与角色数相等(109=109)说明当日单账号单角色为主
+    - dungeon_uv=1 表明当日仅上报单一迷宫id，跨迷宫分布需多日样本
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729：cnt=4405、role_uv=109、acc_uv=109、server_uv=16；事件可访问且数据合理（dungeon_uv=1、next_node_uv=38、roleLevel 31-80、max_roleForce=5791356）。
+external_refs: []

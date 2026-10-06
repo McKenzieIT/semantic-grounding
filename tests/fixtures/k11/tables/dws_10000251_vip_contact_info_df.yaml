@@ -1,0 +1,149 @@
+table_name: dws_10000251_vip_contact_info_df
+engine: maxcompute
+table_comment: K11-VIP账号端内和端外建联信息总表
+description: |-
+  K11-VIP账号端内和端外建联信息总表（账号粒度）。
+  记录VIP账号在游戏内（专属客服）与端外（企业微信）的建联状态、客服归属及企微用户关联信息。
+  粒度：账号粒度，日全量快照(_df)，每日全量刷新VIP账号建联状态。
+  主体：账号(account_id，对应 user_type=2 账号主体)。
+  主要字段：account_id, is_game_contact, is_wx_contact, service_id, service_name, wx_id, wx_name, wshoto_user_id 等23列。
+domains:
+  - 用户生命周期
+granularity: 账号粒度，日全量快照(_df)
+columns:
+  - name: account_id
+    type: string
+    comment: 账号id
+    role: dimension
+  - name: is_game_contact
+    type: bigint
+    comment: 游戏内是否已建联，取值：1-是、0-否
+    role: dimension
+  - name: is_wx_contact
+    type: bigint
+    comment: 企微是否已建联，取值：1-是、0-否
+    role: dimension
+  - name: service_id
+    type: string
+    comment: 游戏内专属客服id
+    role: dimension
+  - name: service_name
+    type: string
+    comment: 游戏内专属姓名
+    role: attribute
+  - name: wx_id
+    type: string
+    comment: 专属企微账号
+    role: attribute
+  - name: wx_name
+    type: string
+    comment: 专属企微名称-企微添加人
+    role: attribute
+  - name: wshoto_user_id
+    type: string
+    comment: 玩家企微用户ID
+    role: attribute
+  - name: vip_ch_type
+    type: string
+    comment: 渠道，VIP系统记录
+    role: dimension
+  - name: wshoto_user_id_list
+    type: string
+    comment: 关联到的玩家企微用户ID列表
+    role: attribute
+  - name: wx_name_list
+    type: string
+    comment: 关联到的专属企微(客服)名称列表
+    role: attribute
+  - name: wshoto_user_tag_list
+    type: string
+    comment: 关联到的企微标签列表
+    role: attribute
+  - name: wx_id_list
+    type: string
+    comment: 关联到的专属企微(客服)账号列表
+    role: attribute
+  - name: wx_name_cate_list
+    type: string
+    comment: 关联到的企微客服分类列表
+    role: attribute
+  - name: wshoto_user_id_fst
+    type: string
+    comment: 账号首次添加用户企微id
+    role: attribute
+  - name: wshoto_add_time_fst
+    type: string
+    comment: 账号首次添加企微id时间
+    role: dimension
+  - name: service_wshoto_user_id
+    type: string
+    comment: 账号关联的客服企微id
+    role: attribute
+  - name: service_wshoto_user_name
+    type: string
+    comment: 账号关联的客服企微名称
+    role: attribute
+  - name: service_wshoto_user_id_raw
+    type: string
+    comment: 客服企微id（VIP系统记录）
+    role: attribute
+  - name: service_wshoto_user_name_raw
+    type: string
+    comment: 客服企微名称（VIP系统记录）
+    role: attribute
+  - name: is_vip_source
+    type: bigint
+    comment: 是否来自VIP系统数据，取值：1-是、0-否
+    role: dimension
+  - name: act_ymd_lst_diff
+    type: bigint
+    comment: 账号最近活跃日期与当前统计日期的间隔天数
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  vip_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: VIP账号数（日全量快照去重账号数）
+  game_contact_uv:
+    expression: COUNT(DISTINCT CASE WHEN is_game_contact=1 THEN account_id END)
+    description: 游戏内已建联VIP账号数
+  wx_contact_uv:
+    expression: COUNT(DISTINCT CASE WHEN is_wx_contact=1 THEN account_id END)
+    description: 企业微信已建联VIP账号数
+  game_contact_rate:
+    expression: SUM(CASE WHEN is_game_contact=1 THEN 1 ELSE 0 END) / NULLIF(COUNT(*),0)
+    description: 游戏内建联率（已建联账号数/总账号数）
+  wx_contact_rate:
+    expression: SUM(CASE WHEN is_wx_contact=1 THEN 1 ELSE 0 END) / NULLIF(COUNT(*),0)
+    description: 企微建联率（企微已建联账号数/总账号数）
+coverage:
+  scenarios:
+    - VIP账号建联总览（游戏内/企微建联账号数及建联率，按日快照）
+    - 端内专属客服与端外企微客服覆盖情况分析
+    - VIP账号活跃度分布（act_ymd_lst_diff 间隔天数聚合）
+  limitations:
+    - 仅对 20260730 最新分区抽样验证 vip_account_uv/game_contact_uv/wx_contact_uv，未做全量 maxc 实测复核
+    - _df 日全量快照，跨日对比需注意账号去重与状态变更
+    - is_vip_source/act_ymd_lst_diff 在历史分区(如20260201)存在 NULL，使用前需按分区核验
+    - 建联率分母 COUNT(*) 含未建联账号，跨渠道细分需配合 vip_ch_type 分组
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已在最新分区 ds=20260730 实测验证 vip_account_uv=1207231、game_contact_uv=3406、wx_contact_uv=1955，数值合理
+dimension_refs:
+  - dim_table: dim_10000251_kf_wx_info
+    join_keys:
+      - dws_column: service_wshoto_user_id
+        dim_column: service_wshoto_user_id
+      - dws_column: service_wshoto_user_id_raw
+        dim_column: service_wshoto_user_id
+    derivation: The DWS columns service_wshoto_user_id (账号关联的客服企微id) and service_wshoto_user_id_raw (客服企微id，VIP系统记录) both carry the customer-service enterprise-wechat staff id, exactly matching the PK service_wshoto_user_id of dim_10000251_kf_wx_info, the enterprise-wechat customer-service staff lookup dimension.
+pref_label: VIP建联信息表
+alt_labels:
+  - 建联
+  - 联系
+  - 客服

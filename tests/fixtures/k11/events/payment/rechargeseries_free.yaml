@@ -1,0 +1,124 @@
+name: game.rechargeseries.free
+event_filter: event = 'game.rechargeseries.free'
+description: 买5送2充值系列活动的免费奖励领取事件：玩家在买5送2活动档位领取免费奖励时上报，记录领取时刻角色的货币快照（充值钻石gold/充值赠送钻石sendgold/免费钻石freegold/紫金diamond/经验卷轴expCoin/体力energy）及角色基础属性（等级/vip/战力/经验/性别/创角上线时间/看板娘image）。分析主体 role_id（角色维度）。ds=20260729 scout 实测 cnt=0（零命中，疑似活动下线或本期未触发）。
+domains:
+  - 付费经济
+domain: payment
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  day:
+    type: int
+    description: day
+metrics:
+  game_rechargeseries_free_cnt:
+    expression: COUNT(*)
+    description: 免费奖励领取总次数
+  game_rechargeseries_free_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取免费奖励的去重角色数
+  game_rechargeseries_free_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取免费奖励的去重账号数
+  game_rechargeseries_free_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取免费奖励的去重游戏服数
+  game_rechargeseries_free_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 充值钻石累计发放量
+  game_rechargeseries_free_sendgold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.sendgold') AS BIGINT))
+    description: 充值赠送钻石累计发放量
+  game_rechargeseries_free_freegold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.freegold') AS BIGINT))
+    description: 免费钻石累计发放量
+  game_rechargeseries_free_diamond_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.diamond') AS BIGINT))
+    description: 紫金累计发放量
+  game_rechargeseries_free_expcoin_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.expCoin') AS BIGINT))
+    description: 经验卷轴累计发放量
+  game_rechargeseries_free_energy_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.energy') AS BIGINT))
+    description: 体力累计发放量
+coverage:
+  scenarios:
+    - 买5送2活动免费奖励的领取渗透（领取角色UV/账号UV/服UV）与发放规模
+    - 各类货币（充值钻石/赠送钻石/免费钻石/紫金/经验卷轴/体力）发放量对比
+    - 按游戏服/角色等级/vip等级分层的免费奖励领取分布
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 日志中零命中(ds=20260729/20260728 cnt=0)，疑似活动下线或本期买5送2活动未触发
+    - subject 粒度默认 role_id（角色），未实测验证
+    - coinList 为数组结构，GET_JSON_OBJECT 按 $.coinList.<field> 取值路径基于 params_fields 命名约定假设，未实测确认
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: ds=20260729 scout 实测 cnt=0/role_uv=0/acc_uv=0/server_uv=0；ds=20260728 重试仍 cnt=0。事件疑似下线或本期买5送2活动未开启，未达到 analyst_confirmed 标准，保持 draft。
+coverage_status: draft
+external_refs: []

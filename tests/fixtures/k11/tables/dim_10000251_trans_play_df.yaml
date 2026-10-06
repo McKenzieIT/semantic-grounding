@@ -1,0 +1,44 @@
+table_name: dim_10000251_trans_play_df
+engine: maxcompute
+kind: dim
+table_comment: 游戏玩法配置维度表（日全量快照 _df），每玩法一行，含玩法 id/名称/解锁条件/别名。
+description: '游戏 10000251 的玩法配置维度表（日全量快照 _df，dim_10000251_trans_play_df）。每行描述一个玩法（play）配置项，主键为 id（玩法 id），标签列为 name（玩法名）。字段：id（玩法 id）、name（玩法名）、unlock（解锁条件）、name2（玩法别名/二级名称）。粒度：每个玩法一行。'
+domains:
+- 系统监控
+granularity: 每个玩法（play）一行的配置维度表
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+columns:
+- name: id
+  type: string
+  comment: 玩法id
+  role: dimension
+- name: name
+  type: string
+  comment: 玩法名
+  role: dimension
+- name: unlock
+  type: string
+  comment: 解锁条件
+  role: dimension
+- name: name2
+  type: string
+  comment: 玩法名2
+  role: dimension
+coverage:
+  scenarios:
+  - 事实表按 play_id 关联本表，获取玩法名称（name）/别名（name2）作为维度切片与分组标签
+  - 通过 unlock（解锁条件）字段分析玩法开放门槛分布
+  - 作为玩法维度查找表（lookup），支撑按玩法聚合的度量下钻
+  limitations:
+  - 配置类维度表，无值度量（仅提供 id/name/unlock/name2 文本属性）
+  - unlock 字段为字符串编码（如 "0"），含复合编码串时需结合业务侧二次解码
+  - name2 与 name 在部分玩法上可能同值，仅作为别名冗余字段
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '维度建模自动产出：meta describe 校验列名/类型/注释；primary_key=id（meta 给出且 COUNT(*)=COUNT(DISTINCT id)=260 实测唯一）；label_columns=name；域名 系统监控（配置类维度表）。保持 draft 待业务确认。'

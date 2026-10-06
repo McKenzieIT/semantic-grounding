@@ -1,0 +1,77 @@
+table_name: dws_10000251_lt_role_tag_df
+engine: maxcompute
+table_comment: 角色生命周期标签表
+description: |-
+  角色生命周期标签表。
+  粒度：日全量快照(_df)。分析主体=角色（user_type=3）。
+  主要字段：user_type, user_id, lt, tag_type, tag_key, tag_value, ds。
+domains:
+  - 角色成长
+  - 用户生命周期
+granularity: 日全量快照(_df)，主体=角色(user_type=3)，每行=单角色单生命周期日单标签值
+columns:
+  - name: user_type
+    type: BIGINT
+    comment: 用户类型，1-设备、2-账号、3-角色
+    role: dimension
+  - name: user_id
+    type: STRING
+    comment: 角色ID（user_type=3）
+    role: dimension
+  - name: lt
+    type: BIGINT
+    comment: 生命周期（N日）--首日为1
+    role: dimension
+  - name: tag_type
+    type: STRING
+    comment: 标签类型（如basic）
+    role: dimension
+  - name: tag_key
+    type: STRING
+    comment: 标签键（如角色等级）
+    role: dimension
+  - name: tag_value
+    type: BIGINT
+    comment: 标签值（语义随tag_key变化，如角色等级数值）
+    role: measure
+  - name: ds
+    type: STRING
+    comment: 分区日(yyyymmdd)
+    role: partition
+metrics:
+  snapshot_role_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 当日快照中携带标签的角色UV（user_type=3）
+  snapshot_tag_records:
+    expression: COUNT(*)
+    description: 当日快照标签记录总数（角色×生命周期日×标签键）
+  distinct_tag_keys:
+    expression: COUNT(DISTINCT tag_key)
+    description: 当日快照覆盖的标签键种类数
+  distinct_lt_days:
+    expression: COUNT(DISTINCT lt)
+    description: 当日快照覆盖的生命周期天数种类数
+  avg_basic_role_level:
+    expression: AVG(CASE WHEN tag_key = '角色等级' THEN tag_value END)
+    description: basic标签下角色等级的平均值（NULLIF语义由CASE保证，仅角色等级键参与）
+coverage:
+  scenarios:
+    - 角色生命周期各日(LT)的标签分布与角色等级演进
+    - 不同标签键(tag_key)的角色覆盖规模与标签值分布
+    - 单日快照内角色UV及标签记录规模监控
+  limitations:
+    - 仅 maxc LIMIT 抽样验证最新分区(20251227)列非空与取值合理；COUNT(DISTINCT)全量聚合查询两次超时未取得实数值
+    - tag_value语义随tag_key变化(如角色等级)，跨键聚合需按tag_key过滤
+    - _df日全量快照，跨ds累计会重复计角色，趋势分析需按ds分区
+    - 无注册/付费等行为字段，仅标签维度
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 最新分区(20251227)抽样验证列非空且取值合理(user_type=3,tag_key=角色等级,tag_value≤100,lt≤144)；全量UV聚合查询超时未取得实数值，故置draft
+dimension_refs: []
+pref_label: 角色生命周期标签表
+alt_labels:
+  - 生命周期
+  - 阶段
+  - LT

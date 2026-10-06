@@ -1,0 +1,92 @@
+table_name: dws_10000251_univ_acc_feature_df
+engine: maxcompute
+table_comment: 通用账号画像表
+description: |-
+  通用账号画像表。
+  粒度：日全量快照(_df)。分析主体=账号（user_type=2）。
+  主要字段：user_type, user_id, roll_flag, risk_level, max_role_level, active_flag, lost_days, ua_flag 等10列。
+domains:
+  - 用户生命周期
+  - 角色成长
+granularity: 日全量快照(_df)
+columns:
+  - name: user_type
+    type: bigint
+    comment: 用户类型，1-设备、2-账号、3-角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: roll_flag
+    type: bigint
+    comment: 滚服标识 1-滚服 0-非滚服
+    role: dimension
+  - name: risk_level
+    type: bigint
+    comment: 风险等级
+    role: dimension
+  - name: max_role_level
+    type: bigint
+    comment: 最大角色等级
+    role: dimension
+  - name: active_flag
+    type: bigint
+    comment: 活跃状态标识 1-新增 2-留存 3-回流 4-流失
+    role: dimension
+  - name: lost_days
+    type: bigint
+    comment: 流失天数
+    role: measure
+  - name: ua_flag
+    type: bigint
+    comment: 买量标识 1-买量 2-自然
+    role: dimension
+  - name: return_ymd_lst
+    type: string
+    comment: 最近一次回流日期
+    role: attribute
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  acc_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 账号UV（当日全量快照中的去重账号数，主体=账号 user_type=2）
+  lost_acc_uv:
+    expression: COUNT(DISTINCT CASE WHEN active_flag = 4 THEN user_id END)
+    description: 流失账号数（active_flag=4，账号生命周期流失态）
+  return_acc_uv:
+    expression: COUNT(DISTINCT CASE WHEN active_flag = 3 THEN user_id END)
+    description: 回流账号数（active_flag=3，账号生命周期回流态）
+  paid_acc_ratio:
+    expression: COUNT(DISTINCT CASE WHEN ua_flag = 1 THEN user_id END) / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 买量账号占比（ua_flag=1 账号数 / 全量账号UV，NULLIF 防除零）
+  roll_acc_uv:
+    expression: COUNT(DISTINCT CASE WHEN roll_flag = 1 THEN user_id END)
+    description: 滚服账号数（roll_flag=1，账号维度滚服标识）
+coverage:
+  scenarios:
+    - 账号生命周期四态规模分布（acc_uv / lost_acc_uv / return_acc_uv，按 active_flag 切片）
+    - 买量与自然账号量级对比及买量账号占比（paid_acc_ratio）
+    - 滚服账号规模监测（roll_acc_uv）
+    - 按 ds 分区切片看账号池规模与状态迁移趋势（_df 日全量快照）
+  limitations:
+    - 仅对 ds=20260730 抽样验证 4 项指标（acc_uv=1,207,231 / lost_acc_uv=1,202,778 / return_acc_uv=179 / paid_acc_ratio≈0.61）获合理值，未做全量历史 ds 逐日复核
+    - return_ymd_lst 在 meta describe 样本中存在历史 NULL，回流相关指标以 active_flag 为准而非该日期列
+    - max_role_level / risk_level 作为分组维度使用，未做汇总聚合验证
+    - lost_days 为账号级流失天数，跨账号 SUM/AVG 需配合 active_flag=4 过滤否则含 0 干扰
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 在 latest ds=20260730 上对 acc_uv/lost_acc_uv/return_acc_uv/paid_acc_ratio 四项指标做 maxc SELECT 实测，均得合理值；user_type 单值为 2（账号）已核验。metrics 表达式仅使用 meta describe 验证存在的真实列，无 JOIN。
+dimension_refs:
+  - dim_table: dim_10000251_user_tag_before_ob_info
+    join_keys:
+      - dws_column: user_id
+        dim_column: user_id
+    derivation: "DWS column user_id (comment: 用户id) is the account identifier matching the PK user_id of dim_10000251_user_tag_before_ob_info, which is explicitly described as used to join fact tables via user_id for tag-based segmentation."
+    origin: deterministic
+pref_label: 账号画像表

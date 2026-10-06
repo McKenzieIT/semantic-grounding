@@ -1,0 +1,131 @@
+name: game.champion.sign
+event_filter: event = 'game.champion.sign'
+description: 争霸赛报名事件：玩家在争霸赛/锦标赛场景中报名参赛的日志。记录报名的角色/账号/游戏服上下文、赛季（seasonId）、报名方式（signType：0 主动报名 1 自动报名）及报名结果（signResult：0 失败 1 成功），并附带角色等级/vip/战力/货币快照（coinList）。分析主体粒度为 role_id（角色）。真实数据实测：ds=20260729 单日 cnt=31、role_uv=28、acc_uv=28、server_uv=3（当日全部报名成功，27 次主动报名来自 27 个角色、4 次自动报名来自 1 个角色）。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  seasonId:
+    type: int
+    description: seasonId
+  uid:
+    type: int
+    description: uid
+  signType:
+    type: int
+    description: 0 主动报名 1 自动报名
+  signResult:
+    type: int
+    description: 0 失败 1 成功
+metrics:
+  champion_sign_cnt:
+    description: 争霸赛报名总次数（含成功/失败、主动/自动）
+    expression: COUNT(*)
+  champion_sign_role_uv:
+    description: 报名角色去重数（分析主体粒度 role_id）
+    expression: COUNT(DISTINCT role_id)
+  champion_sign_account_uv:
+    description: 报名账号去重数
+    expression: COUNT(DISTINCT account_id)
+  champion_sign_server_uv:
+    description: 涉及的游戏服去重数
+    expression: COUNT(DISTINCT server_id)
+  champion_sign_success_cnt:
+    description: 报名成功次数（signResult=1）
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.signResult') = '1' THEN 1 ELSE 0 END)
+  champion_sign_fail_cnt:
+    description: 报名失败次数（signResult=0）
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.signResult') = '0' THEN 1 ELSE 0 END)
+  champion_sign_active_cnt:
+    description: 主动报名次数（signType=0）
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.signType') = '0' THEN 1 ELSE 0 END)
+  champion_sign_auto_cnt:
+    description: 自动报名次数（signType=1）
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.signType') = '1' THEN 1 ELSE 0 END)
+  champion_sign_success_rate:
+    description: 报名成功率（成功次数 / 总次数）
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.signResult') = '1' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+coverage:
+  scenarios:
+    - 争霸赛报名活跃度（总次数、角色/账号 UV、覆盖游戏服数）
+    - 报名成功率与失败量监控（signResult 维度）
+    - 主动 vs 自动报名方式分布（signType 维度）
+    - 单赛季报名热度（可按 seasonId 下钻）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 单日实测 cnt=31、role_uv=28，样本较小，成功率/方式占比等比率指标稳定性有限
+    - 分析主体粒度默认 role_id（角色），未独立核验 account 级一致性
+    - 报名成功/失败判定依赖 signResult 字段，未交叉核验服务端报名状态
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=31, role_uv=28, acc_uv=28, server_uv=3；当日全部 signResult=1（成功），signType=0 主动 27 次/27 角色、signType=1 自动 4 次/1 角色。事件在线且有真实命中。"
+coverage_status: analyst_confirmed
+external_refs: []

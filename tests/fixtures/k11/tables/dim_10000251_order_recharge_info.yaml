@@ -1,0 +1,59 @@
+table_name: dim_10000251_order_recharge_info
+engine: maxcompute
+kind: dim
+primary_key:
+- order_id
+label_columns:
+- order_id
+- cfg_id
+primary_key_unique: false
+table_comment: 订单商品信息维表（充值订单关联的商品配置维度表，按订单+商品配置粒度记录每笔充值订单所购买的商品配置及对应活动）
+description: '订单商品信息维表：充值订单关联的商品配置维度表。每行记录一笔充值订单关联的商品配置（cfg_id）及其所属活动（activity_type/activity_id），用于将订单事实表 JOIN 至商品配置、活动维度。
+
+  粒度：每 订单(order_id)+商品配置(cfg_id) 一行的维度表（同一订单可含多商品行；实测 order_id 不唯一）。
+
+  主键：order_id（meta 声明，实测非唯一，存在重复 order_id 与复合重复，故 primary_key_unique=false）。
+
+  主要字段：order_id(订单号), cfg_id(商品配置ID), activity_type(活动类型), activity_id(活动ID), ds(分区)。'
+domains:
+- 付费经济
+granularity: 每订单(order_id)+商品配置(cfg_id)一行的维度表
+columns:
+- name: order_id
+  type: string
+  comment: 订单号
+  role: dimension
+- name: cfg_id
+  type: string
+  comment: 商品配置ID
+  role: dimension
+- name: activity_type
+  type: bigint
+  comment: 活动类型
+  role: dimension
+- name: activity_id
+  type: bigint
+  comment: 活动ID
+  role: dimension
+- name: ds
+  type: string
+  comment: 分区
+  role: partition
+coverage:
+  scenarios:
+  - 通过 order_id 与订单事实表 JOIN，回填该订单所购商品配置 cfg_id 及活动类型/ID 维度
+  - 通过 cfg_id 与商品配置维表 JOIN，补全商品名称、价格档位等商品属性
+  - 通过 activity_id/activity_type 与活动配置维表 JOIN，补全活动名称、活动周期等
+  limitations:
+  - 实测 order_id 非唯一（r=2950356, d=2935545），(order_id,cfg_id) 复合亦非唯一（d=2935693）；该表为明细维度而非压缩配置表，使用时需注意去重或携带行级标识
+  - 无商品名称/价格等值度量字段，仅承载键值关联，商品属性需通过 cfg_id 二次 JOIN 商品配置表获取
+  - activity_type/activity_id 为编码值，活动语义需二次 JOIN 活动配置表解码
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 maxc meta describe 真实列建模；order_id 为 meta 声明主键但实测非唯一（存在重复 order_id 与复合重复），故 primary_key_unique=false 并保持 draft；label_columns 取 order_id(订单号)+cfg_id(商品配置ID) 作为行级可读标识；域归 付费经济；未做唯一性通过，待业务复核。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数

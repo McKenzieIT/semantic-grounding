@@ -1,0 +1,72 @@
+table_name: dws_10000251_7_0_role_churn_pred_scoring
+engine: maxcompute
+table_comment: 角色流失预测评分表（每日角色级评分快照）
+description: |-
+  粒度：每日角色级评分快照（每个 role_id 一行，按 ds 分区）。分析主体=角色（user_type=3，由表名 role 推断，表中无 user_type 列）。
+  字段含义：score=预测流失概率得分(0-1)；role_id=角色ID(主键)；idx=样本/批次索引；tag=预测流失标签(0/1，基于阈值)；y=实际流失标签(0/1，最新分区常为0因结果未实现)；ds=日分区。
+  业务用途：角色流失预测模型的每日评分输出，用于圈选高流失风险角色、评估模型表现（precision/recall）及回流运营。
+domains:
+  - 用户生命周期
+granularity: 每日角色级评分快照（role_id 主体，ds 分区）
+columns:
+  - name: score
+    type: double
+    comment: 预测流失概率得分(0-1)
+    role: measure
+  - name: role_id
+    type: string
+    comment: 角色ID(主键)
+    role: dimension
+  - name: idx
+    type: bigint
+    comment: 样本/批次索引
+    role: dimension
+  - name: tag
+    type: double
+    comment: 预测流失标签(0=留存,1=流失)
+    role: measure
+  - name: "y"
+    type: double
+    comment: 实际流失标签(0=留存,1=流失；最新分区常为0因结果未实现)
+    role: measure
+  - name: ds
+    type: string
+    comment: 日分区(yyyymmdd)
+    role: partition
+metrics:
+  scored_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 单日评分角色数（去重 role_id，反映模型覆盖规模）
+  avg_pred_score:
+    expression: AVG(score)
+    description: 平均预测流失得分（score 均值，整体流失风险水平）
+  pred_churn_uv:
+    expression: COUNT_IF(tag = 1.0)
+    description: 预测流失角色数（tag=1，基于阈值圈选的高风险角色）
+  actual_churn_uv:
+    expression: COUNT_IF(y = 1.0)
+    description: 实际流失角色数（y=1，真实回流/流失标签；最新分区常为0因结果未实现）
+  actual_churn_rate:
+    expression: SUM(y) / NULLIF(COUNT(*), 0)
+    description: 实际流失率（y=1 占比，用于回看模型精度/召回）
+coverage:
+  scenarios:
+    - 圈选高流失风险角色：pred_churn_uv / scored_role_uv 给出预测流失占比，圈选 tag=1 角色
+    - 模型表现回看：actual_churn_rate 与 avg_pred_score 对比评估模型校准；分桶对比 tag 与 y 计算精确率/召回
+    - 评分规模监控：scored_role_uv 跨 ds 观察每日评分覆盖是否稳定
+  limitations:
+    - 仅 scout 抽样验证（latest ds 20260715 单分区 COUNT/AVG 实测），未做全量 maxc 复核
+    - 最新分区 y 全为 0（结果未实现），actual_churn_uv/actual_churn_rate 在最新分区无意义，需使用历史已回填分区评估精度
+    - idx 字段含义未在 meta 注释中确认，按样本/批次索引推断
+    - 表名无 _df/_di 后缀，按每日角色级快照（ds 分区，role_id 主键）理解
+    - 无 user_type 列，分析主体=角色 由表名 role 推断，未在数据层校验
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 已在最新分区 ds=20260715 实测 scored_role_uv=1654784、avg_pred_score≈0.0039、pred_churn_uv=9185、actual_churn_uv=0、cnt=1654784，值合理（最新分区无回填 y 符合预期）。metrics 使用真实列且 NULLIF 兜底除零。
+dimension_refs: []
+pref_label: 流失预测评分表
+alt_labels:
+  - 评分
+  - 打分

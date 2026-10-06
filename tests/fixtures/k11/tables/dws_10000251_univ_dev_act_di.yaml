@@ -1,0 +1,157 @@
+table_name: dws_10000251_univ_dev_act_di
+engine: maxcompute
+table_comment: 设备维度统一日活跃与付费汇总表(日增量)
+description: |
+  设备维度日活汇总表,记录每个设备每日的活跃、新增、付费及在线时长情况。本表比参考游戏(10000312)同名表少 act_dur2/web_pay_amt/react 三列,不含"有游戏行为时长"、"web端付费"、"回流"相关信息。
+  _di 为日增量分区表,每个分区仅包含当日有行为设备的数据(非全量快照)。
+
+  本表固定为 user_type=1 的【设备表】,分析主体=设备,标识字段=user_id(存设备ID)。
+  虽然 user_type 列的 comment 标注"1=设备/2=账号/3=角色",但本表实际只存储 user_type=1 一种主体,
+  DISTINCT user_type 仅返回单一值 1(建议用 SELECT DISTINCT user_type 复核),不存在多粒度切换。
+
+  粒度:每 user_id + ds 一行(_di 日增量,每个分区仅含当日有行为设备)。
+
+  能回答的业务问题:
+  - 设备日活(DAU)、新增规模与趋势
+  - 付费设备数、付费金额、首次付费设备数
+  - 付费率、新增付费率
+  - 平均活跃时长(act_dur)
+  - 活跃 PV(act_pv,基于"角色登录"事件口径)
+  - 有角色行为/首次有角色行为标记
+
+  注意事项:
+  - 本表为日增量表,仅含当日有行为设备,次日无行为设备不在此表;计算 DAU 需注意,跨日趋势需配合多次扫描。
+  - act_pv 以"角色登录"事件计算,每登录1次算1次,与 act(活跃标记)口径不同。
+  - 标记类字段(act/act_fst/pay/pay_fst/role_act/role_act_fst)取值 0/1,求和即为对应设备数。
+  - ext_info 为非结构化 JSON 扩展字段,不保证 schema 稳定,不建议直接聚合。
+  - 本表比参考游戏(10000312)同名表少 act_dur2/web_pay_amt/react 三列,无法分析"有游戏行为时长"、"web端付费"、"回流(非新增)设备数"。
+domains:
+  - 用户生命周期
+  - 付费经济
+  - 角色成长
+granularity: 【设备表】本表固定 user_type=1,分析主体=设备,标识字段=user_id(存设备ID);DISTINCT user_type 仅返回单一值 1(建议用 SELECT DISTINCT user_type 复核)。粒度:每 user_id+ds 一行,_di 日增量,每个分区仅含当日有行为设备。
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: act_dur
+    type: int
+    comment: 活跃时长，单位：秒
+    role: measure
+  - name: pay_amt
+    type: decimal
+    comment: 付费金额，单位：元
+    role: measure
+  - name: act
+    type: int
+    comment: 活跃标记，1-活跃、0-非活跃
+    role: measure
+  - name: act_fst
+    type: int
+    comment: 新增标记，新增即首次活跃，1-新增、0-非新增
+    role: measure
+  - name: pay
+    type: int
+    comment: 付费标记，1-付费、0-非付费
+    role: measure
+  - name: pay_fst
+    type: int
+    comment: 首次付费标记，1-首次付费、0-非首次付费
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 附加信息
+    role: attribute
+  - name: act_pv
+    type: int
+    comment: 活跃次数，用“角色登录”事件计算，每登录1次算1次活跃
+    role: measure
+  - name: role_act
+    type: int
+    comment: 有角色行为标记，1-是、0-否
+    role: measure
+  - name: role_act_fst
+    type: int
+    comment: 首次有角色行为标记，1-是、0-否
+    role: measure
+  - name: ds
+    type: string
+    comment: ""
+    role: dimension
+metrics:
+  dau:
+    expression: SUM(act)
+    description: 当日活跃设备数(DAU),对 act 标记求和
+  new_user_cnt:
+    expression: SUM(act_fst)
+    description: 当日新增设备数,对首次活跃标记 act_fst 求和
+  pay_user_cnt:
+    expression: SUM(pay)
+    description: 当日付费设备数,对付费标记 pay 求和
+  pay_amt_total:
+    expression: SUM(pay_amt)
+    description: 当日付费总金额(全端),单位元
+  pay_fst_cnt:
+    expression: SUM(pay_fst)
+    description: 当日首次付费设备数,对首次付费标记 pay_fst 求和
+  pay_rate:
+    expression: AVG(CASE WHEN pay_amt > 0 THEN 1 ELSE 0 END)
+    description: 付费率=当日付费设备数/当日活跃设备数(本表为日增量,每行均为活跃设备),以 pay_amt>0 计付费
+  new_pay_rate:
+    expression: SUM(pay_fst) * 1.0 / NULLIF(SUM(act_fst), 0)
+    description: 新增付费率=当日首次付费设备数/当日新增设备数,用 NULLIF 防除零
+  avg_act_dur:
+    expression: AVG(act_dur)
+    description: 平均活跃时长(秒),对总在线活跃时长求平均
+  act_pv_total:
+    expression: SUM(act_pv)
+    description: 当日活跃 PV(基于"角色登录"事件口径),每登录1次算1次
+  avg_act_pv:
+    expression: SUM(act_pv) * 1.0 / NULLIF(SUM(act), 0)
+    description: 设备人均登录/活跃次数=当日活跃 PV / 当日 DAU,用 NULLIF 防除零
+  role_act_cnt:
+    expression: SUM(role_act)
+    description: 当日有角色行为设备数,对 role_act 标记求和
+  role_act_fst_cnt:
+    expression: SUM(role_act_fst)
+    description: 当日首次有角色行为设备数,对 role_act_fst 标记求和
+  arpu:
+    expression: SUM(pay_amt) * 1.0 / NULLIF(SUM(act), 0)
+    description: 活跃 ARPU=当日付费总金额/当日活跃设备数,用 NULLIF 防除零
+  arppu:
+    expression: SUM(pay_amt) * 1.0 / NULLIF(SUM(pay), 0)
+    description: 付费 ARPPU=当日付费总金额/当日付费设备数,用 NULLIF 防除零
+partitions:
+  - name: ds
+    type: string
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: 真实数据验证通过(latest ds=20260729,当日数据)。列存在性:meta describe 确认全部13列(user_type/user_id/act_dur/pay_amt/act/act_fst/pay/pay_fst/ext_info/act_pv/role_act/role_act_fst/ds)真实存在,metrics引用列全部命中。user_type:SELECT DISTINCT user_type WHERE ds=20260729 仅返回单一值{1},与设备表(user_type=1)声明一致,无多粒度切换。核心指标实测(WHERE ds=20260729):DAU=SUM(act)=4544,新增=SUM(act_fst)=456,付费设备=SUM(pay)=412,付费总额=SUM(pay_amt)=39986元,首次付费=SUM(pay_fst)=60,平均活跃时长=AVG(act_dur)=5076秒(≈1.4h)、MAX(act_dur)=86394秒(≈24h,确认为真实时长非Unix时间戳,无移植时间戳bug),活跃PV=SUM(act_pv)=14009,有角色行为=SUM(role_act)=4309,首次有角色行为=SUM(role_act_fst)=345;衍生:付费率≈9.07%、新增付费率≈13.16%、ARPU≈8.80元、ARPPU≈97.05元、人均登录≈3.08次,均合理且非空。粒度:COUNT(*)=4544=COUNT(DISTINCT user_id)=4544,每设备每日一行,粒度成立。domains={用户生命周期,付费经济,角色成长}无活动运营,无需剔除。
+coverage:
+  scenarios:
+    - 设备维度 DAU、新增规模与趋势
+    - 付费设备数、付费金额、首次付费设备数
+    - 付费率、新增付费率、ARPU、ARPPU 等转化与变现指标
+    - 平均活跃时长、活跃 PV
+    - 有角色行为/首次有角色行为设备规模
+    - 设备人均登录次数(act_pv/DAU)与活跃深度分析
+  limitations:
+    - 本表为日增量,仅含当日有行为设备;次日无行为设备不出现在分区中,无法单独从此表计算多日留存曲线,需配合全量快照表或多次跨分区扫描
+    - act_pv 基于"角色登录"事件口径,与 act 活跃标记口径不同,不可直接混算为同一指标
+    - 本表主体固定为设备(user_type=1),不含账号/角色层级数据;若需账号或角色层级分析,应使用对应的 univ_acc/univ_role 表
+    - ext_info 为非结构化 JSON,schema 不稳定,不可直接聚合或作为分组键
+    - 本表无渠道/区服/版本等维度,渠道级分析需关联维表
+    - 本表比参考游戏(10000312)同名表少 act_dur2/web_pay_amt/react 三列,无法分析"有游戏行为时长"、"web端付费"、"回流(非新增)设备数"
+    - 历史数据可能因口径调整存在不一致,跨期对比需确认口径
+    - supersedes 为空,未做 JOIN 跨表验证(SELECT-only 受限)
+  coverage_status: draft
+supersedes: []
+dimension_refs: []
+pref_label: 设备日活跃表

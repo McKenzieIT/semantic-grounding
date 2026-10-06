@@ -1,0 +1,109 @@
+name: game.guild.dissolve
+event_filter: event = 'game.guild.dissolve'
+description: 公会解散事件：记录角色触发/上报公会解散的行为，参数含解散前公会id(oldGuildId)及角色档案(等级/vip/战力/货币快照等23项)。分析主体为 role_id（角色粒度）。scout 实测 ds=20260729：cnt=1、role_uv=1、acc_uv=1、server_uv=1（解散事件天然低频）。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  oldGuildId:
+    type: int
+    description: 公会id
+metrics:
+  game_guild_dissolve_cnt:
+    expression: COUNT(*)
+    description: 公会解散事件总次数
+  game_guild_dissolve_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发/涉及解散的角色去重数（分析主体）
+  game_guild_dissolve_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发/涉及解散的账号去重数
+  game_guild_dissolve_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及解散的游戏服去重数
+  game_guild_dissolve_guild_uv:
+    expression: COUNT(DISTINCT CAST(GET_JSON_OBJECT(params,'$.oldGuildId') AS BIGINT))
+    description: 被解散的公会去重数（按 oldGuildId）
+coverage:
+  scenarios:
+    - 各服/全服公会解散频次与解散角色/账号规模
+    - 被解散公会的数量分布
+    - 结合 roleLevel/vipLevel/roleForce 快照观察解散行为特征
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 解散事件天然低频，单日 cnt=1 为样本边缘值，统计显著性有限
+    - 分析主体默认 role_id（角色粒度），未独立验证 account 粒度
+    - coinList 货币快照为解散时点余额，非收支流水，未计入指标
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=1, role_uv=1, acc_uv=1, server_uv=1（解散低频，合理非零命中）
+coverage_status: analyst_confirmed
+external_refs: []

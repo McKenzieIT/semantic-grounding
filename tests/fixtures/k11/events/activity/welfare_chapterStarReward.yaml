@@ -1,0 +1,130 @@
+name: game.welfare.chapterStarReward
+event_filter: event = 'game.welfare.chapterStarReward'
+description: "福利-主线宝箱：玩家在主线章节达成星级条件后领取宝箱奖励时上报的事件。分析主体为 role_id（角色维度），用于观测主线宝箱的领取频次、覆盖角色/账号/游戏服规模、各章节被领取的覆盖度，以及奖励货币的发放量。参数含游戏服id/名字、账号id、角色id/名字、性别、创角/上线时间、角色等级、vip等级、角色战力、经验、看板娘、关键货币列表(coinList: gold/sendgold/freegold/diamond/expCoin/energy)、会话id、logUUID、chapterId(章节)、newIndex(新索引)等24个字段。实测 ds=20260729：cnt=11847，role_uv=1830，acc_uv=1768，server_uv=96。"
+domains:
+  - 自定义
+  - 用户生命周期
+  - 资源产销
+domain: activity
+metrics:
+  chapterStarReward_cnt:
+    expression: COUNT(*)
+    description: 主线宝箱奖励领取事件总次数（行数）。
+  chapterStarReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取主线宝箱奖励的去重角色数（分析主体粒度）。
+  chapterStarReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取主线宝箱奖励的去重账号数。
+  chapterStarReward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取主线宝箱奖励的去重游戏服数。
+  chapterStarReward_chapter_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.chapterId'))
+    description: 被领取宝箱奖励的去重主线章节数（基于 params.chapterId）。
+  chapterStarReward_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 主线宝箱奖励发放的充值钻石（coinList.gold）总量。
+  chapterStarReward_freegold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.freegold') AS BIGINT))
+    description: 主线宝箱奖励发放的免费钻石（coinList.freegold）总量。
+  chapterStarReward_diamond_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.diamond') AS BIGINT))
+    description: 主线宝箱奖励发放的紫金（coinList.diamond）总量。
+  chapterStarReward_energy_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.energy') AS BIGINT))
+    description: 主线宝箱奖励发放的体力（coinList.energy）总量。
+  chapterStarReward_per_role_cnt:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均领取次数（总次数/去重角色数），NULLIF 防止除零。
+coverage:
+  scenarios:
+    - 主线宝箱奖励的日常/单日领取规模与去重角色、账号、游戏服覆盖度。
+    - 各主线章节被领取宝箱的覆盖广度（chapter_uv）。
+    - 主线宝箱对关键货币（充值钻石/免费钻石/紫金/体力）的发放总量测算。
+    - 人均领取次数（领取活跃度强度）。
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核。
+    - 分析主体粒度默认 role_id（角色），未对 account_id 主语场景单独核验。
+    - coinList 为数组结构，单条事件取数组首元素（或标量）的聚合口径，未对数组内多元素求和细节核验。
+    - 未对 roleLevel/vipLevel/roleForce 等切片维度的分布做复核。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=11847，role_uv=1830，acc_uv=1768，server_uv=96，数据合理可确认。仅单日 scout，未做全量复核。
+coverage_status: analyst_confirmed
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  chapterId:
+    type: int
+    description: 章节
+  newIndex:
+    type: int
+    description: 新的索引
+external_refs: []

@@ -1,0 +1,59 @@
+table_name: dws_10000251_user_acc_2_user_wx_mapping_df
+engine: maxcompute
+table_comment: 账号Id和企微Id映射表
+description: |-
+  账号Id和企微Id映射表。
+  粒度：日全量快照(_df)。分析主体=账号（user_type=2）。
+  主要字段：user_id, mapping_id, ds。
+domains:
+  - 用户生命周期
+  - 系统监控
+granularity: 日全量快照(_df)，账号粒度
+columns:
+  - name: user_id
+    type: string
+    comment: 账号id
+    role: dimension
+  - name: mapping_id
+    type: string
+    comment: 企微用户ID
+    role: dimension
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  mapped_account_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 已绑定企微的账号数（UV），账号粒度去重
+  mapped_wx_user_uv:
+    expression: COUNT(DISTINCT mapping_id)
+    description: 已绑定的企微用户数（去重 mapping_id）
+  mapping_record_cnt:
+    expression: COUNT(*)
+    description: 账号-企微映射记录总数（含重复绑定）
+  avg_accounts_per_wx:
+    expression: CAST(COUNT(DISTINCT user_id) AS DOUBLE) / NULLIF(COUNT(DISTINCT mapping_id), 0)
+    description: 平均每个企微用户绑定的账号数，>1 表示存在一企微多账号
+coverage:
+  scenarios:
+    - 企微私域触达：按 mapping_id 统计已绑定企微的账号规模，支撑私域消息推送覆盖评估
+    - 账号-企微身份归一：通过 user_id↔mapping_id 双向映射，做账号到企微用户的身份解析
+    - 重复绑定识别：avg_accounts_per_wx>1 或 mapped_account_uv>mapped_wx_user_uv 时定位一企微多账号
+  limitations:
+    - 仅 _df 日全量快照，历史快照按日保留（lifecycle=180 天），无增量表
+    - 无 user_type 列，分析主体=账号由表名（acc）推断，未在数据中显式校验
+    - 仅 scout 抽样验证（latest ds=20260730 抽样 4 指标合理），未做全量 maxc 实测复核
+    - 表内仅账号↔企微映射，不含角色/设备维度，无法做跨主体关联
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: latest ds=20260730 抽样验证 4 指标（uv=1902, wv=1887, cnt=1902, avg≈1.008）值合理；表非空；columns 经 meta describe 校验一致
+dimension_refs: []
+pref_label: 账号企微映射表
+alt_labels:
+  - 企微
+  - 微信
+  - 映射
+  - 客服

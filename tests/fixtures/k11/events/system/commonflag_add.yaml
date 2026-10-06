@@ -1,0 +1,167 @@
+name: game.commonflag.add
+event_filter: event = 'game.commonflag.add'
+description: |-
+  游戏服对角色写入通用标记(commonflag)：以 type 标记类型、value 标记值对角色设置状态标记，并携带角色当前状态(等级/VIP/战力/经验)与各货币余额(coinList)。事件粒度为角色(role_id 为分析主体，account_id 作账号维度可下钻)。scout 实测 ds=20260729：cnt=244/role_uv=224/acc_uv=223/server_uv=86(当日仅 flag_type=1 触发)。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个
+domains:
+  - 系统监控
+domain: system
+metrics:
+  game_commonflag_add_cnt:
+    expression: COUNT(*)
+    description: 通用标记新增事件总记录数(每条记1次标记写入)
+  game_commonflag_add_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发标记写入的去重角色数(主体粒度 role_id)
+  game_commonflag_add_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发标记写入的去重账号数(账号维度可下钻)
+  game_commonflag_add_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的去重游戏服数(反映标记设置覆盖面)
+  game_commonflag_add_flag_type_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.type'))
+    description: 被设置的去重标记类型数(type；scout 实测当日仅 type=1)
+  game_commonflag_add_value_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.value') AS BIGINT))
+    description: 标记值(value)累计求和(flag 为状态量，sum 用于数据校验/完整性核验)
+  game_commonflag_add_role_per_server:
+    expression: ROUND(CAST(COUNT(DISTINCT role_id) AS DOUBLE) / NULLIF(COUNT(DISTINCT server_id), 0), 2)
+    description: 单服平均标记写入角色数(NULLIF 防 0 除)
+coverage:
+  scenarios:
+    - 通用标记(commonflag)写入规模与覆盖角色/账号/服务器范围(game_commonflag_add_cnt / _role_uv / _account_uv / _server_uv)
+    - 标记类型(type)分布与触及种类覆盖(game_commonflag_add_flag_type_uv)
+    - 标记值(value)累计校验与单服角色密度(game_commonflag_add_value_sum / _role_per_server)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测(cnt=244/role_uv=224/acc_uv=223/server_uv=86)，未做全量多日复核
+    - 当日样本仅观察到 flag_type=1 一种类型，全量范围可能存在其它 type，待全量复核枚举
+    - 主体粒度默认 role_id(按 base view 同时含 account_id+role_id 推断为角色级，未逐事件实测角色归属)
+    - value 字段语义为标记值(flag 状态量)，其 SUM 仅作数据校验用途，非业务累加量
+    - coinList 为数组类型，未对其元素做 SUM 聚合，如需货币量需后续展开
+  coverage_status: analyst_reviewed
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  type:
+    type: int
+    description: 类型
+  value:
+    type: int
+    description: 值
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=244/role_uv=224/acc_uv=223/server_uv=86，当日仅 flag_type=1 触发，数据量合理
+external_refs:
+  - dim_table: dim_10000251_trans_gacha_mission_group_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_gacha_mission_group_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+      - dws_column: value
+        dim_column: value
+    derivation: 确定性：事件字段 type, value 与 dim_10000251_trans_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+      - dws_column: value
+        dim_column: value
+    derivation: 确定性：事件字段 type, value 与 dim_10000251_trans_item_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df_arch 主键精确同名
+    origin: deterministic

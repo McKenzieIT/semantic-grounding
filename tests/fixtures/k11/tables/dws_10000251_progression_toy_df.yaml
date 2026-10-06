@@ -1,0 +1,88 @@
+table_name: dws_10000251_progression_toy_df
+engine: maxcompute
+table_comment: 幻谷培养状态总表(角色-玩具/卡牌培养快照)
+description: |-
+  幻谷培养状态总表(角色粒度)。记录每个角色所拥有的玩具/卡牌(toy)及其当前星级(toy_star)，以及获取时间与最近培养时间。
+  主体：角色(role_id 为主键，角色粒度)。 粒度：日全量快照(_df)，每日全量一份；每行=角色×玩具。 语义：快照型，UV/求和应使用快照聚合(COUNT(DISTINCT role_id) 等)。 主要字段：role_id, server_id, toy_id, toy_star, act_tm_fst, act_tm_lst, ds。
+domains:
+  - 角色成长
+  - 探索收集
+granularity: 角色粒度，日全量快照(_df)，每行=角色×玩具
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 服务器id
+    role: dimension
+  - name: toy_id
+    type: bigint
+    comment: 卡牌ID
+    role: dimension
+  - name: toy_star
+    type: bigint
+    comment: 卡牌星级
+    role: measure
+  - name: act_tm_fst
+    type: datetime
+    comment: 获取时间
+    role: attribute
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近培养时间
+    role: attribute
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  snapshot_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 持有玩具/卡牌的角色UV(日全量快照，按ds切片)
+  toy_records:
+    expression: COUNT(*)
+    description: 玩具/卡牌快照总记录数(role_id+toy_id行数，日全量)
+  avg_toy_star:
+    expression: AVG(toy_star)
+    description: 玩具/卡牌平均星级
+  total_toy_star:
+    expression: SUM(toy_star)
+    description: 玩具/卡牌星级总和(按ds切片，不可跨日累加)
+  server_count:
+    expression: COUNT(DISTINCT server_id)
+    description: 快照覆盖服务器数
+coverage:
+  scenarios:
+    - 分析全服角色玩具/卡牌收集广度(持有角色UV、记录数、覆盖服务器数)。
+    - 评估玩具/卡牌培养深度(平均星级、星级总和)日级监控(_df全量快照)。
+  limitations:
+    - 仅对 ds=20260730 抽样验证 5 项核心指标，未做全量跨日复核。
+    - _df 为日全量快照，跨日存在重复角色记录，UV/求和类指标须按 ds 分区切片，不可跨日直接累加。
+    - 主体为角色(role_id)，无 user_type 列，未做账号/设备维度关联(无JOIN)。
+    - 未覆盖玩具获取来源与培养增量(无 _di 增量表联动)。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已在最新 ds=20260730 抽样验证 5 项核心指标(role_uv=30010, toy_records=307567, avg_star=1.4124, total_star=434421, server_cnt=604)，值合理。
+dimension_refs:
+  - dim_table: dim_10000251_toy_info
+    join_keys:
+      - dws_column: toy_id
+        dim_column: toy_id
+    derivation: DWS column toy_id (comment 卡牌ID; table tracks 玩具/卡牌(toy) owned per role) is an exact-name foreign key to dim_10000251_toy_info primary key toy_id, described as a 遗物(toy)配置维度表 with one row per toy.
+    origin: deterministic
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (comment 服务器id) is an exact-name foreign key to dim_10000251_server_info primary key server_id, the 区服维度配置表 used to backfill server name and open date.
+    origin: deterministic
+pref_label: 幻谷培养总表
+alt_labels:
+  - 幻谷
+  - 培养
+  - 玩具
+  - 养成

@@ -1,0 +1,131 @@
+table_name: dws_10000251_pvp_card_statistics_di
+engine: maxcompute
+table_comment: PVP卡牌统计日表
+description: PVP卡牌统计日表。按角色(role_id)+卡牌(card_id)粒度记录PVP战斗中日增量的卡牌出战/胜负/战力统计。主题主体：角色(role，user_type=3)。粒度：日增量(_di)，角色+卡牌级。
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 日增量(_di)，角色(role)+卡牌(card)粒度
+columns:
+  - name: pvp_type
+    type: bigint
+    comment: PVP玩法
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: card_id
+    type: bigint
+    comment: 卡牌ID
+    role: dimension
+  - name: card_star
+    type: bigint
+    comment: 卡牌星级
+    role: dimension
+  - name: card_level
+    type: bigint
+    comment: 卡牌等级
+    role: dimension
+  - name: card_pos
+    type: bigint
+    comment: 卡牌位置
+    role: dimension
+  - name: card_force
+    type: bigint
+    comment: 卡牌战力
+    role: measure
+  - name: card_job
+    type: bigint
+    comment: 卡牌职业
+    role: dimension
+  - name: is_key
+    type: string
+    comment: 是否主力卡牌 true-是 false-否
+    role: dimension
+  - name: resonate_index
+    type: bigint
+    comment: 共鸣位置
+    role: dimension
+  - name: tactic_id
+    type: bigint
+    comment: 风物ID
+    role: dimension
+  - name: battle_times
+    type: bigint
+    comment: 战斗次数
+    role: measure
+  - name: win_times
+    type: bigint
+    comment: 胜利次数
+    role: measure
+  - name: lose_times
+    type: bigint
+    comment: 失败次数
+    role: measure
+  - name: draw_times
+    type: bigint
+    comment: 平局次数
+    role: measure
+  - name: force
+    type: bigint
+    comment: 战力
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  pvp_card_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日PVP参战角色数(UV)
+  pvp_battle_total:
+    expression: SUM(battle_times)
+    description: 当日PVP卡牌总出战次数
+  pvp_win_total:
+    expression: SUM(win_times)
+    description: 当日PVP卡牌总胜利次数
+  pvp_win_rate:
+    expression: SUM(win_times)/NULLIF(SUM(battle_times),0)
+    description: 当日PVP卡牌胜率(胜利/出战)
+  pvp_card_force_avg:
+    expression: AVG(card_force)
+    description: 当日PVP出战卡牌平均战力
+coverage:
+  scenarios:
+    - 监测各PVP玩法(pvp_type)每日参战角色规模与胜负表现
+    - 评估卡牌(card_id)在PVP中的出战强度、胜率及战力分布
+    - 对比主力/非主力卡牌(is_key)在PVP的出场与胜率差异
+    - 按星级/等级/职业(card_star/card_level/card_job)分析卡牌PVP竞争力
+  limitations:
+    - 粒度为日增量(_di)，跨日累计需按ds聚合，不可直接当全量
+    - 仅在最新分区(ds=20260730)做 spot 抽样验证，未做全量多日 maxc 实测复核
+    - 无账号/设备维度，仅角色级(user_type=3)主体；卡牌维度需与dim卡牌表配合(未JOIN)
+    - resonate_index/tactic_id 等字段在样本中可出现NULL，聚合时注意NULL语义
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已在最新分区(ds=20260730) spot 验证全部5个指标，UV=6214/出战390015/胜利199135/胜率51.0%/平均战力约1.09亿，数值合理；按角色(role,user_type=3)主体确认。
+dimension_refs:
+  - dim_table: dim_10000251_trans_card_df
+    join_keys:
+      - dws_column: card_id
+        dim_column: id
+    derivation: DWS card_id (comment 卡牌ID) is the deployed card/hero identifier; dim_10000251_trans_card_df is the 武将(角色)配置维度表 with primary key id (武将id), and 卡牌 corresponds to 武将 in this game, so card_id joins trans_card_df.id.
+  - dim_table: dim_10000251_tactic_info
+    join_keys:
+      - dws_column: tactic_id
+        dim_column: tactic_id
+    derivation: DWS tactic_id (comment 风物ID) exactly matches dim_10000251_tactic_info primary key tactic_id, which is described as the 风物(tactic)配置维度表 keyed by tactic_id.
+    origin: deterministic
+pref_label: PVP卡牌统计日表
+alt_labels:
+  - 使用率
+  - PVP胜率
+  - 武将胜率
+  - 武将对战
+  - 对战统计
+  - 胜负
+  - 平衡性
+  - 武将平衡

@@ -1,0 +1,115 @@
+name: game.guild.operatePlayerInvite
+event_filter: event = 'game.guild.operatePlayerInvite'
+description: 玩家处理公会邀请操作的事件（operatePlayerInvite）。记录操作方角色 role_id（分析主体）、所在游戏服及角色档案（等级/战力/VIP/货币快照），并通过 params.op 区分邀请操作类型（scout 实测 op=1/2/3）。用于度量公会邀请处理活跃度。scout 实测 ds=20260729：cnt=9，role_uv=9，acc_uv=9，server_uv=9。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  op:
+    type: int
+    description: 操作
+metrics:
+  game_guild_operate_player_invite_cnt:
+    expression: COUNT(*)
+    description: 公会邀请处理操作总次数（op=1/2/3 等所有操作合计）
+  game_guild_operate_player_invite_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 处理公会邀请的去重操作角色数（分析主体）
+  game_guild_operate_player_invite_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 处理公会邀请的去重账号数
+  game_guild_operate_player_invite_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 发生公会邀请处理的去重游戏服数
+  game_guild_operate_player_invite_op1_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.op') = '1' THEN 1 ELSE 0 END)
+    description: op=1 邀请操作次数；scout 日 ds=20260729 观测到 5 次
+  game_guild_operate_player_invite_op2_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.op') = '2' THEN 1 ELSE 0 END)
+    description: op=2 邀请操作次数；scout 日 ds=20260729 观测到 1 次
+  game_guild_operate_player_invite_op3_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.op') = '3' THEN 1 ELSE 0 END)
+    description: op=3 邀请操作次数；scout 日 ds=20260729 观测到 3 次
+coverage:
+  scenarios:
+    - 公会邀请处理活跃度（操作次数/操作角色UV）
+    - 邀请操作类型分布（op=1/2/3 占比）
+    - 跨服邀请处理分布（server_uv）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（操作方）；op 字段具体语义（如通过/拒绝/取消）未由官方枚举映射确认，仅按观测值标注
+    - 单日样本量较小（cnt=9），op 分布比例不宜外推全量
+    - 未覆盖邀请发送→处理→接受的完整转化漏斗（与 guild_inviteJoin 联动分析需另行建表）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=9，role_uv=9，acc_uv=9，server_uv=9，op 分布 1:5/2:1/3:3，数据合理非零
+coverage_status: analyst_confirmed
+external_refs: []

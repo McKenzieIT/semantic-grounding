@@ -1,0 +1,53 @@
+table_name: dim_10000251_trans_cardpool_df_arch
+engine: maxcompute
+kind: dim
+primary_key:
+- id
+label_columns:
+- name
+primary_key_unique: false
+table_comment: 卡池配置维度表（按日全量归档），每日快照记录全部卡池配置
+description: '卡池配置维度表（dim）：游戏抽卡卡池的配置维度/归档表，按日全量快照存档。每行对应一个卡池配置（卡池id、卡池名、描述、类型）。主要字段：id(卡池id), name(卡池名), desc(卡池描述), type(类型), ds(快照日期分区)。用于卡池相关事实表（如抽卡流水）通过 id 关联获取卡池名/描述/类型等维度属性。'
+domains:
+- 系统监控
+granularity: 每个卡池(id)每快照日期(ds)一行的配置维度归档表
+columns:
+- name: id
+  type: string
+  comment: 卡池id
+  role: dimension
+- name: name
+  type: string
+  comment: 卡池名
+  role: dimension
+- name: desc
+  type: string
+  comment: 卡池描述
+  role: dimension
+- name: type
+  type: string
+  comment: type
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含全部快照分区）
+coverage:
+  scenarios:
+  - 抽卡流水/卡池相关事实表通过 id 关联本表，获取卡池名(name)、卡池描述(desc)、卡池类型(type)等维度属性用于分组分析
+  - 支持按卡池名/类型筛选与聚合抽卡行为
+  - 按需选取指定 ds 分区（卡池配置在某日的全量快照）做时间点维度查找
+  limitations:
+  - 配置类维度表，无值度量字段（无 price/rate 等度量）
+  - 按 id 在跨分区层面非唯一（全表 8934 行 vs 50 个不同 id），同一卡池在多个 ds 快照中重复；事实表 JOIN 时需限定 ds 分区或与事实表事件日期匹配以避免扇出
+  - type 字段为编码字符串（如 "1"/"2"），具体类型含义需结合业务码表二次解码，本表未提供码表
+  - primary_key_unique 实测为 false（跨全表 r != d）；单分区内 id 唯一（如 ds=20251022 时 r=d=18）
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'dim 建模初稿：pk=id, label=name；跨分区非唯一(primary_key_unique=false)，单分区内唯一；未达 analyst_confirmed'

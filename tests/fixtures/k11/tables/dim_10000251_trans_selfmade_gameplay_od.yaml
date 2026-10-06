@@ -1,0 +1,62 @@
+table_name: dim_10000251_trans_selfmade_gameplay_od
+engine: maxcompute
+kind: dim
+table_comment: 自编玩法维表（玩法/子玩法配置维度表）
+description: '自编玩法维表，是游戏 10000251 离线自编的玩法维度配置表，每行描述一个子玩法（sub_play）及其所属玩法分组（play）与对应功能入口（function）。
+
+  粒度：每个子玩法（sub_play_id）一行的维度/配置表。
+
+  主要字段：play_id, sub_play_id, play_name, sub_play_name, function_id。
+
+  主键：sub_play_id（已实测唯一：13 行 vs 13 distinct）。
+
+  标签列：sub_play_name（子玩法显示名）/ play_name（玩法分组显示名）。'
+domains:
+- 系统监控
+granularity: 每个子玩法（sub_play_id）一行的维度/配置表
+primary_key:
+- sub_play_id
+primary_key_unique: true
+label_columns:
+- sub_play_name
+- play_name
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（子玩法配置记录数）
+columns:
+- name: play_id
+  type: string
+  comment: 玩法id,属性
+  role: dimension
+- name: sub_play_id
+  type: string
+  comment: 子玩法id,ID
+  role: dimension
+- name: play_name
+  type: string
+  comment: 玩法名,属性
+  role: dimension
+- name: sub_play_name
+  type: string
+  comment: 子玩法名,显示名称
+  role: dimension
+- name: function_id
+  type: string
+  comment: 功能id,属性
+  role: dimension
+coverage:
+  scenarios:
+  - 事实表通过 sub_play_id JOIN 本表，将子玩法流水关联到 play_name/sub_play_name 中文显示名与 function_id 功能入口。
+  - 通过 play_id 聚合可统计各玩法分组下的子玩法数量与构成（COUNT(*) GROUP BY play_id）。
+  - 通过 function_id 可作为玩法到功能入口的桥接维度，支撑功能维度的下钻分析。
+  limitations:
+  - 配置类维度表，无值度量（metrics 仅含 row_count 计数）。
+  - play_id 非唯一（13 行中 distinct play_id=9），不可单独作为主键，需以 sub_play_id 为准。
+  - 玩法名为人工自编命名串（如 "01-主线副本"），含数字前缀编码，如需纯文本名需二次解析。
+  - 行数较少（13 行），覆盖范围以配置时点为准，未含历史变更快照。
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 maxc meta describe 真实列与 SELECT COUNT(*) 实测唯一性（r=13=d_sub=13）建模；sub_play_id 唯一，play_name/sub_play_name 为标签列；保留 draft 待业务方确认。'

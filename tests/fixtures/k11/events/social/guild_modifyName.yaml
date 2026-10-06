@@ -1,0 +1,108 @@
+name: game.guild.modifyName
+event_filter: event = 'game.guild.modifyName'
+description: "公会改名事件：玩家修改所在公会名称时上报。分析主体为 role_id（角色），上报字段含游戏服id/名字、账号id、角色id/名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验、看板娘、关键货币列表、新公会名(name) 等23个参数。单日实测 ds=20260728: cnt=1, role_uv=1, acc_uv=1, server_uv=1（低频行为，量级合理）。"
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  name:
+    type: string
+    description: 名字
+metrics:
+  guild_modifyname_cnt:
+    expression: COUNT(*)
+    description: 公会改名事件总次数
+  guild_modifyname_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 改名的去重角色数（分析主体 role_id）
+  guild_modifyname_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 改名的去重账号数
+  guild_modifyname_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及改名的游戏服去重数
+  guild_modifyname_new_name_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.name'))
+    description: 改名选用的去重新公会名数量
+coverage:
+  scenarios:
+    - 公会改名行为频率与覆盖（次数/角色UV/账号UV/服务器覆盖）
+    - 改名后选用的新公会名分布
+    - 公会运营：改名活跃度按服务器/渠道/时段分布
+  subject_granularity: role_id（角色为分析主体）
+  limitations:
+    - 仅 ds=20260728 单日 scout 实测（ds=20260729 零命中），未做全量复核
+    - 单日 cnt=1 样本极小，量级符合低频改名行为特征但不宜做趋势结论
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "实测 ds=20260728: cnt=1, role_uv=1, acc_uv=1, server_uv=1；ds=20260729 cnt=0（零命中）。事件真实触发，量级符合低频改名行为。"
+coverage_status: analyst_confirmed
+external_refs: []

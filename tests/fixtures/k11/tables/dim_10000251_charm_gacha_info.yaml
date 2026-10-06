@@ -1,0 +1,150 @@
+table_name: dim_10000251_charm_gacha_info
+engine: maxcompute
+kind: dim
+primary_key:
+- card_pool_id
+primary_key_unique: true
+label_columns:
+- card_pool_name
+- directions
+table_comment: 灵器抽卡卡池配置维度表（每卡池一行，含消耗/保底/掉落/展示等配置）
+description: '灵器（charm）抽卡卡池的配置维度表。每行对应一个卡池（card_pool_id），存储卡池名称、消耗、保底、掉落库、UP/新手集市、展示资源等静态配置属性，供事实表通过 card_pool_id 关联查询卡池维度信息。
+
+  粒度：每卡池（card_pool_id）一行的配置维度表。
+
+  主要字段：card_pool_id, card_pool_name, directions, group, cost, gacha_drop_id, gacha_guarantee_group, gacha_grade_guarantee, up_gacha_reward/cost, new_gacha_reward/cost 等28列。'
+domains:
+- 探索收集
+granularity: 每 card_pool_id（卡池）一行的配置维度表
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（卡池数）
+columns:
+- name: card_pool_id
+  type: string
+  comment: 卡池ID
+  role: dimension
+- name: directions
+  type: string
+  comment: 卡池备注
+  role: dimension
+- name: card_pool_name
+  type: string
+  comment: 卡池名称
+  role: dimension
+- name: group
+  type: string
+  comment: 卡池组
+  role: dimension
+- name: back
+  type: string
+  comment: 抽1次返还
+  role: dimension
+- name: function_id
+  type: string
+  comment: 解锁规则
+  role: dimension
+- name: cost
+  type: string
+  comment: 单抽消耗
+  role: dimension
+- name: gacha_multi_num
+  type: string
+  comment: 默认多抽次数
+  role: dimension
+- name: gacha_limit_award
+  type: string
+  comment: 限制出货次数
+  role: dimension
+- name: gacha_drop_id
+  type: string
+  comment: 卡池掉落库
+  role: dimension
+- name: gacha_guarantee_group
+  type: string
+  comment: 卡池保底组
+  role: dimension
+- name: gacha_grade_guarantee
+  type: string
+  comment: 次数保底
+  role: dimension
+- name: max_num_limit
+  type: string
+  comment: 限制抽卡次数
+  role: dimension
+- name: up_gacha_reward
+  type: string
+  comment: up池购买资源
+  role: dimension
+- name: up_gacha_cost_max
+  type: string
+  comment: up池购买次数上限
+  role: dimension
+- name: up_gacha_cost
+  type: string
+  comment: up池购买资源消耗
+  role: dimension
+- name: new_gacha_reward
+  type: string
+  comment: 新手集市购买资源
+  role: dimension
+- name: new_gacha_cost_max
+  type: string
+  comment: 新手集市购买次数上限
+  role: dimension
+- name: new_gacha_cost
+  type: string
+  comment: 新手集市购买资源消耗
+  role: dimension
+- name: display_weight
+  type: string
+  comment: 显示权重
+  role: dimension
+- name: node_name
+  type: string
+  comment: 卡池预览
+  role: dimension
+- name: bg_name
+  type: string
+  comment: 卡池背景图
+  role: dimension
+- name: banner_name
+  type: string
+  comment: 卡池页签图
+  role: dimension
+- name: gacha_desc
+  type: string
+  comment: 卡池说明文本
+  role: dimension
+- name: tab_show
+  type: string
+  comment: 标签描述
+  role: dimension
+- name: drop_desc
+  type: string
+  comment: 概率说明
+  role: dimension
+- name: show_id
+  type: string
+  comment: 展示灵器
+  role: dimension
+- name: is_show
+  type: string
+  comment: 卡池未解锁是否展示
+  role: dimension
+coverage:
+  scenarios:
+  - 事实表（如抽卡流水）通过 card_pool_id 关联查询卡池名称、消耗、保底、掉落库等维度属性
+  - 按卡池组（group）聚合统计卡池数量与配置差异
+  - 卡池展示与解锁配置（display_weight / is_show / node_name / banner_name）查询
+  limitations:
+  - 配置类维度表，无值度量（金额/次数等数值度量不在本表）
+  - cost / back / up_gacha_cost 等为编码串（如 "3_1010_1|3_1009_1"），需二次解码资源ID与数量
+  - drop_desc / function_id 等为外键编码，需关联对应配置表二次解析
+  - 未对运行时数据做唯一性实测（基于卡池配置表的天然唯一性，meta 样例与计数 r=d=6 一致）
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 灵器抽卡卡池配置维度表；primary_key=card_pool_id（计数 r=d=6 实测唯一）；label=card_pool_name+directions；status=draft 待业务确认

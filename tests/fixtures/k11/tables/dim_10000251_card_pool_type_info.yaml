@@ -1,0 +1,43 @@
+table_name: dim_10000251_card_pool_type_info
+engine: maxcompute
+table_comment: 卡池类型配置维度表
+description: |
+  卡池类型配置维度表。每行一种卡池类型（如武将、风物等），用于在事实表 JOIN 时将卡池类型ID翻译为可读名称。
+  主键：type_id（卡池类型ID）。标签列：type_name（卡池类型名称）。
+domains:
+- 探索收集
+granularity: 每卡池类型一行的配置维度表
+kind: dim
+primary_key:
+- type_id
+primary_key_unique: true
+label_columns:
+- type_name
+columns:
+- name: type_id
+  type: string
+  comment: 卡池类型ID,ID
+  role: dimension
+- name: type_name
+  type: string
+  comment: 卡池类型名称,显示名称
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 事实表按卡池类型ID关联本表，获取卡池类型名称用于分组展示与筛选
+  - 报表中将type_id翻译为type_name供业务阅读
+  limitations:
+  - 配置类维度表，无值度量
+  - 仅5行小维度表，覆盖游戏内卡池类型枚举
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: |
+    已基于 meta describe 校验列结构与类型；type_id 唯一性已实测(r=d=5)。
+    主键选 type_id（自然唯一标识），标签列选 type_name（人类可读名称）。
+    域归属：探索收集（卡池/抽取收集类）。

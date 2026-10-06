@@ -1,0 +1,49 @@
+table_name: dim_10000251_survey_info
+engine: maxcompute
+kind: dim
+primary_key:
+- survey_id
+primary_key_unique: true
+label_columns:
+- task
+- sub_task
+table_comment: star002问卷投放配置维度表。一行记录一个问卷投放，记录问卷id、投放日期、问卷目的及二级目的。按 survey_id 唯一。业务咨询：洞主、xuwenlong.xwl。
+description: 'dim_10000251_survey_info 是问卷投放的配置/维度表（star002问卷投放），每行对应一个问卷投放记录。主键为 survey_id（问卷id），自然唯一；标签列 task/sub_task 用于问卷目的的展示与筛选。粒度：每个问卷投放一行。主要用于 JOIN 事实表以提供问卷目的、投放日期等维度信息。'
+domains:
+- 系统监控
+granularity: 每个问卷投放一行的配置/维度表
+columns:
+- name: survey_id
+  type: string
+  comment: 问卷id
+  role: dimension
+- name: time
+  type: string
+  comment: 问卷投放日期（格式例如：20211208）
+  role: dimension
+- name: task
+  type: string
+  comment: 问卷目的(例如：CBT首日问卷）
+  role: dimension
+- name: sub_task
+  type: string
+  comment: 问卷二级目的(详细描述问卷背景目的）
+  role: dimension
+coverage:
+  scenarios:
+  - 通过 survey_id JOIN 事实表，提供问卷目的（task）与二级目的（sub_task）维度信息
+  - 按投放日期 time 筛选特定批次问卷
+  - 按问卷目的（task/sub_task）聚合分析不同问卷背景的数据
+  limitations:
+  - 配置类维度表，仅含问卷投放元数据，无值度量（measure）字段
+  - time 字段为字符串格式 YYYYMMDD，需类型转换才能做日期计算
+  - 仅 9 行，体量较小，覆盖问卷投放批次有限
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'dim 建模：survey_id 作为主键，已实测唯一（r=d=9）；task/sub_task 作为标签列；归类系统监控（配置类维度表）。状态保持 draft。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（问卷投放记录数）

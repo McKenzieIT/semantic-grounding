@@ -1,0 +1,120 @@
+name: game.social.friendact
+event_filter: event = 'game.social.friendact'
+description: social.friendact 好友关系变更事件：玩家与目标角色(relRoleId)之间好友关系升级(action=2)或降级(action=1)动作，记录密友等级(relationLevel)。分析主体粒度为 role_id（发起方角色），每次动作产生一条日志。scout 实测 ds=20260729/20260728 均零命中(cnt=0)，疑似事件下线/未触发。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  action:
+    type: int
+    description: 行为类型，1-好友关系降级 2-好友关系升级，加/删好友有平台埋点
+  relRoleId:
+    type: int
+    description: 目标角色id
+  relationLevel:
+    type: int
+    description: 密友等级
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 cnt=0，retry ds=20260728 cnt=0；零命中，疑似事件下线/未触发；指标表达式按事件 schema 预置待复核
+metrics:
+  friendact_cnt:
+    expression: COUNT(*)
+    description: 好友关系变更事件总次数（含升级+降级）
+  friendact_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 发起好友关系变更的去重角色数（发起方）
+  friendact_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 发起好友关系变更的去重账号数
+  friendact_target_role_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.relRoleId'))
+    description: 被作用（目标）的去重角色数
+  friendact_upgrade_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action')='2' THEN 1 ELSE 0 END)
+    description: 好友关系升级（action=2）动作次数
+  friendact_downgrade_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action')='1' THEN 1 ELSE 0 END)
+    description: 好友关系降级（action=1）动作次数
+  friendact_upgrade_ratio:
+    expression: ROUND(SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action')='2' THEN 1 ELSE 0 END) / NULLIF(COUNT(*),0),4)
+    description: 好友关系升级动作占变更总次数的比例（NULLIF 防零除）
+coverage:
+  scenarios:
+    - 好友关系变更总体规模（次数/UV）与社交活跃度
+    - 升级 vs 降级动作分布与占比
+    - 目标角色去重覆盖（社交触达广度）
+  limitations:
+    - 日志中零命中(ds=20260729 与 ds=20260728 cnt=0)，疑似事件下线/未触发，指标表达式按事件 schema 预置待复核
+    - 仅 ds=20260729/20260728 两天 scout 实测，未做全量复核
+    - 分析主体粒度默认 role_id（发起方），未在日志命中态下验证 subject 粒度
+coverage_status: draft
+external_refs: []

@@ -1,0 +1,127 @@
+name: game.champion.resetGuess
+event_filter: event = 'game.champion.resetGuess'
+description: 争霸赛：取消竞猜事件，玩家在争霸赛中取消已发起的竞猜操作。分析主体为 role_id（角色粒度），辅助 account_id 账号粒度与 server_id 服粒度。实测 ds=20260729 单日：3 条记录、2 个角色、2 个账号、2 个游戏服，count 字段合计 108750。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  seasonId:
+    type: int
+    description: seasonId
+  uid:
+    type: int
+    description: uid
+  matchId:
+    type: string
+    description: matchId
+  side:
+    type: int
+    description: 0 攻击 1 防守
+  count:
+    type: int
+    description: count
+  gssCountDefAtk:
+    type: int
+    description: gssCountDefAtk
+  gssCountDef:
+    type: int
+    description: gssCountDef
+metrics:
+  champion_reset_guess_cnt:
+    expression: COUNT(*)
+    description: 取消竞猜事件总记录数
+  champion_reset_guess_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发取消竞猜的去重角色数（分析主体粒度）
+  champion_reset_guess_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发取消竞猜的去重账号数
+  champion_reset_guess_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发取消竞猜的去重游戏服数
+  champion_reset_guess_count_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.count') AS BIGINT))
+    description: count 字段累计值（取消竞猜相关计数值合计）
+coverage:
+  scenarios:
+    - 玩家取消竞猜事件的总频次与角色/账号/游戏服分布
+    - count 字段聚合以量化取消竞猜相关计数总量
+    - 不同角色取消竞猜行为的活跃度对比
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id（角色粒度），未做 account_id 全量交叉校验
+    - 当日样本偏少（cnt=3），建议结合多日观察以确认业务稳定性
+    - count 字段语义为取消竞猜相关计数，确切业务含义需业务方确认
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729 cnt=3, role_uv=2, acc_uv=2, server_uv=2, count_sum=108750, side_sum=0
+external_refs: []

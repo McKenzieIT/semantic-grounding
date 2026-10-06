@@ -1,0 +1,62 @@
+table_name: dim_10000251_trans_props_df_arch
+engine: maxcompute
+table_comment: 道具属性维度/配置表（按 ds 日分区快照），记录每个道具 id 的名称、品质、类型、备注等基础属性。
+description: '道具属性维度/配置表：每行描述一个道具 id 的基础属性（name 道具名称、quality 品质、type 道具类型、remark 备注）；按 ds 日分区保存快照。
+
+  主键：id（道具id）；标签列：name（道具名称）。
+
+  粒度：每 道具id x ds快照 一行的配置/维度表。
+
+  主要字段：id, name, quality, remark, type, ds。'
+domains:
+- 装备道具
+granularity: 每 道具id x ds日快照 一行的道具属性维度/配置表
+kind: dim
+primary_key:
+- id
+primary_key_unique: false
+label_columns:
+- name
+columns:
+- name: id
+  type: string
+  comment: 道具id
+  role: dimension
+- name: name
+  type: string
+  comment: 道具名称
+  role: dimension
+- name: quality
+  type: bigint
+  comment: 品质
+  role: dimension
+- name: remark
+  type: string
+  comment: 备注
+  role: dimension
+- name: type
+  type: string
+  comment: 道具类型
+  role: dimension
+- name: ds
+  type: string
+  comment: 日分区快照键
+  role: partition
+coverage:
+  scenarios:
+  - 事实表经 id JOIN 本表，按道具名称(name)/类型(type)/品质(quality)做维度筛选与分组
+  - 按道具品质(quality)、道具类型(type)进行下钻聚合统计
+  - 通过 ds 日分区快照回溯某日道具属性配置
+  limitations:
+  - 配置类维度表，无值度量（quality 为枚举型品质值，不作可加度量）
+  - primary_key_unique=false：id 跨 ds 日分区有重复快照（实测 236773 行 vs 850 distinct id），使用时需限定 ds 或带 ds 联合 JOIN
+  - type 为道具类型编码串，需结合道具类型码表二次解码
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'dim 建模：pk=id（道具id，maxc 推断主键），label=name（道具名称）。实测 id 跨 ds 分区非唯一（r=236773, d=850），primary_key_unique=false，保持 draft。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含 ds 分区快照）

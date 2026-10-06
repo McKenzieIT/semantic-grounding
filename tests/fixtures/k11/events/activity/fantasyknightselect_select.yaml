@@ -1,0 +1,104 @@
+name: game.fantasyknightselect.select
+event_filter: event = 'game.fantasyknightselect.select'
+description: 幻想服武将自选活动——玩家在幻想服自选玩法中选择武将的日志事件。记录选将行为及玩家上下文(游戏服、账号、角色、性别、等级、战力、货币列表、武将列表等23个参数)。主体粒度为 role_id(角色)。ds=20260729 实测单日 1244 条事件，覆盖 389 角色 / 385 账号 / 5 个游戏服。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightList:
+    type: array
+    description: 武将列表
+metrics:
+  game_fantasyknightselect_select_cnt:
+    expression: COUNT(*)
+    description: 武将自选-选择武将事件总次数
+  game_fantasyknightselect_select_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发武将自选选将的去重角色数
+  game_fantasyknightselect_select_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发武将自选选将的去重账号数
+  game_fantasyknightselect_select_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发武将自选选将的去重游戏服数
+coverage:
+  scenarios:
+    - 武将自选玩法参与度(事件次数/角色UV/账号UV/游戏服覆盖)统计
+    - 结合 params_fields.knightList 可分析武将选择偏好分布
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认主体粒度 role_id，账号级分析请用 account_uv 指标
+    - params_fields.knightList 为数组，未单独提取武将命中计数
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  coverage_status: analyst_confirmed
+  note: scout 实测 ds=20260729：cnt=1244, role_uv=389, acc_uv=385, server_uv=5
+external_refs: []

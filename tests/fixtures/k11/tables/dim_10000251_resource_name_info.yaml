@@ -1,0 +1,44 @@
+table_name: dim_10000251_resource_name_info
+engine: maxcompute
+kind: dim
+table_comment: '游戏内道具/资源的名称映射维度表：以 (item_type, item_value) 复合编码定位每种道具，并给出其可读名称 item_name。供事实表按道具编码 JOIN 解析名称。'
+description: '资源/道具名称信息维度表（dim_10000251_resource_name_info）：以 (item_type, item_value) 为复合主键，对应每种道具/资源的可读名称 item_name。用于将事实表中的道具编码解析为人类可读名称，支撑道具类维度的 JOIN 查询与分组展示。'
+domains:
+- 资源产销
+granularity: '每 (item_type, item_value) 道具编码一行的名称映射维度表'
+primary_key:
+- item_type
+- item_value
+primary_key_unique: true
+label_columns:
+- item_name
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 事实表按道具编码 (item_type, item_value) JOIN 本表解析 item_name，用于道具维度分组、筛选与展示。
+  - 资源产销分析中按道具名称汇总产出/消耗量。
+  limitations:
+  - 配置类维度表，仅含名称映射，无任何数值度量字段。
+  - 主键为复合编码 (item_type, item_value)，单列 item_type 或 item_value 不唯一。
+  - item_value 为道具编码值，非度量；不可作为数值型 measure 直接聚合。
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '基于 meta describe 列确认 + COUNT(*)=COUNT(DISTINCT item_type,item_value)=4126 实测主键唯一；label 选 item_name。配置类维度表，无值度量，保持 draft。'
+columns:
+- name: item_type
+  type: bigint
+  comment: 道具类型
+  role: dimension
+- name: item_value
+  type: bigint
+  comment: 道具值（道具编码值，主键组成部分）
+  role: dimension
+- name: item_name
+  type: string
+  comment: 道具名称
+  role: dimension

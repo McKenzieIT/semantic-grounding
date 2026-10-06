@@ -1,0 +1,121 @@
+name: game.gve2.achievereward
+event_filter: event = 'game.gve2.achievereward'
+description: GVE2 成就奖励领取事件：玩家在 GVE2（公会 vs 环境）玩法中达成成就并领取奖励时上报，每条记录对应一次成就奖励领取。分析主体为 role_id（角色粒度），携带 achieveId 标识具体成就、coinList 携带各类货币奖励（充值钻石/赠送钻石/免费钻石/紫金/经验卷轴/体力）。实测 ds=20260729 单日 632 条、530 角色、517 账号、56 服务器、54 种成就。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  achieveId:
+    type: int
+    description: achieveId
+metrics:
+  game_gve2_achievereward_cnt:
+    expression: COUNT(*)
+    description: GVE2 成就奖励领取事件总次数（每次领取计一条）
+  game_gve2_achievereward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取 GVE2 成就奖励的去重角色数（分析主体 role_id）
+  game_gve2_achievereward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取 GVE2 成就奖励的去重账号数
+  game_gve2_achievereward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的游戏服数量
+  game_gve2_achievereward_achieve_kinds:
+    expression: COUNT(DISTINCT CAST(GET_JSON_OBJECT(params, '$.achieveId') AS BIGINT))
+    description: 被领取的 GVE2 成就种类数（基于 params.achieveId）
+  game_gve2_achievereward_expcoin_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.expCoin') AS BIGINT))
+    description: GVE2 成就奖励发放的经验卷轴总量（params.coinList.expCoin 求和，主要奖励产出）
+  game_gve2_achievereward_energy_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.energy') AS BIGINT))
+    description: GVE2 成就奖励发放的体力总量（params.coinList.energy 求和）
+  game_gve2_achievereward_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: GVE2 成就奖励发放的充值钻石总量（params.coinList.gold 求和，多数为 0）
+  game_gve2_achievereward_cnt_per_role:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均领取次数（总次数/去重角色数，使用 NULLIF 防除零）
+coverage:
+  scenarios:
+    - 回答 GVE2 玩法成就奖励的领取热度（次数/角色/账号/服务器覆盖）
+    - 回答成就种类分布（achieve_kinds）与奖励货币发放规模（经验卷轴/体力/充值钻石）
+    - 回答人均领取频次，评估 GVE2 成就系统参与度与奖励经济产出
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度），account_id 为账号粒度补充
+    - coinList.gold 多为 0（实测单日总和仅 591），coinList.diamond 全量为 NULL 故未单列指标
+    - coinList.expCoin 为主要奖励产出（实测单日约 215.5 亿）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=632, role_uv=530, acc_uv=517, server_uv=56, achieve_kinds=54；coinList 子路径（gold/diamond/expCoin/energy）均经 GET_JSON_OBJECT 实测可用。
+coverage_status: analyst_confirmed
+external_refs: []

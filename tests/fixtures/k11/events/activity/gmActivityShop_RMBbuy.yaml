@@ -1,0 +1,129 @@
+name: game.gmActivityShop.RMBbuy
+event_filter: event = 'game.gmActivityShop.RMBbuy'
+description: GM活动商店人民币购买：玩家通过人民币购买GM活动商店商品，记录订单、商品、购买数量及代金券使用。主题粒度为角色(role_id)，ds=20260729单日实测14条事件/14角色/14账号/7服。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  activityId:
+    type: int
+    description: 活动id
+  goodsId:
+    type: int
+    description: 商品id
+  orderUid:
+    type: int
+    description: 订单uid
+  orderId:
+    type: int
+    description: 订单id
+  orderCreateTime:
+    type: int
+    description: 订单创建时间
+  tokenCreateTime:
+    type: int
+    description: token创建时间
+  buyCount:
+    type: int
+    description: 购买数量
+  useVoucher:
+    type: bool
+    description: 是否使用代金券
+  overSell:
+    type: bool
+    description: 是否超卖
+metrics:
+  game_gmActivityShop_RMBbuy_cnt:
+    expression: COUNT(*)
+    description: GM活动商店人民币购买事件总次数
+  game_gmActivityShop_RMBbuy_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与GM活动商店人民币购买的唯一角色数
+  game_gmActivityShop_RMBbuy_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与GM活动商店人民币购买的唯一账号数
+  game_gmActivityShop_RMBbuy_buy_count_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.buyCount') AS BIGINT))
+    description: GM活动商店人民币购买的商品总数量（buyCount累计）
+coverage:
+  scenarios:
+    - 单日GM活动商店RMB购买热度：通过_cnt与_role_uv观察活动购买触发规模与参与角色广度。
+    - 账号与服务器覆盖：_account_uv评估活动购买在账号维度的扩散情况（_server_uv可通过_cnt同级聚合补充）。
+    - 购买数量强度：_buy_count_sum反映累计商品购买量，配合_cnt可得人均购买量分析。
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核；多日趋势/活动周期波动未覆盖。
+    - 主题默认粒度为角色(role_id)；如需账号级聚合请改用_account_uv。
+    - _buy_count_sum依赖params.buyCount字段完整性，未对NULL/异常值单独校验。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: "ds=20260729 scout: cnt=14, role_uv=14, acc_uv=14, server_uv=7, buy_count_sum=14；数值合理（单人单次购买为主），确认上线。"
+  coverage_status: analyst_confirmed
+external_refs: []

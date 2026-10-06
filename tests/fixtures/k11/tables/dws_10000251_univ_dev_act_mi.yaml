@@ -1,0 +1,130 @@
+table_name: dws_10000251_univ_dev_act_mi
+engine: maxcompute
+table_comment: 设备月增量活跃宽表：按月汇总设备（user_type=1）活跃、付费、新增等行为标记与累计量，ds=月初分区。
+description: |-
+  粒度：月增量(_mi)。分析主体=设备（user_type=1）。
+  主要字段：user_type, user_id, act_dur, pay_amt, act, act_fst, pay, pay_fst 等21列。
+domains:
+  - 用户生命周期
+  - 付费经济
+granularity: 月增量(_mi)，分析主体=设备（user_type=1），每设备每月一行
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: act_dur
+    type: int
+    comment: 月累计活跃时长，单位：秒
+    role: measure
+  - name: pay_amt
+    type: decimal
+    comment: 月累计付费金额，单位：元
+    role: measure
+  - name: act
+    type: int
+    comment: 月活跃标记，1-活跃、0-非活跃
+    role: dimension
+  - name: act_fst
+    type: int
+    comment: 月新增标记，新增即首次活跃，1-新增、0-非新增
+    role: dimension
+  - name: pay
+    type: int
+    comment: 月付费标记，1-付费、0-非付费
+    role: dimension
+  - name: pay_fst
+    type: int
+    comment: 月首次付费标记，1-首次付费、0-非首次付费
+    role: dimension
+  - name: act_pv
+    type: int
+    comment: 月累计活跃次数，用“角色登录”事件计算，每登录1次算1次活跃
+    role: measure
+  - name: role_act
+    type: int
+    comment: 当月有角色行为标记，1-是、0-否
+    role: dimension
+  - name: role_act_fst
+    type: int
+    comment: 当月首次有角色行为标记，1-是、0-否
+    role: dimension
+  - name: act_ds_fst
+    type: string
+    comment: 月首次活跃日期
+    role: dimension
+  - name: act_ds_lst
+    type: string
+    comment: 月最后活跃日期
+    role: dimension
+  - name: act_ds_cnt
+    type: int
+    comment: 月活跃天数
+    role: measure
+  - name: pay_ds_cnt
+    type: int
+    comment: 月付费天数
+    role: measure
+  - name: role_act_ds_cnt
+    type: int
+    comment: 当月有角色行为天数
+    role: measure
+  - name: act_last_period
+    type: int
+    comment: 上一时间周期活跃标记，1-活跃、0-非活跃
+    role: dimension
+  - name: pay_last_period
+    type: int
+    comment: 上一时间周期付费标记，1-是、0-否
+    role: dimension
+  - name: act_next_period
+    type: int
+    comment: 下一时间周期活跃标记，1-活跃、0-非活跃
+    role: dimension
+  - name: pay_next_period
+    type: int
+    comment: 下一时间周期付费标记，1-是、0-否
+    role: dimension
+  - name: ds
+    type: string
+    comment: 分区字段-月初
+    role: partition
+metrics:
+  mau:
+    expression: COUNT(DISTINCT user_id)
+    description: 月活跃设备数（_mi 月增量口径，user_type=1 设备主体，act=1 活跃设备去重计数）
+  new_dev:
+    expression: SUM(CASE WHEN act_fst=1 THEN 1 ELSE 0 END)
+    description: 月新增设备数（act_fst=1，首次活跃设备计数）
+  pay_dev:
+    expression: SUM(CASE WHEN pay=1 THEN 1 ELSE 0 END)
+    description: 月付费设备数（pay=1，当月有付费行为的设备计数）
+  pay_amt_tot:
+    expression: SUM(pay_amt)
+    description: 月累计付费金额（_mi 月增量口径，pay_amt 求和，单位：元）
+  pay_rate:
+    expression: SUM(CASE WHEN pay=1 THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 月付费率（付费设备数/活跃设备数，NULLIF 防除零）
+coverage:
+  scenarios:
+    - 设备月度活跃规模与新增设备趋势（mau、new_dev）
+    - 设备付费转化与收入规模（pay_dev、pay_amt_tot、pay_rate）
+    - 月度留存对照（act_last_period/act_next_period 标记可推导留存与流失）
+  limitations:
+    - 仅对 2026-07 月分区（ds=20260701）做了 maxc 抽样实测（mau=26379/new_dev=17383/pay_dev=3500/pay_amt_tot=858434），未做全量跨月复核
+    - _mi 为月增量口径，跨月比较需按 ds 月初分区逐月聚合，不可直接跨月累加 act_dur/act_pv 等累计量
+    - 缺少设备层级维度（机型/渠道/地域等），仅 user_type+user_id 粒度，设备画像细分需关联 dim 表
+    - act_ds_fst/act_ds_lst 为日期字符串(YYYYMMDD)，时间序列分析需类型转换
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: maxc 抽样实测 ds=20260701 通过（user_type=1 单值，5 项指标值合理）；未做全量跨月复核
+dimension_refs: []
+pref_label: 设备月活跃表
+alt_labels:
+  - 月增量

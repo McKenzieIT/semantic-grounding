@@ -1,0 +1,116 @@
+name: game.gacha.chooseReturnActivity
+event_filter: event = 'game.gacha.chooseReturnActivity'
+description: 召唤-选择返场活动卡池：玩家在返场（复刻/回归）活动卡池中进行卡池选择时上报的点击事件，分析主体为 role_id（角色）。参数携带活动id(activityId)、卡池序号(idx)、角色等级(roleLevel)、vip等级(vipLevel)、关键货币(coinList.gold/sendgold/freegold/diamond/expCoin/energy)等24个字段，用于返场卡池参与规模与玩家分层分析。scout 实测 ds=20260729：事件量 395 条，去重角色 395、账号 381、游戏服 130，涉及 1 个 activityId。
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  activityId:
+    type: int
+    description: activityId
+  idx:
+    type: int
+    description: idx
+metrics:
+  game_gacha_choose_return_activity_cnt:
+    expression: COUNT(*)
+    description: 返场活动卡池选择事件总次数（每条日志=一次卡池选择行为）
+  game_gacha_choose_return_activity_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与返场卡池选择的角色去重数（分析主体 role_id）
+  game_gacha_choose_return_activity_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与返场卡池选择的账号去重数
+  game_gacha_choose_return_activity_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及返场卡池选择的游戏服去重数
+  game_gacha_choose_return_activity_activity_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.activityId'))
+    description: 被选择的返场活动卡池（activityId）去重数，用于判断当批返场活动覆盖的卡池数量
+  game_gacha_choose_return_activity_role_per_server:
+    expression: CAST(COUNT(DISTINCT role_id) AS DOUBLE) / NULLIF(COUNT(DISTINCT server_id), 0)
+    description: 平均每游戏服参与返场卡池选择的角色数，反映参与集中度
+coverage:
+  scenarios:
+    - 返场（复刻/回归）活动卡池的玩家参与规模（事件量、角色UV、账号UV、游戏服覆盖数）
+    - 返场活动卡池选择行为按 activityId / idx 维度的卡池分布与热门卡池识别
+    - 与 roleLevel / vipLevel 结合做返场卡池参与玩家的等级分层分析
+    - 跨游戏服参与集中度（role_per_server）评估返场活动的投放均衡性
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核；后续应补充活动周期内多日数据复核
+    - 分析主体默认为 role_id（角色粒度），账号粒度仅作辅助去重
+    - ds=20260729 仅观测到 1 个 activityId，返场活动为限时活动；活动周期外 cnt 可能骤降
+    - 事件本身为"选择卡池"点击行为，不携带抽卡消耗与产出，抽卡消耗/产出需关联 game.gacha.chooseReturn 等 抽卡类事件，本事件不可单独用于充值或产出统计
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729（event='game.gacha.chooseReturnActivity'）：cnt=395, role_uv=395, acc_uv=381, server_uv=130, activity_uv=1；数字合理且去重层级单调递减，事件真实存在且当日有触发。
+coverage_status: analyst_confirmed
+external_refs: []

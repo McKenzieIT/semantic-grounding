@@ -1,0 +1,95 @@
+table_name: dws_10000251_card_coll_df
+engine: maxcompute
+table_comment: 卡牌收集表
+description: |-
+  卡牌收集日全量快照表(_df)，粒度：角色×卡牌（role_id+card_id）每日全量快照，每行代表某角色持有某张卡牌的当前状态。
+  主体：角色(role_id)。主要字段：role_id, server_id, card_id, card_level, card_star, card_force, awake_points, ext_info 等9列。
+domains:
+  - 探索收集
+  - 角色成长
+granularity: 日全量快照(_df)，角色×卡牌粒度，主体=角色(role_id)
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id，key
+    role: dimension
+  - name: card_id
+    type: string
+    comment: 卡牌id，key
+    role: dimension
+  - name: card_level
+    type: bigint
+    comment: 卡牌等级
+    role: measure
+  - name: card_star
+    type: bigint
+    comment: 卡牌星级
+    role: measure
+  - name: card_force
+    type: bigint
+    comment: 卡牌战力
+    role: measure
+  - name: awake_points
+    type: bigint
+    comment: 科技点数，觉醒点数
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  card_holder_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 持有卡牌的角色UV（日全量快照，去重角色数）
+  card_total_count:
+    expression: COUNT(*)
+    description: 卡牌持有总条数（角色×卡牌实例数，日全量快照）
+  card_kind_count:
+    expression: COUNT(DISTINCT card_id)
+    description: 在架卡牌种类数（去重card_id）
+  total_card_force:
+    expression: SUM(card_force)
+    description: 全角色卡牌战力总和
+  avg_card_force:
+    expression: SUM(card_force) / NULLIF(COUNT(*), 0)
+    description: 单卡平均战力（总战力/卡牌实例数）
+coverage:
+  scenarios:
+    - 角色卡牌持有规模（UV/总条数/种类数），衡量卡牌收集广度
+    - 卡牌战力总量与均值，衡量角色卡牌养成深度
+    - 按 server_id 分组评估各区服卡牌收集与养成分布
+  limitations:
+    - 仅 scout 抽样验证（latest ds=20260730 实测 role_uv/card_kind/total_force 合理），未做全量 maxc 多日复核
+    - _df 为日全量快照，指标反映当日状态而非日增量；跨日比较需注意快照口径
+    - awake_points 历史样本可见 NULL，相关指标在部分日期可能为空
+    - 无 user_type 列，主体经 role_id 推断为角色(role)；未做 user_type 实值校验
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: latest ds=20260730 实测 COUNT(DISTINCT role_id)=2298295、COUNT(DISTINCT card_id)=71、SUM(card_force)=5972070439740，值合理；指标为结构性聚合，已 analyst_confirmed。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (区服id) exactly matches the DIM PK server_id; dim_10000251_server_info is the 区服 dimension providing server name and open-time attributes.
+    origin: deterministic
+  - dim_table: dim_10000251_trans_card_df
+    join_keys:
+      - dws_column: card_id
+        dim_column: id
+    derivation: DWS card_id (卡牌id) semantically maps to trans_card_df PK id (武将/卡牌配置主键); trans_card_df is the card/武将 config dimension for this game.
+pref_label: 卡牌收集表
+alt_labels:
+  - 收集
+  - 持有
+  - 星级

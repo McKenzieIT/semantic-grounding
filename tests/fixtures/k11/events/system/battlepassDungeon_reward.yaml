@@ -1,0 +1,148 @@
+name: game.battlepassDungeon.reward
+event_filter: event = 'game.battlepassDungeon.reward'
+description: 战令-领取奖励：角色在战令(battlepass)地下城领取奖励时触发的埋点事件，记录领奖行为、战令id/order、豪华版等级(bpVipLevel)、自选奖励索引(flexiIndex)以及发放的关键货币(充值钻石/赠送钻石/免费钻石/紫金/经验卷轴/体力)等。分析粒度以 role_id 为主(单角色领奖)，account_id 可作为账号级聚合。ds=20260729 单日实测：领奖 2788 次、角色 UV 1112、账号 UV 1063、覆盖 122 个游戏服。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  battlepassId:
+    type: int
+    description: 战令id
+  order:
+    type: int
+    description: 战令order
+  bpVipLevel:
+    type: int
+    description: 豪华版等级
+  flexiIndex:
+    type: int
+    description: 自选奖励索引
+metrics:
+  battlepass_dungeon_reward_cnt:
+    expression: COUNT(*)
+    description: 战令地下城领奖总次数
+  battlepass_dungeon_reward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领奖独立角色数(主分析粒度，去重 role_id)
+  battlepass_dungeon_reward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领奖独立账号数(去重 account_id)
+  battlepass_dungeon_reward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领奖覆盖的游戏服数(去重 server_id)
+  battlepass_dungeon_reward_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 发放充值钻石总量(coinList.gold 求和)
+  battlepass_dungeon_reward_freegold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.freegold') AS BIGINT))
+    description: 发放免费钻石总量(coinList.freegold 求和)
+  battlepass_dungeon_reward_diamond_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.diamond') AS BIGINT))
+    description: 发放紫金总量(coinList.diamond 求和，当日可能为 NULL/0)
+  battlepass_dungeon_reward_order_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.order'))
+    description: 命中的战令order种类数(去重 order)
+  battlepass_dungeon_reward_avg_cnt_per_role:
+    expression: ROUND(CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0), 2)
+    description: 人均领奖次数(总次数/独立角色，NULLIF 防零除)
+coverage:
+  scenarios:
+    - 战令地下城领奖活跃度与角色/账号/区服覆盖(battlepass_dungeon_reward_cnt / _role_uv / _account_uv / _server_uv)
+    - 战令奖励货币发放规模与人均领奖频次(_gold_sum / _freegold_sum / _diamond_sum / _avg_cnt_per_role)
+    - 战令order命中种类(_order_uv，反映领奖档位分布)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量多日复核，建议接入生产流量前抽查
+    - 分析粒度默认 role_id(单角色领奖)，account_id 仅作账号级聚合参考，未逐事件实测角色归属
+    - coinList.diamond 当日返回 NULL，紫金发放量指标(_diamond_sum)可能为空，需结合多日复核
+    - 本游戏无 MaxCompute 事件分布查询，无 daily_count/total_count/active_days
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729：领奖 cnt=2788、role_uv=1112、acc_uv=1063、server_uv=122；货币发放 freegold_sum=17393489、gold_sum=1640、diamond_sum=NULL；battlepassId 去重=1、order 去重=5
+coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_knight_awaken_info_arch
+    join_keys:
+      - dws_column: order
+        dim_column: order
+    derivation: 确定性：事件字段 order 与 dim_10000251_knight_awaken_info_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_story_df
+    join_keys:
+      - dws_column: order
+        dim_column: order
+    derivation: 确定性：事件字段 order 与 dim_10000251_trans_story_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_story_df_arch
+    join_keys:
+      - dws_column: order
+        dim_column: order
+    derivation: 确定性：事件字段 order 与 dim_10000251_trans_story_df_arch 主键精确同名
+    origin: deterministic

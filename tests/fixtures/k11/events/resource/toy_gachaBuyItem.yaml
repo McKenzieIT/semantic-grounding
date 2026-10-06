@@ -1,0 +1,119 @@
+name: game.toy.gachaBuyItem
+event_filter: event = 'game.toy.gachaBuyItem'
+description: toy 玩具抽卡购买事件：角色在玩具系统卡池（gachaId）购买抽卡道具时上报，记录每次购买的卡池id(gachaId)、购买数量(count)及角色基础信息与货币快照(coinList)。分析主体粒度为 role_id（角色），单次购买行为计为一条日志。ds=20260729 实测：cnt=26，role_uv=23，acc_uv=23，server_uv=14；当日购买次数(count合计) 2373，涉及卡池去重 9。
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  gachaId:
+    type: int
+    description: gachaId
+  count:
+    type: int
+    description: count
+metrics:
+  game_toy_gachaBuyItem_cnt:
+    expression: COUNT(*)
+    description: 玩具抽卡购买日志条数（每次购买行为一条）
+  game_toy_gachaBuyItem_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 发起购买的角色去重数（分析主体粒度 role_id）
+  game_toy_gachaBuyItem_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 发起购买的账号去重数
+  game_toy_gachaBuyItem_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及购买的游戏服去重数
+  game_toy_gachaBuyItem_buy_count_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.count') AS BIGINT))
+    description: 当期累计购买次数（count 求和，单次购买数量合计）
+  game_toy_gachaBuyItem_gacha_pool_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.gachaId'))
+    description: 命中的卡池去重数（gachaId）
+  game_toy_gachaBuyItem_pull_per_role:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.count') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id),0)
+    description: 人均购买次数 = 购买次数合计 / 角色去重数（NULLIF 防零除）
+coverage:
+  scenarios:
+    - 通过 role_uv/account_uv 评估玩具抽卡的角色/账号渗透规模
+    - 通过 buy_count_sum、pull_per_role 衡量抽卡产出强度与人均购买力度，辅助卡池热度与商业化调优
+    - 通过 gacha_pool_uv 监控卡池覆盖与热度分布
+    - 通过 server_uv 与按服维度聚合，定位高活跃抽卡服
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量多日复核；多日趋势需另行批量校验
+    - 分析主体粒度默认 role_id（角色），未对 account_id 跨角色复购做去重校验
+    - coinList（货币快照）为购买时刻的余额截面，非本次抽卡消耗，未在本事件 metrics 内展开逐元素求和，如需按货币类型聚合需单独建模
+    - count 为单次购买数量，与日志条数(cnt)口径不同，pull_per_role 分母为 role_uv 去重角色数，仅作人均强度参考
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=26, role_uv=23, acc_uv=23, server_uv=14; count合计=2373, gachaId去重=9, count非空率=26/26。数值合理，event+ds 双过滤命中，确认在线可查。
+coverage_status: analyst_confirmed
+external_refs: []

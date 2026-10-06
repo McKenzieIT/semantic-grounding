@@ -1,0 +1,49 @@
+table_name: dim_10000251_trans_props_df
+engine: maxcompute
+kind: dim
+table_comment: '道具/交易配置维度表(_df 日全量快照)：每行一个道具(id)，含名称、品质、类型、备注。'
+description: '交易/道具配置维度表（_df 日全量快照）。每行一个道具(id)，提供名称(name)、品质(quality)、类型(type)、备注(remark)等配置属性。用于事实表 JOIN 获取道具维度标签。粒度：每行一个道具配置。'
+primary_key: [id]
+label_columns: [name]
+primary_key_unique: false
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+domains:
+- 装备道具
+granularity: 每个道具(id)一行的配置/维度表（_df 日全量快照）
+columns:
+- name: id
+  type: string
+  comment: 道具id
+  role: dimension
+- name: name
+  type: string
+  comment: 道具名称
+  role: dimension
+- name: quality
+  type: bigint
+  comment: 品质
+  role: dimension
+- name: remark
+  type: string
+  comment: 备注
+  role: dimension
+- name: type
+  type: string
+  comment: 道具类型
+  role: dimension
+coverage:
+  scenarios:
+  - 事实表通过 id JOIN 本表，获取道具名称、品质、类型等维度标签用于分组/筛选
+  - 支持按品质(quality)、类型(type)对交易/产出事实做聚合分析
+  limitations:
+  - 配置类维度表，无值度量；quality 仅为品质等级属性，非可度量数值
+  - primary_key_unique=false：实测 r=558 / d=557，存在 id 重复行，JOIN 事实表前需确认重复来源
+  - name/remark 可能存在空值或占位符（样本中 remark 出现 '·'），使用前建议清洗
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '初版 dim 建模：pk=id（meta 标注但实测有1行重复，未达唯一），label=name；domain 装备道具；status=draft 待业务确认。'

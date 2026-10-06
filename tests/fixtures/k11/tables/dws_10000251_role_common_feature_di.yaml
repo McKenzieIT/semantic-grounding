@@ -1,0 +1,195 @@
+table_name: dws_10000251_role_common_feature_di
+engine: maxcompute
+table_comment: ""
+description: |
+  角色通用特征日增量表,记录每个角色在每日的通用属性与状态快照,涵盖角色基础信息(等级/名称/战力/VIP)、
+  各类货币余额(coinlist_*、diamond)、公会归属与公会信息、赛季/联赛阶段、在线时长、注册时间等。
+  粒度:日增量(di),每角色每天一行,记录当日角色通用特征快照。
+  主体类型:表名含"role"且存在 role_id 字段 → 【角色表】,分析主体=角色,标识字段=role_id,账号标识字段=ejoyid,分区字段=ds。
+  能回答的业务问题(配合指标字典 metrics 可直接计算的常用度量):
+  - 角色货币余额分布(金币/钻石/券/能量/债/友情点等)及付费货币沉淀情况;
+  - 角色战力(roleforce)、等级(rolelevel)、VIP 等级分布与分层;
+  - 角色所属公会(guildid/guildname)、公会等级/战力/会长;
+  - 角色赛季/联赛阶段(season/league/seasonactstage)进度分布;
+  - 角色在线时长、注册时间分布,判断新老与活跃度;
+  - 服务器/区服(server_id/serverzone/serialid)维度的角色特征对比。
+  注意事项:
+  - 所有列存储类型为 string,但 coinlist_*、diamond、roleforce、guildlv、guildpower、membercount、onlinetime、rolelevel、viplevel 等语义为数值,聚合前需 CAST 转换(CAST 失败可能抛错,生产使用前需确保源数据可数值解析或 ETL 侧清洗);
+  - coinlist_* 为余额快照(当日结余),非流水增减,不可直接累加为发生额;余额类指标聚合的是当日结余快照,付费货币沉淀需配 AVG/SUM 而非发生额;
+  - ejoyid 为账号标识,可用于角色到账号的归并;
+  - guildidold 为历史公会ID,用于分析公会变动;
+  - 本表为 di 增量,仅含当日有变更/活跃的角色,跨日累计需按 role_id 去重,总量类指标(如 diamond_total)仅覆盖当日有快照角色,非全量角色池。
+domains:
+  - 角色成长
+  - 社交公会
+  - 付费经济
+granularity: 日增量(di),每角色每天一行,记录当日角色通用特征快照;分析主体=角色(【角色表】),标识字段=role_id,账号标识字段=ejoyid,分区键=ds
+columns:
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 服务器ID
+    role: dimension
+  - name: coinlist_coin2
+    type: string
+    comment: ""
+    role: dimension
+  - name: coinlist_coin3
+    type: string
+    comment: ""
+    role: dimension
+  - name: coinlist_energy
+    type: string
+    comment: ""
+    role: measure
+  - name: coinlist_expcoin
+    type: string
+    comment: ""
+    role: dimension
+  - name: coinlist_freegold
+    type: string
+    comment: ""
+    role: measure
+  - name: coinlist_gold
+    type: string
+    comment: ""
+    role: measure
+  - name: coinlist_sendgold
+    type: string
+    comment: ""
+    role: dimension
+  - name: createtime
+    type: string
+    comment: ""
+    role: dimension
+  - name: exp
+    type: string
+    comment: ""
+    role: dimension
+  - name: guildid
+    type: string
+    comment: ""
+    role: dimension
+  - name: guildlv
+    type: string
+    comment: ""
+    role: measure
+  - name: guildname
+    type: string
+    comment: ""
+    role: attribute
+  - name: guildpower
+    type: string
+    comment: ""
+    role: measure
+  - name: homelevel
+    type: string
+    comment: ""
+    role: dimension
+  - name: lastinglist
+    type: string
+    comment: ""
+    role: dimension
+  - name: onlinetime
+    type: string
+    comment: ""
+    role: measure
+  - name: roleforce
+    type: string
+    comment: ""
+    role: dimension
+  - name: rolelevel
+    type: string
+    comment: ""
+    role: measure
+  - name: rolename
+    type: string
+    comment: ""
+    role: attribute
+  - name: roletitle
+    type: string
+    comment: ""
+    role: dimension
+  - name: sex
+    type: string
+    comment: ""
+    role: dimension
+  - name: viplevel
+    type: string
+    comment: ""
+    role: measure
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: dimension
+metrics:
+  role_count:
+    expression: COUNT(DISTINCT role_id)
+    description: 角色数,统计当日有记录(增量快照)的不同角色数量,受 di 增量口径限制非全量角色
+  avg_rolelevel:
+    expression: AVG(CAST(rolelevel AS DOUBLE))
+    description: 平均角色等级,rolelevel 为 string 需 CAST 后求均值
+  rolelevel_tier_role_count:
+    expression: COUNT(DISTINCT CASE WHEN CAST(rolelevel AS DOUBLE) >= 60 THEN role_id END)
+    description: 高等级角色数(等级>=60,阈值可按业务调整),用于等级分层
+  avg_gold_balance:
+    expression: AVG(CAST(coinlist_gold AS DOUBLE))
+    description: 平均金币余额,游戏内基础货币人均沉淀,coinlist_gold 为 string 需 CAST
+  vip_role_count:
+    expression: COUNT(DISTINCT CASE WHEN CAST(viplevel AS DOUBLE) > 0 THEN role_id END)
+    description: VIP 角色数,VIP 等级>0 的角色数量,衡量付费特权用户规模
+  vip_role_ratio:
+    expression: AVG(CASE WHEN CAST(viplevel AS DOUBLE) > 0 THEN 1 ELSE 0 END)
+    description: VIP 角色占比,VIP 等级>0 的角色比例,衡量付费特权渗透率
+  avg_viplevel:
+    expression: AVG(CAST(viplevel AS DOUBLE))
+    description: 平均 VIP 等级,viplevel 为 string 需 CAST 后求均值
+  guild_role_ratio:
+    expression: AVG(CASE WHEN guildid IS NOT NULL AND guildid <> '' THEN 1 ELSE 0 END)
+    description: 有公会角色占比,guildid 非空非空串即视为已加入公会,衡量公会渗透率
+  avg_guild_power:
+    expression: AVG(CAST(guildpower AS DOUBLE))
+    description: 平均公会战力,角色所属公会的平均势力值(按角色行均值,非公会维度去重)
+coverage:
+  scenarios:
+    - 角色活跃规模统计:当日有快照的角色数、活跃角色数(在线时长>0)、涉及账号数、角色账号比
+    - 战力分层分析:平均/中位/P90 战力、高战力(>=10万)角色数,识别头部与长尾分布
+    - 等级分布分析:平均等级、高等级(>=60)角色数,评估整体成长进度
+    - 付费货币沉淀分析:平均钻石余额、钻石沉淀合计、持有钻石角色占比,衡量付费货币人均与整体沉淀
+    - 免费货币与代用券余额分析:平均金币/流通金币余额、优惠券/充值券/友情点等余额分布
+    - VIP 付费分层分析:VIP 角色数、占比、平均 VIP 等级,衡量付费特权渗透
+    - 公会归属与公会特征分析:有公会角色占比、平均公会成员数、平均公会战力,评估公会覆盖与规模
+    - 赛季/联赛阶段进度分布:角色当前赛季、联赛段位、赛季活动阶段分布
+    - 在线时长活跃度分析:平均/中位在线时长,衡量角色活跃强度
+    - 新老角色分布:基于 regtime 注册时间快照按注册日期分群判断新老构成
+    - 服务器/区服维度对比:按 server_id/serverzone/serialid 聚合上述各指标对比各区服角色特征
+  limitations:
+    - di 增量口径:仅含当日有变更/活跃的角色快照,不含当日未上线/未变更的全量角色,跨日累计需按 role_id 去重,不可直接当作全量角色池;总量类指标(如 diamond_total)仅覆盖当日有快照角色
+    - coinlist_* 与 diamond 为余额快照(当日结余),不可累加为发生额,无法回答某段时间内的货币产出/消耗流水
+    - 无流水明细与付费订单数据,无法拆解货币来源(付费/活动/任务)与发生额,需关联付费流水或货币变动表
+    - 无留存/转化率指标,无法直接回答次日/7日留存,需关联用户生命周期宽表(dws_*_lifecycle)
+    - 无事件级行为明细(登录/战斗/付费事件),无法回答具体行为路径与转化漏斗
+    - 货币数值单位为游戏内单位,非现实货币,不可直接折算为收入金额
+    - IP/regtime/onlinetime 等为当日快照,非全量历史,无法回溯历史登录IP轨迹或注册当日精确事件
+    - guildidold 仅记录变更前公会ID,无法完整还原公会变更历史链路,需关联公会变动流水
+    - membercount/guildpower 按角色行聚合为均值,如需公会维度精确值需按 guildid 去重后再聚合
+    - 数值列均为 string,聚合前需 CAST;若源数据含非法字符串 CAST 可能抛错,生产使用前需确保可数值解析或 ETL 侧清洗
+    - onlinetime 列经 maxc 实测(ds=20260710)为【最后在线的 Unix 时间戳(秒)】,非在线时长;原移植自 10000312 的 active_role_count/avg_onlinetime_sec/median_onlinetime_sec 三个"在线时长(秒)"指标因语义错误已移除(平均时间戳≈1.78e9,无业务意义);本 di 表仅含当日活跃角色,active 等价 role_count;如需真实在线时长须关联在线时长明细表
+    - 描述/coverage.scenarios 中引用的 season/league/seasonactstage/serverzone/serialid/diamond/regtime 等列在本表 schema 中均不存在(经 meta describe 核验),相关场景仅作参考,不可直接计算
+  coverage_status: draft
+confirmation:
+  status: draft
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: maxc 实测核验(2026-07-30):25列全量存在(与meta describe一致,无user_type列,role_id为主键→角色表);粒度正确(ds=20260710:4035行=4035角色,1行/角色);8/11指标实测合理(role_count=4035,avg_rolelevel=67.02,avg_gold_balance=17.72,vip_role_ratio=0,guild_role_ratio=1.0,avg_guild_power=0);发现onlinetime实为Unix时间戳非时长,移除active_role_count/avg_onlinetime_sec/median_onlinetime_sec三个语义错误指标并加limitations;剔除domains中无列支撑且非白名单的"活动运营";最新ds=20260710(数据已停更19天,20260729分区为空)。因有指标判定为已损坏并移除,维持draft,待业务侧确认在线时长口径与数据恢复。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (comment '服务器ID') is an exact name match to dim_10000251_server_info primary key server_id, and the DIM is explicitly designed to be joined by server_id to look up server name and open-date attributes.
+    origin: deterministic
+pref_label: 角色通用特征日表

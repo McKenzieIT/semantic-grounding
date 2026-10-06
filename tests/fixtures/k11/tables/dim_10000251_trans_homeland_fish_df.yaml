@@ -1,0 +1,51 @@
+table_name: dim_10000251_trans_homeland_fish_df
+engine: maxcompute
+table_comment: 家园钓鱼玩法的鱼类配置维度表（日全量快照 _df），存储每条鱼的 id、名字、品质等属性，供事务表 JOIN 查询鱼类属性维度。
+description: |
+  家园（homeland）钓鱼玩法的鱼类配置维度表，日全量快照（_df）。
+  每行一条鱼类配置记录，包含鱼的 id、名字、品质。
+  用途：作为鱼类属性维度表，供 homeland 事务表（如钓鱼记录）通过 fish_id JOIN 查询鱼的名称与品质。
+granularity: 每条鱼一行的配置维度表（日全量快照 _df）
+kind: dim
+domains:
+- 系统监控
+primary_key:
+- id
+label_columns:
+- name
+primary_key_unique: true
+columns:
+- name: id
+  type: string
+  comment: 鱼的id
+  role: dimension
+- name: name
+  type: string
+  comment: 鱼的名字
+  role: dimension
+- name: quality
+  type: string
+  comment: 鱼的品质
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 鱼类配置维度表总行数
+coverage:
+  scenarios:
+  - 家园钓鱼事务表通过 fish_id JOIN 本表，查询所钓鱼的名称与品质
+  - 按品质分组统计各类鱼被钓次数/玩家分布
+  - 维度下拉值列表（鱼名、品质枚举）
+  limitations:
+  - 配置类维度表，无值度量（仅字符串维度属性）
+  - 品质字段为数字编码字符串（如 "3"、"6"），需二次映射为品质名称
+  - 日全量快照 _df，可能存在历史配置变更但本表仅保留当日版本
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: |
+    基于 maxc meta describe 确认 3 列（id/name/quality）类型与注释一致；
+    primary_key=id（meta 与样例均显示唯一标识），实测 SELECT COUNT(*)=53, COUNT(DISTINCT id)=53 -> primary_key_unique=true；
+    label_columns=name（人类可读鱼类名称）；quality 为数字编码需二次解码；
+    状态保持 draft 待业务确认。

@@ -1,0 +1,123 @@
+name: game.function.previewReward
+event_filter: event = 'game.function.previewReward'
+description: 玩家领取功能预告奖励时上报的事件：curRewarded 为本次领取的预告 id 列表，rewards 为获得的资源明细，coinList 反映领取前后关键货币存量。分析主体为 role_id（角色级，含 roleLevel/vipLevel/roleForce 等）。scout 实测 ds=20260729 单日 2247 次领取、覆盖 1339 角色 / 1289 账号 / 81 服。
+domains:
+  - 系统监控
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  curRewarded:
+    type: array
+    description: 本次领取的预告id
+  rewards:
+    type: array
+    description: 获得的资源
+  rewards.type:
+    type: int
+    description: 类型
+  rewards.value:
+    type: int
+    description: 值
+  rewards.size:
+    type: int
+    description: 数量
+  rewards.uid:
+    type: int
+    description: 唯一id
+metrics:
+  preview_reward_cnt:
+    expression: COUNT(*)
+    description: 功能预告奖励领取总次数（事件总行数）
+  preview_reward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取功能预告奖励的去重角色数（分析主体为 role_id）
+  preview_reward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取功能预告奖励的去重账号数
+  preview_reward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的去重游戏服数
+  preview_reward_per_role_rate:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均领取次数（总次数 / 去重角色数）
+coverage:
+  scenarios:
+    - 功能预告奖励的日活角色渗透与领取频次（人均领取次数）
+    - 跨服分发覆盖（去重游戏服数）评估预告奖励投放面
+    - 账号维度去重用于跨角色账号聚合统计
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认为 role_id（事件含 roleId/roleName/roleLevel 等角色级字段）
+    - rewards/curRewarded/coinList 为 JSON 数组字段，未在 metrics 内展开逐项求和（需 explode，不在本视图 JOIN-free 范围）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=2247, role_uv=1339, acc_uv=1289, server_uv=81；数字合理，事件命中正常"
+coverage_status: analyst_confirmed
+external_refs: []

@@ -1,0 +1,287 @@
+table_name: dws_10000251_role_server_base_df
+engine: maxcompute
+table_comment: 角色-区服维度日全量快照（_df）：每业务日每角色(role_id)在每区服(server_id)一行累计画像。
+description: 粒度：日全量快照(_df)，每业务日(ds)每角色(role_id)在每区服(server_id)一行累计画像。分析主体=角色（user_type=3，由表名 role 推断；该表无 user_type 列，主体按角色-区服汇总定义）。涵盖首/末次活跃与付费(时间/账号/utdid)、近期7/30天及累计活跃(pv/days/dur)与付费(pv/days/amt)、滚服标识、归因推广等角色-区服级画像字段。
+domains:
+  - 用户生命周期
+  - 付费经济
+granularity: 日全量快照(_df)：每业务日每角色-区服一行
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: os_id
+    type: int
+    comment: 平台id
+    role: dimension
+  - name: ip
+    type: string
+    comment: ip
+    role: dimension
+  - name: ip_country
+    type: string
+    comment: ip国家
+    role: dimension
+  - name: ip_province
+    type: string
+    comment: ip省份
+    role: dimension
+  - name: ip_city
+    type: string
+    comment: ip城市
+    role: dimension
+  - name: pkg_name
+    type: string
+    comment: 包名
+    role: dimension
+  - name: ch_type
+    type: string
+    comment: 渠道，又叫1渠
+    role: dimension
+  - name: ch_id
+    type: string
+    comment: 渠道id，又叫2渠
+    role: dimension
+  - name: app_ver
+    type: string
+    comment: 端版本
+    role: dimension
+  - name: role_name_fst
+    type: string
+    comment: 首次角色名
+    role: dimension
+  - name: role_name_lst
+    type: string
+    comment: 最近角色名
+    role: dimension
+  - name: born_server_id_fst
+    type: string
+    comment: 首次出生区服id
+    role: dimension
+  - name: born_server_id_lst
+    type: string
+    comment: 最近出生区服id
+    role: dimension
+  - name: act_tm_fst
+    type: datetime
+    comment: 首次活跃时间
+    role: dimension
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近活跃时间
+    role: dimension
+  - name: act_utdid_fst
+    type: string
+    comment: 首次活跃utdid
+    role: dimension
+  - name: act_utdid_lst
+    type: string
+    comment: 最近活跃utdid
+    role: dimension
+  - name: act_account_id_fst
+    type: string
+    comment: 首次活跃账号id
+    role: attribute
+  - name: act_account_id_lst
+    type: string
+    comment: 最近活跃账号id
+    role: attribute
+  - name: pay_tm_fst
+    type: datetime
+    comment: 首次付费时间
+    role: dimension
+  - name: pay_amt_fst
+    type: decimal
+    comment: 首次付费金额，单位：元
+    role: measure
+  - name: pay_tm_lst
+    type: datetime
+    comment: 最近付费时间
+    role: dimension
+  - name: pay_amt_lst
+    type: decimal
+    comment: 最近付费金额，单位：元
+    role: measure
+  - name: pay_amt_f1d
+    type: decimal
+    comment: 首日付费金额，单位：元
+    role: measure
+  - name: pay_amt_f1w
+    type: decimal
+    comment: 首7日付费金额，单位：元
+    role: measure
+  - name: pay_amt_f1m
+    type: decimal
+    comment: 首30日付费金额，单位：元
+    role: measure
+  - name: act_days_1w
+    type: int
+    comment: 最近7天活跃天数
+    role: measure
+  - name: act_pv_1w
+    type: int
+    comment: 最近7天活跃次数
+    role: measure
+  - name: act_dur_1w
+    type: int
+    comment: 最近7天在线时长，单位：秒
+    role: measure
+  - name: pay_days_1w
+    type: int
+    comment: 最近7天付费天数
+    role: measure
+  - name: pay_pv_1w
+    type: int
+    comment: 最近7天付费次数
+    role: measure
+  - name: pay_amt_1w
+    type: decimal
+    comment: 最近7天付费金额，单位：元
+    role: measure
+  - name: act_days_1m
+    type: int
+    comment: 最近30天活跃天数
+    role: measure
+  - name: act_pv_1m
+    type: int
+    comment: 最近30天活跃次数
+    role: measure
+  - name: act_dur_1m
+    type: int
+    comment: 最近30天在线时长，单位：秒
+    role: measure
+  - name: pay_days_1m
+    type: int
+    comment: 最近30天付费天数
+    role: measure
+  - name: pay_pv_1m
+    type: int
+    comment: 最近30天付费次数
+    role: measure
+  - name: pay_amt_1m
+    type: decimal
+    comment: 最近30天付费金额，单位：元
+    role: measure
+  - name: act_days_std
+    type: int
+    comment: 累计活跃天数
+    role: measure
+  - name: act_pv_std
+    type: int
+    comment: 累计活跃次数
+    role: measure
+  - name: act_dur_std
+    type: int
+    comment: 累计活跃时长，单位：秒
+    role: measure
+  - name: roll_server_flag
+    type: int
+    comment: 滚服标识，取值：1:滚服/0:非滚服
+    role: dimension
+  - name: act_ymd_diff1
+    type: int
+    comment: 最近2次活跃日期间隔
+    role: measure
+  - name: act_ymd_diff2
+    type: int
+    comment: 最近活跃日期与ds间隔
+    role: measure
+  - name: pay_days_std
+    type: int
+    comment: 累计付费天数
+    role: measure
+  - name: pay_pv_std
+    type: int
+    comment: 累计付费次数
+    role: measure
+  - name: pay_amt_std
+    type: decimal
+    comment: 累计付费金额，单位：元
+    role: measure
+  - name: pay_amt_max
+    type: decimal
+    comment: 最大单次付费金额，单位：元
+    role: measure
+  - name: pay_amt_min
+    type: decimal
+    comment: 最小单次付费金额，单位：元
+    role: measure
+  - name: pay_amt_max2
+    type: decimal
+    comment: 最大单天付费金额，单位：元
+    role: measure
+  - name: pay_amt_min2
+    type: decimal
+    comment: 最小单天付费金额，单位：元
+    role: measure
+  - name: attr_ad_id
+    type: string
+    comment: 归因推广活动id
+    role: dimension
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 角色数UV：当日快照下去重角色数（角色-区服粒度主体指标）
+  pay_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN role_id END)
+    description: 累计付费角色数：累计付费金额>0的去重角色数
+  pay_amt_std_total:
+    expression: SUM(pay_amt_std)
+    description: 累计付费总金额（元）：快照内角色累计付费金额之和
+  pay_rate:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN role_id END) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 付费转化率：累计付费角色数 / 角色数
+  arppu_std:
+    expression: SUM(pay_amt_std) / NULLIF(COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN role_id END), 0)
+    description: 累计付费角色ARPPU（元/付费角色）：累计付费总金额 / 累计付费角色数
+coverage:
+  scenarios:
+    - 角色规模与活跃：快照角色数UV、累计付费角色数
+    - 付费经济：累计付费总金额、付费转化率、ARPPU
+    - 留存与生命周期：首/末次活跃时间、累计活跃天数、最近2次活跃间隔(act_ymd_diff1)、最近活跃日期与ds间隔(act_ymd_diff2)
+    - 渠道与平台画像：按 os_id/ch_type/ch_id/app_ver/ip_country 拆分角色规模与付费
+  limitations:
+    - 仅 scout 抽样验证，未做全量 maxc 实测复核
+    - 全表零行：maxc 实测 SELECT MAX(ds)=NULL；该 dws 角色-区服汇总表疑似未产出数据/历史遗留空表，无法验证指标合理性
+    - 主体 user_type=3 为由表名 role 推断；该表无 user_type 列，未做 SELECT DISTINCT 实测确认
+    - 仅定义角色-区服粒度聚合指标；跨区服/跨角色明细拆分未实测
+    - _df 为日全量快照，每 ds 每角色-区服一行累计值；跨 ds 不可直接累加，须以单 ds 快照为准
+  coverage_status: draft
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已通过 maxc meta describe 校验全部56列真实名称/类型/注释并据实重排 role（标识/分组键->dimension，可聚合数值->measure，文本属性->attribute）。但 maxc 实测全表零行（MAX(ds)=NULL），无法验证指标合理性，故保持 draft；指标表达式仅使用已校验真实列且除法均带 NULLIF，待数据产出后复核可升 analyst_confirmed。
+kind: dws
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+      - dws_column: born_server_id_fst
+        dim_column: server_id
+      - dws_column: born_server_id_lst
+        dim_column: server_id
+    derivation: DWS columns server_id (区服id), born_server_id_fst (首次出生区服id) and born_server_id_lst (最近出生区服id) are all server identifiers matching primary key server_id of dim_10000251_server_info (服务器区服维度配置表, purpose-built for fact-table server_id JOIN).
+pref_label: 角色区服基础表
+alt_labels:
+  - 全服
+  - 角色
+  - 在线
+  - 区服
+  - 服务器
+  - 付费金额
+  - 等级

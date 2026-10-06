@@ -1,0 +1,166 @@
+name: game.resort.new
+event_filter: event = 'game.resort.new'
+description: 代打功能-发起请求事件：玩家通过代打（proxy/resort）玩法发起一次代打请求时上报，记录请求行为本身、发起角色画像（等级/VIP/战力/经验）及发起时刻的货币快照（coinList），并附带请求类型 type(实测1/3/4/5)与档位 bonus。分析主体默认 role_id。实测 ds=20260729：cnt=232 / role_uv=177 / acc_uv=176 / server_uv=25。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  requestId:
+    type: string
+    description: 请求id
+  type:
+    type: int
+    description: 类型
+  value1:
+    type: int
+    description: 值1
+  value2:
+    type: int
+    description: 值2
+  bonus:
+    type: int
+    description: 档位
+metrics:
+  resort_new_cnt:
+    expression: COUNT(*)
+    description: 代打发起请求总次数
+  resort_new_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 发起代打请求的去重角色数（默认分析主体 role_id）
+  resort_new_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 发起代打请求的去重账号数
+  resort_new_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 命中代打请求的去重游戏服数
+  resort_new_type4_cnt:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params, '$.type') AS BIGINT) = 4 THEN 1 ELSE 0 END)
+    description: type=4 代打请求次数（实测最大占比类型）
+  resort_new_per_role_req:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 每个发起角色的平均代打请求次数（>1 表示同角色当日多次发起）
+coverage:
+  granularity: 单次代打发起请求事件（role_id 为默认主体粒度）
+  scenarios:
+    - 代打功能日均请求量与参与角色/账号/游戏服规模
+    - 各代打类型 type(1/3/4/5) 的请求分布与渗透
+    - 人均代打请求次数反映玩家代打使用强度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - params.type 枚举(实测值1/3/4/5)的业务含义需业务侧进一步确认
+    - coinList.* 为发起请求时的货币快照余额，非交易流水，不计 SUM
+    - 分析主体默认 role_id，未逐事件实测 role_id 是否为最细主体
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=232 / role_uv=177 / acc_uv=176 / server_uv=25；type 分布 4:153 / 1:68 / 5:7 / 3:4
+external_refs:
+  - dim_table: dim_10000251_trans_gacha_mission_group_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_gacha_mission_group_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df_arch 主键精确同名
+    origin: deterministic

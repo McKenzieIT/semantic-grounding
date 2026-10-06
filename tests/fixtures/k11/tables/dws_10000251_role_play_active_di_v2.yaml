@@ -1,0 +1,152 @@
+table_name: dws_10000251_role_play_active_di_v2
+engine: maxcompute
+table_comment: 角色上手进循环(新版)
+description: |-
+  角色上手进循环(新版) DWS 日增量表（_di），角色粒度（user_type=3）。
+  记录每个角色在各项玩法（无尽塔/主线/虎牢/奇策/演武/竞技场/循环/娱乐城）的积极度及注册天数，用于角色成长与玩法参与分析。
+  分析主体=角色（role_id），分区=ds（业务日期）。
+domains:
+  - 角色成长
+  - 战斗关卡
+granularity: 角色粒度（role_id），日增量（_di）
+columns:
+  - name: account_id
+    type: string
+    comment: 关联账号id
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: role_name
+    type: string
+    comment: 角色名
+    role: attribute
+  - name: server_id
+    type: string
+    comment: 区服id，key
+    role: dimension
+  - name: wujinta_active
+    type: bigint
+    comment: 无尽塔积极度
+    role: measure
+  - name: zhuxian_active2
+    type: bigint
+    comment: 主线积极度（新版普通）
+    role: measure
+  - name: lineup_avg_level
+    type: string
+    comment: 队伍平均等级
+    role: attribute
+  - name: zhuxian_active22
+    type: bigint
+    comment: 主线积极度（新版困难）
+    role: measure
+  - name: hulaoguan_active
+    type: bigint
+    comment: 虎牢线积极度
+    role: measure
+  - name: qice_active
+    type: bigint
+    comment: 奇策积极度
+    role: measure
+  - name: yanwu_active
+    type: bigint
+    comment: 演武积极度日版
+    role: measure
+  - name: jingji_active
+    type: bigint
+    comment: 竞技场积极度日版
+    role: measure
+  - name: yanwu_active_week
+    type: bigint
+    comment: 演武积极度周版
+    role: measure
+  - name: jingji_active_week
+    type: bigint
+    comment: 竞技场积极度周版
+    role: measure
+  - name: loop1
+    type: string
+    comment: 基础循环1-1
+    role: attribute
+  - name: loop2
+    type: string
+    comment: 基础循环1-2
+    role: attribute
+  - name: loop3
+    type: string
+    comment: 进阶循环2-1
+    role: attribute
+  - name: loop4
+    type: string
+    comment: 进阶循环2-2
+    role: attribute
+  - name: loop5
+    type: string
+    comment: 基础循环3
+    role: attribute
+  - name: xiyu1
+    type: string
+    comment: 娱乐城1(不包含困难)
+    role: attribute
+  - name: xiyu2
+    type: string
+    comment: 娱乐城2(包含困难)
+    role: attribute
+  - name: days
+    type: string
+    comment: 注册第几天
+    role: dimension
+  - name: reg_day
+    type: string
+    comment: 注册日期
+    role: dimension
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_active_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 活跃角色数（去重 role_id），角色粒度
+  account_active_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 活跃账号数（去重 account_id），账号粒度
+  wujinta_active_sum:
+    expression: SUM(wujinta_active)
+    description: 无尽塔积极度总量
+  zhuxian_active2_sum:
+    expression: SUM(zhuxian_active2)
+    description: 主线积极度（新版普通）总量
+  jingji_active_sum:
+    expression: SUM(jingji_active)
+    description: 竞技场积极度（日版）总量
+coverage:
+  scenarios:
+    - 按日（ds）统计角色/账号活跃规模及各项玩法积极度参与总量
+    - 角色成长与玩法参与度监控（无尽塔/主线/虎牢/奇策/演武/竞技场）
+  limitations:
+    - 表为空/无数据（MAX(ds) NULL，2026-07-31 实测），无法抽样验证指标值
+    - 仅基于 meta describe 列结构定义指标，未做全量 maxc 实测复核
+    - lineup_avg_level/loop1-5/xiyu1-2 为字符串属性，未纳入聚合指标
+    - _di 日增量语义，跨日聚合需按 ds 切片
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 表为空（MAX(ds) NULL），无法抽样验证指标值，状态置 draft。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (comment '区服id，key') is an exact name match to dim_10000251_server_info primary key server_id, and the DIM is explicitly designed to be joined by server_id to look up server name and open-date attributes.
+    origin: deterministic
+pref_label: 角色上手循环表v2
+alt_labels:
+  - 上手
+  - 循环
+  - 新手
+  - 引导
+  - 漏斗

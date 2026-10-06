@@ -1,0 +1,111 @@
+table_name: dws_10000251_univ_role_whole_df
+engine: maxcompute
+disambiguation:
+  term_defaults:
+    paying_users: 有 moneyType=1 真实充值（排除沙盒）的角色
+    active_users: 统计周期内有登录/行为事件的角色
+table_comment: ""
+description: |
+  统一角色用户全量快照表(dws_10000251_univ_role_whole_df,后缀 _df 表示日全量快照)。
+  本表固定为 user_type=3 的【角色表】,主体=角色,主体标识字段为 user_id(本列实际存的是角色ID role_id);表名含 role,按主体判定规则亦为角色表。DISTINCT user_type 仅返回单一值 3(建议用 SELECT DISTINCT user_type 复核)。
+  记录每个角色(user_id)截至分区日 ds 的全量状态,每行对应一个 user_id + ds。
+  每行包含:首次活跃时间、最近活跃时间、首次付费时间、最近付费时间、累计付费金额(pay_amt_std),以及记录各首次数据日志索引的 ext_info。
+  能回答的业务问题:某角色的首末次活跃/付费时间、累计付费金额、按角色分群的活跃与付费规模、新老角色识别(基于首末次时间)、付费率与付费角色数、作为留存与生命周期分析的入口宽表。
+  注意事项:(1) user_type 在本表为固定值 3(角色),不可用作切换设备/账号层级的过滤维度;(2) pay_amt_std 为累计口径,非当日金额,无法回答当日付费金额或当日新增付费;(3) 本表无留存天数列,留存率需结合多分区 ds 自行计算;(4) ext_info 为日志索引字符串,仅用于溯源,不可聚合或作分组键;(5) 本表为全量快照,历史分区保留当日全量,做趋势分析时需按 ds 取分区,跨分区直接 SUM 会重复累计;(6) 无渠道/区服/版本维度,相关分群需关联其他表。
+domains:
+  - 用户生命周期
+  - 付费经济
+granularity: |
+  日全量快照(_df):每天每个角色(user_id)一行,保留截至分区日 ds 的全量状态。
+  本表固定为 user_type=3 的【角色表】,主体=角色,标识字段=user_id(实际存角色ID role_id);DISTINCT user_type 仅返回单一值 3(建议用 SELECT DISTINCT user_type 复核)。不可按 user_type 切换/过滤到设备或账号层级。
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: act_tm_fst
+    type: datetime
+    comment: 首次活跃时间
+    role: attribute
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近活跃时间
+    role: attribute
+  - name: pay_tm_fst
+    type: datetime
+    comment: 首次付费时间
+    role: attribute
+  - name: pay_tm_lst
+    type: datetime
+    comment: 最近付费时间
+    role: attribute
+  - name: pay_amt_std
+    type: decimal
+    comment: 累计付费金额
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 附加信息，记录各个首次数据的日志索引
+    role: attribute
+  - name: ds
+    type: string
+    comment: 分区日期(yyyyMMdd,如 20260629),日全量快照分区键
+    role: dimension
+metrics:
+  pay_amt_total:
+    expression: SUM(pay_amt_std)
+    description: 累计付费总额(截至分区日 ds 所有角色的累计付费金额之和,单位:元)
+  pay_amt_avg:
+    expression: AVG(pay_amt_std)
+    description: 人均累计付费金额(全部角色的累计付费金额均值,单位:元)
+  payer_cnt:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN user_id END)
+    description: 付费角色数(累计付费金额大于 0 的去重角色数)
+  active_cnt:
+    expression: COUNT(DISTINCT user_id)
+    description: 活跃角色数(截至分区日 ds 的去重角色总数)
+  pay_rate:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN user_id END) * 1.0 / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 付费率(付费角色数/活跃角色数,0-1 之间)
+  arpu:
+    expression: SUM(pay_amt_std) * 1.0 / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 活跃角色 ARPU(累计付费总额/活跃角色数,单位:元/角色)
+  arppu:
+    expression: SUM(pay_amt_std) * 1.0 / NULLIF(COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN user_id END), 0)
+    description: 付费角色 ARPPU(累计付费总额/付费角色数,单位:元/付费角色)
+partitions:
+  - name: ds
+    type: string
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: 真实数据验证通过(latest ds=20260729)。已 meta describe 核对全部引用列(user_type,user_id,pay_amt_std)真实存在;SELECT DISTINCT user_type 仅返回 {3}(角色表单值断言成立);粒度核对 rows(1668110)==distinct user_id(1668110),每日每角色一行成立;核心 metrics 实测:pay_amt_total=107314524.32,payer_cnt=322123,active_cnt=1668110,pay_rate=0.1931(∈[0,1]),arpu=64.33,arppu=333.15,均非NULL且合理;无 onlinetime 时戳陷阱。已按本表实际用户类型(3=角色)维持主体描述。
+coverage:
+  scenarios:
+    - 累计付费规模:统计某 ds 分区下所有角色的累计付费总额与人均累计付费
+    - 付费角色数与付费率:计算付费角色数(pay_amt_std>0)及付费率(付费角色数/活跃角色数)
+    - 活跃角色规模:统计截至 ds 的去重活跃角色总数
+    - 新老角色识别:基于 act_tm_fst(首次活跃时间)判断新角色;基于 pay_tm_fst(首次付费时间)识别新付费角色
+    - 首末次活跃/付费时间查询:取某 user_id(角色ID)的首次/最近活跃时间、首次/最近付费时间
+    - 付费金额分布:按 pay_amt_std 分档统计角色分布(如 0/小额/中额/大额),需在查询中自行分档
+    - 留存与生命周期分析入口:作为宽表入口,结合多分区 ds 计算留存率、流失识别(act_tm_lst 距 ds 的间隔)
+    - ARPU/ARPPU 分析:基于累计付费总额与活跃/付费角色数计算人均付费水平
+  limitations:
+    - 无当日增量金额:pay_amt_std 为截至 ds 的累计口径,无法回答当日付费金额或当日新增付费
+    - 无留存天数列:本表不含 ret_d1/d3/d7 等留存指标,留存率需结合多个 ds 分区自行计算
+    - 无渠道/区服/版本维度:仅到角色(user_id)粒度,无法按渠道、区服、客户端版本分群
+    - ext_info 不可聚合:为日志索引字符串,仅用于溯源,不可作为分组键或聚合
+    - user_type 不可作层级切换:本表 user_type 固定为 3(角色),不可用于切换/过滤到设备或账号层级
+    - 全量快照时效:历史分区固定保留当日全量,趋势分析需显式按 ds 取分区,不可跨分区直接 SUM(会重复累计)
+  coverage_status: draft
+supersedes: []
+dimension_refs: []
+pref_label: 角色全量快照表
+alt_labels:
+  - 全量
+  - 快照

@@ -1,0 +1,121 @@
+name: game.toy.onekeyStarup
+event_filter: event = 'game.toy.onekeyStarup'
+description: "玩具(toys)一键升星事件。玩家对挂件/玩具执行一键升星操作时上报，携带角色当前等级(roleLevel)、战力(roleForce)、VIP等级(vipLevel)及被升星的玩具列表(toys: id/star/佩戴栏位 wearCellId)。分析主体为 role_id(角色粒度)。ds=20260729 单日 scout 实测：事件 4460 条、角色 2089、账号 2022、游戏服 370。参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个"
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  toys:
+    type: array
+    description: toys
+  toys.id:
+    type: int
+    description: toys.id
+  toys.star:
+    type: int
+    description: toys.star
+  toys.wearCellId:
+    type: int
+    description: toys.wearCellId
+metrics:
+  game_toy_onekeystarup_cnt:
+    expression: COUNT(*)
+    description: 一键升星事件触发总次数
+  game_toy_onekeystarup_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发一键升星的去重角色数
+  game_toy_onekeystarup_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发一键升星的去重账号数
+  game_toy_onekeystarup_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发一键升星的去重游戏服数
+  game_toy_onekeystarup_roleforce_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.roleForce') AS BIGINT))
+    description: 触发一键升星事件所涉角色战力累计(事件时刻快照)
+  game_toy_onekeystarup_avg_roleforce_per_event:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.roleForce') AS BIGINT)) / NULLIF(COUNT(*), 0)
+    description: 单次一键升星事件平均涉及角色战力
+coverage:
+  scenarios:
+    - 玩具/挂件升星功能的使用规模与渗透(多少角色/账号/游戏服在用一键升星)
+    - 升星触发频次与角色战力分布关系(战力越高的角色是否更频繁使用)
+    - 单服/全服升星活跃度对比
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id(角色粒度)；账号粒度 account_uv 已附带
+    - 实测 ds=20260729 中 params.$.toys 取值为 NULL、params.$.vipLevel 恒 0，实际日志字段键名可能不同于声明 schema，玩具级(toys.id/star)与 VIP 级指标暂缓，待字段对齐后补齐
+    - roleForce 为事件时刻角色战力快照，SUM 仅为量级参考，非增量
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "实测 ds=20260729: cnt=4460, role_uv=2089, acc_uv=2022, server_uv=370；roleLevel sum=322857, roleForce sum=70138362213"
+coverage_status: analyst_confirmed
+external_refs: []

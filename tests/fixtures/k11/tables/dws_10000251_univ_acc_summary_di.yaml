@@ -1,0 +1,77 @@
+table_name: dws_10000251_univ_acc_summary_di
+engine: maxcompute
+table_comment: 每日用户集，包含活跃与流失用户，用于经分流失分析
+description: |-
+  每日用户集，包含活跃与流失用户，用于经分流失分析。
+  粒度：日增量(_di)。分析主体=账号（user_type=2）。
+  主要字段：user_type, user_id, act, act_fst, churn_day, ds。
+domains:
+  - 用户生命周期
+granularity: 日增量(_di)
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: act
+    type: int
+    comment: 活跃标记，1-活跃、0-非活跃
+    role: measure
+  - name: act_fst
+    type: int
+    comment: 新增标记，新增即首次活跃，1-新增、0-非新增
+    role: measure
+  - name: churn_day
+    type: int
+    comment: 流失天数
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区字段
+    role: partition
+metrics:
+  dau:
+    expression: SUM(CASE WHEN act=1 THEN 1 ELSE 0 END)
+    description: 日活跃账号数（act=1 求和），衡量当日活跃账号规模
+  new_acc:
+    expression: SUM(CASE WHEN act_fst=1 THEN 1 ELSE 0 END)
+    description: 日新增账号数（act_fst=1 求和），衡量当日首活新增规模
+  churned_acc:
+    expression: SUM(CASE WHEN churn_day>0 THEN 1 ELSE 0 END)
+    description: 日流失账号数（churn_day>0），衡量当日流失账号规模
+  churn_rate:
+    expression: SUM(CASE WHEN churn_day>0 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 流失率，流失账号数/当日用户集总账号数
+  total_acc_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 账号去重数（user_id 去重），衡量当日用户集总规模
+coverage:
+  scenarios:
+    - 账号生命周期活跃/流失分析：DAU、新增、流失账号数衡量每日账号状态分布
+    - 流失率(churn_rate)衡量当日流失占比，支持留存/流失 funnel 分析
+    - 账号去重数(total_acc_uv)衡量当日用户集总规模，可按 user_type 切片（本表 user_type=2 账号）
+  limitations:
+    - 仅对最新 ds(20260730) 抽样 spot-verify（DAU=4453/新增=360/流失=3371/UV=7824 数值合理），未做全量 maxc 实测复核
+    - _di 为日增量，跨日聚合 user_id 可能重复计数，留存分析需按 user_id 跨 ds 去重
+    - act/act_fst 为 0/1 标记，SUM 等价于计数；亦可按标记 GROUP BY 作 dimension 切片
+    - churn_day=0 表示未流失、>0 表示已流失天数，流失阈值口径需业务方确认
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 最新 ds=20260730 抽样 spot-verify 通过（DAU/新增/流失/UV 数值合理，user_type=2 账号表已验证），结构化指标已落地。
+dimension_refs:
+  - dim_table: dim_10000251_user_tag_before_ob_info
+    join_keys:
+      - dws_column: user_id
+        dim_column: user_id
+    derivation: "DWS column user_id (comment: 用户id) is the account identifier matching the PK user_id of dim_10000251_user_tag_before_ob_info, which is explicitly described as used to join fact tables via user_id for tag-based segmentation."
+    origin: deterministic
+pref_label: 账号日用户集
+alt_labels:
+  - 经分
+  - 用户集

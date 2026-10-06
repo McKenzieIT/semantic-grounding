@@ -1,0 +1,107 @@
+name: game.intervalShop.getReward
+event_filter: event = 'game.intervalShop.getReward'
+description: 持续回报商店（intervalShop）领取奖励事件：玩家从持续回报商店领取奖励时触发，记录领取行为及领取时刻的角色快照（角色、账号、服务器、VIP、战力、经验、看板娘、领取商品goodId等维度）。粒度为角色（role_id）级，单次领取记1条日志，用于度量奖励领取总量与领取角色/账号/服务器覆盖面。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  goodId:
+    type: int
+    description: goodId
+  days:
+    type: array
+    description: days
+metrics:
+  game_intervalShop_getReward_cnt:
+    expression: COUNT(*)
+    description: 持续回报商店奖励领取总次数（每次领取记1条日志）
+  game_intervalShop_getReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取奖励的去重角色数
+  game_intervalShop_getReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取奖励的去重账号数
+  game_intervalShop_getReward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取奖励覆盖的去重游戏服数
+coverage:
+  scenarios:
+    - 持续回报商店奖励领取总量与活跃度监控
+    - 领取角色/账号/服务器覆盖面分析
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认主体粒度为 role_id（角色级）
+    - 单日命中量较小（cnt=6），需多日观察确认稳定性
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: "ds=20260729 scout: cnt=6, role_uv=6, acc_uv=6, server_uv=3；数量级合理，事件正常触发"
+  coverage_status: analyst_confirmed
+external_refs: []

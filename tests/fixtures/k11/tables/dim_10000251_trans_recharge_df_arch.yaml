@@ -1,0 +1,65 @@
+table_name: dim_10000251_trans_recharge_df_arch
+engine: maxcompute
+table_comment: '商品充值配置维度表（按 ds 分区的每日全量快照），存储商品 id/名称/审核 id/单价/商店/类型/返利气泡等配置属性。'
+kind: dim
+primary_key:
+- id
+primary_key_unique: false
+label_columns:
+- name
+description: '游戏 10000251 的商品充值配置维度表 dim_10000251_trans_recharge_df_arch：存储每个充值/付费商品的配置属性，包括商品配置 id（id）、商品名（name）、商品审核 id（product_id）、物品单价 cost（单位分）、商店 id（shop_id）、商品类型（type）、返利百分比气泡（rebate）。按 ds 分区存放每日全量快照。粒度：每个商品配置 id（在单一 ds 分区内唯一）一行的配置维度表；跨分区 id 会重复，需配合 ds 使用。'
+domains:
+- 系统监控
+granularity: 每 商品配置 id（在单一 ds 分区内唯一）一行的配置维度表；表为按 ds 分区的每日全量快照，跨分区 id 重复。
+columns:
+- name: id
+  type: string
+  comment: 商品配置id
+  role: dimension
+- name: name
+  type: string
+  comment: 商品名
+  role: dimension
+- name: product_id
+  type: string
+  comment: 商品审核id
+  role: dimension
+- name: cost
+  type: int
+  comment: 物品单价，单位分
+  role: measure
+- name: shop_id
+  type: string
+  comment: 商店id
+  role: dimension
+- name: type
+  type: int
+  comment: 商品类型
+  role: dimension
+- name: rebate
+  type: string
+  comment: 显示返利百分比气泡
+  role: dimension
+- name: ds
+  type: string
+  comment: 'ds 分区字段（yyyymmdd），每日全量快照日期'
+  role: partition
+coverage:
+  scenarios:
+  - '通过 JOIN id 关联交易/订单事实表，以商品配置维度（商品名、商店、类型、单价、返利气泡）丰富充值流水分析'
+  - '基于 type/shop_id 对充值商品分组统计与画像'
+  - '结合 product_id 用于审核口径下的商品对齐与回溯'
+  limitations:
+  - '配置类维度表，无值度量；cost 为商品单价（单位分），可作为属性引用，非事实度量'
+  - '表为按 ds 分区的每日全量快照，跨分区 id 重复；primary_key_unique=false（实测 r=2474, d=33），事实表 JOIN 时需同时限定 ds 或选取目标分区'
+  - 'rebate 字段存在 null 值，使用前需做空值处理'
+  - 'product_id 为商品审核 id，可能为复合编码串，使用前需确认是否需要二次解码'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '配置类维度表，按 ds 分区全量快照；primary_key=id（单分区唯一），跨分区不唯一（实测 r≠d），保持 draft。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（跨所有 ds 分区）

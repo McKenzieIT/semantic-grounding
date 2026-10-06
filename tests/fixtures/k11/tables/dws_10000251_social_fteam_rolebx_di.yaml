@@ -1,0 +1,130 @@
+table_name: dws_10000251_social_fteam_rolebx_di
+engine: maxcompute
+table_comment: 小队玩家行为表
+description: 小队玩家行为表。角色(role)粒度，日增量(_di)。记录角色在小队中的申请/退出、活跃贡献、宝箱获取开启、互助发布完成、挑战塔与组队协战参与通关等行为指标。当前表无数据(MAX(ds) NULL)。
+domains:
+  - 社交公会
+granularity: 日增量(_di)，角色粒度
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: fteam_id
+    type: string
+    comment: 小队id
+    role: dimension
+  - name: fteam_name
+    type: string
+    comment: 小队名
+    role: attribute
+  - name: fteam_apply_pv
+    type: bigint
+    comment: 主动申请次数
+    role: measure
+  - name: fteam_quit_pv1
+    type: bigint
+    comment: 主动退出次数
+    role: measure
+  - name: fteam_quit_pv2
+    type: bigint
+    comment: 被动退出次数
+    role: measure
+  - name: fteam_contrib_points
+    type: bigint
+    comment: 小队活跃贡献点数
+    role: measure
+  - name: fteam_box_get_amt
+    type: bigint
+    comment: 小队宝箱获得数
+    role: measure
+  - name: fteam_box_use_amt
+    type: bigint
+    comment: 小队宝箱开启数
+    role: measure
+  - name: fteam_ass_pub_cnt
+    type: bigint
+    comment: 小队互助发布数
+    role: measure
+  - name: fteam_ass_finish_cnt
+    type: bigint
+    comment: 小队互助完成数
+    role: measure
+  - name: fteam_tower_part_pv
+    type: bigint
+    comment: 小队挑战塔参与次数，挂在角色身上，和小队无关
+    role: measure
+  - name: fteam_tower_pass_pv
+    type: bigint
+    comment: 小队挑战塔通关次数，挂在角色身上，和小队无关
+    role: measure
+  - name: fteam_dungeon_part_pv
+    type: bigint
+    comment: 小队组队协战参与次数，无论是否是真人组队
+    role: measure
+  - name: fteam_dungeon_pass_pv
+    type: bigint
+    comment: 小队组队协战通关次数，无论是否是真人组队
+    role: measure
+  - name: fteam_dungeon_real_part_pv
+    type: bigint
+    comment: 小队真人组队协战参与次数，组队时至少有两个是真人
+    role: measure
+  - name: fteam_dungeon_real_pass_pv
+    type: bigint
+    comment: 小队真人组队协战通关次数，组队时至少有两个是真人
+    role: measure
+  - name: infteam_status
+    type: bigint
+    comment: 是否仍在该小队，0-已离开 1-在小队中
+    role: dimension
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日有行为的小队角色UV
+  fteam_uv:
+    expression: COUNT(DISTINCT fteam_id)
+    description: 当日涉及的小队UV
+  apply_pv_sum:
+    expression: SUM(fteam_apply_pv)
+    description: 当日小队主动申请总次数
+  contrib_points_sum:
+    expression: SUM(fteam_contrib_points)
+    description: 当日小队活跃贡献点数总和
+  dungeon_real_pass_sum:
+    expression: SUM(fteam_dungeon_real_pass_pv)
+    description: 当日小队真人组队协战通关总次数
+coverage:
+  scenarios:
+    - 角色小队活跃UV与涉及小队数(role_uv/fteam_uv)
+    - 小队申请退出、贡献、宝箱、互助行为规模(apply_pv_sum/contrib_points_sum)
+    - 真人组队协战通关情况(dungeon_real_pass_sum)
+  limitations:
+    - 表为空/无数据(MAX(ds) NULL)，所有指标均为结构性定义，未实测
+    - _di为日增量，仅反映当日增量行为，非全量快照
+    - 仅scout抽样验证(实际无数据可验)，未做全量maxc实测复核
+    - fteam_tower_*指标挂在角色身上且与小队无关，跨小队聚合时需注意口径
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表无数据(MAX(ds) NULL)，指标为结构性定义，未经实测验证，置draft
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (comment 区服id) exactly matches dim_10000251_server_info's primary key server_id (服务器/区服维度配置表) for server attribute lookup.
+    origin: deterministic
+pref_label: 小队玩家行为表
+alt_labels:
+  - 行为
+  - 社交

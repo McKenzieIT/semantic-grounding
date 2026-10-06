@@ -1,0 +1,70 @@
+table_name: dim_10000251_trans_stage_df_arch
+engine: maxcompute
+kind: dim
+primary_key: [id]
+label_columns: [name2]
+primary_key_unique: false
+table_comment: '关卡维度表（dim_10000251_trans_stage_df_arch）：游戏关卡配置维度表，每行描述一个关卡 id 的配置快照'
+description: '关卡维度表（dim_10000251_trans_stage_df_arch）。游戏 10000251 的关卡配置/维度表，每行描述一个关卡（id）的配置快照，按分区 ds 保留历史版本。主键列为 id（关卡 id），标签列为 name2（关卡名，如"汉家军阵"）。包含 type（关卡类型）、difficulty（难度）、chapter_id（章）、monster（怪物组）、type2（关卡入口类型）、reco_level（推荐等级）等维度属性。'
+domains:
+- 战斗关卡
+granularity: '每 关卡 id + ds 快照 一行的关卡配置维度表'
+coverage:
+  scenarios:
+  - '通过 id 关联事实表，将关卡名称(name2)、章节(chapter_id)、难度(difficulty)、推荐等级(reco_level)等维度属性回填到流水/战斗明细记录'
+  - '按 chapter_id 聚合关卡数、按 type/difficulty 分布统计关卡构成'
+  - '关卡入口类型(type2)与怪物组(monster)的下钻维度查询'
+  limitations:
+  - '配置类维度表，无值度量（difficulty/reco_level 为类别属性而非度量）'
+  - 'id 在表内非唯一（r=299947, d=4111）：同一关卡 id 跨 ds 分区存在多份快照，primary_key_unique=false，关联事实表时需按 ds 对齐分区以避免一多膨胀'
+  - 'name 列样本值多为 "0"，建议使用 name2 作为可读标签'
+columns:
+- name: id
+  type: string
+  comment: 关卡id
+  role: dimension
+- name: name
+  type: string
+  comment: 关卡名
+  role: dimension
+- name: type
+  type: bigint
+  comment: 关卡类型
+  role: dimension
+- name: difficulty
+  type: bigint
+  comment: 难度
+  role: dimension
+- name: chapter_id
+  type: string
+  comment: 章
+  role: dimension
+- name: monster
+  type: string
+  comment: 怪物组
+  role: dimension
+- name: type2
+  type: string
+  comment: 关卡入口类型
+  role: dimension
+- name: reco_level
+  type: bigint
+  comment: 推荐等级
+  role: dimension
+- name: name2
+  type: string
+  comment: 关卡名2
+  role: dimension
+- name: ds
+  type: string
+  comment: '分区字段(ds=yyyymmdd 快照日期)'
+  role: partition
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（跨 ds 快照）
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'dim 建模 draft：id 为自然关卡标识但跨 ds 分区非唯一（primary_key_unique=false 已实测 r!=d），未升 analyst_confirmed；label=name2（可读关卡名）；domain=战斗关卡'

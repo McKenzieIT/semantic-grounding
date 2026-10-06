@@ -1,0 +1,39 @@
+table_name: dim_10000251_autobi_conf2_od
+engine: maxcompute
+kind: dim
+table_comment: '自动BI配置快照维度表（每 ds 更新日期一行，conf 存放 JSON 配置串）'
+description: '游戏 10000251 的自动 BI 配置快照维度表。每行对应一次配置更新（按 ds 更新日期分区），conf 字段以 JSON 字符串形式存储完整配置（game_type、src_prj/src_tm/src_tz/src_pt、ods_prj/ods_flds/ods_fltr、dw_prj/dw_role_fltr/dw_currency、rpt_udd 等）。主键: ds（更新日期，唯一）。标签列: conf（配置 JSON 全文）。属系统监控域（配置类维度表）。'
+domains:
+- 系统监控
+granularity: '每 ds（更新日期）一行配置快照'
+primary_key:
+- ds
+primary_key_unique: true
+label_columns:
+- conf
+columns:
+- name: conf
+  type: string
+  comment: 配置（JSON 字符串全文）
+  role: dimension
+- name: ds
+  type: string
+  comment: 更新日期（分区键，主键）
+  role: dimension
+coverage:
+  scenarios:
+  - '按 ds 查询历史配置快照，追溯某日自动 BI 的取数/产出配置（src_prj、ods_flds、dw_prj 等）'
+  - '作为配置版本维度表，JOIN 事实表按 ds 对齐当时生效的配置参数'
+  limitations:
+  - '配置类维度表，无值度量（无 measures）'
+  - 'conf 为 JSON 字符串，使用前需二次解析（JSON 解码后取内部字段）'
+  - '主键 ds 唯一性已实测（r=d=8）'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（配置快照数）
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '配置类维度表建模为 dim，主键 ds 唯一性已实测，conf JSON 串作标签需二次解码'

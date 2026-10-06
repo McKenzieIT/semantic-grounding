@@ -1,0 +1,95 @@
+table_name: dws_10000251_univ_role_gacha_statis_di
+engine: maxcompute
+table_comment: 抽卡通用数仓-角色抽卡整体统计
+description: |-
+  抽卡通用数仓-角色抽卡整体统计，按角色×卡池维度记录每日抽卡行为。
+  粒度：日增量(_di)，每行=一个角色在某卡池当日的抽卡汇总。分析主体=角色（按表名 role 推断，表内无 user_type 列，未实测校验）。
+  核心度量见 metrics：抽卡角色UV、总抽卡抽数、活跃卡池数、人均抽数、覆盖服务器数。
+domains:
+  - 探索收集
+granularity: 日增量(_di)
+columns:
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 服务器ID
+    role: dimension
+  - name: card_pool_type
+    type: bigint
+    comment: 卡池类型
+    role: dimension
+  - name: card_pool_id
+    type: bigint
+    comment: 卡池id
+    role: dimension
+  - name: gacha_times
+    type: bigint
+    comment: 抽卡抽数
+    role: measure
+  - name: gacha_cnt
+    type: string
+    comment: 行为次数
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  gacha_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日参与抽卡的去重角色数（抽卡UV），主体=角色。
+  total_gacha_times:
+    expression: SUM(gacha_times)
+    description: 当日全卡池抽卡总抽数（gacha_times 求和）。
+  active_card_pool_cnt:
+    expression: COUNT(DISTINCT card_pool_id)
+    description: 当日有抽卡记录的去重卡池数。
+  avg_gacha_times_per_role:
+    expression: SUM(gacha_times) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均抽卡抽数=总抽数/抽卡角色UV。
+  gacha_server_cnt:
+    expression: COUNT(DISTINCT server_id)
+    description: 当日有抽卡记录的去重服务器数。
+coverage:
+  scenarios:
+    - 角色级抽卡参与面与规模（UV、总抽数、覆盖服务器/卡池数）。
+    - 人均抽卡强度（人均抽数）用于评估抽卡活跃度与付费意愿代理。
+    - 按 ds 趋势观察抽卡热度周期与卡池轮换效果。
+  limitations:
+    - 仅为 scout 抽样验证，未做全量 maxc 实测复核。
+    - gacha_cnt 为 STRING 类型（样本值如 "4""2"），未纳入 SUM 度量；如需使用应 CAST(BIGINT)。
+    - 表内无 user_type 列，分析主体=角色按表名推断，未实测校验。
+    - ds 分区存在非日期值（如 '99'），MAX(ds) 字符串序最大为 '99'；latest 日期分区按 LIKE '202[56]%' 取得为 20260730。
+    - _di 日增量：每行为角色×卡池当日汇总，跨日累计需按 ds 聚合，不可直接跨分区求和 UV。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 已在 latest 日期分区 ds=20260730 实测 5 个度量，值合理（UV=4198、总抽数=419829、活跃卡池=53、人均抽数≈100.0、服务器数=471）。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (comment 服务器ID) exactly matches dim_10000251_server_info PK server_id; the dim is the 服务器(区服)维度配置表 for joining fact tables by server_id.
+    origin: deterministic
+  - dim_table: dim_10000251_card_pool_info
+    join_keys:
+      - dws_column: card_pool_id
+        dim_column: card_pool_id
+    derivation: DWS card_pool_id (comment 卡池id) exactly matches dim_10000251_card_pool_info PK card_pool_id; the dim is the general 卡池配置维度表 for card-pool attribute lookup.
+    origin: deterministic
+  - dim_table: dim_10000251_card_pool_type_info
+    join_keys:
+      - dws_column: card_pool_type
+        dim_column: type_id
+    derivation: DWS card_pool_type (comment 卡池类型) is semantically the card-pool type ID, matching dim_10000251_card_pool_type_info PK type_id (卡池类型ID); the dim is built to translate a fact table's 卡池类型ID into a readable name.
+pref_label: 抽卡统计总表
+alt_labels:
+  - 抽卡
+  - 卡池
+  - 概率
+  - 保底

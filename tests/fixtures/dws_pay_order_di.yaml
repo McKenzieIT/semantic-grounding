@@ -1,0 +1,42 @@
+table_name: dws_pay_order_di
+table_comment: 付费订单日表
+description: 付费订单 DWS 汇总
+domains:
+  - 付费经济
+granularity: 日增量
+engine: maxcompute
+columns:
+  - name: order_id
+    type: string
+    comment: 订单号
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: pay_amt
+    type: double
+    comment: 订单金额
+    role: measure
+metrics:
+  pay_amt:
+    expression: SUM(pay_amt)
+    description: 总付费
+    caliber_variants: []
+partitions:
+  - name: ds
+    type: string
+confirmation:
+  status: draft
+  confirmed_by: ''
+  confirmed_at: ''
+coverage: null
+supersedes: []
+disambiguation: null
+kind: dws
+primary_key: []
+primary_key_unique: null
+duplicate_sample: []
+label_columns: []
+freshness: T+1
+dimension_refs: []

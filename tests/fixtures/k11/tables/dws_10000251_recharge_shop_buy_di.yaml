@@ -1,0 +1,114 @@
+table_name: dws_10000251_recharge_shop_buy_di
+engine: maxcompute
+table_comment: K11-付费商店购买明细表
+description: |-
+  K11-付费商店购买明细表。记录玩家在付费商店的购买行为（充值购买/凤翎购买）。
+  主体粒度：账号+角色交易粒度（每条记录为一次购买行为，含 account_id 与 role_id，无 user_type 列）。
+  时间粒度：日增量(_di)，按 ds 分区。
+  主要字段：account_id, role_id, server_id, pay_type, shop_id, recharge_id, buy_amt, pay_amt, tm, params, ds 等11列。
+domains:
+  - 付费经济
+  - 装备道具
+granularity: 日增量(_di)；账号+角色交易粒度
+columns:
+  - name: account_id
+    type: string
+    comment: 账号id
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: pay_type
+    type: bigint
+    comment: 付费类型，1-充值购买(不包含凤翎直充礼包) 2-凤翎购买
+    role: dimension
+  - name: shop_id
+    type: string
+    comment: 商店id
+    role: dimension
+  - name: recharge_id
+    type: string
+    comment: 商品配置id，充值礼包为礼包配置id，凤翎购买为商店商品id
+    role: dimension
+  - name: buy_amt
+    type: bigint
+    comment: 购买数量
+    role: measure
+  - name: pay_amt
+    type: double
+    comment: 付费金额
+    role: measure
+  - name: tm
+    type: datetime
+    comment: 购买时间
+    role: dimension
+  - name: params
+    type: string
+    comment: 行为参数
+    role: dimension
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  buy_uv_account:
+    expression: COUNT(DISTINCT account_id)
+    description: 当日付费商店购买账号数(UV)，按 account_id 去重
+  buy_uv_role:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日付费商店购买角色数(UV)，按 role_id 去重
+  total_pay_amt:
+    expression: SUM(pay_amt)
+    description: 当日付费商店购买总金额(元)，累加 pay_amt
+  total_buy_amt:
+    expression: SUM(buy_amt)
+    description: 当日付费商店购买总数量，累加 buy_amt
+  avg_pay_per_role:
+    expression: SUM(pay_amt) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 角色客单价(元/人)，总付费金额/购买角色UV
+coverage:
+  scenarios:
+    - 按日统计付费商店购买账号/角色UV与总付费金额、总购买数量、客单价
+    - 按 pay_type(1充值购买/2凤翎购买)拆分充值与凤翎两条付费路径的规模与结构
+    - 按 shop_id/recharge_id 下钻分析商店/商品维度的销售表现
+    - 按 server_id 区服维度对比付费商店购买力
+  limitations:
+    - _di 日增量，仅含当日发生购买行为的记录；跨日累计需按 ds 汇总
+    - 仅抽样验证最新 ds=20260730（pay_type=1 充值购买 99 行、80 账号/角色、总付费 3679 元），未做全量 maxc 实测复核
+    - 最新 ds 仅有 pay_type=1 数据，pay_type=2 凤翎购买当日为空，结构比例需多日观测
+    - params 为 JSON 行为参数，未结构化为字段；商品名/价格档等需从 params 解析
+    - 无 user_type 列，主体粒度为账号+角色交易级，非账号/角色/设备主体表
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 已对最新 ds=20260730 抽样验证 pay_type/UV/付费金额指标合理；列类型与角色已对齐 meta describe
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (区服id) exactly matches the PK server_id of dim_10000251_server_info, the区服维度表 for JOIN回填区服名称与开服时间.
+    origin: deterministic
+  - dim_table: dim_10000251_com_recharge_info
+    join_keys:
+      - dws_column: recharge_id
+        dim_column: recharge_id
+    derivation: DWS column recharge_id (商品配置id/充值礼包配置id) exactly matches the PK recharge_id of dim_10000251_com_recharge_info, the商业化礼包信息维表 explicitly intended for事实表通过 recharge_id JOIN查询礼包维度属性.
+    origin: deterministic
+  - dim_table: dim_10000251_trans_recharge_shop_df
+    join_keys:
+      - dws_column: shop_id
+        dim_column: id
+    derivation: DWS column shop_id (商店id) semantically maps to dim_10000251_trans_recharge_shop_df PK id (付费商店唯一标识), the付费商店配置维表 for商店维度JOIN查询.
+pref_label: 商城购买表
+alt_labels:
+  - 商城
+  - 商店
+  - 购买
+  - 礼包

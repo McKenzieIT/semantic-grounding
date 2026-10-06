@@ -1,0 +1,43 @@
+table_name: dim_10000251_trans__action_game_item_change_df
+engine: maxcompute
+kind: dim
+table_comment: 行为类型配置维度表（游戏道具变更动作类型的字典维表）
+description: '行为类型配置维度表：游戏内"道具变更"动作的类型字典（如获得/消耗/丢弃等），用于将动作 id 翻译为可读名称。
+
+  粒度：每个行为类型一行（日全量快照 _df）。
+
+  主键：id（行为类型 ID）。标签列：name（行为类型显示名称）。'
+domains:
+- 系统监控
+granularity: 每个行为类型一行的配置/维度表（日全量快照 _df）
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+columns:
+- name: id
+  type: string
+  comment: ID,ID
+  role: dimension
+- name: name
+  type: string
+  comment: 名称,显示名称
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 通过 id 关联事实表中的行为类型字段，将动作 ID 翻译为可读名称（如道具变更动作明细中的 action_type/id 字段）
+  - 作为行为类型维表支持按动作类型分组、筛选与命名展示
+  limitations:
+  - 配置类维度表，无值度量（无金额/数量等指标列）
+  - 仅含 id/name 两列，无分类层级、状态、生效时间等扩展属性
+  - 唯一性实测在空表（0 行）上完成，r=d=0，结果成立但为空表场景
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'dim 建模：主键 id，标签列 name。唯一性实测 r=d=0（空表场景，vacuously true）。配置类维度表，无值度量。保持 draft。'

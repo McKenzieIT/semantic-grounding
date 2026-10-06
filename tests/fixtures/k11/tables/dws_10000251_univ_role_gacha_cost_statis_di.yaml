@@ -1,0 +1,115 @@
+table_name: dws_10000251_univ_role_gacha_cost_statis_di
+engine: maxcompute
+table_comment: 抽卡通用数仓-角色抽卡消耗统计
+description: |-
+  抽卡通用数仓-角色抽卡消耗统计（dws_10000251_univ_role_gacha_cost_statis_di）。记录每个角色在各卡池的抽卡消耗明细：消耗道具类型/值/数量、抽卡次数。
+  粒度：日增量(_di)，按角色×服务器×卡池×消耗道具维度聚合。
+  分析主体=角色（表名 role 标识，无显式 user_type 列，按命名约定对应 user_type=3）。
+  主要字段：role_id, server_id, card_pool_type, card_pool_id, cost_item_type, cost_item_value, cost_item_amount, gacha_times 等9列。
+domains:
+  - 资源产销
+  - 付费经济
+granularity: 日增量(_di)，分析主体=角色
+columns:
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 服务器ID
+    role: dimension
+  - name: card_pool_type
+    type: bigint
+    comment: 卡池类型
+    role: dimension
+  - name: card_pool_id
+    type: bigint
+    comment: 卡池id
+    role: dimension
+  - name: cost_item_type
+    type: bigint
+    comment: 消耗道具类型
+    role: dimension
+  - name: cost_item_value
+    type: bigint
+    comment: 消耗道具值
+    role: dimension
+  - name: cost_item_amount
+    type: bigint
+    comment: 消耗道具数量
+    role: measure
+  - name: gacha_times
+    type: double
+    comment: 抽卡次数
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  gacha_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日参与抽卡的独立角色数（去重 role_id，UV）。_di 日增量，主体=角色。
+  total_gacha_times:
+    expression: SUM(gacha_times)
+    description: 当日全卡池抽卡总次数（gacha_times 求和）。
+  total_cost_item_amount:
+    expression: SUM(cost_item_amount)
+    description: 当日抽卡消耗的道具总数量（cost_item_amount 求和，按道具维度累计）。
+  avg_gacha_times_per_role:
+    expression: SUM(gacha_times) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均当日抽卡次数=总抽卡次数/抽卡角色UV，NULLIF 防 0 除。
+  active_card_pool_count:
+    expression: COUNT(DISTINCT card_pool_id)
+    description: 当日有抽卡记录的去重卡池数（card_pool_id 去重计数）。
+coverage:
+  scenarios:
+    - 角色抽卡活跃：gacha_role_uv 衡量当日抽卡参与角色规模与活跃趋势。
+    - 抽卡消耗规模：total_gacha_times / total_cost_item_amount 反映当日抽卡总产出与道具消耗量。
+    - 人均抽卡强度：avg_gacha_times_per_role 识别抽卡重度角色群体的当日人均抽卡次数。
+    - 卡池覆盖：active_card_pool_count 反映当日被使用的卡池数量与广度。
+    - 分维度下钻：可按 server_id / card_pool_type / card_pool_id / cost_item_type 分组分析各服务器、卡池类型、消耗道具的抽卡分布。
+  limitations:
+    - 仅 scout 抽样验证（latest ds=20260730 实测），未做全量 maxc 实测复核。
+    - 主体=角色按表名 role 推断，无显式 user_type 列；如需账号/设备视角需关联对应主体表（未 JOIN）。
+    - _di 为日增量，按角色×服务器×卡池×消耗道具维度聚合，跨日累计需自行 SUM；无单抽价格/付费金额字段，付费经济维度仅以消耗道具数量代理。
+    - cost_item_value 为道具标识值，非金额，不可直接当货币金额聚合。
+    - 不含抽卡结果（获得卡/角色）明细，仅消耗侧统计。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: spot-verify on ds=20260730 得 gacha_role_uv=4185 / total_gacha_times≈401649 / total_cost_item_amount=5265219 / active_card_pool_count=53，数值合理；列与类型经 meta describe 核对。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (comment 服务器ID) exactly matches dim_10000251_server_info PK server_id; the dim is the 服务器(区服)维度配置表 for joining fact tables by server_id.
+    origin: deterministic
+  - dim_table: dim_10000251_card_pool_info
+    join_keys:
+      - dws_column: card_pool_id
+        dim_column: card_pool_id
+    derivation: DWS card_pool_id (comment 卡池id) exactly matches dim_10000251_card_pool_info PK card_pool_id; the dim is the general 卡池配置维度表 (covering every gacha pool) for card-pool attribute lookup.
+    origin: deterministic
+  - dim_table: dim_10000251_card_pool_type_info
+    join_keys:
+      - dws_column: card_pool_type
+        dim_column: type_id
+    derivation: DWS card_pool_type (comment 卡池类型) is semantically the card-pool type ID, matching dim_10000251_card_pool_type_info PK type_id (卡池类型ID); the dim is explicitly built to translate a fact table's 卡池类型ID into a readable name.
+  - dim_table: dim_10000251_resource_name_info
+    join_keys:
+      - dws_column: cost_item_type
+        dim_column: item_type
+      - dws_column: cost_item_value
+        dim_column: item_value
+    derivation: DWS cost_item_type/cost_item_value (comment 消耗道具类型/值) composite-match dim_10000251_resource_name_info composite PK (item_type, item_value); the dim resolves item codes to human-readable names.
+pref_label: 抽卡消耗统计表
+alt_labels:
+  - 抽卡
+  - 消耗
+  - 花费
+  - 成本
+  - 卡池

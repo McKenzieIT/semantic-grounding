@@ -1,0 +1,71 @@
+table_name: dim_10000251_trans_mission_info
+engine: maxcompute
+kind: dim
+primary_key:
+- mission_id
+primary_key_unique: true
+label_columns:
+- tips
+table_comment: '通行证/任务信息配置维度表：每个 mission_id 一行的任务配置（类型、所属通行证、顺序、组号、描述、目标值、积分、奖励）。'
+description: '游戏内任务(mission)信息配置维度表。每行描述一个任务条目，包含任务ID(mission_id, 主键)、任务类型(type)、从属通行证(battlepass_id)、顺序(order)、任务组号(mission_group)、任务描述(tips)、mission类型/取值/条件数值类型、任务积分(mission_exp)及额外奖励(reward)。作为维度表供事实表通过 mission_id JOIN 查任务属性与描述。'
+domains:
+- 系统监控
+granularity: '每个 mission_id（任务条目）一行的配置维度表'
+columns:
+- name: mission_id
+  type: string
+  comment: 任务ID
+  role: dimension
+- name: type
+  type: string
+  comment: 任务类型
+  role: dimension
+- name: battlepass_id
+  type: string
+  comment: 从属通行证ID
+  role: dimension
+- name: order
+  type: string
+  comment: 顺序ID
+  role: dimension
+- name: mission_group
+  type: string
+  comment: 任务组号
+  role: dimension
+- name: tips
+  type: string
+  comment: 任务描述
+  role: dimension
+- name: mission_type
+  type: string
+  comment: mission类型
+  role: dimension
+- name: mission_value
+  type: string
+  comment: mission类型值
+  role: dimension
+- name: value_type
+  type: string
+  comment: 条件数值类型
+  role: dimension
+- name: mission_exp
+  type: string
+  comment: 任务积分
+  role: dimension
+- name: reward
+  type: string
+  comment: 额外奖励
+  role: dimension
+coverage:
+  scenarios:
+  - '事实表（如玩家任务进度/完成明细）通过 mission_id JOIN 本表，获取任务类型、描述、目标值、积分、奖励等配置属性，用于按任务类型/组号/通行证分组统计完成情况与奖励发放。'
+  - '通过 battlepass_id 关联通行证维度，分析各通行证下的任务编排与积分分布。'
+  limitations:
+  - '配置类维度表，无值度量（不含可加总的度量字段，mission_exp/reward 为配置值而非累计指标）。'
+  - 'type/mission_type/mission_value/value_type 等为编码字符串，分析时需配合业务字典二次解码含义。'
+  - 'primary_key_unique 已实测（135 行，COUNT(*)=COUNT(DISTINCT mission_id)=135）。'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '自动建模 draft：主键 mission_id 经唯一性实测通过(r=d=135)；label 取 tips(任务描述) 作为人类可读列；domain=系统监控(配置类维度)。'

@@ -1,0 +1,113 @@
+name: game.func.getReward
+event_filter: event = 'game.func.getReward'
+description: 功能奖励领取事件。记录玩家从游戏功能（funcId）领取奖励的一次行为，附带角色等级/角色战力/vip/经验等快照与关键货币列表(coinList)。分析主体为 role_id（角色粒度），account_id 为账号粒度补充。ds=20260729 单日 scout 实测零命中（cnt=0，ds=20260728 复测仍为 0），事件疑似下线/未触发或尚未上报。
+domains:
+  - 系统监控
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  funcId:
+    type: int
+    description: 功能id
+metrics:
+  game_func_get_reward_cnt:
+    expression: COUNT(*)
+    description: 功能奖励领取事件总记录数
+  game_func_get_reward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取功能奖励的去重角色数
+  game_func_get_reward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取功能奖励的去重账号数
+  game_func_get_reward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的游戏服数量（去重）
+  game_func_get_reward_func_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.funcId'))
+    description: 被领取奖励的去重功能id数量（funcId 去重）
+  game_func_get_reward_cnt_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均领取功能奖励次数（总次数/去重角色数）
+coverage:
+  scenarios:
+    - 功能奖励领取活跃度与参与角色/账号/服数（cnt / role_uv / account_uv / server_uv）
+    - 被领取奖励的功能覆盖面（func_uv）
+    - 人均领取次数（cnt_per_role）
+  limitations:
+    - 日志中零命中(ds=20260729/20260728)，疑似下线/未触发或尚未上报
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度）；account_id 可作账号粒度补充
+    - coinList 为数组类型，其子字段(gold/sendgold/freegold/diamond/expCoin/energy)未转化为指标（JSON 数组访问路径未核实，且事件零命中无法抽样验证）
+  granularity: role_id
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: ds=20260729 单日 scout 实测零命中(cnt=0, role_uv=0, acc_uv=0, server_uv=0)；ds=20260728 复测仍 cnt=0。事件疑似下线/未触发或尚未上报，保持 draft。
+coverage_status: draft
+external_refs: []

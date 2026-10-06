@@ -1,0 +1,39 @@
+table_name: dim_10000251_knight_level_info
+engine: maxcompute
+table_comment: '骑士等级配置维度表，记录每个骑士等级对应的成长系数与升级需求资源。'
+description: '骑士等级配置维度表（dim_10000251_knight_level_info）。粒度：每个骑士等级一行。主要字段：level（等级，主键）、develop（成长系数）、cost（升级需求资源，复合编码串如 1_18_1050）。作为等级维度表，供事实表按骑士等级 JOIN 查询成长系数与升级成本。'
+domains:
+- 角色成长
+granularity: 每个骑士等级一行的配置维度表
+kind: dim
+primary_key:
+- level
+primary_key_unique: true
+label_columns:
+- level
+columns:
+- name: level
+  type: string
+  comment: 等级
+  role: dimension
+- name: develop
+  type: string
+  comment: 成长系数
+  role: dimension
+- name: cost
+  type: string
+  comment: 升级需求资源
+  role: dimension
+coverage:
+  scenarios:
+  - 事实表按骑士等级(level) JOIN 本表，查询该等级对应的成长系数(develop)与升级需求资源(cost)
+  - 等级维度分析：按 level 排序展示骑士等级成长曲线与资源消耗曲线
+  limitations:
+  - 配置类维度表，无值度量（develop/cost 为字符串类型，需在应用层转换后才能做数值聚合）
+  - cost 为复合编码串（如 1_18_1050，格式形如 资源类型_资源ID_数量），需二次解码后才能按资源类型/数量拆解
+  - 仅含 240 个等级配置行，无玩家侧实际升级行为数据
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '配置类维度表，主键 level 经实测唯一（r=240=d=240）；无独立名称列，label 复用 level；cost 为复合编码串需二次解码。保持 draft。'

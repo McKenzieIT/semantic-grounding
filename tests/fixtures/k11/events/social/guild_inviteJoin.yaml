@@ -1,0 +1,108 @@
+name: game.guild.inviteJoin
+event_filter: event = 'game.guild.inviteJoin'
+description: 玩家邀请他人加入公会的事件。记录邀请方角色（role_id 为分析主体）、被邀请目标玩家 targetUid、所在游戏服及角色档案（等级/战力/VIP/货币快照），用于度量公会招募拉新活跃度。scout 实测 ds=20260729：cnt=71，role_uv=17，acc_uv=17，server_uv=13。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  targetUid:
+    type: int
+    description: 目标id
+metrics:
+  guild_invite_join_cnt:
+    expression: COUNT(*)
+    description: 公会邀请加入事件总次数（按行计）
+  guild_invite_join_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 发起邀请的去重角色数（邀请方UV）
+  guild_invite_join_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 发起邀请的去重账号数
+  guild_invite_join_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 产生邀请行为的去重游戏服数
+  guild_invite_join_target_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.targetUid'))
+    description: 被邀请的去重目标玩家数（targetUid）
+coverage:
+  scenarios:
+    - 公会招募拉新活跃度（邀请次数/邀请方UV）
+    - 被邀请目标玩家覆盖面（targetUid 去重）
+    - 跨服邀请分布（server_uv）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（邀请方）；被邀请方 targetUid 仅作目标去重，未核验其角色档案
+    - 未覆盖邀请接受/拒绝后续转化漏斗
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=71，role_uv=17，acc_uv=17，server_uv=13，数据合理非零
+coverage_status: analyst_confirmed
+external_refs: []

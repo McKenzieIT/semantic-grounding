@@ -1,0 +1,55 @@
+table_name: dim_10000251_trans_recharge_shop_df
+engine: maxcompute
+kind: dim
+table_comment: '付费商店配置维度表（日全量快照）：每行一个付费商店 SKU 配置，键为 id，标签为 name'
+description: '付费商店配置维度表（_df 日全量快照）。每行对应一个付费/充值商店 SKU 配置项，包含 id（商店唯一标识）、name（商店名称）、function_id（关联功能 id）、resource（关联货币）、order（显示顺序）、second_tab（二级页签）。用于事实表按 id 关联获取商店维度标签。'
+domains:
+- 付费经济
+granularity: '每付费商店 SKU 一行的配置/维度表（日全量快照 _df）'
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+columns:
+- name: id
+  type: string
+  comment: 付费商店id
+  role: dimension
+- name: name
+  type: string
+  comment: 付费商店名
+  role: dimension
+- name: function_id
+  type: string
+  comment: 关联功能id
+  role: dimension
+- name: resource
+  type: string
+  comment: 关联货币
+  role: dimension
+- name: order
+  type: string
+  comment: 显示顺序
+  role: dimension
+- name: second_tab
+  type: string
+  comment: 二级页签
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - '事实表（充值/付费订单）按 recharge_shop_id JOIN 本表，获取商店名 name、关联功能 function_id、关联货币 resource、二级页签 second_tab 等维度标签用于切片分析'
+  - '按 second_tab / function_id 分组聚合付费表现，定位热门页签/功能下的商店 SKU'
+  limitations:
+  - '配置类维度表，无值度量（order 为显示顺序而非业务度量）'
+  - 'function_id / resource / second_tab 为编码值，需二次关联对应功能/货币/页签配置表方可获得可读名称'
+  - 'id 为 STRING 类型，与事实表 JOIN 时注意类型对齐'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '基于 maxc meta describe 核实列定义；id 唯一性实测通过 (r=72=d)；status 保持 draft 待业务确认'

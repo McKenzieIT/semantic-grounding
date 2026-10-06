@@ -1,0 +1,137 @@
+name: game.scriptActivity.getPreheatGiftIntervalReward
+event_filter: event = 'game.scriptActivity.getPreheatGiftIntervalReward'
+description: 角色领取预热活动（themeId）间隔奖励埋点。事件由角色按时间间隔领取预热礼包间隔档位奖励时触发，记录领奖角色、所属服、活动主题ID、addProductRewards 已领取ID 列表与 rewards 奖励列表(type/value/size/uid)。分析主体为 role_id（角色粒度），account_id 为账号粒度补充。scout 实测：ds=20260729 零命中(cnt=0)，ds=20260728 cnt=1、role_uv=1、acc_uv=1、server_uv=1，事件在线但触发频率极低（间隔奖励低频特性）。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  themeId:
+    type: int
+    description: 活动ID
+  addProductRewards:
+    type: array
+    description: 领取过的ID
+  rewards:
+    type: array
+    description: 奖励
+  rewards.type:
+    type: int
+    description: 类型
+  rewards.value:
+    type: int
+    description: 值
+  rewards.size:
+    type: int
+    description: 数量
+  rewards.uid:
+    type: int
+    description: 唯一id
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 cnt=0/role_uv=0/acc_uv=0/server_uv=0；ds=20260728 重试 cnt=1/role_uv=1/acc_uv=1/server_uv=1。事件在线触发，但单日仅 1 条命中，量级极低（间隔奖励低频特性），保持 analyst_confirmed 并如实标注低量级。
+metrics:
+  preheatgiftintervalreward_cnt:
+    expression: COUNT(*)
+    description: 领取预热礼包间隔奖励事件总条数
+  preheatgiftintervalreward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取间隔奖励的去重角色数（分析主体粒度）
+  preheatgiftintervalreward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取间隔奖励的去重账号数
+  preheatgiftintervalreward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 覆盖的去重游戏服数
+  preheatgiftintervalreward_theme_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.themeId'))
+    description: 触发间隔领奖的去重活动主题数
+  preheatgiftintervalreward_cnt_per_role:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 每个领奖角色的平均领取次数（>1 表示同角色当日多次领取）
+  preheatgiftintervalreward_role_level_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS BIGINT))
+    description: 领奖角色的平均角色等级
+  preheatgiftintervalreward_vip_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.vipLevel') AS BIGINT))
+    description: 领奖角色的平均 VIP 等级
+coverage:
+  scenarios:
+    - 预热活动间隔档位奖励的领取渗透（领奖角色数 / 触发活动主题数）
+    - 各活动主题（themeId）间隔领奖的服务器覆盖与渗透
+    - 间隔领奖角色的等级/VIP 画像分布
+  limitations:
+    - 仅 ds=20260729/20260728 两日 scout 实测，未做全量复核
+    - ds=20260729 零命中、ds=20260728 仅 cnt=1，数据量极小，事件疑似低频/间歇触发或接近下线，指标稳定性待全量复核
+    - 默认分析主体为 role_id（角色粒度）；账号粒度作为补充
+    - rewards / addProductRewards 为数组字段，未做 rewards.size/rewards.value 求和（需 explode 阵列展开）
+    - coinList.* 为领取时刻的货币快照余额，非交易流水，不计 SUM
+coverage_status: analyst_confirmed
+external_refs: []

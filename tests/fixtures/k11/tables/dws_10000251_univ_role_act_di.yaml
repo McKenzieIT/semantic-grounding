@@ -1,0 +1,166 @@
+table_name: dws_10000251_univ_role_act_di
+engine: maxcompute
+table_comment: 角色活跃日增量明细表（univ_role_act_di）
+description: |
+  角色活跃日增量明细表，每日增量(_di)记录每个角色(user_id 存角色ID)的活跃与付费行为。
+  本表固定为 user_type=3 的【角色表】，主体=角色，标识字段 user_id 实际存的是角色ID(role_id)；DISTINCT user_type 仅返回单一值 3（建议用 SELECT DISTINCT user_type 复核）。
+  粒度：每个 user_id(角色ID) 每个分区日(ds)一行增量。
+  能回答的业务问题：当日活跃角色数(DAU)、新增角色数、付费角色数与付费金额、首次付费角色数、付费率/付费ARPU/付费ARPPU、角色行为渗透、登录次数等。
+  注意事项：(1) 本表 user_type 固定为 3(角色)，无需按 user_type 过滤即可直接做角色级分析，user_type 不可作为多主体切换/过滤的分组键；(2) act_pv 按"角色登录"事件计算，每登录1次算1次活跃；(3) 本表比参考游戏(10000312)同名表少 act_dur2/web_pay_amt/react 三列，不含"有游戏行为在线时长"、"web端付费"、"回流"相关字段，对应指标已剔除，不能分析回流角色数或区分活跃时长口径；(4) 本表为日增量当日数据，需等当日分区产出后方可分析。
+domains:
+  - 用户生命周期
+  - 角色成长
+  - 付费经济
+granularity: |
+  日增量(_di)：每个 user_id(角色ID) 每个分区日(ds)一行。
+  本表固定为 user_type=3 的【角色表】，主体=角色，标识字段 user_id 列实际存的是角色ID(role_id)；DISTINCT user_type 仅返回单一值 3（建议用 SELECT DISTINCT user_type 复核）。
+  本表为通用(univ)角色主体表，user_id 即角色标识，做角色级分析时直接以 user_id 作为角色ID，无需按 user_type 过滤切换层级。
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: act_dur
+    type: int
+    comment: 活跃时长，单位：秒
+    role: measure
+  - name: pay_amt
+    type: decimal
+    comment: 付费金额，单位：元
+    role: measure
+  - name: act
+    type: int
+    comment: 活跃标记，1-活跃、0-非活跃
+    role: measure
+  - name: act_fst
+    type: int
+    comment: 新增标记，新增即首次活跃，1-新增、0-非新增
+    role: measure
+  - name: pay
+    type: int
+    comment: 付费标记，1-付费、0-非付费
+    role: measure
+  - name: pay_fst
+    type: int
+    comment: 首次付费标记，1-首次付费、0-非首次付费
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 附加信息
+    role: attribute
+  - name: act_pv
+    type: int
+    comment: 活跃次数，用“角色登录”事件计算，每登录1次算1次活跃
+    role: measure
+  - name: role_act
+    type: int
+    comment: 有角色行为标记，1-是、0-否
+    role: measure
+  - name: role_act_fst
+    type: int
+    comment: 首次有角色行为标记，1-是、0-否
+    role: measure
+  - name: ds
+    type: string
+    comment: ""
+    role: dimension
+metrics:
+  dau:
+    expression: SUM(act)
+    description: 当日活跃角色数(DAU)
+  new_role_cnt:
+    expression: SUM(act_fst)
+    description: 当日新增角色数(首次活跃)
+  pay_role_cnt:
+    expression: SUM(pay)
+    description: 当日付费角色数
+  pay_amt_total:
+    expression: SUM(pay_amt)
+    description: 当日付费总金额(不含web端)，单位元
+  first_pay_role_cnt:
+    expression: SUM(pay_fst)
+    description: 当日首次付费角色数
+  pay_rate:
+    expression: SUM(pay)*1.0/NULLIF(SUM(act),0)
+    description: 付费率=付费角色数/活跃角色数
+  arpu:
+    expression: SUM(pay_amt)*1.0/NULLIF(SUM(act),0)
+    description: 活跃ARPU=付费金额/活跃角色数，单位元
+  arppu:
+    expression: SUM(pay_amt)*1.0/NULLIF(SUM(pay),0)
+    description: 付费ARPPU=付费金额/付费角色数，单位元
+  total_act_dur:
+    expression: SUM(act_dur)
+    description: 总活跃时长，单位秒
+  avg_act_dur:
+    expression: AVG(act_dur)
+    description: 人均活跃时长，单位秒
+  act_pv_total:
+    expression: SUM(act_pv)
+    description: 总登录次数(角色登录事件计数)
+  avg_act_pv:
+    expression: SUM(act_pv)*1.0/NULLIF(SUM(act),0)
+    description: 人均登录次数=总登录次数/活跃角色数
+  role_act_cnt:
+    expression: SUM(role_act)
+    description: 有角色行为的角色数
+  role_act_fst_cnt:
+    expression: SUM(role_act_fst)
+    description: 当日首次产生角色行为的角色数
+  role_act_rate:
+    expression: SUM(role_act)*1.0/NULLIF(SUM(act),0)
+    description: 角色行为渗透率=有角色行为角色数/活跃角色数
+  total_pay_role_amt_check:
+    expression: SUM(pay_amt)*1.0/NULLIF(SUM(pay),0)
+    description: 付费角色客单价=付费金额/付费角色数，单位元（与 arppu 同口径，便于交叉校验）
+partitions:
+  - name: ds
+    type: string
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: 真实数据验证(ds=20260729)：meta describe 全部13列存在，metrics 引用的 act/act_fst/pay/pay_amt/pay_fst/act_dur/act_pv/role_act/role_act_fst 均为真实列；DISTINCT user_type={3} 单值，YAML 角色表(user_type=3)声明成立；粒度 r=4782 vs COUNT(DISTINCT user_id)=4782，1行/角色/日，增量粒度成立；核心指标实测合理 dau=4782/new_role=625/pay_role=415/pay_amt=39986.0/first_pay=82/pay_rate=0.0868/arpu=8.36/arppu=96.35；total_act_dur=22288961s(avg≈4661s≈78min/角色，act_dur 为真实时长秒，非Unix时间戳，无 onlinetime 类移植bug)；act_pv_total=14009、role_act_cnt=4782(=dau)、role_act_fst_cnt=625(=new_role) 均非NULL合理。无指标损坏，无需剔除；domains 无活动运营。
+coverage:
+  scenarios:
+    - 角色级 DAU(当日活跃角色数)与新增角色数(SUM(act)/SUM(act_fst))
+    - 付费角色数、付费总金额、首次付费角色数(SUM(pay)/SUM(pay_amt)/SUM(pay_fst))
+    - 付费率、活跃ARPU、付费ARPPU(pay_rate/arpu/arppu)
+    - 登录频次分析：总登录次数(SUM(act_pv))与人均登录次数(avg_act_pv)
+    - 角色行为渗透：有角色行为角色数、首次产生角色行为角色数、角色行为渗透率
+    - 留存类指标：通过多日分区聚合 act 标记可推导次日/7日留存(需跨日聚合)
+  limitations:
+    - 本表 user_type 固定为 3(角色)，不可按 user_type 切换/过滤设备/账号层级；若需设备/账号级指标请关联对应 univ_dev/univ_acc 表
+    - 本表为汇总级标记表，不含角色级明细行为分布(如具体玩法/关卡行为)，需关联明细表
+    - 本表比参考游戏(10000312)同名表少 act_dur2/web_pay_amt/react 三列，无法分析"有游戏行为时长"、"web端付费"、"回流角色数"
+    - 缺少渠道/区服等维度，渠道与区服维度分析需关联维度表
+    - act_pv 仅按"角色登录"事件计数，不能等同完整活跃行为频次，无法拆分具体玩法行为次数
+    - 本表为日增量(_di)当日数据，需等当日分区(ds)产出后方可分析，T+1 时效
+    - 留存率需跨多个分区聚合，本表单日行无法直接得出
+    - 缺少角色等级/职业/阵营等画像维度，角色画像分析需关联角色维度表
+  coverage_status: draft
+supersedes: []
+dimension_refs: []
+pref_label: 角色活跃日增量明细表（univ_role_act_di）
+alt_labels:
+  - 日活
+  - DAU
+  - 氪金
+  - 充值
+  - 付费
+  - 留存
+  - 新增
+  - 新增用户
+  - 新注册
+  - 白嫖
+  - 免费玩家
+  - 零氪
+  - MAU
+  - 月活
+  - 首充
+  - 首次充值
+  - 付费率

@@ -1,0 +1,97 @@
+table_name: dws_10000251_play_story_act_di
+engine: maxcompute
+table_comment: 玩法剧情表（角色粒度，日增量）
+description: |-
+  玩法剧情行为日增量表（_di）。粒度：每日每角色每剧情一行（role_id + story_id + ds）。
+  主体：角色（role_id 为表主键；表名/字段未含 user_type，角色主体为推断，未做 user_type 校验）。
+  主要字段：role_id（角色id，主键），server_id（区服），story_id（剧情id），visit_pv（访问次数），read_pv（完整阅读次数），skip_pv（跳过次数），skip_line_id（跳过台词id），dim_line_max（最大台词id），ext_info（扩展内容），ds（业务日期分区）。
+  适用：角色对剧情的访问/阅读/跳过行为统计与跳过率分析。
+domains:
+  - 角色成长
+  - 探索收集
+granularity: 日增量（_di），每日每角色每剧情一行
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id，key
+    role: dimension
+  - name: story_id
+    type: string
+    comment: 剧情id，key
+    role: dimension
+  - name: visit_pv
+    type: bigint
+    comment: 访问次数
+    role: measure
+  - name: read_pv
+    type: bigint
+    comment: 阅读次数，完整阅读
+    role: measure
+  - name: skip_pv
+    type: bigint
+    comment: 跳过次数
+    role: measure
+  - name: skip_line_id
+    type: string
+    comment: 跳过台词id，若有多次跳过，取最大的台词id，-1表示缺省值
+    role: attribute
+  - name: dim_line_max
+    type: string
+    comment: 最大台词id，维表中的最大台词id
+    role: attribute
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 每日触达剧情的角色数（去重角色UV），粒度日增量。
+  story_uv:
+    expression: COUNT(DISTINCT story_id)
+    description: 每日被触达的去重剧情数，反映当日活跃剧情覆盖广度。
+  visit_pv_sum:
+    expression: SUM(visit_pv)
+    description: 每日剧情访问总次数（PV累加）。
+  read_pv_sum:
+    expression: SUM(read_pv)
+    description: 每日剧情完整阅读总次数，衡量玩家深度阅读意愿。
+  skip_rate:
+    expression: SUM(skip_pv) * 1.0 / NULLIF(SUM(visit_pv), 0)
+    description: 每日剧情跳过率 = 跳过次数/访问次数（分母0返回NULL）。
+coverage:
+  scenarios:
+    - 角色剧情触达与覆盖：通过 role_uv、story_uv 量化每日剧情触达角色规模与剧情覆盖广度。
+    - 剧情消费深度：read_pv_sum 反映玩家对剧情文本的完整阅读意愿。
+    - 跳过率诊断：skip_rate 识别被玩家高频跳过的剧情，辅助剧情体验优化与内容打磨。
+  limitations:
+    - 主体角色为推断（表名/字段未含 user_type 列），未做 user_type 实测校验。
+    - 仅在最新分区 ds=20260730 上抽样验证 role_uv/story_uv/visit_pv_sum/read_pv_sum/skip_pv_sum，未做全量多分区 maxc 实测复核。
+    - skip_line_id/dim_line_max 取“最大台词id”语义，多次跳过仅保留最大值，无法还原完整跳过序列。
+    - ext_info 扩展内容字段语义未明确，未纳入指标计算。
+    - _di 为日增量，跨日累计需按 ds 求和；无 visit_uv/read_uv，角色级阅读/跳过比例无法直接计算。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 已在最新分区 ds=20260730 抽样验证 role_uv=4699、story_uv=671、visit_pv_sum=64999、read_pv_sum=5441、skip_pv_sum=61031，数值合理；据此标记 analyst_confirmed。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (comment 区服id) exactly matches the PK server_id of dim_10000251_server_info, the canonical 区服 dimension for server name/opening date lookup.
+    origin: deterministic
+pref_label: 玩法剧情活跃表
+alt_labels:
+  - 剧情
+  - 故事
+  - 对话

@@ -1,0 +1,112 @@
+name: game.role.changeBadges
+event_filter: event = 'game.role.changeBadges'
+description: |-
+  修改玩家徽章事件：记录角色更换/装备徽章(badges)的行为日志。分析粒度以 role_id 为主(角色级)，账号(account_id)为辅。scout 实测 ds=20260729 单日 cnt=107, role_uv=70, acc_uv=70, server_uv=25。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个
+domains:
+  - 用户生命周期
+domain: account
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  badges:
+    type: array
+    description: 徽章列表
+metrics:
+  change_badges_cnt:
+    description: 徽章变更事件总次数(COUNT(*))
+    expression: COUNT(*)
+  change_badges_role_uv:
+    description: 触发徽章变更的去重角色数
+    expression: COUNT(DISTINCT role_id)
+  change_badges_account_uv:
+    description: 触发徽章变更的去重账号数
+    expression: COUNT(DISTINCT account_id)
+  change_badges_server_uv:
+    description: 涉及的去重游戏服数量
+    expression: COUNT(DISTINCT server_id)
+  change_badges_avg_per_role:
+    description: 每角色平均徽章变更次数(总次数/去重角色数，NULLIF 防除零)
+    expression: ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0), 3)
+coverage:
+  scenarios:
+    - 角色徽章变更的总体规模与角色/账号覆盖(日/周/月维度)
+    - 按游戏服(server_id)分布的徽章变更热度，定位活跃/异常服
+    - 平均每角色徽章变更频次，反映徽章玩法的迭代节奏
+    - 与角色等级(roleLevel)、vip等级(vipLevel)联动分析徽章玩法渗透
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测(cnt=107/role_uv=70/acc_uv=70/server_uv=25)，未做全量复核
+    - 分析粒度默认 role_id(角色级)，account_id 仅作辅助维度
+    - 未覆盖 badges 数组明细(单角色变更的徽章条数/类型)，仅统计事件行级粒度
+    - coinList 货币快照字段未纳入 metrics(本事件非付费经济核心)
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=107, role_uv=70, acc_uv=70, server_uv=25，数据合理。
+coverage_status: analyst_confirmed
+external_refs: []

@@ -1,0 +1,122 @@
+name: game.knightnatalchart.unlockattrslot
+event_filter: event = 'game.knightnatalchart.unlockattrslot'
+description: |-
+  武将命盘-解锁属性槽位：玩家为指定武将(knightId)解锁命盘属性槽位(slot)时触发的角色成长事件，记录解锁槽位id及相关角色、货币状态。
+  分析主体为 role_id（角色级事件）。scout 实测 ds=20260729：事件命中 593 条、role_uv=228、acc_uv=227、server_uv=112。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightId:
+    type: int
+    description: 武将id
+  slot:
+    type: int
+    description: 槽位id
+metrics:
+  knightnatalchart_unlockattrslot_cnt:
+    expression: COUNT(*)
+    description: 武将命盘属性槽位解锁事件总次数
+  knightnatalchart_unlockattrslot_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 解锁属性槽位的不同角色数（分析主体 role_id）
+  knightnatalchart_unlockattrslot_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 解锁属性槽位的不同账号数
+  knightnatalchart_unlockattrslot_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 解锁属性槽位涉及的游戏服数
+  knightnatalchart_unlockattrslot_knight_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.knightId'))
+    description: 被解锁属性槽位的不同武将(knightId)数
+  knightnatalchart_unlockattrslot_slot_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.slot'))
+    description: 被解锁的不同槽位(slot)类型数
+  knightnatalchart_unlockattrslot_avg_per_role:
+    expression: COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 每个角色的平均属性槽位解锁次数（衡量深度养成）
+coverage:
+  scenarios:
+    - 武将命盘属性槽位解锁整体热度：总次数/角色数/账号数/服数
+    - 不同武将(knightId)被解锁槽位的覆盖广度
+    - 单角色平均解锁次数反映命盘深度养成进度
+    - 跨服分布与养成进度对比
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 槽位 slot、武将 knightId 来自 params JSON，依赖客户端上报一致性
+    - 分析主体默认 role_id（角色级事件），账号粒度可用 account_uv 辅助
+    - 未对 ds 全周期趋势/留存做复核
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=593, role_uv=228, acc_uv=227, server_uv=112（数字合理，确认在线）
+external_refs: []

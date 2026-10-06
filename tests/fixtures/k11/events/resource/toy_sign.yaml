@@ -1,0 +1,118 @@
+name: game.toy.sign
+event_filter: event = 'game.toy.sign'
+description: 幻谷签到事件：角色在幻谷（玩具/收集玩法）执行每日签到领奖行为时上报，记录签到领取的奖励 ids 列表、角色快照(roleLevel/vipLevel/roleForce/exp)、货币(coinList)及会话(sessionId/logUUID)。分析主体粒度为 role_id（角色），单次签到行为计为一条日志。ds=20260729 实测：cnt=248，role_uv=206，acc_uv=205，server_uv=8；签到角色占账号几乎 1:1（人均签到 1.20 次/角色），事件分布合理，event+ds 双过滤可命中。
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  ids:
+    type: array
+    description: ids
+metrics:
+  game_toy_sign_cnt:
+    expression: COUNT(*)
+    description: 签到日志条数（每次签到领奖行为一条）
+  game_toy_sign_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 签到角色去重数（分析主体粒度 role_id）
+  game_toy_sign_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 签到账号去重数
+  game_toy_sign_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及签到的游戏服去重数
+  game_toy_sign_signin_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均签到次数 = 日志数 / 角色去重数（NULLIF 防零除，反映复签率）
+  game_toy_sign_avg_role_level:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS BIGINT))
+    description: 签到角色平均角色等级（roleLevel 均值，玩家结构画像）
+  game_toy_sign_avg_vip_level:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.vipLevel') AS BIGINT))
+    description: 签到角色平均 vip 等级（vipLevel 均值，付费层级画像）
+  game_toy_sign_avg_role_force:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleForce') AS BIGINT))
+    description: 签到角色平均战力（roleForce 均值，战力分布画像）
+coverage:
+  scenarios:
+    - 通过 role_uv/account_uv/server_uv 评估幻谷签到玩法的角色/账号/游戏服渗透规模
+    - 通过 signin_per_role 衡量人均签到次数，识别多日补签/多档签到行为
+    - 通过 avg_role_level/avg_vip_level/avg_role_force 描绘签到玩家结构画像，辅助活跃与付费分层
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量多日复核；多日趋势与留存需另行批量校验
+    - 分析主体粒度默认 role_id（角色），未对 account_id 跨角色重复签到做去重校验
+    - ids（签到奖励 id 列表）与 coinList（货币余额快照）为数组/对象参数，未在本事件 metrics 内展开逐元素求和/计数，如需按奖励 id 或货币种类维度聚合需单独建模
+    - roleLevel/vipLevel/roleForce 取自 params 快照字段，未与角色基础维表做交叉校验
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=248, role_uv=206, acc_uv=205, server_uv=8；签到角色占账号几乎 1:1，人均签到次数约 1.20 次/角色。数值合理，event+ds 双过滤命中，确认在线可查。
+coverage_status: analyst_confirmed
+external_refs: []

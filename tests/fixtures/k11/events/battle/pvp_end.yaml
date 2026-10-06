@@ -1,0 +1,451 @@
+name: game.pvp.end
+event_filter: event = 'game.pvp.end'
+description: "PVP战斗结束事件(game.pvp.end)：玩家参与一场PVP对战(竞技场/演武场)结束时上报,记录单场战斗结果(己方/对手积分、血量、阵容战力、武将与装备快照、模式mode、赛季season、是否代打isBoost等132个参数)。分析主体粒度为 role_id(每场战斗对应一个参与角色)。实测 ds=20260729 单日: 事件 cnt=35614, role_uv=2784, account_uv=2648, server_uv=401, 4种mode齐全, 平均时长32.58s。"
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  playType:
+    type: int
+    description: pvp玩法id
+  playName:
+    type: string
+    description: pvp名称
+  mode:
+    type: int
+    description: 模式：1：竞技场正常模式-无bp ；2：竞技场正常模式-有bp；3：竞技场休闲模式；4：演武场
+  isBoost:
+    type: int
+    description: 是否代打，0-否，1-是
+  season:
+    type: int
+    description: 赛季
+  battleId:
+    type: string
+    description: 唯一标识一场战斗
+  duration:
+    type: int
+    description: 战斗时长
+  round:
+    type: int
+    description: 回合数
+  score:
+    type: int
+    description: 己方积分
+  addScore:
+    type: int
+    description: 增加积分
+  lineupPower:
+    type: int
+    description: 我方战力
+  blood:
+    type: int
+    description: 我方剩余血量百分比
+  relLineupPower:
+    type: int
+    description: 对手阵容战力
+  relFforce:
+    type: int
+    description: 对手战力
+  relScore:
+    type: int
+    description: 对手积分
+  relRoleId:
+    type: int
+    description: 对手角色id
+  relServerId:
+    type: int
+    description: 对手区服id
+  relLevel:
+    type: int
+    description: 对手等级
+  relBlood:
+    type: int
+    description: 对手剩余血量百分比
+  relAddScore:
+    type: int
+    description: 对手增加积分
+  cardList:
+    type: array
+    description: 己方阵容的卡牌列表
+  cardList.id:
+    type: int
+    description: 武将id
+  cardList.name:
+    type: string
+    description: 武将名
+  cardList.pos:
+    type: int
+    description: 站位
+  cardList.blood:
+    type: int
+    description: 卡牌剩余血量比例 @（死亡记为0）
+  cardList.power:
+    type: int
+    description: 武将战力
+  cardList.level:
+    type: int
+    description: 武将等级
+  cardList.quality:
+    type: int
+    description: 武将品质
+  cardList.star:
+    type: int
+    description: 武将星级
+  cardList.piece:
+    type: int
+    description: 武将碎片
+  cardList.awakeList:
+    type: array
+    description: 觉醒点列表
+  cardList.awakeList.lvl:
+    type: int
+    description: 节点等级
+  cardList.awakeList.id:
+    type: int
+    description: 节点id
+  cardList.equip:
+    type: array
+    description: 装备列表
+  cardList.equip.pos:
+    type: int
+    description: 装备部位 1：武器/2：头盔/3：护具/4：饰品
+  cardList.equip.id:
+    type: int
+    description: 装备id
+  cardList.equip.uid:
+    type: int
+    description: 装备uid
+  cardList.equip.level:
+    type: int
+    description: 装备等级
+  cardList.equip.quality:
+    type: int
+    description: 装备品质id
+  cardList.ability:
+    type: array
+    description: 潜能列表
+  cardList.ability.id:
+    type: int
+    description: 天赋模板id
+  cardList.ability.num:
+    type: int
+    description: 消耗潜能点数量
+  cardList.ability.value:
+    type: int
+    description: 加成效果
+  cardList.ability.name:
+    type: string
+    description: 名称
+  cardList.abilityPoints:
+    type: int
+    description: 潜能点数量
+  cardList.tactic:
+    type: json
+    description: 战法信息
+  cardList.tactic.tacticId:
+    type: int
+    description: 战法id
+  cardList.tactic.tacticName:
+    type: string
+    description: 战法名称
+  cardList.tactic.tacticLevel:
+    type: int
+    description: 战法等级
+  cardList.tactic.tacticStar:
+    type: int
+    description: 战法星级
+  cardList.job:
+    type: int
+    description: 武将职业
+  cardList.assistRoleId:
+    type: int
+    description: 助战uid
+  cardList.assistType:
+    type: int
+    description: 助战类型
+  cardList.wushuangLevel:
+    type: int
+    description: 觉醒无双等级
+  relCardList:
+    type: array
+    description: 对手阵容的卡牌列表
+  relCardList.id:
+    type: int
+    description: 武将id
+  relCardList.name:
+    type: string
+    description: 武将名
+  relCardList.pos:
+    type: int
+    description: 站位
+  relCardList.blood:
+    type: int
+    description: 卡牌剩余血量比例 @（死亡记为0）
+  relCardList.power:
+    type: int
+    description: 武将战力
+  relCardList.level:
+    type: int
+    description: 武将等级
+  relCardList.quality:
+    type: int
+    description: 武将品质
+  relCardList.star:
+    type: int
+    description: 武将星级
+  relCardList.piece:
+    type: int
+    description: 武将碎片
+  relCardList.awakeList:
+    type: array
+    description: 觉醒点列表
+  relCardList.awakeList.lvl:
+    type: int
+    description: 节点等级
+  relCardList.awakeList.id:
+    type: int
+    description: 节点id
+  relCardList.equip:
+    type: array
+    description: 装备列表
+  relCardList.equip.pos:
+    type: int
+    description: 装备部位 1：武器/2：头盔/3：护具/4：饰品
+  relCardList.equip.id:
+    type: int
+    description: 装备id
+  relCardList.equip.uid:
+    type: int
+    description: 装备uid
+  relCardList.equip.level:
+    type: int
+    description: 装备等级
+  relCardList.equip.quality:
+    type: int
+    description: 装备品质id
+  relCardList.ability:
+    type: array
+    description: 潜能列表
+  relCardList.ability.id:
+    type: int
+    description: 天赋模板id
+  relCardList.ability.num:
+    type: int
+    description: 消耗潜能点数量
+  relCardList.ability.value:
+    type: int
+    description: 加成效果
+  relCardList.ability.name:
+    type: string
+    description: 名称
+  relCardList.abilityPoints:
+    type: int
+    description: 潜能点数量
+  relCardList.tactic:
+    type: json
+    description: 战法信息
+  relCardList.tactic.tacticId:
+    type: int
+    description: 战法id
+  relCardList.tactic.tacticName:
+    type: string
+    description: 战法名称
+  relCardList.tactic.tacticLevel:
+    type: int
+    description: 战法等级
+  relCardList.tactic.tacticStar:
+    type: int
+    description: 战法星级
+  relCardList.job:
+    type: int
+    description: 武将职业
+  relCardList.assistRoleId:
+    type: int
+    description: 助战uid
+  relCardList.assistType:
+    type: int
+    description: 助战类型
+  relCardList.wushuangLevel:
+    type: int
+    description: 觉醒无双等级
+  groupBuff:
+    type: array
+    description: 触发的阵营buff
+  bondBuff:
+    type: array
+    description: 触发的羁绊buff
+  relGroupBuff:
+    type: array
+    description: 对手触发的阵营buff
+  relBondBuff:
+    type: array
+    description: 对手触发的羁绊buff
+  mainCharm:
+    type: array
+    description: 己方上阵的主灵器
+  mainCharm.id:
+    type: int
+    description: mainCharm.id
+  mainCharm.star:
+    type: int
+    description: mainCharm.star
+  mainCharm.power:
+    type: int
+    description: mainCharm.power
+  assistCharm:
+    type: array
+    description: 己方上阵的助灵器
+  assistCharm.id:
+    type: int
+    description: assistCharm.id
+  assistCharm.star:
+    type: int
+    description: assistCharm.star
+  assistCharm.power:
+    type: int
+    description: assistCharm.power
+  relMainCharm:
+    type: array
+    description: 敌方上阵的主灵器
+  relMainCharm.id:
+    type: int
+    description: relMainCharm.id
+  relMainCharm.star:
+    type: int
+    description: relMainCharm.star
+  relMainCharm.power:
+    type: int
+    description: relMainCharm.power
+  relAssistCharm:
+    type: array
+    description: 敌方上阵的助灵器
+  relAssistCharm.id:
+    type: int
+    description: relAssistCharm.id
+  relAssistCharm.star:
+    type: int
+    description: relAssistCharm.star
+  relAssistCharm.power:
+    type: int
+    description: relAssistCharm.power
+  spCaptain:
+    type: int
+    description: 己方sp队长
+  relSpCaptain:
+    type: int
+    description: 敌方sp队长
+metrics:
+  game_pvp_end_cnt:
+    expression: COUNT(*)
+    description: PVP战斗结束事件总次数(每场战斗上报1条)
+  game_pvp_end_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与PVP的角色去重数(分析主体粒度)
+  game_pvp_end_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与PVP的账号去重数
+  game_pvp_end_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 产生PVP事件的游戏服去重数
+  game_pvp_end_avg_duration:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.duration') AS BIGINT))
+    description: PVP单场战斗平均时长(秒),衡量战斗节奏
+  game_pvp_end_avg_score:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.score') AS BIGINT))
+    description: PVP单场己方积分均值
+  game_pvp_end_win_rate:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params, '$.score') AS BIGINT) > CAST(GET_JSON_OBJECT(params, '$.relScore') AS BIGINT) THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: PVP胜率(己方积分>对手积分判定胜),用NULLIF防0除
+  game_pvp_end_boost_rate:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params, '$.isBoost') AS BIGINT) = 1 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 代打占比(isBoost=1),用于异常账户/代练检测
+  game_pvp_end_mode_cnt:
+    expression: COUNT(DISTINCT CAST(GET_JSON_OBJECT(params, '$.mode') AS BIGINT))
+    description: PVP模式种类数(1竞技场无bp/2竞技场有bp/3休闲/4演武场)
+coverage:
+  scenarios:
+    - "PVP参与度: 通过事件量级/角色/账号/区服去重衡量玩法活跃度与覆盖广度"
+    - "PVP战斗节奏: avg_duration 反映单场战斗节奏,辅助匹配机制与平衡性分析"
+    - "PVP胜率分析: win_rate 反映玩家竞技表现与匹配公平性(失败方提前退出可能未上报 end)"
+    - "代打占比: boost_rate 用于异常账户与代练行为检测"
+    - "PVP模式分布: mode_cnt=4 说明 4 种 mode 齐全,可细分模式维度统计"
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测,未做全量复核
+    - 分析主体粒度默认 role_id;同账号多角色参与PVP未做合并
+    - blood 字段实测数值量级较大(亿级),与 params_fields 描述"血量百分比"不符,需业务方确认语义(可能为绝对血量)
+    - win_cnt=23308/35614 ≈ 65.4% 胜率偏高,可能与失败方提前退出未上报 end 有关,需结合业务规则复核
+    - 事件本身无支付/货币产出字段,Revenue 类指标不适用;如需结算收益请用 coinList 衍生
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729：cnt=35614, role_uv=2784, acc_uv=2648, server_uv=401；avg_duration=32.58s, avg_score=536, win_cnt=23308, mode_cnt=4。字段参数完整、4种mode齐全、数值合理,事件在线。
+external_refs: []

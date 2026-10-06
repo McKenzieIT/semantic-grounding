@@ -1,0 +1,114 @@
+name: game.happyLottery.setChoose
+event_filter: event = 'game.happyLottery.setChoose'
+description: 刮刮乐(happyLottery)活动中玩家设置刮奖选择项的事件，记录玩家在某个活动(lotteryId)下对奖励(rewardId)所选择的 index1/index2 两个选择项。用于分析刮刮乐玩法的选择偏好、参与热度与服务器分布。主体粒度为 role_id(角色级)，单次实测 ds=20260729 命中 cnt=533、role_uv=166、account_uv=166、server_uv=100。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  lotteryId:
+    type: int
+    description: 活动id
+  rewardId:
+    type: int
+    description: 奖励id
+  index1:
+    type: int
+    description: 选择1
+  index2:
+    type: int
+    description: 选择2
+metrics:
+  game_happyLottery_setChoose_cnt:
+    expression: COUNT(*)
+    description: 刮刮乐设置选择事件总触发次数
+  game_happyLottery_setChoose_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发设置选择事件的去重角色数
+  game_happyLottery_setChoose_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发设置选择事件的去重账号数
+  game_happyLottery_setChoose_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发设置选择事件的去重游戏服数
+coverage:
+  scenarios:
+    - 刮刮乐活动设置选择的参与热度(总次数/角色数/账号数)
+    - 跨游戏服的选择行为覆盖面
+    - 单服/单角色选择频次分布(结合 index1/index2/lotteryId/rewardId)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id(角色级)，account_id 仅作账号级补充
+    - 未对 index1/index2 取值分布做细粒度验证
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 scout 实测：cnt=533, role_uv=166, acc_uv=166, server_uv=100，数值合理，命中非零。
+coverage_status: analyst_confirmed
+external_refs: []

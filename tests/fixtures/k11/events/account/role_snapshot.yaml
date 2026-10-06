@@ -1,0 +1,253 @@
+name: game.role.snapshot
+event_filter: event = 'game.role.snapshot'
+description: |-
+  在线玩家角色快照事件：周期性记录在线玩家的完整角色状态（角色等级、vip等级、角色战力、货币余额、武将阵容、日常/周常任务进度、天命方案等72个参数），用于重建玩家画像、战力分布与活跃度快照。主体粒度 role_id（account 域 role_* 事件，每条记录=1在线角色的全量快照）。实测 ds=20260729 单日命中 302 条/302 角色/301 账号/94 服务器。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等72个
+domains:
+  - 用户生命周期
+domain: account
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  dailyTask:
+    type: array
+    description: 日常任务列表
+  dailyTask.id:
+    type: int
+    description: 任务id
+  dailyTask.point:
+    type: int
+    description: 经验点数
+  dailyTask.result:
+    type: int
+    description: 是否已领奖（1已领奖、0未领奖）
+  weeklyTask:
+    type: array
+    description: 周常任务列表
+  weeklyTask.id:
+    type: int
+    description: 任务id
+  weeklyTask.point:
+    type: int
+    description: 经验点数
+  weeklyTask.result:
+    type: int
+    description: 是否已领奖（1已领奖、0未领奖）
+  cardList:
+    type: array
+    description: 武将列表
+  cardList.id:
+    type: int
+    description: 武将id
+  cardList.name:
+    type: string
+    description: 武将名
+  cardList.pos:
+    type: int
+    description: 站位
+  cardList.power:
+    type: int
+    description: 武将战力
+  cardList.level:
+    type: int
+    description: 武将等级
+  cardList.quality:
+    type: int
+    description: 武将品质
+  cardList.star:
+    type: int
+    description: 武将星级
+  cardList.piece:
+    type: int
+    description: 武将碎片
+  cardList.awakeList:
+    type: array
+    description: 觉醒点列表
+  cardList.awakeList.lvl:
+    type: int
+    description: 节点等级
+  cardList.awakeList.id:
+    type: int
+    description: 节点id
+  cardList.equip:
+    type: array
+    description: 装备列表
+  cardList.equip.pos:
+    type: int
+    description: 装备部位 1：武器/2：头盔/3：护具/4：饰品
+  cardList.equip.id:
+    type: int
+    description: 装备id
+  cardList.equip.uid:
+    type: int
+    description: 装备uid
+  cardList.equip.level:
+    type: int
+    description: 装备等级
+  cardList.equip.quality:
+    type: int
+    description: 装备品质id
+  cardList.ability:
+    type: array
+    description: 潜能列表
+  cardList.ability.id:
+    type: int
+    description: 天赋模板id
+  cardList.ability.num:
+    type: int
+    description: 消耗潜能点数量
+  cardList.ability.value:
+    type: int
+    description: 加成效果
+  cardList.ability.name:
+    type: string
+    description: 名称
+  cardList.abilityPoints:
+    type: int
+    description: 潜能点数量
+  cardList.tactic:
+    type: json
+    description: 战法信息
+  cardList.tactic.tacticId:
+    type: int
+    description: 战法id
+  cardList.tactic.tacticName:
+    type: string
+    description: 战法名称
+  cardList.tactic.tacticLevel:
+    type: int
+    description: 战法等级
+  cardList.tactic.tacticStar:
+    type: int
+    description: 战法星级
+  cardList.job:
+    type: int
+    description: 武将职业
+  cardList.assistRoleId:
+    type: int
+    description: 助战uid
+  cardList.assistType:
+    type: int
+    description: 助战类型
+  cardList.wushuangLevel:
+    type: int
+    description: 觉醒无双等级
+  cardList.isKey:
+    type: bool
+    description: 是否是主力武将
+  cardList.natalchartScheme:
+    type: int
+    description: 当前方案
+  cardList.natalcharts:
+    type: array
+    description: 天命方案（2个）
+  cardList.natalcharts.idx:
+    type: int
+    description: 索引
+  cardList.natalcharts.name:
+    type: string
+    description: 方案名字
+  cardList.natalcharts.nodes:
+    type: array
+    description: id
+  cardList.wsRoad:
+    type: int
+    description: 无双之路
+  cardList.bondKnight:
+    type: int
+    description: 羁绊武将
+  handbookLevel:
+    type: int
+    description: 图鉴星数
+metrics:
+  game_role_snapshot_cnt:
+    expression: COUNT(*)
+    description: 在线角色快照总记录数
+  game_role_snapshot_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 快照去重角色数（在线角色规模）
+  game_role_snapshot_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 快照去重账号数
+  game_role_snapshot_force_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.roleForce') AS BIGINT))
+    description: 在线角色战力总和（全服在线战力快照）
+coverage:
+  scenarios:
+    - 在线角色规模与活跃度快照（总记录数、去重角色数、去重账号数）
+    - 全服在线战力总览（在线角色战力总和，支撑战力分布与大盘监控）
+    - 快照在服务器/平台维度的覆盖广度（去重服务器数）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测(cnt=302, role_uv=302, acc_uv=301, server_uv=94)，未做全量复核
+    - subject 粒度默认 role_id（account 域 role_* 事件），单角色多次快照以 role_id 去重
+    - roleForce 为角色战力状态值，SUM 仅为在线战力大盘参考，未做分服/分等级分布
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: scout 单日实测 ds=20260729 命中 302 条/302 角色/301 账号/94 服务器，roleForce/roleLevel/vipLevel 等字段经 GET_JSON_OBJECT 可读
+external_refs: []

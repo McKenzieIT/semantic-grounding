@@ -1,0 +1,116 @@
+name: game.item.compose
+event_filter: event = 'game.item.compose'
+description: 道具合成事件：记录角色在游戏中进行道具合成的行为日志，分析主体为角色(role_id)。 参数携带游戏服信息(serverId/serverName)、账号id(accountId)、角色基础属性(roleId/roleName/sex/createTime/onlineTime/roleLevel/vipLevel/roleForce/exp)、 关键货币列表(coinList.gold/sendgold/freegold/diamond/expCoin/energy)、会话信息(sessionId/logUUID)、 以及合成目标道具(itemId)与数量(count)。可衡量道具合成次数、参与角色与账号规模、合成道具总量。 scout 实测 ds=20260729/20260728 单日零命中，疑似事件下线或未触发。
+domains:
+  - 装备道具
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  itemId:
+    type: int
+    description: 道具id
+  count:
+    type: int
+    description: 道具数量
+metrics:
+  game_item_compose_cnt:
+    description: 道具合成事件总次数
+    expression: COUNT(*)
+  game_item_compose_role_uv:
+    description: 参与道具合成的去重角色数
+    expression: COUNT(DISTINCT role_id)
+  game_item_compose_account_uv:
+    description: 参与道具合成的去重账号数
+    expression: COUNT(DISTINCT account_id)
+  game_item_compose_server_uv:
+    description: 涉及道具合成的去重游戏服数
+    expression: COUNT(DISTINCT server_id)
+  game_item_compose_item_cnt:
+    description: 合成道具总数量(按 params.count 求和)
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.count') AS BIGINT))
+  game_item_compose_role_avg_compose_cnt:
+    description: 人均合成事件次数(总次数/去重角色数)
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+coverage:
+  scenarios:
+    - 衡量每日/全周期道具合成事件总次数与参与角色/账号规模，评估道具合成玩法的活跃度
+    - 通过 server_id 维度分析各游戏服道具合成热度分布
+    - 结合 params.itemId 与 params.count 分析热门合成道具与合成产出总量
+    - 人均合成次数衡量单角色道具合成深度
+  limitations:
+    - 日志中零命中(ds=20260729/20260728 cnt=0)，疑似事件下线或未触发，metrics 仅为口径定义、尚无实测数据
+    - 仅 ds=20260729/20260728 两日 scout 实测，未做全量复核
+    - 分析主体粒度默认 role_id(角色级事件)，待事件恢复后需复核
+  subject_granularity: role_id
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 与 ds=20260728 单日 cnt=0/role_uv=0/acc_uv=0/server_uv=0，事件零命中，疑似下线或未触发，保持 draft
+coverage_status: draft
+external_refs: []

@@ -1,0 +1,110 @@
+name: game.charmactivity.setteameffectgroup
+event_filter: event = 'game.charmactivity.setteameffectgroup'
+description: 灵器活动（charmactivity）设置阵营光环/特效组事件：玩家在灵器活动中为单位（entries.unitId）配置特效组（entries.effectGroup），记录设置行为快照。分析主体为 role_id（角色级事件），可用 role_id/account_id/server_id 维度聚合统计触发量与覆盖度。Scout 实测 ds=20260729/20260728 双日零命中（cnt=0），事件疑似下线/未触发，保持 draft 待恢复后复核。
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  entries:
+    type: array
+    description: entries
+  entries.unitId:
+    type: int
+    description: entries.unitId
+  entries.effectGroup:
+    type: int
+    description: entries.effectGroup
+metrics:
+  game_charmactivity_setteameffectgroup_cnt:
+    expression: COUNT(*)
+    description: 灵器活动设置阵营光环事件总触发次数
+  game_charmactivity_setteameffectgroup_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发该事件的不重复角色数（分析主体 role_id）
+  game_charmactivity_setteameffectgroup_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发该事件的不重复账号数
+  game_charmactivity_setteameffectgroup_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发该事件的不重复游戏服数
+coverage:
+  scenarios:
+    - 灵器活动阵营光环/特效组设置行为的日均触发量与角色覆盖度
+    - 各游戏服/角色等级下设置特效组的活跃度对比
+  limitations:
+    - 日志中零命中(ds=20260729 cnt=0；ds=20260728 cnt=0)，事件疑似下线/未触发
+    - 仅 scout 单日/双日实测，未做全量复核；事件恢复后再做全量校验
+    - 分析主体默认 role_id（角色级事件），未实际命中无法二次核验
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=0/role_uv=0/acc_uv=0/server_uv=0；ds=20260728: cnt=0/role_uv=0/acc_uv=0/server_uv=0。双日零命中，事件疑似下线/未触发，保持 draft。"
+coverage_status: draft
+external_refs: []

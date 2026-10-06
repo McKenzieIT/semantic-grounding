@@ -1,0 +1,65 @@
+table_name: dim_10000251_trans_rogue_buff_df_arch
+engine: maxcompute
+kind: dim
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+table_comment: 游戏编号 10000251 的肉鸽(Rogue) BUFF 配置维度表，每行一个 BUFF 配置记录，提供 BUFF 标识、名称、类型、关联技能/套装、品质与描述等属性。
+description: 游戏编号 10000251 的肉鸽(Rogue) BUFF 配置维度表。每行对应一个 BUFF 配置记录，以 id 为唯一标识，name 为可读名称；携带 type(BUFF类型)、skill_id(关联技能)、suit_id(所属套装)、quality(品质)、desc(描述) 等属性字段，ds 为日分区。用于事实表通过 buff_id 进行 BUFF 维度信息lookup。当前表为空(0 行)，仅有分区元信息。
+domains:
+- 系统监控
+granularity: 每 BUFF 配置记录(id)一行的配置类维度表
+columns:
+- name: id
+  type: string
+  comment: BUFFid
+  role: dimension
+- name: name
+  type: string
+  comment: BUFF名
+  role: dimension
+- name: type
+  type: string
+  comment: BUFF类型
+  role: dimension
+- name: skill_id
+  type: string
+  comment: 技能id
+  role: dimension
+- name: suit_id
+  type: string
+  comment: 所属套装id
+  role: dimension
+- name: quality
+  type: bigint
+  comment: 品质
+  role: dimension
+- name: desc
+  type: string
+  comment: 描述
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+coverage:
+  scenarios:
+  - 事实表通过 buff_id(id) JOIN 本表，lookup BUFF 名称(name)、类型(type)、描述(desc) 等可读属性
+  - 按 BUFF 类型(type)、品质(quality) 进行分组筛选与下钻分析
+  - 通过 skill_id/suit_id 关联技能与套装维度的跨表透视
+  limitations:
+  - 配置类维度表，无值度量(无金额/数量等度量列)；quality 为分类属性而非可加度量
+  - 当前表为空(0 行)，仅有分区元信息；唯一性平凡成立(r=d=0)，待数据写入后需复核
+  - desc 字段为长文本描述，可能含复合编码串，需二次解码后再做关键词分析
+  - ds 为日分区字段，跨日快照可能存在重复 BUFF id，使用时建议限定单分区
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 系统监控域配置类维度表；primary_key=id(label=name)经 meta describe 确认；唯一性实测 r=d=0(表当前为空，平凡成立)；status 保持 draft。

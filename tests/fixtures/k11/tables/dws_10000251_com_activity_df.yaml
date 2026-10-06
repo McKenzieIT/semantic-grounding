@@ -1,0 +1,104 @@
+table_name: dws_10000251_com_activity_df
+engine: maxcompute
+table_comment: 商业化-活动付费总表
+description: |-
+  商业化-活动付费总表（dws_10000251_com_activity_df）。
+  主题：活动付费经济，按 账号(account_id)+角色(role_id)+服务器(server_id)+活动(activity_id)+付费类型(pay_type)+商品(recharge_id) 粒度记录每笔活动付费订单。 粒度：日全量快照(_df)，每日全量记录历史截至当日各账号-角色参与活动产生的付费汇总（pay_amt 累计金额/分，pay_times 累计次数，last_ymd 最后付费日期）。 主体：账号(account_id,标识)+角色(role_id,标识)；无 user_type 列，主体类型由 account_id/role_id 标识字段推断为账号-角色双主体。 范围：覆盖游戏 10000251 活动付费流水，用于活动付费 UV/ARPU/总金额/总次数等付费经济指标分析。
+domains:
+  - 付费经济
+granularity: 日全量快照(_df)，账号+角色+服务器+活动+付费类型+商品 粒度
+columns:
+  - name: activity_id
+    type: BIGINT
+    comment: 活动ID
+    role: dimension
+  - name: account_id
+    type: STRING
+    comment: 账号ID
+    role: dimension
+  - name: role_id
+    type: STRING
+    comment: 角色ID
+    role: dimension
+  - name: server_id
+    type: STRING
+    comment: 服务器ID
+    role: dimension
+  - name: pay_type
+    type: BIGINT
+    comment: 付费类型 1-现金 2-付费代金券 3-免费代金券
+    role: dimension
+  - name: recharge_id
+    type: STRING
+    comment: 商品ID
+    role: dimension
+  - name: pay_amt
+    type: DOUBLE
+    comment: 订单金额/分
+    role: measure
+  - name: pay_times
+    type: BIGINT
+    comment: 付费次数
+    role: measure
+  - name: last_ymd
+    type: STRING
+    comment: 最后一次付费日期
+    role: attribute
+  - name: ds
+    type: STRING
+    comment: 分区
+    role: partition
+metrics:
+  activity_pay_acc_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 活动付费账号 UV（去重账号数，_df 快照当日）
+  activity_pay_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 活动付费角色 UV（去重角色数，_df 快照当日）
+  activity_pay_amt_total:
+    expression: SUM(pay_amt)
+    description: 活动付费总金额（单位：分，累加 pay_amt）
+  activity_pay_times_total:
+    expression: SUM(pay_times)
+    description: 活动付费总次数（累加 pay_times）
+  activity_arppu_role:
+    expression: SUM(pay_amt) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 活动付费角色 ARPPU（人均付费金额/分=总金额/去重角色数）
+coverage:
+  scenarios:
+    - 活动付费经济规模：通过 activity_pay_amt_total/times_total 衡量当日活动整体付费金额与次数。
+    - 活动付费用户规模与渗透：activity_pay_acc_uv/role_uv 提供账号、角色两个口径的付费 UV。
+    - 活动付费深度：activity_arppu_role 反映活动付费角色的人均付费金额（ARPPU）。
+    - 按 activity_id/server_id/pay_type/recharge_id 分组可下钻各活动、服务器、付费类型、商品 的付费 UV/金额/次数。
+  limitations:
+    - _df 日全量快照语义：每条记录为账号-角色-活动-服务器-付费类型-商品 维度的累计快照（pay_amt/pay_times 含历史截至当日累计），跨 ds 不可直接相加做日增量，需用 MAX(ds) 取最新快照或按 last_ymd 区分增量。
+    - 仅 scout 抽样验证（最新 ds=20260729 上 COUNT/SUM/COUNT(DISTINCT) 实测合理），未做全量 maxc 实测复核，未对历史分区做完整性比对。
+    - 缺少活动名称、付费渠道、区服名称等维度，仅活动ID/服务器ID/商品ID 数字编码，需配合维表解读。
+    - 主体类型由 account_id/role_id 标识字段推断为账号-角色双主体，无 user_type 列显式验证。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 基于最新 ds=20260729 实测 COUNT(*)=85003、acc_uv=10136、role_uv=10541、SUM(pay_amt)=438152500.0、SUM(pay_times)=121745 均合理，列与指标结构对齐 meta describe，判定 analyst_confirmed；全量复核与历史分区比对未做。
+dimension_refs:
+  - dim_table: dim_10000251_com_activity_info
+    join_keys:
+      - dws_column: activity_id
+        dim_column: activity_id
+    derivation: DWS activity_id（活动ID）与 dim_10000251_com_activity_info 主键 activity_id 精确匹配，JOIN 回填商业活动档期/名称/起止时间。
+    origin: deterministic
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id（服务器ID）与 dim_10000251_server_info 主键 server_id 精确匹配，JOIN 回填区服名称与开服时间。
+    origin: deterministic
+  - dim_table: dim_10000251_com_recharge_info
+    join_keys:
+      - dws_column: recharge_id
+        dim_column: recharge_id
+    derivation: DWS recharge_id（商品ID）与 dim_10000251_com_recharge_info 主键 recharge_id 精确匹配，JOIN 回填礼包名称/类型/主题/价格。
+    origin: deterministic
+pref_label: 活动付费总表
+alt_labels:
+  - 商业化

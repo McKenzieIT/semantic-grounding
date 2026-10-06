@@ -1,0 +1,254 @@
+table_name: dws_10000251_univ_role_gacha_result_statis_di
+engine: maxcompute
+table_comment: 抽卡通用数仓-角色抽卡结果统计
+description: |-
+  抽卡通用数仓-角色抽卡结果统计。
+  粒度：日增量(_di)。分析主体=角色（user_type=3）。
+  主要字段：role_id, server_id, card_pool_type, card_pool_id, result_item_type, result_item_value, result_item_amount, ds。
+
+  【规范维度关联（仅使用以下5个）】
+  1. dim_10000251_card_pool_info: (card_pool_type, card_pool_id) 双键等值 JOIN（复合业务键，勿单列关联）
+  2. dim_10000251_charm_gacha_info: CAST(card_pool_id AS STRING)=card_pool_id
+  3. dim_10000251_server_info: server_id=server_id
+  4. dim_10000251_card_pool_type_info: CAST(card_pool_type AS STRING)=type_id
+  5. dim_10000251_resource_name_info: (result_item_type,result_item_value)=(item_type,item_value)
+
+  【警告】其余 dimension_refs（*_arch 的 ds-only 关联等17个）为自动发现算法的同名列噪声，无业务语义，禁止用于 JOIN。charm_gacha_info_arch 与 charm_gacha_info 冗余，仅查询历史卡池配置时才使用。
+domains:
+  - 探索收集
+granularity: 日增量(_di)
+columns:
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 服务器ID
+    role: dimension
+  - name: card_pool_type
+    type: bigint
+    comment: 卡池类型
+    role: dimension
+  - name: card_pool_id
+    type: bigint
+    comment: 卡池id
+    role: dimension
+  - name: result_item_type
+    type: bigint
+    comment: 结果道具类型
+    role: dimension
+  - name: result_item_value
+    type: bigint
+    comment: 结果道具值
+    role: dimension
+  - name: result_item_amount
+    type: bigint
+    comment: 结果道具数量
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  daily_active_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日参与抽卡的去重角色数（角色粒度UV，_di日增量）
+  total_pull_amount:
+    expression: SUM(result_item_amount)
+    description: 当日抽卡产出的道具总数（按result_item_amount求和，_di日增量）
+  active_card_pool_cnt:
+    expression: COUNT(DISTINCT card_pool_id)
+    description: 当日有抽卡记录的去重卡池数（_di日增量）
+  active_server_cnt:
+    expression: COUNT(DISTINCT server_id)
+    description: 当日有抽卡记录的去重服务器数（_di日增量）
+  avg_pull_per_role:
+    expression: SUM(result_item_amount) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 当日人均抽卡产出道具数（总量/去重角色数，NULLIF防除零）
+coverage:
+  scenarios:
+    - 通过daily_active_role_uv监测抽卡活跃角色规模与趋势
+    - 通过total_pull_amount与avg_pull_per_role评估抽卡产出总量及人均产出强度
+    - 通过active_card_pool_cnt与active_server_cnt分析抽卡玩法的池子/服务器覆盖面
+  limitations:
+    - 仅 scout 抽样验证，未做全量 maxc 实测复核；20260730 抽样 uv=4198、total_amount=2127043、pools=53、avg=506.68
+    - _di 为日增量，跨日累计需按 ds 求和；非全量快照(_df)
+    - 缺少 user_type 列，分析主体=角色(user_type=3) 系按表名 role 推断，未经列验证
+    - result_item_value 含义为道具值/标识，按维度处理；如需道具维度聚合需结合 result_item_type 联合分析
+    - 不区分付费/免费抽卡来源，无成本侧字段，仅产出侧统计
+confirmation:
+  status: unreviewed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已对 latest ds=20260730 spot-verify 4 项核心指标值合理；metrics 仅基于 meta describe 验证的真实列；_di 语义已标注
+dimension_refs:
+  - dim_table: dim_10000251_card_pool_info
+    join_keys:
+      - dws_column: card_pool_type
+        dim_column: card_pool_type
+      - dws_column: card_pool_id
+        dim_column: card_pool_id
+    derivation: 卡池主配置维度表，复合业务键 (card_pool_type, card_pool_id)。DWS 侧 card_pool_type+card_pool_id (int,int) 与 dim 侧同名同型，双键等值 JOIN（勿仅按单列 card_pool_id 关联，96行中同 ID 可存在于不同卡池类型，单列 JOIN 会膨胀）。
+  - dim_table: dim_10000251_autobi_conf2_od
+    join_keys:
+      - dws_column: ds
+        dim_column: ds
+    derivation: 确定性：DWS 列 ds 与 dim_10000251_autobi_conf2_od 主键精确同名
+  - dim_table: dim_10000251_charm_gacha_info
+    join_keys:
+      - dws_column: card_pool_id
+        dim_column: card_pool_id
+    derivation: 根据规范，通过card_pool_id关联灵器抽卡卡池配置维度表以获取卡池详细配置与保底规则等信息。
+    origin: deterministic
+  - dim_table: dim_10000251_charm_gacha_info_arch
+    join_keys:
+      - dws_column: card_pool_id
+        dim_column: card_pool_id
+      - dws_column: ds
+        dim_column: ds
+    derivation: 确定性：DWS 列 card_pool_id, ds 与 dim_10000251_charm_gacha_info_arch 主键精确同名
+  - dim_table: dim_10000251_charm_info_arch
+    join_keys:
+      - dws_column: ds
+        dim_column: ds
+    derivation: 确定性：DWS 列 ds 与 dim_10000251_charm_info_arch 主键精确同名
+  - dim_table: dim_10000251_function_info_arch
+    join_keys:
+      - dws_column: ds
+        dim_column: ds
+    derivation: 确定性：DWS 列 ds 与 dim_10000251_function_info_arch 主键精确同名
+  - dim_table: dim_10000251_knight_job_name_arch
+    join_keys:
+      - dws_column: ds
+        dim_column: ds
+    derivation: 确定性：DWS 列 ds 与 dim_10000251_knight_job_name_arch 主键精确同名
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: 根据规范，通过server_id关联服务器维度表以获取区服名称及开服时间等基础属性。
+    origin: deterministic
+  - dim_table: dim_10000251_trans_conquest_df_arch
+    join_keys:
+      - dws_column: ds
+        dim_column: ds
+    derivation: 确定性：DWS 列 ds 与 dim_10000251_trans_conquest_df_arch 主键精确同名
+  - dim_table: dim_10000251_trans_equipment_df_arch
+    join_keys:
+      - dws_column: ds
+        dim_column: ds
+    derivation: 确定性：DWS 列 ds 与 dim_10000251_trans_equipment_df_arch 主键精确同名
+  - dim_table: dim_10000251_trans_equipment_suit_info_arch
+    join_keys:
+      - dws_column: ds
+        dim_column: ds
+    derivation: 确定性：DWS 列 ds 与 dim_10000251_trans_equipment_suit_info_arch 主键精确同名
+  - dim_table: dim_10000251_trans_fteam_dungeon_df_arch
+    join_keys:
+      - dws_column: ds
+        dim_column: ds
+    derivation: 确定性：DWS 列 ds 与 dim_10000251_trans_fteam_dungeon_df_arch 主键精确同名
+  - dim_table: dim_10000251_trans_gacha_mission_group_df_arch
+    join_keys:
+      - dws_column: ds
+        dim_column: ds
+    derivation: 确定性：DWS 列 ds 与 dim_10000251_trans_gacha_mission_group_df_arch 主键精确同名
+  - dim_table: dim_10000251_trans_goods_df_arch
+    join_keys:
+      - dws_column: ds
+        dim_column: ds
+    derivation: 确定性：DWS 列 ds 与 dim_10000251_trans_goods_df_arch 主键精确同名
+  - dim_table: dim_10000251_trans_hard_boss_info_df_arch
+    join_keys:
+      - dws_column: ds
+        dim_column: ds
+    derivation: 确定性：DWS 列 ds 与 dim_10000251_trans_hard_boss_info_df_arch 主键精确同名
+  - dim_table: dim_10000251_trans_mission_info_arch
+    join_keys:
+      - dws_column: ds
+        dim_column: ds
+    derivation: 确定性：DWS 列 ds 与 dim_10000251_trans_mission_info_arch 主键精确同名
+  - dim_table: dim_10000251_trans_play_df_arch
+    join_keys:
+      - dws_column: ds
+        dim_column: ds
+    derivation: 确定性：DWS 列 ds 与 dim_10000251_trans_play_df_arch 主键精确同名
+  - dim_table: dim_10000251_trans_recharge_shop_df_arch
+    join_keys:
+      - dws_column: ds
+        dim_column: ds
+    derivation: 确定性：DWS 列 ds 与 dim_10000251_trans_recharge_shop_df_arch 主键精确同名
+  - dim_table: dim_10000251_trans_resouce_type_df_arch
+    join_keys:
+      - dws_column: ds
+        dim_column: ds
+    derivation: 确定性：DWS 列 ds 与 dim_10000251_trans_resouce_type_df_arch 主键精确同名
+  - dim_table: dim_10000251_trans_resource_item_df_arch
+    join_keys:
+      - dws_column: ds
+        dim_column: ds
+    derivation: 确定性：DWS 列 ds 与 dim_10000251_trans_resource_item_df_arch 主键精确同名
+  - dim_table: dim_10000251_trans_toy_gacha_info_df_arch
+    join_keys:
+      - dws_column: ds
+        dim_column: ds
+    derivation: 确定性：DWS 列 ds 与 dim_10000251_trans_toy_gacha_info_df_arch 主键精确同名
+  - dim_table: dim_10000251_card_pool_type_info
+    join_keys:
+      - dws_column: card_pool_type
+        dim_column: type_id
+    derivation: 根据规范，通过card_pool_type关联卡池类型配置维度表以将卡池类型ID翻译为可读名称。
+  - dim_table: dim_10000251_resource_name_info
+    join_keys:
+      - dws_column: result_item_type
+        dim_column: item_type
+      - dws_column: result_item_value
+        dim_column: item_value
+    derivation: 根据规范，使用result_item_type和result_item_value复合键关联资源名称信息维度表以解析抽卡结果道具的人类可读名称。
+pref_label: 抽卡结果统计表
+alt_labels:
+  - 抽卡
+  - 结果
+  - 获得
+  - 产出
+  - 卡池
+  - 出金
+  - 出金率
+  - SSR
+  - 金卡
+  - 稀有
+  - _di
+  - user_type=3
+  - 探索收集
+  - 扭蛋
+  - 祈愿
+  - 召唤
+  - 寻访
+  - 抽卡统计
+  - 抽奖记录
+  - 保底
+  - Gacha
+  - 角色抽卡
+  - 抽卡产出
+  - 抽卡明细
+  - 卡池统计
+  - 抽卡流水
+  - 召唤结果
+  - 角色抽奖
+  - gacha_stats
+  - 仅使用以下5个
+  - card_pool_type, card_pool_id
+  - 复合业务键，勿单列关联
+  - card_pool_id AS STRING
+  - card_pool_type AS STRING
+  - result_item_type,result_item_value
+  - item_type,item_value
+  - "*_arch 的 ds-only 关联等17个"
+  - 抽奖结果
+  - 卡池产出
+  - 抽卡掉落
+  - 卡池掉落
+  - gacha_result
+  - pull_result
+  - 角色召唤统计

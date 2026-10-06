@@ -1,0 +1,111 @@
+name: game.fish.lock
+event_filter: event = 'game.fish.lock'
+description: 钓鱼玩法：玩家设置鱼篓(fish)锁定状态，记录锁定前后数量(newLockNum/oldLockNum)及角色/账号/服务器上下文。主体粒度 role_id（角色级事件）。ds=20260729 单日实测 cnt=114 role_uv=31 acc_uv=31 server_uv=24。
+domains:
+  - 自定义
+domain: activity
+metrics:
+  game_fish_lock_cnt:
+    expression: COUNT(*)
+    description: 钓鱼锁定事件总触发次数
+  game_fish_lock_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发钓鱼锁定的去重角色数
+  game_fish_lock_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发钓鱼锁定的去重账号数
+  game_fish_lock_new_lock_num_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.newLockNum') AS BIGINT))
+    description: 钓鱼锁定后数量(newLockNum)累计总和
+coverage:
+  scenarios:
+    - 钓鱼锁定事件触发规模与角色/账号覆盖
+    - 各服务器锁定行为分布
+    - 锁定数量(newLockNum)累计水平
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id（角色级事件），账号级聚合使用 account_id
+    - newLockNum 求和为累计绝对值，未区分锁定/解锁方向
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  fishId:
+    type: int
+    description: fishId
+  oldLockNum:
+    type: int
+    description: oldLockNum
+  newLockNum:
+    type: int
+    description: newLockNum
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 实测 cnt=114 role_uv=31 acc_uv=31 server_uv=24
+  coverage_status: analyst_confirmed
+external_refs: []

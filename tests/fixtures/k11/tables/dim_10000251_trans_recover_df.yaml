@@ -1,0 +1,47 @@
+table_name: dim_10000251_trans_recover_df
+engine: maxcompute
+kind: dim
+table_comment: '交易/回收相关道具配置维度表（日全量快照 _df），存储道具 id、名称、品质、备注'
+description: '道具配置维度表（日全量快照 _df）。粒度：每个道具 id 一行。键：id（道具id）；标签：name（道具名称）。主要字段：id, name, quality, remark。用于交易/回收链路的道具维度查找。'
+domains:
+- 装备道具
+granularity: 每个道具 id 一行的配置维度表（日全量快照 _df）
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+columns:
+- name: id
+  type: string
+  comment: 道具id
+  role: dimension
+- name: name
+  type: string
+  comment: 道具名称
+  role: dimension
+- name: quality
+  type: bigint
+  comment: 品质
+  role: dimension
+- name: remark
+  type: string
+  comment: 备注
+  role: dimension
+coverage:
+  scenarios:
+  - 通过 id 关联事实表，查找道具名称/品质/备注等属性，支撑交易、回收等业务分析
+  - 作为道具维度表为交易/回收明细提供名称标签
+  limitations:
+  - 配置类维度表，无值度量；quality 为离散品质等级，不作度量
+  - remark 为富文本备注（含 <br> 等），展示前需清洗
+  - 已实测唯一性（14 行，DISTINCT id=14），主键 id 唯一
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'dim 建模草稿；主键 id 经实测唯一；标签列 name；域归 装备道具'

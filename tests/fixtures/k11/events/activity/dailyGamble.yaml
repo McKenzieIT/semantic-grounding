@@ -1,0 +1,122 @@
+name: game.dailyGamble
+event_filter: event = 'game.dailyGamble'
+description: 每日转盘活动：玩家参与每日转盘抽奖，命中奖励索引(index)对应drop表条目，发放奖励(rewardType/rewardValue/rewardSize)。角色级(role_id)事件，记录转盘活动id、drop表id、命中索引及奖励信息。ds=20260729实测单日367条事件、356角色、350账号、128服。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  activityId:
+    type: int
+    description: 转盘活动id
+  dropId:
+    type: int
+    description: drop表id
+  index:
+    type: int
+    description: 命中的奖励索引
+  rewardType:
+    type: int
+    description: 奖励类型
+  rewardValue:
+    type: int
+    description: 奖励value
+  rewardSize:
+    type: int
+    description: 奖励数量
+  dailyRmb:
+    type: int
+    description: 当日已充値金额（元）
+metrics:
+  game_dailygamble_cnt:
+    expression: COUNT(*)
+    description: 每日转盘事件总次数（角色级，单次转盘抽奖计1次）
+  game_dailygamble_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与每日转盘的不同角色数
+  game_dailygamble_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与每日转盘的不同账号数
+  game_dailygamble_reward_size_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.rewardSize') AS BIGINT))
+    description: 每日转盘发放的奖励数量合计（rewardSize 累加）
+coverage:
+  scenarios:
+    - 每日转盘活动参与度（次数/角色UV/账号UV/服务器UV）
+    - 转盘奖励产出总量（rewardSize 合计）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认主体为 role_id；部分账号可能多角色合并
+    - rewardSize 为奖励数量字段，未含 rewardValue 类型拆分
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: "ds=20260729 scout: cnt=367, role_uv=356, acc_uv=350, server_uv=128"
+external_refs: []

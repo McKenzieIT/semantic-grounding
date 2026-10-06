@@ -1,0 +1,103 @@
+name: game.role.changesign
+event_filter: event = 'game.role.changesign'
+description: 角色修改个人签名（content 字段）触发的埋点事件，记录玩家自定义签名的变更行为。事件主体粒度为角色（role_id），同时携带 account_id 标识所属账号；ds=20260729 单日实测 27 次触发，覆盖 16 个角色 / 16 个账号 / 7 个游戏服。参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个
+domains:
+  - 用户生命周期
+domain: account
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  content:
+    type: string
+    description: 签名
+metrics:
+  game_role_changesign_cnt:
+    expression: COUNT(*)
+    description: 角色修改签名事件总触发次数
+  game_role_changesign_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 修改签名的去重角色数（事件主体粒度）
+  game_role_changesign_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 修改签名的去重账号数
+  game_role_changesign_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及修改签名行为的去重游戏服数
+coverage:
+  scenarios:
+    - 监测玩家自定义签名（content）的修改活跃度，量化个人资料定制行为
+    - 按角色/账号/游戏服维度统计签名修改的去重覆盖与触发规模
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 事件默认主体粒度为 role_id，跨日/全量数据复核尚未执行
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 实测 cnt=27 / role_uv=16 / acc_uv=16 / server_uv=7，数据合理可采信
+  coverage_status: analyst_confirmed
+external_refs: []

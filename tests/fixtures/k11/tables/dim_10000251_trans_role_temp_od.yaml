@@ -1,0 +1,41 @@
+table_name: dim_10000251_trans_role_temp_od
+engine: maxcompute
+kind: dim
+table_comment: 临时用户维表（临时角色维度配置表）
+description: '临时用户维表：离线临时角色维度配置表，分析主体为临时角色（user_type=3）。
+
+  以 id 作为主键唯一标识一个临时角色维表条目，name 为该条目的显示名称/标签。
+
+  主要字段：id（主键，角色维表条目ID），name（显示名称）。'
+domains:
+- 系统监控
+granularity: 每个临时角色维表条目一行的维度/配置表
+primary_key: [id]
+primary_key_unique: true
+label_columns: [name]
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 通过 JOIN id 将临时角色维表条目信息（name 显示名称）关联到事实表，用于在分析中以临时角色维表条目维度切片/分组
+  - 提供临时角色维表条目的 id->name 显示名称映射，支撑报表与看板展示
+  limitations:
+  - 配置类维度表，无值度量字段，仅承载 id/name 标签映射
+  - id 存在尾部空格（如 "107375256165560 "），JOIN 时需注意 trim 或字符匹配
+  - name 列存在重复值（多 id 共享同一 name），name 不可单独作为唯一键
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 meta describe 真实列与唯一性实测（r=d=500）建模为 dim；status 保持 draft 待业务确认。'
+columns:
+- name: id
+  type: string
+  comment: ID,ID
+  role: dimension
+- name: name
+  type: string
+  comment: 名称,显示名称
+  role: dimension

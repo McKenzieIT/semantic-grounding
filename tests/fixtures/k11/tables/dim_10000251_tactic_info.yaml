@@ -1,0 +1,53 @@
+table_name: dim_10000251_tactic_info
+engine: maxcompute
+table_comment: 风物(tactic)配置维度表
+kind: dim
+primary_key: [tactic_id]
+primary_key_unique: true
+label_columns: [tactic_name]
+description: '风物(tactic)配置维度表。每行一个风物，记录风物ID、名称、品质、最大佩戴数、标签及推荐武将；用于按风物ID/名称关联事实表做维度查询。'
+domains:
+- 装备道具
+granularity: 每风物一行
+coverage:
+  scenarios:
+    - 按风物ID/名称 JOIN 事实表做风物维度下钻
+    - 按品质/标签筛选风物
+    - 查风物推荐武将
+  limitations:
+    - 配置类维度表，无值度量字段
+    - knight/tag 为复合编码串(如 1003_1006_1007)，需二次解码
+columns:
+- name: tactic_id
+  type: int
+  comment: 风物ID
+  role: dimension
+- name: tactic_name
+  type: string
+  comment: 风物名称
+  role: dimension
+- name: quality
+  type: int
+  comment: 品质
+  role: dimension
+- name: knight_limit
+  type: int
+  comment: 最大佩戴数
+  role: dimension
+- name: tag
+  type: string
+  comment: 标签
+  role: dimension
+- name: knight
+  type: string
+  comment: 推荐武将
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '风物配置维度表；PK=tactic_id 实测唯一(r=d=56)；无值度量；knight/tag 复合编码串需二次解码；status=draft'

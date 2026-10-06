@@ -1,0 +1,47 @@
+table_name: dim_10000251_card_pool_info
+engine: maxcompute
+table_comment: '卡池配置维度表：每行描述一个抽卡卡池的类型、ID、名称与描述。'
+description: '卡池配置维度表（dim）。记录每个抽卡卡池的卡池类型（card_pool_type）、卡池ID（card_pool_id）、卡池名称（card_pool_name）与卡池描述（card_pool_description）。用于事实表按 card_pool_id 进行卡池属性查找。'
+kind: dim
+primary_key:
+- card_pool_id
+label_columns:
+- card_pool_name
+primary_key_unique: false
+domains:
+- 付费经济
+granularity: 每个卡池（card_pool_id）一行的配置/维度表
+columns:
+- name: card_pool_type
+  type: int
+  comment: 卡池类型
+  role: dimension
+- name: card_pool_id
+  type: int
+  comment: 卡池ID
+  role: dimension
+- name: card_pool_name
+  type: string
+  comment: 卡池名称
+  role: dimension
+- name: card_pool_description
+  type: string
+  comment: 卡池描述
+  role: dimension
+coverage:
+  scenarios:
+  - 事实表按 card_pool_id JOIN 本表，查找卡池名称/类型/描述，用于抽卡分析、卡池维度切片与报表展示
+  - 按卡池类型（card_pool_type）聚合抽卡行为指标，区分常驻池/活动池等
+  limitations:
+  - 配置类维度表，无值度量（measure）字段，仅用于维度查找
+  - primary_key 实测不唯一（96 行 vs 80 个 distinct card_pool_id），可能存在历史版本/重复配置行，使用时建议去重或加业务过滤
+  - card_pool_type 为编码值，需关联类型字典二次解码才能解释含义
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '配置类卡池维度表；primary_key 唯一性实测不通过（r=96,d=80），保持 draft 待业务确认去重逻辑'

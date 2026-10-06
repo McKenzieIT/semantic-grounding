@@ -1,0 +1,107 @@
+name: game.fish.applyAllow
+event_filter: event = 'game.fish.applyAllow'
+description: 钓鱼玩法：同意申请入会/组队申请事件。记录审批方角色对他人加入钓鱼相关组织（公会/组队/师徒等）申请的同意操作，携带审批方角色基础属性（角色等级、vip等级、角色战力、经验）及关键货币快照（充值钻石、紫金、经验卷轴、体力等）。主体粒度为 role_id（审批方角色），ds=20260729 单日实测命中 100 条、覆盖 100 个角色 / 99 个账号 / 67 个游戏服。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  uid:
+    type: int
+    description: uid
+  friendUid:
+    type: int
+    description: friendUid
+metrics:
+  game_fish_applyAllow_cnt:
+    expression: COUNT(*)
+    description: 钓鱼同意申请事件总触发次数
+  game_fish_applyAllow_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 发起同意申请操作的去重角色数（主体粒度）
+  game_fish_applyAllow_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 发起同意申请操作的去重账号数
+  game_fish_applyAllow_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及同意申请操作的去重游戏服数
+coverage:
+  scenarios:
+    - 监控钓鱼玩法申请审批的每日活跃度与角色/账号/服务器覆盖广度
+    - 评估审批方角色分布，辅助判断钓鱼社交组织（公会/组队/师徒）运营健康度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id（审批方角色），未覆盖被申请方 friendUid 维度
+    - coinList 货币快照为操作发生时点余额，非本次操作产生的增量
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  coverage_status: analyst_confirmed
+  note: ds=20260729 实测 cnt=100 role_uv=100 acc_uv=99 server_uv=67，量级合理，事件正常触发
+external_refs: []

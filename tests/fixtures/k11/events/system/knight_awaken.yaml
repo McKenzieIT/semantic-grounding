@@ -1,0 +1,126 @@
+name: game.knight.awaken
+event_filter: event = 'game.knight.awaken'
+description: 记录武将觉醒事件。武将通过节点升级触发觉醒，每次觉醒产出一条日志，含武将id(knightId)、节点id(nodeId)、节点等级(nodeLvl)、角色等级、战力、货币列表(coinList)等25个参数。分析粒度为角色(role_id)，单角色可多次觉醒，亦可通过account_id聚合到账号维度。scout实测 ds=20260729：事件次数28528、去重角色2074、去重账号1970、去重游戏服233。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightId:
+    type: int
+    description: 武将id
+  nodeId:
+    type: int
+    description: 节点id
+  nodeLvl:
+    type: int
+    description: 节点等级
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=28528, role_uv=2074, acc_uv=1970, server_uv=233，数据合理"
+metrics:
+  knight_awaken_cnt:
+    expression: COUNT(*)
+    description: 武将觉醒事件总次数
+  knight_awaken_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发武将觉醒的去重角色数
+  knight_awaken_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发武将觉醒的去重账号数
+  knight_awaken_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发武将觉醒的去重游戏服数
+  knight_awaken_distinct_knight:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.knightId'))
+    description: 觉醒涉及的武将去重数(按knightId)
+  knight_awaken_distinct_node:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.nodeId'))
+    description: 觉醒涉及的节点去重数(按nodeId)
+  knight_awaken_max_node_lvl:
+    expression: MAX(CAST(GET_JSON_OBJECT(params, '$.nodeLvl') AS BIGINT))
+    description: 觉醒达到的最大节点等级
+  knight_awaken_avg_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 单角色平均觉醒次数
+coverage:
+  scenarios:
+    - 武将觉醒总体规模：通过 cnt/role_uv 衡量觉醒活动总量与渗透角色数
+    - 跨服分布：server_uv 反映觉醒活动覆盖的游戏服范围
+    - 武将/节点广度：distinct_knight/distinct_node 反映玩家觉醒的武将与节点覆盖广度
+    - 觉醒深度：max_node_lvl 反映最高觉醒节点等级，体现角色成长进度
+    - 觉醒频次：avg_per_role 反映单角色平均觉醒次数
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析粒度默认 role_id；同账号多角色需在用数侧自行去重
+    - 货币(coinList)、战力(roleForce)等参数字段未纳入指标定义，用数侧可按需扩展
+    - 觉醒节点等级含义需以游戏配置为准，本指标仅做数值聚合
+coverage_status: analyst_confirmed
+external_refs: []

@@ -1,0 +1,49 @@
+table_name: dim_10000251_gmactivity_shop_goods_info
+engine: maxcompute
+kind: dim
+table_comment: GM活动商店商品配置维度表，记录每个GM活动商店中的商品行（goods_id）及其内容/序号。
+description: 'GM活动商店商品配置维度表。每行对应一个GM活动商店中的商品记录（goods_id），含活动ID、商品ID、商品内容（显示名称）及商品序号。
+
+  粒度：每 商品(goods_id) 一行的配置/维度表。
+
+  主键：goods_id（已实测唯一）。
+
+  标签列：goods_item（商品内容/显示名称）。'
+domains:
+- 装备道具
+granularity: 每商品(goods_id)一行的配置/维度表
+primary_key:
+- goods_id
+primary_key_unique: true
+label_columns:
+- goods_item
+columns:
+- name: activity_id
+  type: string
+  comment: 活动ID,ID
+  role: dimension
+- name: goods_id
+  type: string
+  comment: 商品ID,ID
+  role: dimension
+- name: goods_item
+  type: string
+  comment: 商品内容,显示名称
+  role: dimension
+- name: goods_index
+  type: string
+  comment: 商品索引
+  role: dimension
+coverage:
+  scenarios:
+  - 通过 goods_id 关联GM活动商店明细事实表，提供商品内容/序号维度信息
+  - 通过 activity_id 关联活动维度，定位商品所属的GM活动
+  limitations:
+  - 配置类维度表，无值度量（不含金额、数量等可聚合指标）
+  - goods_item 为"名称*数量"复合编码串，如需拆分数量需二次解析（split on '*'）
+  - activity_id 在本表中非唯一（同一活动含多个商品），不能作为单一主键使用
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 maxc meta describe 实测列与 SELECT COUNT(*)=COUNT(DISTINCT goods_id)=90 唯一性校验完成；status=draft，待业务确认。'

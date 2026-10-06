@@ -1,0 +1,58 @@
+table_name: dim_10000251_server_info
+engine: maxcompute
+kind: dim
+table_comment: 服务器(区服)维度配置表，按 server_id 唯一标识一个游戏服，承载开服时间与显示名称等区服属性。
+description: '服务器(区服)维度配置表。粒度：每 一个 server_id(游戏服/区服) 一行。
+
+  记录区服基础属性：server_name(显示名)、server_start_dt(开服时间戳)、server_start_ds(开服日期 yyyymmdd)。
+
+  用于事实表按 server_id JOIN 回填区服名称与开服时间维度，支撑按区服/开服批次切片分析。
+
+  主要字段：server_id, server_name, server_start_dt, server_start_ds。'
+domains:
+- 系统监控
+granularity: 每一个 server_id(游戏服/区服)一行的维度/配置表
+primary_key:
+- server_id
+label_columns:
+- server_name
+primary_key_unique: true
+columns:
+- name: server_id
+  type: string
+  comment: 服务器id
+  role: dimension
+- name: server_name
+  type: string
+  comment: 服务器名称
+  role: dimension
+- name: server_start_dt
+  type: string
+  comment: 服务器开服时间
+  role: dimension
+- name: server_start_ds
+  type: string
+  comment: 服务器开服日期
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数(区服数)
+coverage:
+  scenarios:
+  - 事实表按 server_id JOIN 本表回填 server_name，实现按区服名称分组/筛选
+  - 按 server_start_ds / server_start_dt 切片，统计各开服批次(开服日)的新增区服数、累计区服数
+  - 作为区服维度桥接表，将日志/事实表的 server_id 映射到区服显示名与开服时间属性
+  limitations:
+  - 配置类维度表，无值度量(无金额/数量 measure)，仅作 JOIN 维度使用
+  - server_id 为字符串编码(如 "10001")，本身不含平台/大区语义；如需平台分组需外挂映射
+  - server_start_ds 为 yyyymmdd 字符串，分析时需做日期转换(非标准 DATE 类型)
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 maxc meta describe 与唯一性实测(r=d=608)建模；server_id 唯一性强。未做业务侧语义确认，状态保持 draft。'
+pref_label: 服务器信息维表
+alt_labels:
+  - 服务器
+  - 区服

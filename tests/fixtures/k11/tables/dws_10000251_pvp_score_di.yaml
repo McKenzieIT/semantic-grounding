@@ -1,0 +1,93 @@
+table_name: dws_10000251_pvp_score_di
+engine: maxcompute
+table_comment: PVP积分每日变化表
+description: PVP积分每日变化表(DWS)。粒度：角色(role_id)×PVP玩法(pvp_type)×日增量(_di)。 记录每日各角色在各PVP玩法下的积分初始值、增减变化与最终段位，用于分析PVP竞技参与度、积分流动与段位分布。 主体类型：角色(role_id，对应user_type=3)。
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 角色(role_id)×PVP玩法(pvp_type)×日增量(_di)
+columns:
+  - name: pvp_type
+    type: bigint
+    comment: PVE玩法
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: initial_score
+    type: bigint
+    comment: 初始积分
+    role: measure
+  - name: initial_rank
+    type: bigint
+    comment: 初始段位
+    role: measure
+  - name: add_score
+    type: bigint
+    comment: 累计增加积分
+    role: measure
+  - name: sub_score
+    type: bigint
+    comment: 累计减少积分
+    role: measure
+  - name: change_score
+    type: bigint
+    comment: 累计变化积分
+    role: measure
+  - name: final_score
+    type: bigint
+    comment: 最终积分
+    role: measure
+  - name: final_rank
+    type: bigint
+    comment: 最终段位
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  daily_active_pvp_roles:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日参与PVP玩法的活跃角色数(UV)，按pvp_type分组可看各玩法参与规模
+  daily_total_add_score:
+    expression: SUM(add_score)
+    description: 当日全服PVP新增积分总量(正向流动)，衡量竞技活跃强度
+  daily_total_sub_score:
+    expression: SUM(sub_score)
+    description: 当日全服PVP扣减积分总量(负向流动，sub_score为负值)
+  daily_net_score_change:
+    expression: SUM(change_score)
+    description: 当日PVP积分净变化量(=add_score+sub_score)，反映全服积分净增减
+  daily_avg_final_score:
+    expression: AVG(final_score)
+    description: 当日活跃角色PVP最终积分均值，衡量整体段位水平
+coverage:
+  scenarios:
+    - 分析每日PVP各玩法的参与角色规模与活跃度趋势(daily_active_pvp_roles按pvp_type分组)
+    - 监控全服PVP积分正负流动及净变化(daily_total_add_score/daily_total_sub_score/daily_net_score_change)
+    - 评估整体段位水平与积分分布(daily_avg_final_score)；initial_rank/final_rank可用于段位迁移分析
+  limitations:
+    - 粒度为角色×PVP玩法×日的增量记录(_di)，未保留账户/设备维度的关联；主体类型仅角色
+    - 仅对最新分区(20260730)做了抽样验证(UV=6203、净变化量与正负流动加和自洽)，未做全量maxc实测复核与历史分区口径核对
+    - pvp_type为玩法编码bigint，缺乏独立玩法维表映射，分组维度含义需结合业务字典解读
+    - sub_score样本为负值，SUM时方向已隐含；跨日累计需注意非快照语义
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 已对最新分区20260730抽样验证5项度量(UV=6203、add_s=295477、sub_s=-174221、chg_s=121256、avg_f=497.39，净变化与正负流动加和自洽)；列类型/角色已据meta describe校正；仅抽样验证未做全量复核。
+dimension_refs:
+  - dim_table: dim_10000251_trans_pvp_rank_df
+    join_keys:
+      - dws_column: pvp_type
+        dim_column: play_func_id
+      - dws_column: final_rank
+        dim_column: id
+    derivation: DWS pvp_type (PVP玩法) and final_rank (最终段位) match dim_10000251_trans_pvp_rank_df composite primary key (play_func_id, id), a dim explicitly described as the 段位维度供事实表按 play_func_id + 段位 id 关联取段位名称 — matching the 玩法+段位 pattern of this PVP score fact table.
+pref_label: PVP积分日变化表
+alt_labels:
+  - 积分
+  - 变化
+  - 段位

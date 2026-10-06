@@ -1,0 +1,125 @@
+table_name: dws_10000251_play_process_df
+engine: maxcompute
+table_comment: 玩法进度表（角色粒度，_df日全量快照）
+description: |-
+  玩法进度表，按角色(role_id)+玩法功能(play_func_id)记录每个角色在各玩法中的停留章节/关卡/状态及当日与累计参与/通关次数。
+  主题：战斗关卡、角色成长。
+  粒度：日全量快照(_df)，角色(role_id)+玩法功能(play_func_id)粒度，按业务日(ds)分区。
+  主要字段：role_id, server_id, play_func_id, unlock_status, stay_chapter_id, stay_stage_id, stay_status, stay_tm_lst, stay_role_level, stay_card_list, part_pv, pass_pv, part_pv_std, pass_pv_std, part_days_std 等16列。
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 日全量快照(_df)，角色(role_id)+玩法功能(play_func_id)粒度，按业务日(ds)分区
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: play_func_id
+    type: string
+    comment: 玩法功能id
+    role: dimension
+  - name: unlock_status
+    type: bigint
+    comment: 解锁状态，0-未解锁 1-解锁
+    role: dimension
+  - name: stay_chapter_id
+    type: string
+    comment: 停留章节id，无需用章节id区分关卡的玩法为0
+    role: dimension
+  - name: stay_stage_id
+    type: string
+    comment: 停留关卡id
+    role: dimension
+  - name: stay_status
+    type: bigint
+    comment: 停留状态，3表示胜，1表示平，0表示负，-100表示进行中
+    role: dimension
+  - name: stay_tm_lst
+    type: datetime
+    comment: 最近停留时间
+    role: attribute
+  - name: stay_role_level
+    type: bigint
+    comment: 最近停留角色等级
+    role: measure
+  - name: stay_card_list
+    type: string
+    comment: 停留卡牌列表
+    role: attribute
+  - name: part_pv
+    type: bigint
+    comment: 当日参与次数
+    role: measure
+  - name: pass_pv
+    type: bigint
+    comment: 当日通关次数
+    role: measure
+  - name: part_pv_std
+    type: bigint
+    comment: 累计参与次数
+    role: measure
+  - name: pass_pv_std
+    type: bigint
+    comment: 累计通关次数
+    role: measure
+  - name: part_days_std
+    type: bigint
+    comment: 累计参与天数
+    role: measure
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 玩法进度角色数（去重role_id），衡量玩法覆盖的角色规模（_df快照口径）
+  part_pv_sum:
+    expression: SUM(part_pv)
+    description: 当日参与次数总和，反映玩法当日活跃总次数
+  pass_pv_sum:
+    expression: SUM(pass_pv)
+    description: 当日通关次数总和，反映玩法当日通关总产出
+  pass_rate:
+    expression: SUM(pass_pv) / NULLIF(SUM(part_pv), 0)
+    description: 当日通关率，当日通关次数/当日参与次数
+  unlock_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN unlock_status = 1 THEN role_id END)
+    description: 已解锁该玩法的角色数（去重role_id，unlock_status=1）
+coverage:
+  scenarios:
+    - 玩法进度活跃度与通关效果分析：role_uv衡量玩法覆盖角色规模，part_pv_sum/pass_pv_sum衡量参与与通关总产出
+    - pass_rate衡量玩法推进效率，可按玩法功能(play_func_id)、区服(server_id)、停留章节/关卡分维度切片
+    - unlock_role_uv衡量玩法解锁渗透，累计字段(part_pv_std/pass_pv_std/part_days_std)可做累计推进分析
+  limitations:
+    - 表为空/无数据(MAX(ds) NULL，meta describe row_count=null、sample_preview=[])，无法对最新 ds 做指标 spot-verify，所有指标为结构化草拟
+    - _df 为日全量快照，跨日聚合角色去重需注意角色多玩法多行重复；role_uv 按 ds 单日去重口径
+    - stay_role_level 为停留时刻角色等级，AVG 语义需业务方确认是否代表活跃等级分布
+    - 仅 scout 抽样验证，未做全量 maxc 实测复核
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 表为空(MAX(ds) NULL)，未做指标实测复核，仅结构化草拟；待有数据后补做 spot-verify。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (comment 区服id) exactly matches the PK server_id of dim_10000251_server_info, the canonical 区服 dimension for server name/opening date lookup.
+    origin: deterministic
+  - dim_table: dim_10000251_trans_stage_df
+    join_keys:
+      - dws_column: stay_stage_id
+        dim_column: id
+    derivation: DWS stay_stage_id (comment 停留关卡id) semantically matches the PK id (关卡id) of dim_10000251_trans_stage_df, the 关卡配置 dimension for stage lookup by id.
+pref_label: 玩法进度表
+alt_labels:
+  - 玩法
+  - 完成度
+  - 推进

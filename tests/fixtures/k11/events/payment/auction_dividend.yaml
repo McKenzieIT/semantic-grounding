@@ -1,0 +1,123 @@
+name: game.auction.dividend
+event_filter: event = 'game.auction.dividend'
+description: 拍卖行分红事件(game.auction.dividend)：记录玩家从拍卖行获得分红(三山壁/size字段)的日志，包含角色、服务器、货币等27个参数。分析主体为 role_id(角色级事件)，账号级分析以 account_id 辅助。ds=20260729 scout 实测 cnt=2140, role_uv=1948, acc_uv=1875, server_uv=378, size_sum=1747512。
+domains:
+  - 付费经济
+domain: payment
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  activityId:
+    type: int
+    description: 活动id
+  monthlyCard:
+    type: bool
+    description: 是否有月卡加成
+  rightsCard:
+    type: bool
+    description: 是否有权益卡加成
+  gveBossLevel:
+    type: int
+    description: gve boss层数
+  size:
+    type: int
+    description: 分红都是三山壁
+metrics:
+  auction_dividend_cnt:
+    expression: COUNT(*)
+    description: 拍卖行分红事件总触发次数
+  auction_dividend_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发拍卖行分红的角色去重数
+  auction_dividend_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发拍卖行分红的账号去重数
+  auction_dividend_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发拍卖行分红的服务器去重数
+  auction_dividend_size_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.size') AS BIGINT))
+    description: 拍卖行分红总规模(size字段求和，疑似分红货币/物品数量)
+  auction_dividend_size_avg_per_role:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.size') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均拍卖行分红规模(按角色去重)
+coverage:
+  scenarios:
+    - 拍卖行分红事件每日触发规模与去重角色/账号/服务器数
+    - 拍卖行分红的总规模与人均分红规模(基于size字段)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - size 字段语义为"分红都是三山壁"(疑似游戏内货币/物品)，未与道具/货币元数据交叉核对
+    - subject 粒度默认 role_id(角色级事件)，账号级分析以 account_id 辅助
+    - ds=20260729 实测：cnt=2140, role_uv=1948, acc_uv=1875, server_uv=378, size_sum=1747512(size_min=197, size_max=1100)
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: ds=20260729 scout 实测：cnt=2140, role_uv=1948, acc_uv=1875, server_uv=378, size_sum=1747512, size_min=197, size_max=1100。事件正常触发，规模合理。
+external_refs: []

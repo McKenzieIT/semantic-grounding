@@ -1,0 +1,63 @@
+table_name: dim_10000251_trans_natalchart_info
+engine: maxcompute
+kind: dim
+primary_key: [id]
+primary_key_unique: true
+label_columns: [attr_value]
+table_comment: '游戏10000251星盘词条配置维度表：每行一条星盘(natal chart)词条配置，定义词条所属集合(module)、属性类型(attr_id)与类型值(attr_value)、权重(weight)、稀有度(quality)、显示点位(show_position)等。'
+description: '星盘词条配置维度表（dim_10000251_trans_natalchart_info）。每行对应一条星盘(natal chart)词条配置，按 id 唯一标识。主要字段：id(词条id,主键), module(词条集合), attr_id(词条属性类型), attr_value(类型值,标签列), weight(权重), quality(稀有度), show_position(显示点位), directions(备注)。用于通过 id JOIN 事实表以获取词条维度属性。'
+domains:
+- 系统监控
+granularity: 每条星盘词条配置一行的维度/配置表
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+columns:
+- name: id
+  type: string
+  comment: 词条id
+  role: dimension
+- name: module
+  type: string
+  comment: 词条集合
+  role: dimension
+- name: attr_id
+  type: string
+  comment: 词条属性类型
+  role: dimension
+- name: attr_value
+  type: string
+  comment: 类型值
+  role: dimension
+- name: weight
+  type: string
+  comment: 权重
+  role: dimension
+- name: quality
+  type: string
+  comment: 稀有度
+  role: dimension
+- name: show_position
+  type: string
+  comment: 显示点位
+  role: dimension
+- name: directions
+  type: string
+  comment: 备注
+  role: dimension
+coverage:
+  scenarios:
+  - 事实表通过 id JOIN 本表，获取星盘词条的 module(集合)/attr_id(属性类型)/attr_value(类型值)/quality(稀有度) 等维度属性，用于按稀有度、集合、属性类型分组统计。
+  - 用于星盘词条配置查询：根据 id 检索单条词条配置；按 module 聚合某集合下全部词条。
+  - 稀有度(quality)与权重(weight)维度分析：统计各稀有度词条数量及权重分布。
+  limitations:
+  - 配置类维度表，无值度量（无金额/次数等度量列）。
+  - 字段多为编码串（module/attr_id/attr_value/quality 等为数值编码），需结合业务码表二次解码方可获得人类可读含义。
+  - directions 字段为备注，可能为空或编码值，不可作为稳定标签使用。
+  - 唯一性已实测：id 唯一（272 行，COUNT(DISTINCT id)=272）。
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'dim 建模草稿：pk=id（meta describe 与唯一性实测均确认唯一），label=attr_value（类型值，配置表无 *_name 列故选最具标识性的值列）。所有列均为 STRING/dimension 角色。未与业务方确认编码含义，保持 draft。'

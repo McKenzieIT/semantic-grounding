@@ -1,0 +1,107 @@
+name: game.match3game.fetchReward
+event_filter: event = 'game.match3game.fetchReward'
+description: 猜字谜活动奖励领取事件：玩家在 match3game 猜字谜玩法中领取已达成奖励进度时上报，params 携带 fetchedRewardId 标识所领取的奖励项，并附带角色基础属性（角色id、账号id、游戏服id、角色等级、vip等级、角色战力）与 coinList 关键货币快照（充值钻石/赠送钻石/免费钻石/紫金/经验卷轴/体力）。主体粒度为 role_id（角色），单条事件对应一次奖励领取行为。scout 实测 ds=20260729/20260728 cnt=0（日志中零命中）。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  theme:
+    type: int
+    description: theme
+  fetchedRewardId:
+    type: int
+    description: fetchedRewardId
+metrics:
+  game_match3game_fetchReward_cnt:
+    description: 猜字谜奖励领取事件总次数（COUNT(*)）
+    expression: COUNT(*)
+  game_match3game_fetchReward_role_uv:
+    description: 领取猜字谜奖励的去重角色数
+    expression: COUNT(DISTINCT role_id)
+  game_match3game_fetchReward_account_uv:
+    description: 领取猜字谜奖励的去重账号数
+    expression: COUNT(DISTINCT account_id)
+  game_match3game_fetchReward_server_uv:
+    description: 领取猜字谜奖励覆盖的去重游戏服数
+    expression: COUNT(DISTINCT server_id)
+coverage:
+  scenarios:
+    - 评估猜字谜活动奖励领取的整体热度与角色/账号覆盖
+    - 监控活动期间各游戏服的奖励领取分布
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 日志中零命中(ds=20260729 cnt=0/role_uv=0/acc_uv=0，ds=20260728 cnt=0)，疑似下线/未触发；指标表达式已就绪，待日志恢复后再行复核
+    - 默认主体粒度为 role_id（角色）
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  coverage_status: draft
+  note: scout ds=20260729 cnt=0/role_uv=0/acc_uv=0/server_uv=0；ds=20260728 重试 cnt=0；判定为零命中，疑似事件下线/未触发，保留 draft 待复核
+external_refs: []

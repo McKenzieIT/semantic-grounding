@@ -1,0 +1,152 @@
+name: game.charmStone.changeShape
+event_filter: event = 'game.charmStone.changeShape'
+description: 灵石-变形事件：玩家对某件灵石执行 changeShape（变形/洗练替换）操作时上报。记录灵石 uid、id、目标 shape（对应 charm_stone_shape_info 配置）、isLock 以及 attrs/stagedAttrs 属性快照，同时携带 coinList 关键货币与角色基础信息（role_id/role_name/level/vip/force 等）。分析主体粒度为 role_id（角色级），账号粒度 account_id 用于关联同账号多角色。scout 实测 ds=20260729 单日 cnt=111、role_uv=90、acc_uv=90、server_uv=39，量级合理（少数角色多次变形）。
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  charmStone:
+    type: json
+    description: 灵石信息
+  charmStone.uid:
+    type: int
+    description: charmStone.uid
+  charmStone.id:
+    type: int
+    description: charmStone.id
+  charmStone.shape:
+    type: int
+    description: 对应charm_stone_shape_info
+  charmStone.isLock:
+    type: bool
+    description: 是否被上锁
+  charmStone.attrs:
+    type: array
+    description: 灵石实际属性
+  charmStone.attrs.id:
+    type: int
+    description: 第几个槽
+  charmStone.attrs.attrId:
+    type: int
+    description: 属性id
+  charmStone.attrs.attrValue:
+    type: int
+    description: 属性值
+  charmStone.stagedAttrs:
+    type: array
+    description: 洗练待替换属性（空表or nil为没有）
+  charmStone.stagedAttrs.id:
+    type: int
+    description: 第几个槽
+  charmStone.stagedAttrs.attrId:
+    type: int
+    description: 属性id
+  charmStone.stagedAttrs.attrValue:
+    type: int
+    description: 属性值
+metrics:
+  charm_stone_change_shape_cnt:
+    expression: COUNT(*)
+    description: 灵石变形操作总次数（每次 changeShape 上报 1 条）
+  charm_stone_change_shape_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发灵石变形的去重角色数（分析主体粒度）
+  charm_stone_change_shape_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发灵石变形的去重账号数
+  charm_stone_change_shape_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及灵石变形的去重游戏服数
+  charm_stone_change_shape_per_role_avg:
+    expression: ROUND(CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0), 3)
+    description: 人均变形次数（总次数 / 去重角色数，NULLIF 防零除）
+  charm_stone_change_shape_distinct_shape_cnt:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.charmStone.shape'))
+    description: 当日被变形至的去重 shape 种类数（对应 charm_stone_shape_info 配置）
+  charm_stone_change_shape_locked_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.charmStone.isLock') = 'true' THEN 1 ELSE 0 END)
+    description: 变形时灵石处于上锁状态(isLock=true)的操作条数
+coverage:
+  scenarios:
+    - 灵石变形玩法日常活跃度量：单日变形次数/参与角色数/涉及服数，判断玩法渗透与频次
+    - 人均变形次数 per_role_avg 反映核心玩家洗练投入强度，配合 shape 种类数观察目标形态分布
+    - locked_cnt 监控上锁灵石被变形的比例，辅助识别异常操作或解锁流程
+    - 跨服分布 server_uv 与角色/账号 UV 对比，定位玩法热度集中的服务器
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核（多日趋势/周环比未验证）
+    - 分析主体默认 role_id（角色级），account_id 仅用于关联同账号多角色，未单独验证账号粒度业务口径
+    - shape 取自 GET_JSON_OBJECT(params,'$.charmStone.shape')，依赖上报端 params 完整性；若个别上报缺字段会落入 NULL，distinct 计数偏低
+    - locked_cnt 依赖 isLock 字段为字符串 'true'/'false'，未验证实际上报格式；如布尔序列化为 1/0 需调整表达式
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=111, role_uv=90, acc_uv=90, server_uv=39，量级合理（少数角色多次变形）。
+coverage_status: analyst_confirmed
+external_refs: []

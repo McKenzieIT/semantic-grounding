@@ -1,0 +1,114 @@
+name: game.halfprice.fetchactivate
+event_filter: event = 'game.halfprice.fetchactivate'
+description: 半享幻礼·领取激活奖励 game.halfprice.fetchactivate：玩家在「半享幻礼」活动中领取激活奖励时上报的事件，记录触发角色与奖励货币快照。 携带 serverId/serverName/accountId/roleId/roleName/sex/createTime/onlineTime/roleLevel/vipLevel/roleForce/exp/image/coinList(含 gold/sendgold/freegold/diamond/expCoin/energy)/sessionId/logUUID 等 22 个参数。 分析主体为 role_id（角色维度）。 实测 ds=20260729 单日命中 563 条、角色去重 563、账号去重 558、游戏服去重 12；奖励以免费钻石(freegold)与经验卷轴(expCoin)为主，当日 freegold 合计 461500、expCoin 合计 15986800；充值钻石(gold)与赠送钻石(sendgold)快照合计 0（领取激活奖励不消耗充值钻石）。
+domains:
+  - 付费经济
+domain: payment
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+metrics:
+  halfprice_fetchactivate_cnt:
+    expression: COUNT(*)
+    description: 半享幻礼领取激活奖励事件总触发次数（实测 ds=20260729=563）
+  halfprice_fetchactivate_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 命中角色数（分析主体，实测 ds=20260729=563，与事件数一致即每角色单次触发为主）
+  halfprice_fetchactivate_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 命中账号数（实测 ds=20260729=558）
+  halfprice_fetchactivate_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 命中游戏服数（实测 ds=20260729=12）
+  halfprice_fetchactivate_freegold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.freegold') AS BIGINT))
+    description: 免费钻石发放总量（实测 ds=20260729=461500）
+  halfprice_fetchactivate_expcoin_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.expCoin') AS BIGINT))
+    description: 经验卷轴发放总量（实测 ds=20260729=15986800）
+  halfprice_fetchactivate_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 充值钻石快照合计（实测 ds=20260729=0，领取激活奖励不消耗充值钻石）
+  halfprice_fetchactivate_avg_freegold_per_role:
+    expression: ROUND(SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.freegold') AS BIGINT)) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0), 4)
+    description: 人均免费钻石发放量（freegold_sum / role_uv，用 NULLIF 防空除）
+coverage:
+  scenarios:
+    - 半享幻礼活动激活奖励参与度：halfprice_fetchactivate_cnt 衡量触发总量，halfprice_fetchactivate_role_uv / _account_uv / _server_uv 衡量参与角色/账号/游戏服广度。
+    - 激活奖励货币产出量：halfprice_fetchactivate_freegold_sum 与 _expcoin_sum 反映免费钻石与经验卷轴的发放规模，_gold_sum 反映充值钻石余额快照。
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核。
+    - 分析主体默认 role_id（角色维度），ds=20260729 实测 role_id 去重 563 与事件数 563 一致，未见同角色重复触发退化。
+    - coinList.diamond（紫金）在抽样行中未见（实测 JSON 字段为 coin2/coin3），sum 未核验；gold/sendgold 快照合计为 0。
+    - 充值钻石(gold)快照合计为 0 不代表无营收，仅反映领取激活奖励时角色充值钻石余额为 0，此事件非消耗型付费事件。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=563、role_uv=563、acc_uv=558、server_uv=12；freegold 合计 461500、expCoin 合计 15986800、gold 快照合计 0。事件确有真实触发与可观量级，主体维度 role_id 正常无退化。
+coverage_status: analyst_confirmed
+external_refs: []

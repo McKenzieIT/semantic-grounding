@@ -1,0 +1,208 @@
+table_name: dws_10000251_role_progression_nday_df
+engine: maxcompute
+table_comment: 新增角色培养表现N日汇总
+description: |-
+  新增角色培养表现N日汇总（DWS日全量快照）。记录每个新增角色在首日至第360日各时间节点的培养表现数值，
+  按 role_id+server_id+data_type 粒度展开，用于观察角色随生命周期的培养进度与留存衰减。
+  粒度：日全量快照(_df)。分析主体=角色（user_type=3，role_id 为唯一标识，server_id 为服务器分组键）。
+  主要字段：role_id, server_id, data_type, day1~day30, day60, day90, day180, day360 等38列。
+domains:
+  - 角色成长
+  - 用户生命周期
+granularity: 日全量快照(_df)，分析主体=角色（user_type=3）
+columns:
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 服务器ID
+    role: dimension
+  - name: data_type
+    type: string
+    comment: 数据类型
+    role: dimension
+  - name: day1
+    type: bigint
+    comment: 首日表现
+    role: measure
+  - name: day2
+    type: bigint
+    comment: 次日表现
+    role: measure
+  - name: day3
+    type: bigint
+    comment: 三日表现
+    role: measure
+  - name: day4
+    type: bigint
+    comment: 四日表现
+    role: measure
+  - name: day5
+    type: bigint
+    comment: 五日表现
+    role: measure
+  - name: day6
+    type: bigint
+    comment: 六日表现
+    role: measure
+  - name: day7
+    type: bigint
+    comment: 七日表现
+    role: measure
+  - name: day8
+    type: bigint
+    comment: 八日表现
+    role: measure
+  - name: day9
+    type: bigint
+    comment: 九日表现
+    role: measure
+  - name: day10
+    type: bigint
+    comment: 十日表现
+    role: measure
+  - name: day11
+    type: bigint
+    comment: 十一日表现
+    role: measure
+  - name: day12
+    type: bigint
+    comment: 十二日表现
+    role: measure
+  - name: day13
+    type: bigint
+    comment: 十三日表现
+    role: measure
+  - name: day14
+    type: bigint
+    comment: 十四日表现
+    role: measure
+  - name: day15
+    type: bigint
+    comment: 十五日表现
+    role: measure
+  - name: day16
+    type: bigint
+    comment: 十六日表现
+    role: measure
+  - name: day17
+    type: bigint
+    comment: 十七日表现
+    role: measure
+  - name: day18
+    type: bigint
+    comment: 十八日表现
+    role: measure
+  - name: day19
+    type: bigint
+    comment: 十九日表现
+    role: measure
+  - name: day20
+    type: bigint
+    comment: 二十日表现
+    role: measure
+  - name: day21
+    type: bigint
+    comment: 二十一日表现
+    role: measure
+  - name: day22
+    type: bigint
+    comment: 二十二日表现
+    role: measure
+  - name: day23
+    type: bigint
+    comment: 二十三日表现
+    role: measure
+  - name: day24
+    type: bigint
+    comment: 二十四日表现
+    role: measure
+  - name: day25
+    type: bigint
+    comment: 二十五日表现
+    role: measure
+  - name: day26
+    type: bigint
+    comment: 二十六日表现
+    role: measure
+  - name: day27
+    type: bigint
+    comment: 二十七日表现
+    role: measure
+  - name: day28
+    type: bigint
+    comment: 二十八日表现
+    role: measure
+  - name: day29
+    type: bigint
+    comment: 二十九日表现
+    role: measure
+  - name: day30
+    type: bigint
+    comment: 三十日表现
+    role: measure
+  - name: day60
+    type: bigint
+    comment: 六十日表现
+    role: measure
+  - name: day90
+    type: bigint
+    comment: 九十日表现
+    role: measure
+  - name: day180
+    type: bigint
+    comment: 一百八十日表现
+    role: measure
+  - name: day360
+    type: bigint
+    comment: 三百六十日表现
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  role_uv_day1:
+    expression: COUNT(DISTINCT CASE WHEN day1 IS NOT NULL THEN role_id END)
+    description: 首日活跃角色数（day1 非空的角色去重数）
+  role_uv_day7:
+    expression: COUNT(DISTINCT CASE WHEN day7 IS NOT NULL THEN role_id END)
+    description: 7日留存角色数（day7 非空的角色去重数）
+  role_uv_day30:
+    expression: COUNT(DISTINCT CASE WHEN day30 IS NOT NULL THEN role_id END)
+    description: 30日留存角色数（day30 非空的角色去重数）
+  retention_rate_day7:
+    expression: COUNT(DISTINCT CASE WHEN day7 IS NOT NULL THEN role_id END) / NULLIF(COUNT(DISTINCT CASE WHEN day1 IS NOT NULL THEN role_id END), 0)
+    description: 7日留存率（7日留存角色数 / 首日活跃角色数，分母 NULLIF 防零除）
+  total_progression_day30:
+    expression: SUM(day30)
+    description: 30日累计培养表现（day30 数值总和）
+coverage:
+  scenarios:
+    - N日留存角色规模与衰减：通过 day1/day7/day30 等节点活跃角色数观察新增角色留存曲线
+    - 角色培养深度：累计培养表现(SUM)反映角色培养投入规模
+    - 留存率评估：7日留存率等比例指标量化新增角色生命周期的留存质量
+  limitations:
+    - 表为空/无数据(MAX(ds) NULL)，所有指标均为结构性定义，未经 maxc 实测验证
+    - 仅按 role_id+server_id+data_type 粒度展开，无账户/设备维度（分析主体为 user_type=3 角色）
+    - _df 为日全量快照，指标按 ds 分区快照计算，非日增量聚合
+    - 仅抽样结构性定义 day1/day7/day30 节点，未独立验证 day60~day360 长周期指标
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表为空(MAX(ds) NULL)，仅做结构性丰富，未做 maxc 实测验证
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (comment 服务器ID) is an exact name match to the primary key server_id of dim_10000251_server_info, the 服务器(区服)维度配置表 described as purpose-built for fact-table server_id JOIN.
+    origin: deterministic
+pref_label: 新增角色N日培养表
+alt_labels:
+  - N日
+  - 培养
+  - 成长

@@ -1,0 +1,134 @@
+table_name: dws_10000251_univ_acc_act_mi
+engine: maxcompute
+table_comment: 账号月增量活跃付费汇总表（_mi，主体=账号 user_type=2），按月汇总账号活跃时长/次数/天数、付费金额/天数及新增/活跃/付费标记，含上下期对比标记。
+description: 粒度：月增量(_mi)，分析主体=账号（user_type=2，已验证DISTINCT user_type={2}）。每月初快照账号级活跃与付费汇总：活跃时长(act_dur)、活跃次数(act_pv)、活跃天数(act_ds_cnt)、付费金额(pay_amt)、付费天数(pay_ds_cnt)，以及新增(act_fst)、活跃(act)、付费(pay)、首付费(pay_fst)等0/1标记；同时含当月角色行为标记(role_act/role_act_fst)与上/下期活跃付费对比标记(act_last_period/pay_last_period/act_next_period/pay_next_period)。主键 user_id。
+domains:
+  - 用户生命周期
+  - 付费经济
+granularity: 月增量(_mi)，分析主体=账号（user_type=2），按 ds(月初) 分区快照
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: act_dur
+    type: int
+    comment: 月累计活跃时长，单位：秒
+    role: measure
+  - name: pay_amt
+    type: decimal
+    comment: 月累计付费金额，单位：元
+    role: measure
+  - name: act
+    type: int
+    comment: 月活跃标记，1-活跃、0-非活跃
+    role: dimension
+  - name: act_fst
+    type: int
+    comment: 月新增标记，新增即首次活跃，1-新增、0-非新增
+    role: dimension
+  - name: pay
+    type: int
+    comment: 月付费标记，1-付费、0-非付费
+    role: dimension
+  - name: pay_fst
+    type: int
+    comment: 月首次付费标记，1-首次付费、0-非首次付费
+    role: dimension
+  - name: act_pv
+    type: int
+    comment: 月累计活跃次数，用“角色登录”事件计算，每登录1次算1次活跃
+    role: measure
+  - name: role_act
+    type: int
+    comment: 当月有角色行为标记，1-是、0-否
+    role: dimension
+  - name: role_act_fst
+    type: int
+    comment: 当月首次有角色行为标记，1-是、0-否
+    role: dimension
+  - name: act_ds_fst
+    type: string
+    comment: 月首次活跃日期
+    role: dimension
+  - name: act_ds_lst
+    type: string
+    comment: 月最后活跃日期
+    role: dimension
+  - name: act_ds_cnt
+    type: int
+    comment: 月活跃天数
+    role: measure
+  - name: pay_ds_cnt
+    type: int
+    comment: 月付费天数
+    role: measure
+  - name: role_act_ds_cnt
+    type: int
+    comment: 当月有角色行为天数
+    role: measure
+  - name: act_last_period
+    type: int
+    comment: 上一时间周期活跃标记，1-活跃、0-非活跃
+    role: dimension
+  - name: pay_last_period
+    type: int
+    comment: 上一时间周期付费标记，1-是、0-否
+    role: dimension
+  - name: act_next_period
+    type: int
+    comment: 下一时间周期活跃标记，1-活跃、0-非活跃
+    role: dimension
+  - name: pay_next_period
+    type: int
+    comment: 下一时间周期付费标记，1-是、0-否
+    role: dimension
+  - name: ds
+    type: string
+    comment: 分区字段-月初
+    role: partition
+metrics:
+  mau:
+    expression: COUNT(DISTINCT user_id)
+    description: 月活账号UV（act=1的账号去重数，按 ds 月分区快照聚合）
+  new_uv:
+    expression: SUM(act_fst)
+    description: 月新增账号UV（act_fst=1 标记求和，表示当月首次活跃的账号数）
+  pay_uv:
+    expression: SUM(pay)
+    description: 月付费账号UV（pay=1 标记求和，表示当月有付费行为的账号数）
+  pay_amt_total:
+    expression: SUM(pay_amt)
+    description: 月付费总额（元，账号维度汇总 pay_amt）
+  pay_rate:
+    expression: SUM(pay) * 1.0 / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 月付费率=付费账号UV/月活账号UV，分母为0时返回NULL
+coverage:
+  scenarios:
+    - 账号月度活跃规模与新增规模（mau/new_uv）用于用户生命周期留存漏斗
+    - 账号月度付费规模与金额（pay_uv/pay_amt_total）及付费转化率（pay_rate）用于付费经济分析
+    - 配合 act_last_period/act_next_period 标记可做上下月留存/流失与付费复购对比
+  limitations:
+    - 仅对最新分区 ds=20260701 做了 scout 抽样验证（mau=23664,pay_total≈858434,new_uv=12448,pay_uv=3359），未做全量 maxc 实测复核
+    - _mi 为月增量快照，粒度=账号×月；指标在单分区聚合即得该月账号级汇总，跨月趋势需对多分区分别聚合
+    - 0/1 标记列(act/act_fst/pay/pay_fst/role_act 等)作为 dimension 既是分组键也可 SUM 统计；role_act 等角色行为指标仅反映账号是否触发角色行为，非角色实体口径
+    - 缺少渠道/区服等业务维度，仅账号 user_id 维度
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 最新分区 ds=20260701 抽样验证 5 项指标均得合理值；user_type 单一取值{2}与账号主体推断一致；表非空(42.31MB,15分区)。仅 scout 抽样，未全量复核。
+dimension_refs:
+  - dim_table: dim_10000251_user_tag_before_ob_info
+    join_keys:
+      - dws_column: user_id
+        dim_column: user_id
+    derivation: "DWS column user_id (comment: 用户id) is the account identifier, same namespace as the PK user_id of dim_10000251_user_tag_before_ob_info, which is explicitly described as used to join fact tables via user_id for tag drilldown and segmentation."
+    origin: deterministic
+pref_label: 账号月活跃表
+alt_labels:
+  - 月增量

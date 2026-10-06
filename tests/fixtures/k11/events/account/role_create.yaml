@@ -1,0 +1,106 @@
+name: game.role.create
+event_filter: event = 'game.role.create'
+description: 创角事件 game.role.create：玩家首次在游戏服创建角色并完成上线时上报，携带游戏服id/名字、账号id、角色id/名字、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验及关键货币列表等23个参数。subject 粒度为 role_id（每次创角对应一个新角色）；ds=20260729 单日 scout 实测 625 条记录、625 角色、620 账号、2 个游戏服，反映真实创角规模。
+domains:
+  - 用户生命周期
+domain: account
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  registerIp:
+    type: string
+    description: 注册ip
+metrics:
+  game_role_create_cnt:
+    expression: COUNT(*)
+    description: 创角事件总次数（含同一角色可能的多次上报）
+  game_role_create_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 创角角色去重数（默认 subject 粒度，一个新角色计一次）
+  game_role_create_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 创角账号去重数（同一账号多角色计一次）
+  game_role_create_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 发生创角的游戏服去重数
+coverage:
+  scenarios:
+    - 用于分析每日/分服新增角色规模、新增账号规模与游戏服覆盖广度，可作为用户生命周期域拉新趋势、渠道效果与服务器承载评估的基础指标。
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - subject 默认 role_id；若同一创角上报多次或角色重名复用，cnt 会高于 role_uv，需结合角色id唯一性复核
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  coverage_status: analyst_confirmed
+  note: ds=20260729 scout 实测 cnt=625 / role_uv=625 / acc_uv=620 / server_uv=2，数字合理，事件命中正常。
+external_refs: []
+alt_labels:
+  - 新增
+  - 新增用户
+  - 新注册

@@ -1,0 +1,50 @@
+kind: dim
+table_name: dim_10000251_trans_resource_item_df_arch
+engine: maxcompute
+table_comment: '资源/物品配置维度表（按 ds 分区的归档快照）：物品类型 type + 物品 id + 物品名 name 的配置维表，df_arch 为按日归档。'
+description: '游戏内资源/物品的配置维度表（dim）。每行描述一个物品 (type, id) 在某 ds 快照下的配置记录，含物品类型 type、物品 id、物品名 name；ds 为归档快照分区(yyyymmdd)。主键 (type, id, ds) 复合唯一，已实测。用于事实表按 type+id 关联取物品名/类型标签。'
+domains:
+- 装备道具
+granularity: '每 (物品类型 type, 物品 id, ds 快照) 一行的配置维度表（按 ds 分区归档）'
+primary_key:
+- type
+- id
+- ds
+label_columns:
+- name
+primary_key_unique: true
+columns:
+- name: type
+  type: BIGINT
+  comment: 物品类型
+  role: dimension
+- name: id
+  type: STRING
+  comment: 物品id
+  role: dimension
+- name: name
+  type: STRING
+  comment: 物品名
+  role: dimension
+- name: ds
+  type: STRING
+  comment: 分区字段(yyyymmdd 归档快照日期)
+  role: partition
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数(含历史快照)
+coverage:
+  scenarios:
+  - 事实表按 (type, id) JOIN 本表取物品名 name / 物品类型 type 作为维度标签
+  - 可按 ds 取指定日期的物品配置快照
+  limitations:
+  - 配置类维度表，无值度量（仅属性/标签列）
+  - id 单列在归档全表非唯一(3004 个 id 对应 1450156 行)，关联须配合 type+ds 复合定位
+  - 关联事实表时需指定 ds 分区以免行膨胀
+  - type/id 为编码，物品语义需结合 name 解读
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '自动建模：meta describe 取得 4 列(type BIGINT/id STRING/name STRING/ds STRING 分区)；主键 (type,id,ds) 经 SELECT COUNT(*)=COUNT(DISTINCT CONCAT(type,id,ds)) 实测唯一(r=k=1450156)；label=name；域=装备道具(资源/物品)；status=draft(复合主键 dim 归档表，非单列自然 id 故保持 draft)。'

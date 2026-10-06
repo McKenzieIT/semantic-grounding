@@ -1,0 +1,140 @@
+name: game.guildActivity.bonus
+event_filter: event = 'game.guildActivity.bonus'
+description: |-
+  公会活跃分红领取：角色根据公会活跃度按分红等级(level)领取公会活跃分红，分发免费钻石(coinList.freegold)/充值钻石(coinList.gold)等货币。主体粒度为角色(role_id)，记录每次公会活跃分红领取行为。实测 ds=20260729 单日 cnt=52/role_uv=52/acc_uv=52/server_uv=42，分红等级覆盖 2/3/4/6 档。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  level:
+    type: int
+    description: 分红等级
+metrics:
+  guild_activity_bonus_cnt:
+    expression: COUNT(*)
+    description: 公会活跃分红领取事件触发次数(每次分红领取记1条)
+  guild_activity_bonus_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取分红的独立角色数(去重 role_id；主体粒度为角色)
+  guild_activity_bonus_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取分红的独立账号数(去重 account_id)
+  guild_activity_bonus_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的区服数(去重 server_id，反映公会活跃分红活动覆盖面)
+  guild_activity_bonus_level_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.level'))
+    description: 涉及的分红等级档位数(去重 level；实测覆盖 2/3/4/6 档)
+  guild_activity_bonus_freegold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.freegold') AS BIGINT))
+    description: 分红发放的免费钻石总量(coinList.freegold 求和；实测 ds=20260729 合计 812975)
+  guild_activity_bonus_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 分红发放的充值钻石总量(coinList.gold 求和；实测 ds=20260729 合计 113，少量发放)
+  guild_activity_bonus_per_role_avg_cnt:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均领取分红次数(总次数/独立角色数；实测 ≈1.0，每角色当日单次领取)
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=52/role_uv=52/acc_uv=52/server_uv=42；分红等级 level 覆盖 2/3/4/6 档；freegold 合计 812975、gold 合计 113、diamond(紫金) 全部为 null(本事件不分发紫金)。数值量级合理，事件真实在线。"
+coverage:
+  scenarios:
+    - 公会活跃分红领取规模(guild_activity_bonus_cnt / guild_activity_bonus_role_uv / guild_activity_bonus_account_uv)
+    - 活动覆盖面(guild_activity_bonus_server_uv 区服数、guild_activity_bonus_level_uv 分红等级档位数)
+    - 分红货币发放量(guild_activity_bonus_freegold_sum 免费钻石、guild_activity_bonus_gold_sum 充值钻石)
+    - 人均领取频次(guild_activity_bonus_per_role_avg_cnt)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测(cnt=52/role_uv=52/acc_uv=52/server_uv=42)，未做全量多日复核，建议接入生产流量前抽查
+    - 主体粒度默认 role_id 未逐事件实测角色归属正确性，按 base view 同时含 account_id+role_id 推断为角色级
+    - 分红等级 level 仅做 COUNT(DISTINCT) 实测覆盖 2/3/4/6 档，未枚举各档业务含义及缺口(1/5 档当日无数据，需配置表/产品确认)
+    - coinList.diamond(紫金) 当日全为 null，本事件不分发紫金，未写入 diamond 求和指标；coinList 其余字段(sendgold/expCoin/energy)未抽样比对
+    - 本游戏无 MaxCompute 事件分布查询，无 daily_count/total_count/active_days
+  coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_knight_awaken_info_arch
+    join_keys:
+      - dws_column: level
+        dim_column: level
+    derivation: 确定性：事件字段 level 与 dim_10000251_knight_awaken_info_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_knight_level_info
+    join_keys:
+      - dws_column: level
+        dim_column: level
+    derivation: 确定性：事件字段 level 与 dim_10000251_knight_level_info 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_knight_level_info_arch
+    join_keys:
+      - dws_column: level
+        dim_column: level
+    derivation: 确定性：事件字段 level 与 dim_10000251_knight_level_info_arch 主键精确同名
+    origin: deterministic

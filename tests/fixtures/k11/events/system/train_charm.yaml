@@ -1,0 +1,152 @@
+name: game.train.charm
+event_filter: event = 'game.train.charm'
+description: |-
+  灵器养成
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等32个。
+  事件语义：灵器（charm）养成埋点，覆盖 action=1 升星、action=2 解锁图鉴、action=3 护佑 三类操作；params 内 charm（灵器信息，升星/解锁图鉴时上报）、charmGround（命盘信息，护佑时上报）为嵌套 json/array 结构。
+  分析主体：role_id（角色级养成事件），account_id 作账号级补充，server_id 作游戏服分布维度。
+  2026-07-30 scout 实测 ds=20260729：cnt=1471 / role_uv=616 / acc_uv=609 / server_uv=85；动作分布 action=1(升星) 345次/304角色、action=2(解锁图鉴) 522次/477角色、action=3(护佑) 604次/494角色。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  action:
+    type: int
+    description: 1 升星 2 解锁图鉴 3 护佑
+  charm:
+    type: json
+    description: 灵器信息  (升星 解锁图鉴才有)
+  charm.id:
+    type: int
+    description: charm.id
+  charm.star:
+    type: int
+    description: charm.star
+  charm.activated:
+    type: bool
+    description: charm.activated
+  charmGround:
+    type: array
+    description: 灵器命盘信息（护佑时才有）
+  charmGround.id:
+    type: int
+    description: charmGround.id
+  charmGround.cellInfo:
+    type: array
+    description: charmGround.cellInfo
+  charmGround.cellInfo.id:
+    type: int
+    description: charmGround.cellInfo.id
+  charmGround.cellInfo.charmId:
+    type: int
+    description: charmGround.cellInfo.charmId
+metrics:
+  train_charm_cnt:
+    expression: COUNT(*)
+    description: 灵器养成事件总次数（含 action=1 升星 / action=2 解锁图鉴 / action=3 护佑 三类动作）
+  train_charm_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与灵器养成的角色数（分析主体 role_id）
+  train_charm_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与灵器养成的账号数
+  train_charm_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发灵器养成的游戏服数
+  train_charm_starup_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action') = '1' THEN 1 ELSE 0 END)
+    description: 灵器升星（action=1）次数
+  train_charm_unlock_codex_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action') = '2' THEN 1 ELSE 0 END)
+    description: 解锁灵器图鉴（action=2）次数
+  train_charm_bless_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action') = '3' THEN 1 ELSE 0 END)
+    description: 灵器护佑（action=3）次数
+  train_charm_starup_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN GET_JSON_OBJECT(params,'$.action') = '1' THEN role_id END)
+    description: 进行灵器升星的角色数
+  train_charm_starup_ratio:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action') = '1' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 灵器升星事件在总养成中的占比（衡量升星渗透率）
+coverage:
+  scenarios:
+    - 灵器养成三类动作（升星/解锁图鉴/护佑）的参与规模与分布
+    - 灵器养成活跃角色数、账号数、覆盖游戏服数
+    - 升星动作在总养成中的占比（升星渗透率）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色级养成事件），account_id 作账号级补充
+    - params 内 charm（灵器信息）、charmGround（命盘信息）为嵌套 json/array，本指标层未展开 charmId/star 等子粒度聚合
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=1471 / role_uv=616 / acc_uv=609 / server_uv=85；动作分布 action=1(升星) 345次/304角色, action=2(解锁图鉴) 522次/477角色, action=3(护佑) 604次/494角色。三类动作均有命中，数字合理。"
+coverage_status: analyst_confirmed
+external_refs: []

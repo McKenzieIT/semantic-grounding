@@ -1,0 +1,108 @@
+name: game.guild.cancelJoinApply
+event_filter: event = 'game.guild.cancelJoinApply'
+description: 玩家取消已提交的公会加入申请时触发的行为埋点。记录申请方角色信息与目标公会id(targetGuidId)，分析主体为 role_id。ds=20260729 实测：cnt=3, role_uv=2, acc_uv=2, server_uv=1。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  targetGuidId:
+    type: int
+    description: 公会id
+metrics:
+  guild_cancelJoinApply_cnt:
+    description: 取消公会加入申请事件总次数
+    expression: COUNT(*)
+  guild_cancelJoinApply_role_uv:
+    description: 发起取消申请的去重角色数
+    expression: COUNT(DISTINCT role_id)
+  guild_cancelJoinApply_account_uv:
+    description: 发起取消申请的去重账号数
+    expression: COUNT(DISTINCT account_id)
+  guild_cancelJoinApply_server_uv:
+    description: 涉及的去重游戏服数
+    expression: COUNT(DISTINCT server_id)
+  guild_cancelJoinApply_target_guild_uv:
+    description: 被申请取消涉及的去重目标公会数
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.targetGuidId'))
+coverage:
+  scenarios:
+    - 公会加入申请取消的日级频次与去重角色/账号规模
+    - 跨服/跨公会的取消申请分布
+    - 公会招募漏斗中"取消申请"环节的流失量化
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（事件为角色级行为埋点）
+    - 样本量较小(cnt=3, role_uv=2)，单日数据可能不代表常态
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: ds=20260729 实测命中：cnt=3, role_uv=2, acc_uv=2, server_uv=1。数据量较小但结构合理，事件在线可触发。
+coverage_status: analyst_confirmed
+external_refs: []

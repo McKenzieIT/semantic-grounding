@@ -1,0 +1,95 @@
+table_name: dws_10000251_play_story_df
+engine: maxcompute
+table_comment: 玩法剧情总表（角色粒度，日全量快照）
+description: |-
+  玩法剧情总表：记录每个角色对每条剧情（story）的累计访问与阅读状态。
+  粒度：角色（role）× 剧情（story）粒度，日全量快照（_df），每行=某 ds 下一个角色对一条剧情的累计访问记录。
+  主题域：探索收集、角色成长。
+  主要字段：role_id, server_id, story_id, visit_pv_std, read_status, skip_line_id_max, dim_line_max, ext_info 等9列。
+domains:
+  - 探索收集
+  - 角色成长
+granularity: 角色（role）× 剧情（story）粒度，日全量快照（_df）
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id，key
+    role: dimension
+  - name: story_id
+    type: string
+    comment: 剧情id，key
+    role: dimension
+  - name: visit_pv_std
+    type: bigint
+    comment: 累计访问次数
+    role: measure
+  - name: read_status
+    type: bigint
+    comment: 完整阅读，是否完整阅读过，布尔值(0/1)，可 SUM 聚合为完整阅读条目数
+    role: measure
+  - name: skip_line_id_max
+    type: string
+    comment: 最大跳过台词id，-1表示无跳过
+    role: attribute
+  - name: dim_line_max
+    type: string
+    comment: 最大台词id
+    role: attribute
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  story_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 互动剧情的角色 UV（当日快照中至少触发一条剧情的角色数）
+  story_uv:
+    expression: COUNT(DISTINCT story_id)
+    description: 互动剧情数（当日快照中角色触达的不同剧情条数）
+  visit_pv_total:
+    expression: SUM(visit_pv_std)
+    description: 剧情累计访问 PV（visit_pv_std 累计求和）
+  read_complete_cnt:
+    expression: SUM(CASE WHEN read_status=1 THEN 1 ELSE 0 END)
+    description: 完整阅读剧情的条目数（role×story 记录中 read_status=1 的计数）
+  read_complete_rate:
+    expression: SUM(CASE WHEN read_status=1 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 完整阅读率（完整阅读条目数 / 总记录数）
+coverage:
+  scenarios:
+    - 角色剧情触达与渗透：story_role_uv 反映当日参与剧情的角色规模，结合整体活跃角色可算剧情渗透率。
+    - 剧情覆盖广度：story_uv 衡量当日角色触达的剧情条数，可定位热门/冷门剧情。
+    - 剧情访问热度：visit_pv_total 反映剧情累计访问 PV，识别高频回看剧情。
+    - 阅读完成质量：read_complete_cnt / read_complete_rate 衡量剧情被完整阅读的条目规模与完成率，评估剧情吸引力与跳过行为。
+  limitations:
+    - 仅通过 maxc 抽样验证 20260730 单日指标，未做全量跨日复核。
+    - 粒度为角色×剧情快照，UV/计数均按快照当日口径，非全生命周期累计；跨日对比需注意快照口径差异。
+    - 缺少区服维度聚合的预聚合指标，server_id 维度的下钻需在查询时 GROUP BY。
+    - ext_info 为自由文本，未结构化解析，无法直接作为维度聚合。
+    - 无账户/设备维度，仅角色粒度；如需账户或设备视角需关联其他表。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 已在 maxc 上对 20260730（latest ds）抽样验证 story_role_uv/story_uv/visit_pv_total/read_complete_cnt 均返回合理值。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (区服id，key) is the server foreign key; dim_10000251_server_info has PK server_id and provides 区服名称/开服时间 per its description.
+    origin: deterministic
+pref_label: 玩法剧情总表
+alt_labels:
+  - 剧情
+  - 故事
+  - 主线
+  - 对话

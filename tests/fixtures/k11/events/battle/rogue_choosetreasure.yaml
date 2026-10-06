@@ -1,0 +1,191 @@
+name: game.rogue.choosetreasure
+event_filter: event = 'game.rogue.choosetreasure'
+description: 古战场(rogue)奇珍选择事件：玩家在古战场副本挑战中选择奇珍(treasure)时上报，记录选项列表、被选项、奇珍品质与rogueStage阶段。分析主体为 role_id（角色），20260729 单日实测 cnt=355 / role_uv=111 / acc_uv=110 / server_uv=45。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  playId:
+    type: string
+    description: 唯一标识一次古战场副本挑战
+  chapter:
+    type: int
+    description: 章节
+  difficulty:
+    type: int
+    description: 难度
+  step:
+    type: int
+    description: 步数
+  choice:
+    type: array
+    description: 选项列表
+  choice.id:
+    type: int
+    description: id
+  choice.name:
+    type: string
+    description: 名称
+  choice.quality:
+    type: int
+    description: 品质
+  choice.suit:
+    type: int
+    description: 套装id
+  choice.choose:
+    type: int
+    description: 是否被选择1：是 0：否
+  buff:
+    type: array
+    description: buff列表（祝福）
+  buff.id:
+    type: int
+    description: buff的id
+  buff.name:
+    type: string
+    description: buff名称
+  buff.level:
+    type: int
+    description: 强化等级
+  buff.quality:
+    type: int
+    description: buff品质
+  buff.suitId:
+    type: int
+    description: 套装id
+  soul:
+    type: array
+    description: 将魂列表
+  soul.id:
+    type: int
+    description: 将魂id
+  soul.suitId:
+    type: int
+    description: 套装id
+  soul.suitNum:
+    type: int
+    description: 套装下将魂数量
+  treasure:
+    type: array
+    description: 奇珍列表
+  treasure.id:
+    type: int
+    description: 奇珍id
+  treasure.name:
+    type: string
+    description: 奇珍名
+  treasure.quality:
+    type: int
+    description: 奇珍品质
+  rogueStage:
+    type: int
+    description: 阶段
+metrics:
+  game_rogue_choosetreasure_cnt:
+    expression: COUNT(*)
+    description: 奇珍选择事件总次数
+  game_rogue_choosetreasure_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 选择奇珍的去重角色数
+  game_rogue_choosetreasure_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 选择奇珍的去重账号数
+  game_rogue_choosetreasure_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的游戏服数
+  game_rogue_choosetreasure_choice_per_role:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均奇珍选择次数（事件数 / 去重角色数）
+coverage:
+  scenarios:
+    - 古战场奇珍选择的参与规模（事件数、角色数、账号数、游戏服数）
+    - 人均奇珍选择次数，反映副本进度与选择密度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色），未单独核对账号粒度
+    - 选项/buff/将魂/奇珍等数组型 params 字段未在 metrics 中展开聚合（GET_JSON_OBJECT 对数组取标量不可靠）
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729：cnt=355, role_uv=111, acc_uv=110, server_uv=45；非支付事件，无 money 字段
+external_refs:
+  - dim_table: dim_10000251_trans_rogue_df
+    join_keys:
+      - dws_column: difficulty
+        dim_column: difficulty
+    derivation: 确定性：事件字段 difficulty 与 dim_10000251_trans_rogue_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_rogue_df_arch
+    join_keys:
+      - dws_column: difficulty
+        dim_column: difficulty
+    derivation: 确定性：事件字段 difficulty 与 dim_10000251_trans_rogue_df_arch 主键精确同名
+    origin: deterministic

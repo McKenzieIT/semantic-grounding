@@ -1,0 +1,115 @@
+name: game.script.finishtalk
+event_filter: event = 'game.script.finishtalk'
+description: 剧本-对话流：玩家完成剧本(scriptId)中某一段对话(talkId)时触发的行为埋点。参数含游戏服id/名字、账号id、角色id/名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验、看板娘、关键货币列表(充值钻石/赠送钻石/免费钻石/紫金/经验卷轴/体力)、会话id、logUUID、剧本id(scriptId)、对话id(talkId)等24个。分析主体粒度：role_id（角色级）。scout 实测 ds=20260729 与 ds=20260728 均零命中，事件疑似下线/未触发。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  scriptId:
+    type: int
+    description: 剧本id
+  talkId:
+    type: int
+    description: 对话id
+metrics:
+  game_script_finishtalk_cnt:
+    expression: COUNT(*)
+    description: 剧本对话完成事件总次数（每次完成一段对话计一次）
+  game_script_finishtalk_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 完成剧本对话的去重角色数（分析主体粒度 role_id）
+  game_script_finishtalk_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 完成剧本对话的去重账号数
+  game_script_finishtalk_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 完成剧本对话涉及的去重游戏服数
+  game_script_finishtalk_script_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.scriptId'))
+    description: 完成对话涉及的去重剧本数(scriptId)
+  game_script_finishtalk_talk_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.talkId'))
+    description: 完成对话涉及的去重对话段数(talkId)
+coverage:
+  granularity: 单次对话完成事件（role_id 为默认主体粒度）
+  scenarios:
+    - 剧本对话完成度：通过 cnt/role_uv 衡量每日完成剧本对话的事件量与参与角色规模
+    - 剧本对话覆盖广度：通过 script_uv/talk_uv 衡量触达的剧本与对话段数量
+    - 多服分布：通过 server_uv 观察对话完成事件在游戏服间的分布
+  limitations:
+    - 日志中零命中(ds=20260729/20260728 cnt=0)，事件疑似下线/未触发，指标值在此期间为 0/NULL
+    - 仅 ds=20260729 与 ds=20260728 两日 scout 实测，未做全量复核
+    - 默认主体粒度为 role_id，未经业务方二次确认
+  coverage_status: draft
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=0/role_uv=0/acc_uv=0/server_uv=0；retry ds=20260728 仍为 0。事件疑似下线/未触发，保持 draft。"
+external_refs: []

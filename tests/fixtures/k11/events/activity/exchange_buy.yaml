@@ -1,0 +1,113 @@
+name: game.exchange.buy
+event_filter: event = 'game.exchange.buy'
+description: 玩家通过交易所购买物品的埋点事件，记录每次购买行为的商品id、购买数量、剩余免费次数及角色货币快照（含充值钻石、紫金、体力等）。主体粒度为 role_id（角色），2026-07-29 单日实测 cnt=11986、role_uv=3331、acc_uv=3177、server_uv=420。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  goodId:
+    type: int
+    description: 商品id
+  count:
+    type: int
+    description: 购买数量
+  curCount:
+    type: int
+    description: 已购买次数
+  freeCount:
+    type: int
+    description: 剩余免费次数
+metrics:
+  game_exchange_buy_cnt:
+    expression: COUNT(*)
+    description: 交易所购买事件总次数（每条日志计 1 次）。
+  game_exchange_buy_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发交易所购买的去重角色数。
+  game_exchange_buy_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发交易所购买的去重账号数。
+  game_exchange_buy_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发交易所购买的去重游戏服数。
+coverage:
+  scenarios:
+    - 交易所购买活跃度（次数 / 角色覆盖 / 账号覆盖 / 服覆盖）监控。
+    - 评估交易所作为资源流转通道的使用广度与服级渗透。
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核。
+    - params.count（购买数量）经 GET_JSON_OBJECT 抽取 SUM 为 0，疑似字段名/路径不一致，未纳入指标，建议后续核对。
+    - 主体默认 role_id（角色粒度）。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  coverage_status: analyst_confirmed
+  note: ds=20260729 实测 cnt=11986, role_uv=3331, acc_uv=3177, server_uv=420，数值合理，确认 analyst_confirmed。
+external_refs: []

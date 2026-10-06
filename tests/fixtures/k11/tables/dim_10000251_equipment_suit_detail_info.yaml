@@ -1,0 +1,62 @@
+table_name: dim_10000251_equipment_suit_detail_info
+engine: maxcompute
+table_comment: '装备套装明细配置维度表：每行描述一个装备套装在特定品质/品阶下的明细变体（套装ID+品质+品阶组合），提供套装名称等标签用于维度下钻。'
+kind: dim
+primary_key:
+- equip_suit_index
+primary_key_unique: true
+label_columns:
+- equip_suit_full_name
+- equip_suit_name
+description: '装备套装明细配置维度表。每行代表一个装备套装在特定品质/品阶下的明细变体（由 equip_suit_id + equip_suit_quality + equip_suit_grade 唯一确定，equip_suit_index 为其代理主键）。提供套装名称(equip_suit_name)、详细名称(equip_suit_full_name)、品质/品阶/品质索引等维度属性，用于按套装、品质、品阶进行分组与下钻。粒度：每 装备套装明细变体 一行的配置/维度表。'
+domains:
+- 装备道具
+granularity: 每 装备套装明细变体（套装ID+品质+品阶）一行
+columns:
+- name: equip_suit_index
+  type: bigint
+  comment: 装备套装明细索引（套装ID+品质+品阶的代理主键，唯一）
+  role: dimension
+- name: equip_suit_id
+  type: bigint
+  comment: 装备套装ID（同一套装ID下含多个品质/品阶变体）
+  role: dimension
+- name: equip_suit_quality
+  type: bigint
+  comment: 装备套装品质
+  role: dimension
+- name: equip_suit_grade
+  type: bigint
+  comment: 装备套装品阶
+  role: dimension
+- name: equip_suit_quality_index
+  type: bigint
+  comment: 装备套装品质索引 橙装为5 6 7 无双为8 9 10
+  role: dimension
+- name: equip_suit_name
+  type: string
+  comment: 装备套装名称
+  role: dimension
+- name: equip_suit_full_name
+  type: string
+  comment: 装备套装详细名称（含品阶前缀，如"一阶·狂战"）
+  role: dimension
+coverage:
+  scenarios:
+  - 按装备套装ID/名称关联装备明细表，下钻查看套装品质、品阶、品质索引分布
+  - 按套装品质(equip_suit_quality)、品阶(equip_suit_grade)、品质索引(橙装/无双)分组聚合装备行数与属性
+  - 通过 equip_suit_full_name 在报表中展示套装的可读标签（含品阶前缀）
+  limitations:
+  - 配置类维度表，无值度量（measure）字段，所有数值列均为编码型维度属性
+  - equip_suit_id 非唯一（同套装ID含多品质/品阶变体），主键为组合代理键 equip_suit_index
+  - 品质索引编码(橙装5-7/无双8-10)为游戏内编码，需结合业务字典二次解读
+  - 2026-07-31 实测 58 行，equip_suit_index 唯一性已验证(r=d=58)
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '配置类装备套装维度表；主键 equip_suit_index 已实测唯一(58行 r=d)；label 取 equip_suit_full_name + equip_suit_name；status 保持 draft 待业务确认。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 装备套装明细维度表总行数

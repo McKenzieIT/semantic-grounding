@@ -1,0 +1,47 @@
+table_name: dim_10000251_trans_apvp_df
+engine: maxcompute
+kind: dim
+table_comment: 'PVP 段位配置维度表：每行一个段位等级，记录段位名称/类型/段位分下限/cost上限。'
+description: 'PVP 段位(ranking tier)配置维度表。粒度：每个段位等级(id)一行。键：id(段位等级主键)；标签：name(段位名称)。属性：type(段位类型)、min_score(段位分下限)、cost_limit(cost上限)。日全量快照(_df)。'
+domains:
+- 系统监控
+granularity: '每段位等级(id)一行'
+primary_key:
+- id
+label_columns:
+- name
+primary_key_unique: true
+columns:
+- name: id
+  type: int
+  comment: 段位等级
+  role: dimension
+- name: name
+  type: string
+  comment: 段位名称
+  role: dimension
+- name: type
+  type: int
+  comment: 段位类型
+  role: dimension
+- name: min_score
+  type: int
+  comment: 段位分下限
+  role: measure
+- name: cost_limit
+  type: int
+  comment: cost上限
+  role: measure
+coverage:
+  scenarios:
+  - 通过 id 关联事实表，查询某场战斗/玩家对应的 PVP 段位名称与类型
+  - 通过 name 进行段位展示与分组
+  - 通过 type 区分段位类别(如新手/青铜/王者等)
+  limitations:
+  - 配置类维度表，无值度量(min_score/cost_limit 为阈值属性，不宜聚合)
+  - 日全量快照(_df)，段位定义相对稳定；历史段位变更需对比快照日期
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'dim 建模：id 为段位等级主键(实测 r=d=18 唯一)，name 为标签。配置类维度表，保持 draft。'

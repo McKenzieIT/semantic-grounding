@@ -1,0 +1,119 @@
+name: game.rogue.selectNode
+event_filter: event = 'game.rogue.selectNode'
+description: 古战场(rogue)模式中角色选择节点(nodeId)时上报的事件，每次选择一个节点即上报一条。分析主体为 role_id（角色），事件同时携带 eventType、角色等级、战力、vip、货币余额(nodeId/eventType/roleLevel/roleForce/vipLevel/coinList)等上下文。ds=20260729 单日实测：选择节点 6342 次、参与角色 121 (账号 120)、覆盖 47 个游戏服、涉及 148 个 nodeId / 11 个 eventType、角色等级区间 50-100。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  nodeId:
+    type: int
+    description: 节点id
+  eventType:
+    type: int
+    description: 事件类型
+metrics:
+  rogue_selectNode_cnt:
+    expression: COUNT(*)
+    description: 古战场选择节点事件总次数（每条事件=选择一次 nodeId）
+  rogue_selectNode_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发选择节点事件的去重角色数（分析主体粒度=role_id）
+  rogue_selectNode_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发选择节点事件的去重账号数
+  rogue_selectNode_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发该事件的去重游戏服数
+  rogue_selectNode_node_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.nodeId'))
+    description: 被选择的不同 nodeId 数量（节点选择覆盖广度）
+  rogue_selectNode_event_type_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.eventType'))
+    description: 触发的不同 eventType 数量（节点选择场景类型广度）
+  rogue_selectNode_per_role_avg:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均选择节点次数（总次数/去重角色数，分母为0返回NULL）
+coverage:
+  scenarios:
+    - 衡量古战场节点选择的整体活跃度（总次数/参与角色/账号/游戏服广度）
+    - 通过 node_uv / event_type_uv 评估节点与选择场景类型的覆盖广度及玩家推进路径
+    - per_role_avg 反映人均选择节点的强度，可用于古战场节点投放与路径节奏调优
+    - 结合 roleLevel/vipLevel/roleForce 上下文（params）分析不同分层玩家的节点选择行为
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核；多日趋势/季节性未覆盖
+    - 分析主体默认 role_id（事件以角色选择节点为主体，role_id 与 params.roleId 一致性已实测一致）
+    - node_uv/event_type_uv 为单日去重计数，多日表现需后续复核
+    - roleLevel/vipLevel/roleForce 为 params 上下文字段，未在 metrics 中聚合，需按分析场景单独引用
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=6342 / role_uv=121 / acc_uv=120 / server_uv=47 / node_uv=148 / event_type_uv=11 / roleLevel 区间 50-100，数据合理。"
+coverage_status: analyst_confirmed
+external_refs: []

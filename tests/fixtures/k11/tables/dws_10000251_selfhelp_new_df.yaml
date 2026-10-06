@@ -1,0 +1,111 @@
+table_name: dws_10000251_selfhelp_new_df
+engine: maxcompute
+table_comment: 新用户（自助分析）日全量快照表，覆盖设备/账号/角色三类主体(user_type=1/2/3)
+description: |-
+  粒度：日全量快照(_df)，按 业务日期ds + user_type + user_id + act_ymd（行为日期） 唯一标识一条新用户当日行为记录。
+  主体：设备(user_type=1)/账号(user_type=2)/角色(user_type=3)三类用户，由 user_type 区分。
+  主要字段：user_type(主体类型), user_id(用户id), os_id(平台), ch_type/ch_id(渠道), region_id(地区), attr_ad_id(买量活动), act_server_id_fst(首次活跃区服), udd(用户标签json), act_ymd_fst(新增日期), act_ymd(行为日期), lt(生命周期), act_vals(行为kv: act_dur在线时长秒/pay_amt付费金额元), ds(业务日期分区)。
+domains:
+  - 用户生命周期
+  - 付费经济
+granularity: 日全量快照(_df)；主体=设备/账号/角色(user_type)，粒度键=ds+user_type+user_id+act_ymd
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: os_id
+    type: int
+    comment: 平台id
+    role: dimension
+  - name: ch_type
+    type: string
+    comment: 渠道分类
+    role: dimension
+  - name: ch_id
+    type: string
+    comment: 渠道id
+    role: dimension
+  - name: region_id
+    type: string
+    comment: 地区
+    role: dimension
+  - name: attr_ad_id
+    type: string
+    comment: 买量活动id
+    role: dimension
+  - name: act_server_id_fst
+    type: string
+    comment: 首次活跃区服id
+    role: dimension
+  - name: udd
+    type: string
+    comment: 用户标签，json格式，取值：{"标签名":"标签值","标签名":"标签值"}
+    role: attribute
+  - name: act_ymd_fst
+    type: string
+    comment: 首次行为日期，即新增日期，格式：yyyymmdd
+    role: dimension
+  - name: act_ymd
+    type: string
+    comment: 行为日期，格式：yyyymmdd
+    role: dimension
+  - name: lt
+    type: int
+    comment: 生命周期，行为日期-首次行为日期+1，从1开始
+    role: measure
+  - name: act_vals
+    type: string
+    comment: 行为内容，kv格式，取值：act_dur=xxx`pay_amt=xxx，在线时长单位：秒，付费金额单位：元
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  new_user_uv_device:
+    expression: COUNT(DISTINCT CASE WHEN user_type = 1 THEN user_id END)
+    description: 当日新增设备UV（user_type=1，去重 user_id）
+  new_user_uv_account:
+    expression: COUNT(DISTINCT CASE WHEN user_type = 2 THEN user_id END)
+    description: 当日新增账号UV（user_type=2，去重 user_id）
+  new_user_uv_role:
+    expression: COUNT(DISTINCT CASE WHEN user_type = 3 THEN user_id END)
+    description: 当日新增角色UV（user_type=3，去重 user_id）
+  daily_pay_amt_total:
+    expression: SUM(CAST(SPLIT_PART(SPLIT_PART(act_vals, 'pay_amt=', 2), '`', 1) AS DOUBLE))
+    description: 当日新用户付费总额（元），从 act_vals kv 解析 pay_amt 求和
+  daily_act_dur_total:
+    expression: SUM(CAST(SPLIT_PART(SPLIT_PART(act_vals, 'act_dur=', 2), '`', 1) AS DOUBLE))
+    description: 当日新用户在线时长总额（秒），从 act_vals kv 解析 act_dur 求和
+coverage:
+  scenarios:
+    - 新增用户规模分主体口径：设备/账号/角色三类 new_user_uv_* 指标，用于拉新效果与渠道归因
+    - 新增用户付费与时长价值：daily_pay_amt_total / daily_act_dur_total 衡量新用户首日贡献，配合 lt(生命周期) 可做留存衰减
+    - 自助分析切片：按 ch_type/ch_id/region_id/os_id/attr_ad_id 维度交叉，定位渠道与买量活动的拉新质量
+  limitations:
+    - act_vals 为 kv 字符串，付费/时长需 SPLIT_PART 解析；若上游格式变更或字段缺失，metrics 可能返回 0/NULL，未做全量异常复核
+    - 仅对 latest ds=20260415 做了 spot-verify 抽样查询（uv/付费/时长均合理），未做全量 maxc 实测复核
+    - 该表为日全量快照(_df)，仅见 ds=20250516 与 20260415 两个分区，历史连续性需另行核对；lt 为单日快照值，跨日留存需多分区拼接
+    - COUNT(DISTINCT user_id) 跨 user_type 不唯一，已按 user_type 分别计算避免重复计数
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: meta describe 列已核对；latest ds=20260415 spot-verify 通过(new_user_uv_account=1169025, daily_pay_amt_total=222807853.64, daily_act_dur_total=153569642303，均合理)。user_type=1/2/3 三主体并存已验证。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: act_server_id_fst
+        dim_column: server_id
+    derivation: DWS act_server_id_fst (首次活跃区服id) is a 区服 id that joins to dim_10000251_server_info (PK server_id), the 服务器/区服维度配置表 used for fact-table server attribute lookup.
+pref_label: 新增用户表
+alt_labels:
+  - 新增
+  - 新注
+  - 拉新
+  - 注册

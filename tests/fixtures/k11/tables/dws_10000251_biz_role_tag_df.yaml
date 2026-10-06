@@ -1,0 +1,66 @@
+table_name: dws_10000251_biz_role_tag_df
+engine: maxcompute
+table_comment: 角色业务标签日全量表：每日角色(user_type=3)与所属大事件/业务(biz_name)的快照映射。
+description: 粒度：日全量快照(_df)，每行=单个角色(user_type=3)。分析主体=角色。 biz_name 标识角色所属大事件批次(如 CBT1/CBT2)；NULL 表示未归属任何大事件的角色。 典型用途：标签覆盖度分析、CBT 批次角色规模、未标记角色占比。
+domains:
+  - 角色成长
+  - 系统监控
+granularity: 日全量快照(_df)，每行=单个角色(user_type=3)，按 ds 分区
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: biz_name
+    type: string
+    comment: 大事件名称
+    role: dimension
+  - name: ds
+    type: string
+    comment: 分区字段
+    role: partition
+metrics:
+  total_role_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 当日快照角色总数(去重 user_id)，主体=角色(user_type=3)
+  tagged_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN biz_name IS NOT NULL THEN user_id END)
+    description: 当日已归属大事件(biz_name 非空)的角色数
+  tag_coverage_rate:
+    expression: COUNT(DISTINCT CASE WHEN biz_name IS NOT NULL THEN user_id END) / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 标签覆盖度=已标记角色数/总角色数
+  cbt_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN biz_name IN ('CBT1','CBT2') THEN user_id END)
+    description: 当日归属 CBT1/CBT2 测试批次的角色数
+  untagged_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN biz_name IS NULL THEN user_id END)
+    description: 当日未归属任何大事件的角色数
+coverage:
+  scenarios:
+    - CBT1/CBT2 测试批次角色规模对比(total_role_uv / cbt_role_uv 分 biz_name)
+    - 标签覆盖度与未标记角色占比评估(tag_coverage_rate / untagged_role_uv)
+    - 全量角色大盘日环比(total_role_uv 按 ds)
+  limitations:
+    - biz_name 仅含 CBT1/CBT2/NULL 三类取值，无更细业务标签维度
+    - 仅 maxc spot-verify 抽样验证(latest ds=20260730) 跑通 total_role_uv=1,668,729、tagged_role_uv=31,316、tag_coverage_rate≈1.88%，未做全量历史 maxc 实测复核
+    - _df 为日全量快照，多日累计会重复计数角色；跨日分析需按 ds 去重
+    - 缺少 tag 注册时间/批次生效时间维度，无法做标签生命周期时序分析
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: maxc spot-verify on ds=20260730 通过；user_type 单值=3 验证为角色表；指标值合理
+dimension_refs:
+  - dim_table: dim_10000251_user_tag_before_ob_info
+    join_keys:
+      - dws_column: user_id
+        dim_column: user_id
+    derivation: DWS user_id (用户id) exactly matches the DIM PK user_id; both share the biz_name CBT-batch tagging concept, and the DIM carries a user_type field covering role-level (user_type=3) rows.
+    origin: deterministic
+pref_label: 角色业务标签表
+alt_labels:
+  - 业务

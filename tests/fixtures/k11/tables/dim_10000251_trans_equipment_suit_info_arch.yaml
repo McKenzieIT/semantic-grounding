@@ -1,0 +1,49 @@
+table_name: dim_10000251_trans_equipment_suit_info_arch
+engine: maxcompute
+kind: dim
+table_comment: '游戏 10000251 装备套装信息维度表（按 ds 分区的归档配置表）。'
+description: '游戏 10000251 装备套装信息维度/配置表：每个套装在每个 ds 快照日一行的归档配置维度表。主键为 (suit_id, ds) 复合键（跨分区 suit_id 不唯一、单分区内唯一，复合键全表唯一）。键列 suit_id（套装业务ID）；标签列 name（套装名称）与 short_name（套装简称），用于维度展示与 JOIN 回查套装名称/简称。'
+domains:
+- 装备道具
+granularity: '每个套装在每个 ds 快照日一行的归档配置维度表'
+primary_key:
+- suit_id
+- ds
+primary_key_unique: true
+label_columns:
+- name
+- short_name
+columns:
+- name: suit_id
+  type: string
+  comment: 套装ID
+  role: dimension
+- name: name
+  type: string
+  comment: 套装名称
+  role: dimension
+- name: short_name
+  type: string
+  comment: 套装简称
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含全部 ds 快照分区）
+    type: integer
+coverage:
+  scenarios:
+  - '装备套装名称/简称的维度回查：交易/装备明细事实表通过 suit_id JOIN 本表回填套装名称 name 与简称 short_name；按 ds 快照选取对应分区还原历史套装配置。'
+  limitations:
+  - '配置类维度表，无值度量（不含数量/金额类度量，仅有 ID/名称类属性）。'
+  - '跨分区 suit_id 重复（每日快照），须按 ds 分区过滤后再 JOIN，否则会放大事实表。'
+  - '复合主键 (suit_id, ds) 已实测全表唯一（r=8420=d）。'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'dim 建模：依据 maxc meta describe 真实列校验；复合主键 (suit_id, ds) 唯一性已实测通过；标签列 name/short_name。保持 draft，未做业务确认。'

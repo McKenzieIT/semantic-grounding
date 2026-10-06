@@ -1,0 +1,129 @@
+name: game.toy.resonanceLevelup
+event_filter: event = 'game.toy.resonanceLevelup'
+description: 遗物共鸣台升级事件玩家在遗物共鸣台对共鸣格子(cell)进行升级时上报，每次升级记一次；携带角色/账号/游戏服/角色等级/vip/战力/货币及升级目标 cellId 与 resonance(group/cell 数组)信息；分析主体 role_id。ds=20260729 scout 实测 cnt=819, role_uv=289, acc_uv=285, server_uv=47。
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  resonance:
+    type: json
+    description: resonance
+  resonance.group:
+    type: int
+    description: resonance.group
+  resonance.cell:
+    type: array
+    description: resonance.cell
+  resonance.cell.cellId:
+    type: int
+    description: resonance.cell.cellId
+  resonance.cell.toyId:
+    type: int
+    description: resonance.cell.toyId
+  resonance.cell.level:
+    type: int
+    description: resonance.cell.level
+  cellId:
+    type: int
+    description: cellId
+metrics:
+  game_toy_resonance_levelup_cnt:
+    expression: COUNT(*)
+    description: 遗物共鸣台升级事件总次数（每次格子升级记一次）
+  game_toy_resonance_levelup_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发遗物共鸣台升级的去重角色数（分析主体 role_id）
+  game_toy_resonance_levelup_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发遗物共鸣台升级的去重账号数
+  game_toy_resonance_levelup_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发遗物共鸣台升级的去重游戏服数
+  game_toy_resonance_levelup_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 每个升级角色的平均升级次数
+  game_toy_resonance_levelup_cell_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.cellId'))
+    description: 升级涉及的去重共鸣格子数（cellId）
+coverage:
+  scenarios:
+    - 遗物共鸣台升级整体活跃度（次数/角色UV/账号UV/服数）
+    - 人均升级频次（次数 / 角色UV）
+    - 升级格子覆盖分布（去重 cellId 数）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色级事件）
+    - resonance.cell 为数组字段，未做展开逐格统计；resonance.group 仅按取值可读
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=819, role_uv=289, acc_uv=285, server_uv=47"
+coverage_status: analyst_confirmed
+external_refs: []

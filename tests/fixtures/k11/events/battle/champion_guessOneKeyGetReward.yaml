@@ -1,0 +1,138 @@
+name: game.champion.guessOneKeyGetReward
+event_filter: event = 'game.champion.guessOneKeyGetReward'
+description: 争霸赛：玩家一键领取竞猜奖励事件。记录领取竞猜结算奖励的次数、领取的奖励数额(rewardSize)，分析对象为 role_id（角色粒度，account_id 为账号粒度补充）。实测 ds=20260729 单日：cnt=27, role_uv=24, acc_uv=24, server_uv=6, rewardSize_sum=362542。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  seasonId:
+    type: int
+    description: seasonId
+  uid:
+    type: int
+    description: uid
+  rewardSize:
+    type: int
+    description: 竞猜结算
+  result:
+    type: array
+    description: result
+  result.matchId:
+    type: string
+    description: result.matchId
+  result.side:
+    type: int
+    description: 0 攻击 1 防守
+  result.count:
+    type: int
+    description: result.count
+  result.getCount:
+    type: int
+    description: result.getCount
+  result.guessOk:
+    type: bool
+    description: result.guessOk
+  result.rewardSize:
+    type: int
+    description: 竞猜结算
+metrics:
+  champion_guessOneKeyGetReward_cnt:
+    expression: COUNT(*)
+    description: 一键领取竞猜奖励事件总次数
+  champion_guessOneKeyGetReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取竞猜奖励的去重角色数
+  champion_guessOneKeyGetReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取竞猜奖励的去重账号数
+  champion_guessOneKeyGetReward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取竞猜奖励的去重游戏服数
+  champion_guessOneKeyGetReward_reward_size_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.rewardSize') AS BIGINT))
+    description: 顶层 rewardSize 竞猜奖励数额总和
+  champion_guessOneKeyGetReward_avg_reward_per_role:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.rewardSize') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均领取竞猜奖励数额（rewardSize 总和 / 去重角色数）
+coverage:
+  scenarios:
+    - 评估争霸赛竞猜奖励一键领取的参与角色/账号规模与覆盖游戏服范围
+    - 监控领取次数与奖励数额(rewardSize)总览及人均领取水平
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析对象默认 role_id（角色粒度），未独立验证 account 粒度
+    - result 子字段（result.matchId/result.rewardSize/result.guessOk）实测 result.rewardSize 与 result.guessOk 均无聚合值（疑似 result 数组在该事件未填充或结构不同），暂仅统计顶层 rewardSize
+    - coinList 为数组结构，顶层 GET_JSON_OBJECT 无法稳定聚合，未计入指标
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "measured ds=20260729: cnt=27, role_uv=24, acc_uv=24, server_uv=6, rewardSize_sum=362542; result 子字段无聚合值故未写入 result 相关指标"
+coverage_status: analyst_confirmed
+external_refs: []

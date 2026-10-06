@@ -1,0 +1,119 @@
+name: game.tower.hangup
+event_filter: event = 'game.tower.hangup'
+description: 烽火台挂机奖励事件：玩家在烽火台挂机/离线收益结算时上报，记录领取的奖励（rewards 数组含 type/value/size/uid）与关键货币（coinList 数组含 gold/sendgold/freegold/diamond/expCoin/energy）变动。分析主体为 role_id（角色），单事件上报 27 个参数，含角色属性（roleLevel/vipLevel/roleForce/exp）、会话与奖励列表。scout 实测 ds=20260729 命中 11347 条 / 3196 角色 / 3051 账号 / 441 服。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  rewards:
+    type: array
+    description: 奖励
+  rewards.type:
+    type: int
+    description: 类型
+  rewards.value:
+    type: int
+    description: 值
+  rewards.size:
+    type: int
+    description: 数量
+  rewards.uid:
+    type: int
+    description: 唯一id
+metrics:
+  tower_hangup_cnt:
+    expression: COUNT_IF(event = 'game.tower.hangup')
+    description: 烽火台挂机奖励事件触发总次数
+  tower_hangup_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN event = 'game.tower.hangup' THEN role_id END)
+    description: 触发烽火台挂机奖励的去重角色数（role_id）
+  tower_hangup_account_uv:
+    expression: COUNT(DISTINCT CASE WHEN event = 'game.tower.hangup' THEN account_id END)
+    description: 触发烽火台挂机奖励的去重账号数（account_id）
+  tower_hangup_server_uv:
+    expression: COUNT(DISTINCT CASE WHEN event = 'game.tower.hangup' THEN server_id END)
+    description: 触发烽火台挂机奖励的去重游戏服数（server_id）
+  tower_hangup_per_role_avg_cnt:
+    expression: CAST(COUNT_IF(event = 'game.tower.hangup') AS DOUBLE) / NULLIF(COUNT(DISTINCT CASE WHEN event = 'game.tower.hangup' THEN role_id END), 0)
+    description: 人均烽火台挂机奖励触发次数（总次数/去重角色数，NULLIF 防零除）
+coverage:
+  scenarios:
+    - 评估烽火台挂机/离线奖励的覆盖广度与人均收益结算频次，回答"哪些角色/游戏服在领挂机奖励、领了多少次"
+    - 结合 roleLevel/vipLevel 分层分析活跃角色结构；rewards 与 coinList 为数组型参数，单事件含多次结算明细
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认为 role_id（参数含 roleId，未与 account_id 双轨核验）
+    - rewards/coinList 数组明细需 explode 后聚合，本事件指标未做数组内求和（避免 JOIN，仅做事件级 COUNT/UV）
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729（event='game.tower.hangup'）：cnt=11347、role_uv=3196、acc_uv=3051、server_uv=441，量级合理，事件在线且高频触发。
+external_refs: []

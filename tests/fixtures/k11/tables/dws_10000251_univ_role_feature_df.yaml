@@ -1,0 +1,90 @@
+table_name: dws_10000251_univ_role_feature_df
+engine: maxcompute
+table_comment: 通用角色画像表
+description: |-
+  通用角色画像表。
+  粒度：日全量快照(_df)。分析主体=角色（user_type=3）。
+  主要字段：user_type, user_id, roll_flag, risk_level, max_role_level, active_flag, lost_days, ua_flag 等10列。
+domains:
+  - 用户生命周期
+  - 角色成长
+granularity: 日全量快照(_df)
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，1-设备、2-账号、3-角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: roll_flag
+    type: int
+    comment: 滚服标识 1-滚服 0-非滚服
+    role: dimension
+  - name: risk_level
+    type: int
+    comment: 风险等级
+    role: dimension
+  - name: max_role_level
+    type: int
+    comment: 最大角色等级
+    role: dimension
+  - name: active_flag
+    type: int
+    comment: 活跃状态标识 1-新增 2-留存 3-回流 4-流失
+    role: dimension
+  - name: lost_days
+    type: int
+    comment: 流失天数
+    role: measure
+  - name: ua_flag
+    type: int
+    comment: 买量标识 1-买量 2-自然
+    role: dimension
+  - name: return_ymd_lst
+    type: string
+    comment: 最近一次回流日期
+    role: dimension
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+primary_key:
+  - user_id
+partitions:
+  - name: ds
+    type: string
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 全量角色UV（日快照去重角色数）
+  new_role_cnt:
+    expression: SUM(CASE WHEN active_flag = 1 THEN 1 ELSE 0 END)
+    description: 当日新增角色数（active_flag=1）
+  retained_role_cnt:
+    expression: SUM(CASE WHEN active_flag = 2 THEN 1 ELSE 0 END)
+    description: 留存角色数（active_flag=2，日快照累计）
+  churned_role_cnt:
+    expression: SUM(CASE WHEN active_flag = 4 THEN 1 ELSE 0 END)
+    description: 流失角色数（active_flag=4，日快照累计流失盘）
+  paid_role_ratio:
+    expression: SUM(CASE WHEN ua_flag = 1 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 买量角色占比（ua_flag=1 / 全量角色）
+coverage:
+  scenarios:
+    - 按 active_flag 切分角色生命周期状态（新增/留存/回流/流失）的角色规模
+    - 评估买量(ua_flag=1)在角色盘中的渗透占比
+    - 按 roll_flag/risk_level 识别滚服与高风险角色分布
+  limitations:
+    - 日全量快照(_df)：churned_role_cnt/retained_role_cnt 为截止 ds 的累计快照值，非当日增量
+    - 仅 scout 抽样验证（latest ds=20260730 抽样 1 行），未做全量 maxc 实测复核
+    - return_ymd_lst 在历史 sample 中存在 NULL，回流日期缺失时无法回算回流UV
+    - 无付费金额/战力等级字段，付费经济域需结合付费流水表分析
+  coverage_status: analyst_reviewed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+dimension_refs: []
+pref_label: 角色画像表

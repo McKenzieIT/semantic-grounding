@@ -1,0 +1,87 @@
+table_name: dim_10000251_knight_starup_info_arch
+engine: maxcompute
+kind: dim
+table_comment: '武将升星配置维度表：每行描述一名武将在某一星级的升星配置（消耗资源、属性提升、成长率、奖励、潜能等），按 ds 分区保存配置快照。'
+description: '武将升星配置维度表（dim_10000251_knight_starup_info_arch）。来源于 ieu_cdm，记录每个武将 knight_id 在各星级 star 下的升星配置明细，包括升星资源消耗（cost_resource01）、属性增长倍数（develop_times）、升星提升属性（attr_up）、成长率增加值（develop）、获得资源（reward）、升星百分比（per）、资质（grade）、碎片数量（number）、潜能点数（talent_number）等。主键为 (knight_id, star) 的复合维度键，按武将名称 knight_name 作为可读标签；表按 ds 分区保存每日配置快照，跨分区下复合键存在重复，故 primary_key_unique=false。'
+domains:
+- 角色成长
+granularity: '每 武将(knight_id) x 星级(star) 一行的升星配置维度表（按 ds 分区保存快照）'
+columns:
+- name: knight_id
+  type: string
+  comment: 武将ID
+  role: dimension
+- name: knight_name
+  type: string
+  comment: 武将名称
+  role: dimension
+- name: star
+  type: string
+  comment: 武将星级
+  role: dimension
+- name: develop_times
+  type: string
+  comment: 属性增长倍数
+  role: dimension
+- name: cost_resource01
+  type: string
+  comment: 升星资源消耗数量01
+  role: dimension
+- name: attr_up
+  type: string
+  comment: 升星提升属性
+  role: dimension
+- name: develop
+  type: string
+  comment: 成长率增加值
+  role: dimension
+- name: reward
+  type: string
+  comment: 获得资源
+  role: dimension
+- name: per
+  type: string
+  comment: 升星百分比
+  role: dimension
+- name: grade
+  type: string
+  comment: 资质
+  role: dimension
+- name: number
+  type: string
+  comment: 碎片数量
+  role: dimension
+- name: talent_number
+  type: string
+  comment: 潜能点数
+  role: dimension
+- name: ds
+  type: string
+  comment: 日分区键（配置快照日期，yyyyMMdd）
+  role: partition
+primary_key:
+- knight_id
+- star
+primary_key_unique: false
+label_columns:
+- knight_name
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（跨分区累计）
+coverage:
+  scenarios:
+  - '通过 knight_id 关联武将基础维度/事实表，查询各武将在指定星级的升星资源消耗（cost_resource01）与属性提升（attr_up、develop、per）'
+  - '通过 (knight_id, star) 复合键 JOIN 事实表，获取某武将某星级的升星配置快照（成长率、奖励、碎片数量、潜能点数）'
+  - '按 grade（资质）筛选武将群体，分析不同资质武将的升星曲线与资源消耗梯度'
+  - '按 ds 分区取最新配置快照，做武将升星配置的时间序列对比'
+  limitations:
+  - '配置类维度表，无值度量；number/talent_number/attr_up 等为字符串编码的配置值，非可聚合度量'
+  - '跨分区下 (knight_id, star) 复合键存在重复（330912 行 / 727 个不同 (knight_id,star)），分析时需显式过滤 ds 分区，否则会产生笛卡尔放大'
+  - 'cost_resource01 为复合编码串（如 8_1001_100），需二次解码方可拆分资源类型/数量'
+  - 'primary_key_unique=false 未通过唯一性实测，故状态保持 draft'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'dim 配置表建模初稿；复合主键 (knight_id, star) 在单分区内唯一，跨分区重复，未达 analyst_confirmed 唯一性要求，保持 draft。'

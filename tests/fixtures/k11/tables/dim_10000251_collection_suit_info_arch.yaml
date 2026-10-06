@@ -1,0 +1,51 @@
+table_name: dim_10000251_collection_suit_info_arch
+engine: maxcompute
+table_comment: '收藏套装信息维度/配置表：每套装ID一行的维度表，记录套装名称、类型、品质等属性，按 ds 分区归档。'
+description: '游戏 10000251 的收藏套装（collection suit）配置/维度表。每行描述一个套装维度的属性，包括套装ID（suit_id，主键）、套装名称（suit_name，标签列）、套装类型（suit_type）、套装品质（quality），按日期分区归档（ds）。用于通过 suit_id 关联事实表进行套装维度属性查询。'
+kind: dim
+primary_key:
+- suit_id
+primary_key_unique: false
+label_columns:
+- suit_name
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+domains:
+- 探索收集
+granularity: '每套装ID（suit_id）一行的维度/配置表'
+columns:
+- name: suit_id
+  type: BIGINT
+  comment: 套装ID（主键，维度键）
+  role: dimension
+- name: suit_name
+  type: STRING
+  comment: 套装名称（标签列）
+  role: dimension
+- name: suit_type
+  type: STRING
+  comment: 套装类型
+  role: dimension
+- name: quality
+  type: STRING
+  comment: 套装品质
+  role: dimension
+- name: ds
+  type: STRING
+  comment: 日期分区（YYYYMMDD）
+  role: partition
+coverage:
+  scenarios:
+  - '通过 suit_id 关联事实表，查询套装维度属性（套装名称/类型/品质）'
+  - '按 suit_type 或 quality 聚合事实表度量，做套装分组分析'
+  - '按 ds 分区查询历史某日套装配置快照'
+  limitations:
+  - '配置类维度表，无值度量；suit_type 与 quality 为编码串，关联事实表做维度查询时通常需二次解码映射到中文含义'
+  - '未做唯一性实测：suit_id 在跨 ds 分区时重复（实测 r=6368, d=16，同一套装ID随每日分区重复归档），单分区内套装ID唯一；primary_key_unique=false，保持 draft'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'dim 建模：primary_key=suit_id，label_columns=suit_name；跨分区实测不唯一（r=6368,d=16），primary_key_unique=false，保持 draft；suit_type/quality 为编码串需二次解码'

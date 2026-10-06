@@ -1,0 +1,49 @@
+table_name: dim_10000251_trans_rogue_df
+engine: maxcompute
+kind: dim
+table_comment: '三国类游戏 rogue 关卡章节难度配置维度表（_df 日全量快照）。每行表示一个关卡章节在某难度档下的推荐等级配置，主键为 (id, difficulty)，标签列为 name。'
+description: '配置类维度表（_df 日全量快照）。存储三国类游戏 rogue 玩法的关卡章节(id)、关卡名(name)、难度档(difficulty)及对应推荐等级(reco_level)。粒度：每 (关卡章节 id, 难度档 difficulty) 一行；同一关卡章节按难度档拆分为多行，难度越高推荐等级越高。主键：(id, difficulty)，标签列：name。'
+domains:
+- 系统监控
+granularity: 每 (关卡章节 id, 难度档 difficulty) 一行的关卡难度配置维度表
+columns:
+- name: id
+  type: string
+  comment: 关卡章节
+  role: dimension
+- name: name
+  type: string
+  comment: 关卡名
+  role: dimension
+- name: difficulty
+  type: bigint
+  comment: 关卡难度档（1..N，同一 id 按难度档拆行）
+  role: dimension
+- name: reco_level
+  type: bigint
+  comment: 推荐等级（对应该难度档的推荐玩家等级）
+  role: dimension
+primary_key:
+- id
+- difficulty
+primary_key_unique: true
+label_columns:
+- name
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 事实表通过 id 关联本表获取关卡章节名(name)及推荐等级(reco_level)档位配置
+  - 通过 (id, difficulty) 复合键关联获取特定难度档的推荐等级
+  - 用于关卡难度与推荐战力的配置查询和关卡章节维度切片
+  limitations:
+  - 配置类维度表，无值度量，difficulty/reco_level 为配置参数而非可加度量
+  - id 单列非唯一（同一关卡按难度档拆行），主键为复合 (id, difficulty)
+  - _df 日全量快照，无分区列，未跟踪难度配置的历史变更
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 maxc meta describe 校验列名/类型/注释；复合主键 (id, difficulty) 唯一性已实测（r=d=9）；id 单列非唯一（r=9,d=2）。状态保持 draft 待业务确认。'

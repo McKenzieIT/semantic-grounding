@@ -1,0 +1,71 @@
+table_name: dim_10000251_play_stage_di
+engine: maxcompute
+kind: dim
+table_comment: star002玩家进度里程碑配置维度表（按玩家类型+新增天数映射当日上限/核心/积极/普通玩家关卡进度里程碑）
+description: 'star002进度明细表 - 配置类维度表。每行描述某一玩家类型(type)在新增第N天(days)时各类玩家(核心/积极/普通)应达到的关卡进度里程碑：当日上限进度关卡id(stage_id)及排序(stage_max)，核心(core_stage/core_id)、积极(active_stage/active_id)、普通(normal_stage/normal_id)玩家的关卡排序与进度。粒度：每(玩家类型, 新增天数)一行，按ds分区。'
+primary_key:
+- stage_id
+label_columns:
+- stage_max
+domains:
+- 战斗关卡
+granularity: 每(玩家类型type, 新增天数days)一行的进度里程碑配置维度表，按ds日分区
+columns:
+- name: type
+  type: string
+  comment: 维表类型
+  role: dimension
+- name: days
+  type: string
+  comment: 新增天数
+  role: dimension
+- name: stage_id
+  type: string
+  comment: 当日上限进度关卡id
+  role: dimension
+- name: stage_max
+  type: string
+  comment: 当日上限进度关卡排序
+  role: dimension
+- name: core_stage
+  type: string
+  comment: 核心玩家关卡排序
+  role: dimension
+- name: active_stage
+  type: string
+  comment: 积极玩家关卡排序
+  role: dimension
+- name: normal_stage
+  type: string
+  comment: 普通玩家关卡排序
+  role: dimension
+- name: core_id
+  type: string
+  comment: 核心玩家关卡进度
+  role: dimension
+- name: active_id
+  type: string
+  comment: 积极玩家关卡进度
+  role: dimension
+- name: normal_id
+  type: string
+  comment: 普通玩家关卡进度
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+coverage:
+  scenarios:
+  - '按玩家生命周期天数(days)JOIN：将玩家新增天数映射到该日各类玩家应达成的关卡里程碑(stage_id/stage_max)，用于分层玩家进度看板与漏斗'
+  - '按玩家类型(type: 核心/积极/普通)JOIN：获取该类型玩家在指定新增天数的关卡进度基准线(core_id/active_id/normal_id)与排序(core_stage/active_stage/normal_stage)'
+  - '进度对齐：以stage_id为锚将fact表中玩家实际关卡进度与本表里程碑对齐，计算是否达到当日上限/核心/积极/普通基准'
+  limitations:
+  - '配置类维度表，无值度量(metrics)；所有列均为键/属性维度'
+  - '主键stage_id为单列近似唯一假设：实际行级唯一性应为复合键(type, days, ds)；本表当前无分区/数据，未做唯一性实测'
+  - '复合编码串(若stage_id含多关卡编码)需在下游二次解码，本表不展开'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'dim建模draft - 基于meta describe真实列(11列)与字段语义建模；primary_key沿用meta检测的stage_id(单列最佳候选)，label_columns选stage_max(当日上限进度关卡排序，最贴近可读标签的列)；表当前无分区/数据，primary_key_unique未实测故省略；domains归战斗关卡(实体为关卡stage里程碑)'

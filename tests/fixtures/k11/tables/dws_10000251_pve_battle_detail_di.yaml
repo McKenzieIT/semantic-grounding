@@ -1,0 +1,125 @@
+table_name: dws_10000251_pve_battle_detail_di
+engine: maxcompute
+table_comment: PVE战斗详情日表
+description: "PVE战斗详情日增量表，记录每场 PVE 战斗明细行（subject: 角色 role，role_id 为主语）。 粒度：日增量(_di)，每行一场 PVE 战斗。用于战斗次数、参战角色UV、胜率、平均战力、代打率等战斗关卡指标核算。 主要字段：pve_type(玩法), battle_id(战斗ID/PK), role_id(角色ID/subject), stage_id(关卡ID), chapter_id(章节ID), suggest_level(推荐等级), lineup_level(阵容平均等级), lineup_force(阵容平均战力), npc_status(NPC上阵1:是0:否), is_boost(代打1:是0:否), team(卡牌阵容), star(星数), team_detail(阵容详情JSON), force(战力), result(战果1胜2负3平4主动退出5其他), tm(行为时间), extra_info(额外信息JSON), ds(分区) 共18列。"
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 日增量(_di)，每行一场 PVE 战斗事件，subject=角色(role)，按 ds 分区
+columns:
+  - name: pve_type
+    type: int
+    comment: PVE玩法
+    role: dimension
+  - name: battle_id
+    type: string
+    comment: 战斗ID
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: stage_id
+    type: int
+    comment: 关卡ID
+    role: dimension
+  - name: chapter_id
+    type: int
+    comment: 章节ID
+    role: dimension
+  - name: suggest_level
+    type: int
+    comment: 推荐等级
+    role: dimension
+  - name: lineup_level
+    type: int
+    comment: 阵容平均等级
+    role: dimension
+  - name: lineup_force
+    type: int
+    comment: 阵容平均战力
+    role: measure
+  - name: npc_status
+    type: int
+    comment: NPC是否上阵 1:是 0:否
+    role: dimension
+  - name: is_boost
+    type: int
+    comment: 是否代打 1:是 0:否
+    role: dimension
+  - name: team
+    type: string
+    comment: 卡牌阵容
+    role: attribute
+  - name: star
+    type: string
+    comment: 星数
+    role: attribute
+  - name: team_detail
+    type: string
+    comment: 卡牌阵容详情
+    role: attribute
+  - name: force
+    type: int
+    comment: 战力
+    role: measure
+  - name: result
+    type: int
+    comment: 战果 1:胜/2:负/3:平/4:主动退出/5:其他原因退出
+    role: dimension
+  - name: tm
+    type: datetime
+    comment: 行为时间
+    role: dimension
+  - name: extra_info
+    type: string
+    comment: 额外信息
+    role: attribute
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  battle_cnt:
+    expression: COUNT(*)
+    description: PVE战斗次数（每行一场战斗），日增量口径
+  battle_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参战角色数（去重 role_id，subject=角色）
+  win_rate:
+    expression: SUM(IF(result = 1, 1, 0)) / NULLIF(COUNT(*), 0)
+    description: PVE胜率（result=1 占比）
+  avg_force:
+    expression: AVG(force)
+    description: 平均战力（玩家阵容总战力均值）
+  boost_rate:
+    expression: SUM(IF(is_boost = 1, 1, 0)) / NULLIF(COUNT(*), 0)
+    description: 代打率（is_boost=1 占比，反映托管/代练比例）
+coverage:
+  scenarios:
+    - 每日 PVE 战斗次数、参战角色 UV、胜率、平均战力等战斗关卡核心指标核算
+    - 按 pve_type / stage_id / chapter_id 维度拆解关卡通过率与战力分布
+    - 按 result 战果拆解胜负平退出结构；按 is_boost 评估代打占比与影响
+    - lineup_level / suggest_level 对比分析玩家阵容等级与关卡推荐等级匹配度
+  limitations:
+    - 日增量(_di)口径，仅含当日 PVE 战斗明细，非全量角色快照；累计需跨 ds 聚合
+    - 仅 scout 抽样验证 ds=20260730（108393 场/4182 角色UV/胜率0.911/avg_force≈1026万/boost_rate=0），未做全量 maxc 实测复核
+    - 表无 user_type 列，subject=角色(role) 系按 role_id 字段推断（对应 user_type=3），未在表内实测校验
+    - team_detail / extra_info 为 JSON 文本，未结构化展开；星数/装备/天赋等明细需在应用层解析
+    - boost_rate 在 ds=20260730 抽样为 0，可能玩法未开放代打或当日无代打记录，需跨日复核
+    - 缺账号/设备字段，无法直接关联账号/设备主体，仅角色粒度
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: maxc 实测 ds=20260730 得 battle_cnt=108393 / role_uv=4182 / win_rate≈0.911 / avg_force≈1026万 / boost_rate=0，数值合理；列与 meta describe 一致，故置 analyst_confirmed。subject=角色系按 role_id 推断，表内无 user_type 列校验。
+dimension_refs:
+  - dim_table: dim_10000251_trans_conquest_df
+    join_keys:
+      - dws_column: chapter_id
+        dim_column: chapter_id
+      - dws_column: stage_id
+        dim_column: stage_id
+    derivation: DWS columns chapter_id (comment 章节ID) and stage_id (comment 关卡ID) form an exact composite-name foreign key to dim_10000251_trans_conquest_df primary key [chapter_id, stage_id], the 征服/推图关卡维度配置表 with one row per chapter-stage.
+    origin: deterministic
+pref_label: PVE战斗详情日表

@@ -1,0 +1,125 @@
+name: game.charmStone.unwear
+event_filter: event = 'game.charmStone.unwear'
+description: 灵石-卸下 (game.charmStone.unwear)：玩家从灵石方案(scheme)中卸下一个灵石(uid)时触发的资源/探索收集域事件。分析主体为 role_id（角色）。参数含角色基础属性(serverId/roleId/roleName/roleLevel/vipLevel/roleForce)、货币快照(coinList.gold/sendgold/freegold/diamond/expCoin/energy)、灵石方案 scheme 及被卸下灵石 uid。ds=20260729 实测：5350 次卸下、790 角色、777 账号、186 服、1189 个不同 uid 被卸下。
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  scheme:
+    type: json
+    description: scheme
+  scheme.id:
+    type: int
+    description: scheme.id
+  scheme.schemes:
+    type: array
+    description: 一个灵石方案
+  scheme.schemes.uid:
+    type: int
+    description: 灵石头uid
+  scheme.schemes.posx:
+    type: int
+    description: scheme.schemes.posx
+  scheme.schemes.posy:
+    type: int
+    description: scheme.schemes.posy
+  uid:
+    type: int
+    description: 被卸下的uid
+metrics:
+  charmStone_unwear_cnt:
+    expression: COUNT(*)
+    description: 灵石卸下总次数
+  charmStone_unwear_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 卸下灵石的去重角色数（分析主体=角色）
+  charmStone_unwear_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 卸下灵石的去重账号数
+  charmStone_unwear_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 卸下灵石的去重服务器数
+  charmStone_unwear_uid_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.uid'))
+    description: 被卸下的不同灵石uid数
+coverage:
+  scenarios:
+    - 灵石卸下行为总量与角色/账号/服务器覆盖（charmStone_unwear_cnt / _role_uv / _account_uv / _server_uv）
+    - 被卸下灵石 uid 多样性（charmStone_unwear_uid_uv）评估方案调整广度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体粒度默认 role_id（角色），跨角色聚合需结合 roleId 维度
+    - 未对多日趋势/历史去重做复核
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: ds=20260729 实测 cnt=5350, role_uv=790, acc_uv=777, server_uv=186, uid_uv=1189
+external_refs: []

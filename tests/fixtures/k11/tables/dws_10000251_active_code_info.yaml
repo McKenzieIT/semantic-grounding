@@ -1,0 +1,53 @@
+table_name: dws_10000251_active_code_info
+engine: maxcompute
+table_comment: k11测试激活码维表。业务咨询：洞主(null)#
+description: |-
+  k11测试激活码维表，记录游戏激活码资源及其分发渠道类型。业务咨询：洞主(null)#。
+  粒度：激活码维度（每行一个激活码），无 ds 分区，整表为单一快照。
+  主要字段：code（激活码id）, type（激活码类型/分发渠道，含买量+先到先得、九游、招募卡牌、招募泛用户、公司内、TAP审核、TAP测试QA、九游安全同学等8类）。
+domains:
+  - 资源产销
+granularity: 激活码维度（每行一个激活码），整表快照，无 ds 分区
+columns:
+  - name: code
+    type: string
+    comment: 激活码id
+    role: dimension
+  - name: type
+    type: string
+    comment: 激活码类型/分发渠道（买量+先到先得、九游、招募卡牌、招募泛用户、公司内、TAP审核、TAP测试QA、九游安全同学）
+    role: dimension
+metrics:
+  total_codes:
+    expression: COUNT(*)
+    description: 激活码总数（全表聚合，激活码维度）
+  distinct_codes:
+    expression: COUNT(DISTINCT code)
+    description: 去重激活码数
+  distinct_types:
+    expression: COUNT(DISTINCT type)
+    description: 激活码类型/分发渠道数
+  unclassified_codes:
+    expression: SUM(CASE WHEN type IS NULL THEN 1 ELSE 0 END)
+    description: 未分类（type 为空）的激活码数，数据质量监控
+coverage:
+  scenarios:
+    - 激活码资源总量与去重数（total_codes/distinct_codes），用于盘点测试/分发激活码库存
+    - 激活码类型分布（distinct_types），评估分发渠道覆盖度（买量、九游、招募、公司内、TAP等）
+    - 未分类激活码监控（unclassified_codes），发现 type 缺失的数据质量问题
+  limitations:
+    - 维表无 ds 分区，整表为单一快照，无时间趋势；指标为全表聚合，不区分日期
+    - 仅 maxc 抽样实测全表聚合（15499 行 / 8 类 / 91 NULL），未做逐类型全量复核
+    - type 字段存在 91 条 NULL（未分类），需业务确认渠道归类口径
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 维表无 ds 分区，整表快照。已 maxc 实测全表聚合：COUNT(*)=15499，COUNT(DISTINCT code)=15499，COUNT(DISTINCT type)=8，NULL type=91，数值合理。
+dimension_refs: []
+pref_label: 激活码表
+alt_labels:
+  - 激活码
+  - 渠道
+  - 分发
+  - 邀请码

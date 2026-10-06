@@ -1,0 +1,104 @@
+name: game.fantasyknightgift.select
+event_filter: event = 'game.fantasyknightgift.select'
+description: 幻想服武将礼包选择事件：玩家在幻想服武将礼包界面选中某个武将(knightId)时触发的行为日志。主体粒度为 role_id（角色级事件），参数覆盖游戏服、账号、角色、武将id及货币列表等23个字段。ds=20260729 单日 scout 实测 cnt=381、role_uv=316、acc_uv=313、server_uv=6。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightId:
+    type: int
+    description: 武将id
+metrics:
+  game_fantasyknightgift_select_cnt:
+    expression: COUNT(*)
+    description: 武将礼包选择总次数
+  game_fantasyknightgift_select_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 选择武将礼包的去重角色数
+  game_fantasyknightgift_select_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 选择武将礼包的去重账号数
+  game_fantasyknightgift_select_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 选择武将礼包涉及的去重游戏服数
+coverage:
+  scenarios:
+    - 衡量幻想服武将礼包选择行为的总次数与参与角色/账号规模，评估礼包功能活跃度与渗透
+    - 通过 server_uv 观察礼包选择行为覆盖的游戏服分布广度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id（角色级事件）
+    - 未细分各武将(knightId)的选择分布，如需分布需额外按 knightId 分组
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 单日 scout 实测 cnt=381、role_uv=316、acc_uv=313、server_uv=6，数据合理，确认 analyst_confirmed。
+external_refs: []

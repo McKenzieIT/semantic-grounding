@@ -1,0 +1,154 @@
+table_name: dws_10000251_play_explore_df
+engine: maxcompute
+table_comment: 玩法探索日全量快照（角色粒度，按城池细分探索/轶事/据点参与与通关）
+description: |-
+  玩法探索日全量快照(_df)，角色(user_type=3)粒度，按区服/城池细分每日探索、轶事(p0601)、据点(p0602)的参与与通关次数、累计次数、探索进度、藏品/探索等级及携带见闻技能。
+  粒度：日全量快照(_df)，每角色每日每城池一行。
+  主要字段：role_id, server_id, city_id, city_name, explore_pv, explore_pv_std, p0601_part_pv, p0601_part_pv_std 等24列。
+domains:
+  - 探索收集
+  - 角色成长
+granularity: 日全量快照(_df)，角色(user_type=3)粒度，每角色每日每城池一行
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: city_id
+    type: string
+    comment: 城池id
+    role: dimension
+  - name: city_name
+    type: string
+    comment: 城池名
+    role: dimension
+  - name: explore_pv
+    type: bigint
+    comment: 探索次数
+    role: measure
+  - name: explore_pv_std
+    type: bigint
+    comment: 累计探索次数
+    role: measure
+  - name: p0601_part_pv
+    type: bigint
+    comment: 轶事参与次数，不区分城池
+    role: measure
+  - name: p0601_part_pv_std
+    type: bigint
+    comment: 轶事累计参与次数，不区分城池
+    role: measure
+  - name: p0601_pass_pv
+    type: bigint
+    comment: 轶事通关次数，不区分城池
+    role: measure
+  - name: p0601_pass_pv_std
+    type: bigint
+    comment: 轶事累计通关次数，不区分城池
+    role: measure
+  - name: p0602_part_pv
+    type: bigint
+    comment: 据点参与次数，不区分城池
+    role: measure
+  - name: p0602_part_pv_std
+    type: bigint
+    comment: 据点累计参与次数，不区分城池
+    role: measure
+  - name: p0602_pass_pv
+    type: bigint
+    comment: 据点通关次数，不区分城池
+    role: measure
+  - name: p0602_pass_pv_std
+    type: bigint
+    comment: 据点累计通关次数，不区分城池
+    role: measure
+  - name: explore_proc
+    type: string
+    comment: 总探索进度
+    role: dimension
+  - name: event_proc
+    type: string
+    comment: 事件进度
+    role: dimension
+  - name: item_proc
+    type: string
+    comment: 藏品进度
+    role: dimension
+  - name: vit_net_amt
+    type: bigint
+    comment: 游历剩余次数
+    role: measure
+  - name: explore_skill1
+    type: string
+    comment: 携带见闻技能1，-1 未解锁 0-解锁未携带
+    role: dimension
+  - name: explore_skill2
+    type: string
+    comment: 携带见闻技能2，-1 未解锁 0-解锁未携带
+    role: dimension
+  - name: explore_exp_level
+    type: string
+    comment: 探索等级
+    role: dimension
+  - name: explore_coll_level
+    type: bigint
+    comment: 藏品等级
+    role: dimension
+  - name: ext_info
+    type: string
+    comment: 扩展信息
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  explore_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 探索参与角色UV（去重 role_id，按城池明细汇总前需先取角色级 DISTINCT）
+  explore_total_pv:
+    expression: SUM(explore_pv)
+    description: 当日探索总次数（全城池合计）
+  explore_total_pv_std:
+    expression: SUM(explore_pv_std)
+    description: 累计探索总次数（全城池合计，反映历史参与深度）
+  p0601_pass_rate:
+    expression: SUM(p0601_pass_pv) / NULLIF(SUM(p0601_part_pv), 0)
+    description: 轶事通关率（轶事通关次数/轶事参与次数，不区分城池）
+  p0602_pass_rate:
+    expression: SUM(p0602_pass_pv) / NULLIF(SUM(p0602_part_pv), 0)
+    description: 据点通关率（据点通关次数/据点参与次数，不区分城池）
+coverage:
+  scenarios:
+    - 探索玩法整体参与规模（explore_uv、explore_total_pv）及历史深度（explore_total_pv_std）
+    - 轶事(p0601)/据点(p0602)双线参与与通关转化效率（pass_rate 系列）
+    - 按区服/城池下钻定位探索活跃热点与冷门城池
+  limitations:
+    - 表为空/无数据(MAX(ds) NULL)，maxc 实测最新分区无数据，所有指标仅基于表结构定义，未做全量实测复核
+    - 仅 scout 抽样验证表结构，未做全量 maxc 实测复核
+    - _df 为日全量快照，explore_uv 在含城池明细时需先聚合到角色级再做 DISTINCT，否则会按城池行重复计数
+    - p0601/p0602 系列"不区分城池"，跨城池汇总时存在重复计数的口径风险，需在角色级去重后再聚合
+    - 缺失探索等级/藏品等级的分层 UV 维度定义，等级字段当前仅作分组维度
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 表为空(MAX(ds) NULL)，仅做结构化指标定义，未做实测验证，状态保持 draft
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (区服id) exactly matches dim_10000251_server_info primary key server_id (区服维度配置表)，用于按区服切片探索玩法分析。
+    origin: deterministic
+pref_label: 玩法探索表
+alt_labels:
+  - 探索
+  - 城池
+  - 轶事
+  - 据点
+  - 冒险

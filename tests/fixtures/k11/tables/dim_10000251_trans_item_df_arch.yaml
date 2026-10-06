@@ -1,0 +1,60 @@
+table_name: dim_10000251_trans_item_df_arch
+engine: maxcompute
+table_comment: '物品/资源配置维度表（trans_item_df_arch）：按 type+value 标识的资源项配置归档，每行一个资源项的名称/品质/备注等属性。'
+description: '物品/资源配置维度表（dim_10000251_trans_item_df_arch）。存储资源项（type+value）的配置属性：name（资源名称）、quality（品质）、remark（备注）、table（引用表）。粒度：每 (type, value) 资源项一行（按 ds 分区快照）。作为维度表，通过 type+value 与事实表 JOIN 提供资源项的名称、品质等描述属性；本身无值度量。'
+domains:
+- 装备道具
+granularity: 每 (type, value) 资源项一行的配置/维度表（按 ds 分区快照）
+kind: dim
+primary_key:
+- type
+- value
+primary_key_unique: false
+label_columns:
+- name
+columns:
+- name: type
+  type: string
+  comment: 资源类型
+  role: dimension
+- name: value
+  type: string
+  comment: 资源值
+  role: dimension
+- name: name
+  type: string
+  comment: 资源名称
+  role: dimension
+- name: table
+  type: string
+  comment: 引用表
+  role: dimension
+- name: quality
+  type: bigint
+  comment: 品质
+  role: dimension
+- name: remark
+  type: string
+  comment: 备注
+  role: dimension
+- name: ds
+  type: string
+  comment: 日分区快照日期
+  role: partition
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - '通过 (type, value) 与资源消耗/获得类事实表 JOIN，提供资源项的 name（名称）、quality（品质）、remark（备注）等描述属性，支撑资源产销与装备道具相关维度的属性查询与展示。'
+  limitations:
+  - '配置类维度表，无值度量。'
+  - 'primary_key 为复合 (type, value)，全表因 ds 分区快照存在多份导致 primary_key_unique=false（单分区内唯一）。'
+  - 'quality 为离散品质等级（非度量），按 dimension 使用。'
+  - 'value 为编码字符串，可能需结合 type 二次解码。'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '配置/维度表建模；复合主键 (type, value) 单分区内唯一、全表不唯一（ds 快照），故 primary_key_unique=false，保持 draft。'

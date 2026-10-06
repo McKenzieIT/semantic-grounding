@@ -1,0 +1,114 @@
+name: game.maze.exit
+event_filter: event = 'game.maze.exit'
+description: 角色迷宫退出事件：记录玩家退出迷宫关卡时的角色快照（角色等级、VIP等级、角色战力、经验、货币列表等22个参数）。分析主体粒度为 role_id（角色），辅以 account_id 账号维度。ds=20260729 单日 scout 实测 cnt=10, role_uv=10, acc_uv=10, server_uv=6。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+metrics:
+  game_maze_exit_cnt:
+    expression: COUNT(*)
+    description: 迷宫退出事件总次数
+  game_maze_exit_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 退出迷宫的去重角色数（分析主体粒度）
+  game_maze_exit_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 退出迷宫的去重账号数
+  game_maze_exit_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的去重游戏服数
+  game_maze_exit_avg_role_level:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS BIGINT))
+    description: 退出迷宫时的角色平均等级（来自 params.roleLevel）
+  game_maze_exit_avg_vip_level:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.vipLevel') AS BIGINT))
+    description: 退出迷宫时的角色平均VIP等级（来自 params.vipLevel）
+  game_maze_exit_role_per_server:
+    expression: CAST(COUNT(DISTINCT role_id) AS DOUBLE) / NULLIF(COUNT(DISTINCT server_id), 0)
+    description: 平均每个游戏服的退出角色数
+coverage:
+  scenarios:
+    - 统计每日迷宫退出事件次数与去重角色/账号/服务器覆盖
+    - 分析退出迷宫时玩家的等级/VIP分布，定位流失或卡点关卡
+    - 评估单服参与广度（role_per_server），识别活跃/疲劳服务器
+  subject_granularity: role_id（角色，默认主体）；辅以 account_id 账号维度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核；多日趋势需扩展 ds 范围
+    - coinList 等数组型货币字段未在 metrics 中聚合（结构复杂，需展开子字段单独建模）
+    - roleLevel/vipLevel 取自 params，依赖客户端上报完整性
+  data_quality:
+    - ds=20260729 实测 cnt=10, role_uv=10, acc_uv=10, server_uv=6；事件命中正常
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=10, role_uv=10, acc_uv=10, server_uv=6；事件真实命中，数字合理"
+coverage_status: analyst_confirmed
+external_refs: []

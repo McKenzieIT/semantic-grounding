@@ -1,0 +1,51 @@
+table_name: dim_10000251_trans_attribute_info
+engine: maxcompute
+kind: dim
+primary_key:
+- attr_id
+primary_key_unique: true
+label_columns:
+- attr_name
+table_comment: '属性配置维度表：游戏角色属性（攻防、增减伤等）的静态配置字典。'
+description: '属性配置维度表。每条记录描述一个角色属性（如 PVP 增伤值、PVP 减伤值等），主键 attr_id 为属性ID，标签 attr_name 为属性中文名称。供事务/明细事实表通过 attr_id 反查属性名称与类型。'
+domains:
+- 系统监控
+granularity: 每个属性（attr_id）一行的维度/配置表
+columns:
+- name: attr_id
+  type: string
+  comment: 属性ID
+  role: dimension
+- name: attr_name
+  type: string
+  comment: 属性名称
+  role: dimension
+- name: attr_type
+  type: string
+  comment: 属性类型
+  role: dimension
+- name: base_value
+  type: string
+  comment: 初始值
+  role: dimension
+- name: directions
+  type: string
+  comment: 备注
+  role: dimension
+coverage:
+  scenarios:
+  - 事实表通过 attr_id JOIN 本表反查属性名称（attr_name）/属性类型（attr_type），用于战斗、装备、角色成长等域的属性维度下钻
+  - 按 attr_type 分组聚合统计某类属性的规模与初始值分布
+  limitations:
+  - 配置类维度表，无值度量（base_value 为字符串型初始配置值，非度量字段）
+  - attr_type 为编码值（如 "1"），如需语义化展示需二次解码映射
+  - 维度表行数小（108 行），非事实度量来源
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 meta describe + COUNT(*)/COUNT(DISTINCT attr_id) 实测（r=d=108，唯一性已验证）。列类型/注释已对齐 meta describe。status 保持 draft。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数

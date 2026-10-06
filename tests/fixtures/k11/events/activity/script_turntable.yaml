@@ -1,0 +1,124 @@
+name: game.script.turntable
+event_filter: event = 'game.script.turntable'
+description: 剧本(script)转盘抽奖事件：记录角色在剧本玩法中触发某转盘(turntableId)并产出奖励(rewardId)的一次抽奖动作，覆盖剧本id、转盘id、奖励id及角色基础画像/货币余额。分析主体粒度为 role_id（角色）。scout 实测 ds=20260729：cnt=2970 / role_uv=627 / acc_uv=619 / server_uv=160，命中 3 个剧本、22 个转盘、390 种奖励。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  scriptId:
+    type: int
+    description: 剧本id
+  turntableId:
+    type: int
+    description: 转盘id
+  rewardId:
+    type: int
+    description: 奖励id
+metrics:
+  game_script_turntable_cnt:
+    expression: COUNT(*)
+    description: 剧本转盘抽奖事件总次数
+  game_script_turntable_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发剧本转盘抽奖的去重角色数
+  game_script_turntable_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发剧本转盘抽奖的去重账号数
+  game_script_turntable_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发剧本转盘抽奖的去重游戏服数
+  game_script_turntable_script_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.scriptId'))
+    description: 命中的去重剧本(scriptId)数
+  game_script_turntable_turntable_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.turntableId'))
+    description: 命中的去重转盘(turntableId)数
+  game_script_turntable_reward_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.rewardId'))
+    description: 产出的去重奖励(rewardId)种类数
+  game_script_turntable_role_avg_spin:
+    expression: ROUND(CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id),0), 3)
+    description: 角色人均转盘抽奖次数（总次数/去重角色数）
+coverage:
+  scenarios:
+    - 评估剧本转盘玩法的参与广度：触发角色数/账号数/游戏服数
+    - 评估剧本转盘玩法的活跃热度：单日总抽奖次数与人均抽奖次数
+    - 监控转盘配置覆盖：命中剧本数、转盘数、奖励种类数
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id，account_id 仅供账号级去重参考
+    - 货币余额(coinList.*)与奖励价值(amount/money)未在本事件量化，仅记录奖励id；如需奖励价值评估需关联奖励配置表
+    - 事件本身未携带单次抽奖数量(qty)字段，COUNT(*)=抽奖动作次数，非奖励件数
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729（event=game.script.turntable）：cnt=2970 / role_uv=627 / acc_uv=619 / server_uv=160 / script_uv=3 / turntable_uv=22 / reward_uv=390，数据合理，已确认。
+coverage_status: analyst_confirmed
+external_refs: []

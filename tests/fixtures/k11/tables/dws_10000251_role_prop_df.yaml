@@ -1,0 +1,73 @@
+table_name: dws_10000251_role_prop_df
+engine: maxcompute
+table_comment: 玩家资产表
+description: |-
+  玩家资产表。
+  粒度：日全量快照(_df)。分析主体=角色（user_type=3）。
+  主要字段：role_id, server_id, own_card_list, ds。
+domains:
+  - 角色成长
+  - 装备道具
+granularity: 日全量快照(_df)
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: own_card_list
+    type: string
+    comment: 武将列表，包含武将id、等级、战力、星级、觉醒列表、潜能列表、羁绊列表、战法列表、装备列表、职业
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日持有资产快照的角色UV（按role_id去重）；_df全量快照，role_uv应等于当日行数。
+  server_cnt:
+    expression: COUNT(DISTINCT server_id)
+    description: 当日有角色资产记录的活跃区服数。
+  snapshot_rows:
+    expression: COUNT(*)
+    description: 当日快照总行数；与role_uv相等表示每角色一行，验证_df粒度。
+  roles_with_cards:
+    expression: COUNT(IF(own_card_list IS NOT NULL AND own_card_list != '[]', 1, NULL))
+    description: 当日拥有至少一名武将的角色数（own_card_list非空且非空数组）。
+  card_owner_ratio:
+    expression: COUNT(IF(own_card_list IS NOT NULL AND own_card_list != '[]', 1, NULL)) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 持有武将角色占当日角色UV的比例。
+coverage:
+  scenarios:
+    - 角色资产规模监控（role_uv/snapshot_rows 观察每日活跃角色存量与快照完整性）
+    - 区服覆盖度分析（server_cnt 评估资产快照涉及的活跃区服数量）
+    - 武将持有面识别（roles_with_cards/card_owner_ratio 判断角色是否已拥有武将卡牌）
+    - 趋势对比（按ds聚合role_uv/server_cnt 观察角色存量与区服扩张趋势）
+  limitations:
+    - 仅对最新分区(20260730)抽样验证role_uv/server_cnt/snapshot_rows/roles_with_cards，未做全量历史复核。
+    - 武将详情（id/level/power/star/awake_list/equip_list等）封装在own_card_list JSON字符串内，需下游JSON解析才能聚合武将级指标（如总战力、平均等级、武将数分布），本表层不展开。
+    - _df日全量快照，非增量；同一role_id每日一行，跨日去重需以role_id+ds为粒度。
+    - 无user_type列，分析主体=角色由表名role_prop与role_id主键推断（user_type=3未实测）。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 对最新分区ds=20260730实测role_uv=2265134/server_cnt=628/snapshot_rows=2265134/roles_with_cards=2265134，role_uv==snapshot_rows验证_df一角色一行粒度，全部角色均持有武将；指标值合理，定为analyst_confirmed。武将级明细未拆解（见limitations）。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (comment 区服id) is an exact name match to the primary key server_id of dim_10000251_server_info, the 服务器(区服)维度配置表 described as purpose-built for fact-table server_id JOIN.
+    origin: deterministic
+pref_label: 玩家资产表
+alt_labels:
+  - 资产
+  - 财产
+  - 持有
+  - 背包

@@ -1,0 +1,121 @@
+name: game.knightnatalchart.refinecancelMulti
+event_filter: event = 'game.knightnatalchart.refinecancelMulti'
+description: 武将命盘-精炼取消操作事件。玩家在武将命盘精炼过程中取消本次精炼（撤销对随机点位 node 的确认）时上报，分析主体为 role_id（角色粒度）。参数含武将id(knightId)、随机点位列表(nodeList.staged/nodeList.used)、角色等级/战力/vip、货币列表(coinList) 等26个字段。scout 实测 ds=20260729 单日：触发 4101 次、参与角色 1375 个、账号 1340 个、覆盖 335 个游戏服、涉及 60 个不同武将，单角色日均取消约 2.98 次。
+domains:
+  - 角色成长
+domain: system
+metrics:
+  knightnatalchart_refinecancel_multi_cnt:
+    expression: COUNT(*)
+    description: 命盘精炼取消事件总触发次数
+  knightnatalchart_refinecancel_multi_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发精炼取消的去重角色数（分析主体）
+  knightnatalchart_refinecancel_multi_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发精炼取消的去重账号数
+  knightnatalchart_refinecancel_multi_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发精炼取消的去重游戏服数
+  knightnatalchart_refinecancel_multi_knight_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.knightId'))
+    description: 触发精炼取消的去重武将id数
+  knightnatalchart_refinecancel_multi_per_role_avg:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 平均每个参与角色触发精炼取消的次数
+coverage:
+  scenarios:
+    - 武将命盘精炼取消的活跃度趋势与波动监控
+    - 精炼取消在角色/账号/服务器/武将维度的分布与热点武将识别
+    - 单角色取消频次是否异常偏高（疑似卡死/误操作回流）
+    - 与命盘精炼确认事件(refineconfirm)对比，评估取消率与精炼体验
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体粒度默认 role_id（事件以角色维度上报，account_id 仅作账号去重补充）
+    - nodeList 详细点位结构(array 嵌套)未在此处展开逐点统计
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: maxc scout 实测 ds=20260729：cnt=4101, role_uv=1375, acc_uv=1340, server_uv=335, knight_uv=60, roleLevel_uv=61；数字量级合理，事件在线活跃。
+coverage_status: analyst_confirmed
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightId:
+    type: int
+    description: 武将id
+  nodeList:
+    type: array
+    description: 随机到的点
+  nodeList.staged:
+    type: array
+    description: nodeList.staged
+  nodeList.used:
+    type: bool
+    description: nodeList.used
+external_refs: []

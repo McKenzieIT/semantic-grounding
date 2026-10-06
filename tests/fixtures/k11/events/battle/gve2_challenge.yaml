@@ -1,0 +1,124 @@
+name: game.gve2.challenge
+event_filter: event = 'game.gve2.challenge'
+description: GVE2公会boss挑战事件：角色发起/参与GVE2公会副本挑战的行为日志，记录boss层数、总伤害、集结buff开启等战斗属性。分析主体为角色(role_id)，账号级聚合另用 account_uv 指标。ds=20260729 scout实测：3639条记录、2571角色、2471账号、411个服。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  bossLevel:
+    type: int
+    description: boss 层数
+  isBuffEffect:
+    type: bool
+    description: 是否开启集结
+  totalDamage:
+    type: int
+    description: 总伤害
+  isOverdue:
+    type: bool
+    description: 是否过期
+metrics:
+  gve2_challenge_cnt:
+    expression: COUNT(*)
+    description: GVE2挑战事件总记录数（挑战发起次数）
+  gve2_challenge_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与GVE2挑战的去重角色数
+  gve2_challenge_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与GVE2挑战的去重账号数
+  gve2_challenge_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及GVE2挑战的游戏服数量
+  gve2_challenge_total_damage_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.totalDamage') AS BIGINT))
+    description: GVE2挑战造成的总伤害之和
+  gve2_challenge_boss_level_cnt:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.bossLevel'))
+    description: GVE2挑战触及的boss层数去重数量
+  gve2_challenge_buff_effect_cnt:
+    expression: COUNT_IF(GET_JSON_OBJECT(params,'$.isBuffEffect')='true')
+    description: GVE2挑战中开启集结(buff)的次数
+coverage:
+  scenarios:
+    - GVE2公会boss挑战参与度与活跃度（挑战次数、参与角色/账号/服数）
+    - GVE2挑战伤害产出与boss层数推进情况
+    - 集结(buff)机制使用率分析
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度）；账号级聚合另用 account_uv 指标
+    - boss_level_cnt 为 params 字符串值去重，未做数值区间划分
+    - totalDamage 为单日累计值，跨日趋势需多日查询
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout实测 ds=20260729: cnt=3639, role_uv=2571, acc_uv=2471, server_uv=411; totalDamage SUM=471778102641, bossLevel distinct=40(max=40), isBuffEffect=true 计494次"
+coverage_status: analyst_confirmed
+external_refs: []

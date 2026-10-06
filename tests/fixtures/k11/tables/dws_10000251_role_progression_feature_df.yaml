@@ -1,0 +1,196 @@
+table_name: dws_10000251_role_progression_feature_df
+engine: maxcompute
+table_comment: 角色培养画像总表
+description: |-
+  角色培养画像总表。
+  粒度：日全量快照(_df)。分析主体=角色（user_type=3）。
+  主要字段：role_id, server_id, card_force_top6, card_force_top6_server_rn, ssr_card_cnt, full_star_ssr_card_cnt, archive_ssr_card_cnt, ssr_tactic_cnt 等35列。
+domains:
+  - 角色成长
+  - 装备道具
+granularity: 日全量快照(_df); 分区字段 ds; 分析主体=角色(user_type=3, 表名推断; 表无 user_type 列)
+columns:
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 服务器ID
+    role: dimension
+  - name: card_force_top6
+    type: bigint
+    comment: 巅峰六人战力
+    role: measure
+  - name: card_force_top6_server_rn
+    type: bigint
+    comment: 巅峰六人战力服务器排名
+    role: measure
+  - name: ssr_card_cnt
+    type: bigint
+    comment: SSR卡数量
+    role: measure
+  - name: full_star_ssr_card_cnt
+    type: bigint
+    comment: 满火SSR卡数量
+    role: measure
+  - name: archive_ssr_card_cnt
+    type: bigint
+    comment: 典藏SSR卡数量
+    role: measure
+  - name: ssr_tactic_cnt
+    type: bigint
+    comment: SSR风物数量
+    role: measure
+  - name: full_star_ssr_tactic_cnt
+    type: bigint
+    comment: 满星SSR风物数量
+    role: measure
+  - name: unrival_equip_suit_cnt
+    type: bigint
+    comment: 无双装备套装数量
+    role: measure
+  - name: top5ssr_avg_card_star
+    type: bigint
+    comment: TOP5SSR卡平均星级
+    role: measure
+  - name: top5ssr_avg_card_level
+    type: bigint
+    comment: TOP5SSR卡平均等级
+    role: measure
+  - name: top5ssr_avg_unrival_level
+    type: bigint
+    comment: TOP5SSR卡平均无双等级
+    role: measure
+  - name: top5ssr_unrival_equip_suit_cnt
+    type: bigint
+    comment: TOP5SSR卡无双装备套装平均数量
+    role: measure
+  - name: top5ssr_avg_unrival_equip_level
+    type: bigint
+    comment: TOP5SSR卡无双装备平均等级
+    role: measure
+  - name: top5ssr_avg_unrival_equip_quality
+    type: bigint
+    comment: TOP5SSR卡无双装备平均品质（8,9,10）
+    role: measure
+  - name: top5ssr_full_star_ssr_tactic_cnt
+    type: bigint
+    comment: TOP5SSR卡佩戴SSR风物满星数量
+    role: measure
+  - name: top5ssr_avg_ssr_tactic_star
+    type: bigint
+    comment: TOP5SSR卡佩戴SSR风物平均星级
+    role: measure
+  - name: top6_10ssr_avg_card_star
+    type: bigint
+    comment: TOP6-10SSR卡平均星级
+    role: measure
+  - name: top6_10ssr_avg_card_level
+    type: bigint
+    comment: TOP6-10SSR卡平均等级
+    role: measure
+  - name: top6_10ssr_avg_unrival_level
+    type: bigint
+    comment: TOP6-10SSR卡平均无双等级
+    role: measure
+  - name: top6_10ssr_unrival_equip_suit_cnt
+    type: bigint
+    comment: TOP6-10SSR卡无双装备套装平均数量
+    role: measure
+  - name: top6_10ssr_avg_unrival_equip_level
+    type: bigint
+    comment: TOP6-10SSR卡无双装备平均等级
+    role: measure
+  - name: top6_10ssr_avg_unrival_equip_quality
+    type: bigint
+    comment: TOP6-10SSR卡无双装备平均品质（8,9,10）
+    role: measure
+  - name: top6_10ssr_full_star_ssr_tactic_cnt
+    type: bigint
+    comment: TOP6-10SSR卡佩戴SSR风物满星数量
+    role: measure
+  - name: top6_10ssr_avg_ssr_tactic_star
+    type: bigint
+    comment: TOP6-10SSR卡佩戴SSR风物平均星级
+    role: measure
+  - name: top11_15ssr_avg_card_star
+    type: bigint
+    comment: TOP11-15SSR卡平均星级
+    role: measure
+  - name: top11_15ssr_avg_card_level
+    type: bigint
+    comment: TOP11-15SSR卡平均等级
+    role: measure
+  - name: top11_15ssr_avg_unrival_level
+    type: bigint
+    comment: TOP11-15SSR卡平均无双等级
+    role: measure
+  - name: top11_15ssr_unrival_equip_suit_cnt
+    type: bigint
+    comment: TOP11-15SSR卡无双装备套装平均数量
+    role: measure
+  - name: top11_15ssr_avg_unrival_equip_level
+    type: bigint
+    comment: TOP11-15SSR卡无双装备平均等级
+    role: measure
+  - name: top11_15ssr_avg_unrival_equip_quality
+    type: bigint
+    comment: TOP11-15SSR卡无双装备平均品质（8,9,10）
+    role: measure
+  - name: top11_15ssr_full_star_ssr_tactic_cnt
+    type: bigint
+    comment: TOP11-15SSR卡佩戴SSR风物满星数量
+    role: measure
+  - name: top11_15ssr_avg_ssr_tactic_star
+    type: bigint
+    comment: TOP11-15SSR卡佩戴SSR风物平均星级
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 角色UV（当日全量快照去重角色数）
+  total_ssr_card:
+    expression: SUM(ssr_card_cnt)
+    description: SSR卡总数（全角色求和）
+  avg_top6_force:
+    expression: AVG(card_force_top6)
+    description: 巅峰六人战力均值
+  full_star_ssr_card_total:
+    expression: SUM(full_star_ssr_card_cnt)
+    description: 满火SSR卡总数
+  server_cnt:
+    expression: COUNT(DISTINCT server_id)
+    description: 活跃服务器数（去重 server_id）
+coverage:
+  scenarios:
+    - 角色培养进度分布（UV/战力均值/SSR卡数趋势，按 ds 快照）
+    - 满火/典藏SSR卡拥有规模及服务器覆盖
+    - TOP5/TOP6-10/TOP11-15 各梯队星级/等级/无双装备水平分层
+  limitations:
+    - 日全量快照(_df)，跨日查询需去重 role_id，避免重复累加
+    - 表无 user_type 列，分析主体=角色由表名(role_)推断，未在表中显式校验
+    - 仅在最新分区 ds=20260730 抽样验证 5 项核心指标，未做全量 maxc 实测复核；其余 30+ 培养特征列未逐一抽样
+    - server_id 样本存在空串；server_cnt 统计含空串服务器，按需过滤
+    - 战力排名/梯队聚合列(card_force_top6_server_rn、top*_*)为画像属性，跨角色聚合意义有限，建议维度下钻
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已在最新分区 ds=20260730 抽样验证 role_uv/total_ssr_card/avg_top6_force/full_star_ssr_card_total/server_cnt 5 项指标，值合理（uv≈166.9万, sum_ssr≈999.8万, avg_force≈24.4万）。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (comment 服务器ID) is an exact name match to the primary key server_id of dim_10000251_server_info, the 服务器(区服)维度配置表 described as purpose-built for fact-table server_id JOIN.
+    origin: deterministic
+pref_label: 角色培养画像表
+alt_labels:
+  - 培养
+  - 成长
+  - 养成

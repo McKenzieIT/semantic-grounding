@@ -1,0 +1,142 @@
+name: game.koiDraw.gacha
+event_filter: event = 'game.koiDraw.gacha'
+description: |-
+  锦鲤彩运(锦鲤抽奖)活动每次抽奖触发：携带 drawId(活动id)、count(本次抽奖次数1或5)、floor(当前层数)、slots(命中格子列表)、保底前后累计与高级未命中计数(oldTotalDrawCount/newTotalDrawCount/oldSeniorNoHit/newSeniorNoHit)、guaranteeTriggered(保底触发类型0=无/1=核心反保底/2=高级正保底/3=高级反保底)，用于衡量锦鲤抽奖参与规模、抽奖拉杆总次数、保底触发率与区服覆盖。主体粒度为角色(role_id)，scout 实测 ds=20260729/20260728 均零命中(疑似下线/未触发/未上报)。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等31个
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  drawId:
+    type: int
+    description: 活动id
+  count:
+    type: int
+    description: 抽奖次数(1或5)
+  floor:
+    type: int
+    description: 当前层数
+  slots:
+    type: array
+    description: 命中的格子列表
+  oldTotalDrawCount:
+    type: int
+    description: 抽前-本层累计抽奖次数
+  oldSeniorNoHit:
+    type: int
+    description: 抽前-高级未命中计数
+  newTotalDrawCount:
+    type: int
+    description: 抽后-本层累计抽奖次数
+  newSeniorNoHit:
+    type: int
+    description: 抽后-高级未命中计数
+  guaranteeTriggered:
+    type: int
+    description: 保底触发类型 0=无 1=核心反保底 2=高级正保底 3=高级反保底
+metrics:
+  koiDraw_gacha_cnt:
+    expression: COUNT(*)
+    description: 锦鲤彩运抽奖事件触发次数(每次抽奖记1条)
+  koiDraw_gacha_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与锦鲤抽奖的独立角色数(去重 role_id；主体粒度为角色 user_type=3)
+  koiDraw_gacha_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与锦鲤抽奖的独立账号数(去重 account_id)
+  koiDraw_gacha_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 发生锦鲤抽奖的区服数(去重 server_id，反映活动覆盖面)
+  koiDraw_gacha_draw_cnt:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.count') AS BIGINT))
+    description: 锦鲤抽奖拉杆总次数(按本次抽奖次数 count 累加；单事件1或5)
+  koiDraw_gacha_guarantee_trigger_cnt:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params, '$.guaranteeTriggered') AS BIGINT) > 0 THEN 1 ELSE 0 END)
+    description: 触发保底的锦鲤抽奖事件数(guaranteeTriggered>0；1=核心反保底/2=高级正保底/3=高级反保底)
+  koiDraw_gacha_role_per_server_ratio:
+    expression: ROUND(CAST(COUNT(DISTINCT role_id) AS DOUBLE) / NULLIF(COUNT(DISTINCT server_id), 0), 2)
+    description: 平均每区服参与角色数(角色UV/区服UV；衡量区服集中度)
+coverage:
+  scenarios:
+    - 锦鲤抽奖参与规模(koiDraw_gacha_cnt / koiDraw_gacha_role_uv / koiDraw_gacha_account_uv)
+    - 抽奖拉杆总次数(koiDraw_gacha_draw_cnt 按 count 累加，区分单抽与十连体量)
+    - 保底触发率(koiDraw_gacha_guarantee_trigger_cnt / koiDraw_gacha_cnt)
+    - 区服覆盖与集中度(koiDraw_gacha_server_uv、koiDraw_gacha_role_per_server_ratio)
+  limitations:
+    - 日志中零命中(ds=20260729 cnt=0，retry ds=20260728 cnt=0)，事件疑似下线/未触发/未上报，metrics 为定义态未实测
+    - 仅 ds=20260729/20260728 两日 scout 实测均零命中，未做全量多日复核
+    - 主体粒度默认 role_id 未逐事件实测角色归属正确性，按 base view 同时含 account_id+role_id 推断为角色级(user_type=3)
+    - count/guaranteeTriggered/drawId/floor 字段在零命中状态下未实测取值分布，类型按 params_fields 标注(int)假定
+    - slots(命中格子列表)为数组，GET_JSON_OBJECT 返回 STRING 无法直接 SIZE，未构建单次命中格数指标
+  coverage_status: draft
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+external_refs: []

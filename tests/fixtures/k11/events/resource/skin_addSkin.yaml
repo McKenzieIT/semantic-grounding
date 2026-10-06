@@ -1,0 +1,112 @@
+name: game.skin.addSkin
+event_filter: event = 'game.skin.addSkin'
+description: 玩家获得/添加皮肤时触发的资源事件（game.skin.addSkin）。记录被添加的皮肤id（skinId）及角色当前快照（战力roleForce、等级roleLevel、VIP、各类货币coinList 等23个参数）。分析主体为 role_id（角色），辅以 account_id 看账号维度。scout 实测 ds=20260729：cnt=228, role_uv=207, account_uv=206, server_uv=31, skin_uv=13。
+domains:
+  - 装备道具
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  skinId:
+    type: int
+    description: 皮肤id
+metrics:
+  skin_addskin_cnt:
+    expression: COUNT(*)
+    description: 皮肤添加事件总次数（含同一角色多次添加不同皮肤，不去重）
+  skin_addskin_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 添加皮肤的活跃角色数（去重 role_id，事件分析主体）
+  skin_addskin_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 添加皮肤的活跃账号数（去重 account_id，账号维度补充）
+  skin_addskin_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的游戏服数量（去重 server_id，渠道/服务器分布）
+  skin_addskin_skin_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.skinId'))
+    description: 被添加的去重皮肤种类数（取自 params.skinId，衡量皮肤发放广度）
+  skin_addskin_per_role_avg:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均添加皮肤次数（总次数 / 去重角色数），NULLIF 防止零角色时除零
+coverage:
+  scenarios:
+    - 皮肤系统活跃度：通过 skin_uv 与 role_uv 衡量皮肤发放的覆盖广度与人均频次（per_role_avg）
+    - 资源产销分析：统计每日新增皮肤事件量、参与角色与服务器分布，评估皮肤玩法的产出与消耗
+    - 角色行为画像：以 role_id 为主体分析单角色多皮肤添加行为及战力/等级/VIP 快照分布
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量日期复核（趋势/周同比需后续补量）
+    - 分析主体默认 role_id（角色），未独立验证 account_id 与 role_id 一对多关系
+    - skinId 取自 params JSON 字段，依赖客户端上报完整性；未对 skinId 缺失/空值单独剔除
+    - 货币快照（coinList）仅记录事件时刻余额，不代表皮肤消耗成本（无对应扣费金额字段）
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=228, role_uv=207, account_uv=206, server_uv=31, skin_uv=13；数值合理，事件在线正常触发
+external_refs: []

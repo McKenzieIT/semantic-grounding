@@ -1,0 +1,114 @@
+name: game.guild.modifyAnnounce
+event_filter: event = 'game.guild.modifyAnnounce'
+description: 公会成员修改公会公告(announcement)事件，记录公会成员编辑公会公告文本的行为。每次修改记一条日志，参数含游戏服id、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验、新公告内容(newAnnounce) 等23个字段，可用于分析公会公告编辑活跃度与公告内容多样性。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  newAnnounce:
+    type: string
+    description: 公会公告文本内容（玩家编辑的公会招人/宣言文本，实测为中文长文本）
+metrics:
+  modifyAnnounce_cnt:
+    expression: COUNT(*)
+    description: 公会公告修改总次数
+  modifyAnnounce_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 修改公告的去重角色数
+  modifyAnnounce_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 修改公告的去重账号数
+  modifyAnnounce_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发公告修改的去重服务器数
+  modifyAnnounce_os_uv:
+    expression: COUNT(DISTINCT os_id)
+    description: 触发公告修改的去重平台(os)数
+  modifyAnnounce_announce_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.newAnnounce'))
+    description: 去重公告内容数（不同公告文本条数）
+  modifyAnnounce_avg_per_role:
+    expression: ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id),0), 3)
+    description: 人均公告修改次数（总次数/去重角色数）
+coverage:
+  scenarios:
+    - 公会公告编辑活跃度（总次数、去重角色数、去重账号数、人均次数）
+    - 公告内容多样性（去重公告内容数）
+    - 公告修改在服务器/平台维度的覆盖广度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测(cnt=19, role_uv=15, acc_uv=15, announce_uv=16)，未做全量复核
+    - subject 粒度默认 role_id（社交公会域 guild_* 事件，角色级触发），未逐事件实测角色级聚合准确性
+    - newAnnounce 实测为公告文本(string)，原 YAML 标注 int 有误已修正；仅统计去重数，未做内容文本分析
+    - 公告文本含招人/宣言内容，未做敏感词或重复内容归并
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 单日实测 ds=20260729 命中 19 条/15 角色/15 账号/10 服务器/2 平台，去重公告内容 16 个；newAnnounce 实测为公告中文长文本(string)，原 YAML 标注 int 已修正为 string；role_id(=15)与 params.roleId(=15)一致、roleLevel、newAnnounce 字段均经 GET_JSON_OBJECT 验证可读且非空(非空率 19/19)
+external_refs: []

@@ -1,0 +1,114 @@
+table_name: dim_10000251_trans_arena_rank_info_df
+engine: maxcompute
+kind: dim
+table_comment: '游戏 10000251 竞技场段位配置维表（_df 日全量快照）：每条记录描述一个竞技场段位的积分门槛、胜负得分、奖励、保护机制与匹配规则。'
+description: '游戏 10000251 竞技场段位配置维度表（_df 日全量快照）。每行对应一个竞技场段位（rank_id），记录其名称、图标、积分门槛(min_point)、胜负得分、段位提升奖励、属性加成、保护机制、赛季结算奖励/积分及机器人匹配/战力匹配区间等 21 个配置字段。作为事实表的段位维 lookup 使用，通过 rank_id JOIN 解析段位语义与显示名。'
+domains:
+- 系统监控
+granularity: '每竞技场段位(rank_id)一行的配置维度表'
+primary_key: [rank_id]
+label_columns: [rank_name]
+primary_key_unique: true
+columns:
+- name: rank_id
+  type: string
+  comment: 段位ID
+  role: dimension
+- name: rank_name
+  type: string
+  comment: 段位名称
+  role: dimension
+- name: img
+  type: string
+  comment: 段位图标配置
+  role: dimension
+- name: min_point
+  type: string
+  comment: 分数下限
+  role: dimension
+- name: win_point
+  type: string
+  comment: 胜利得分
+  role: dimension
+- name: lose_point
+  type: string
+  comment: 失败扣分
+  role: dimension
+- name: reward_rank
+  type: string
+  comment: 首次段位提升奖励
+  role: dimension
+- name: attibute
+  type: string
+  comment: 属性加成
+  role: dimension
+- name: level_protect
+  type: string
+  comment: 等级保护
+  role: dimension
+- name: rank_proof
+  type: string
+  comment: 段位保护
+  role: dimension
+- name: rank_mode
+  type: string
+  comment: 段位模式
+  role: dimension
+- name: season_reward
+  type: string
+  comment: 赛季结算奖励
+  role: dimension
+- name: season_point
+  type: string
+  comment: 赛季结算积分
+  role: dimension
+- name: rank_order
+  type: string
+  comment: 是否显示排名
+  role: dimension
+- name: mail_id
+  type: string
+  comment: 奖励邮件
+  role: dimension
+- name: robot_match
+  type: string
+  comment: 可否匹配机器人
+  role: dimension
+- name: match_power_min_interval
+  type: string
+  comment: 匹配战力下限
+  role: dimension
+- name: match_power_interval
+  type: string
+  comment: 匹配战力上限
+  role: dimension
+- name: lose_protection
+  type: string
+  comment: 连败次数
+  role: dimension
+- name: protection_num
+  type: string
+  comment: 保护场次
+  role: dimension
+- name: protection_power_interval
+  type: string
+  comment: 保护战力上限
+  role: dimension
+coverage:
+  scenarios:
+  - 事实表通过 rank_id JOIN 本表，解析玩家当前竞技场段位的名称(min_point/win_point 等)与显示标签 rank_name
+  - 段位奖励与赛季结算分析：JOIN 解析 reward_rank/season_reward/season_point 配置
+  - 保护机制与匹配规则查询：level_protect/rank_proof/lose_protection/protection_num/match_power_* 等配置 lookup
+  limitations:
+  - 配置类维度表，无值度量（数值字段如 min_point/win_point 等均为字符串编码，需应用层二次转换后才可计算）
+  - 多个奖励字段为复合编码串（如 reward_rank=1_62_300、season_reward=1_62_4000），需应用层按分隔符二次解码后使用
+  - 日全量快照(_df)粒度，配置变更后历史快照不回溯
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'dim 建模完成：primary_key=rank_id（实测唯一 r=d=10），label=rank_name；配置类维度表，无值度量；复合奖励编码串需二次解码。状态保持 draft 待业务确认。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 段位配置维表总行数

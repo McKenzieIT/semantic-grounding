@@ -1,0 +1,105 @@
+name: game.fantasyknightselect.reward
+event_filter: event = 'game.fantasyknightselect.reward'
+description: |-
+  幻想服武将自选-领取（幻想服武将自选活动领取奖励事件）。记录玩家在幻想服武将自选活动中领取所选武将奖励的行为，主体粒度为角色(role_id)。ds=20260729 实测单日 cnt=381/role_uv=381/acc_uv=377/server_uv=5。原始参数：
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightList:
+    type: array
+    description: 武将列表
+metrics:
+  game_fantasyknightselect_reward_cnt:
+    expression: COUNT(*)
+    description: 武将自选领取事件总次数
+  game_fantasyknightselect_reward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取武将自选奖励的去重角色数
+  game_fantasyknightselect_reward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取武将自选奖励的去重账号数
+  game_fantasyknightselect_reward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取武将自选奖励覆盖的去重游戏服数
+coverage:
+  scenarios:
+    - 武将自选活动领取次数与参与角色/账号规模
+    - 覆盖游戏服范围
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认主体粒度为 role_id
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 实测 cnt=381/role_uv=381/acc_uv=377/server_uv=5，数量合理，确认 analyst_confirmed
+external_refs: []

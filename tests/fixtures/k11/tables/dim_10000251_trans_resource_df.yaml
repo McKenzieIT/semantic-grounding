@@ -1,0 +1,62 @@
+table_name: dim_10000251_trans_resource_df
+engine: maxcompute
+table_comment: '游戏内资源翻译/映射维度表：按 (资源类型 type, 资源值 id) 唯一标识一行资源配置，携带资源名称 name、引用源表 table、品质 quality、备注 remark、道具价值 price 等属性。日全量快照(_df)。'
+description: '资源配置/维度表（日全量快照 _df）。每行描述一个游戏内资源：以 (资源类型 type, 资源值 id) 为复合主键唯一标识，携带资源名称 name、引用源表 table、品质 quality、备注 remark、道具价值 price 等属性。用于资源编码到人可读名称/属性的维度查找。'
+kind: dim
+primary_key:
+- type
+- id
+primary_key_unique: true
+label_columns:
+- name
+domains:
+- 系统监控
+granularity: 每 (资源类型 type, 资源值 id) 一行的资源配置维度表
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+columns:
+- name: type
+  type: string
+  comment: 资源类型
+  role: dimension
+- name: id
+  type: string
+  comment: 资源值
+  role: dimension
+- name: name
+  type: string
+  comment: 资源名称
+  role: dimension
+- name: table
+  type: string
+  comment: 引用表
+  role: dimension
+- name: quality
+  type: bigint
+  comment: 品质
+  role: dimension
+- name: remark
+  type: string
+  comment: 备注
+  role: dimension
+- name: price
+  type: double
+  comment: 道具价值
+  role: dimension
+coverage:
+  scenarios:
+  - 事件明细表（如流水/兑换/邮件/任务奖励）通过 (资源类型 type, 资源值 id) JOIN 本表，将资源编码翻译为人可读的资源名称 name、品质 quality、备注 remark
+  - 资源编码到引用源表 table 的映射查找，用于追溯资源定义来源（如 gvg2_item_info、home_skin_info 等配置表）
+  - 资源价值/品质属性的维度补充（price、quality），用于分组/筛选分析
+  limitations:
+  - 配置类维度表，无值度量（不含金额/次数等事实度量）；price 为道具静态估值，非交易金额
+  - 主键为复合键 (type, id)，下游 JOIN 需同时携带两列；单独 id 不唯一（id=0 在多种 type 下重复出现）
+  - type 为编码字符串（如 "44"/"33"），其语义需结合游戏配置二次解码
+  - 日全量快照(_df)，查询时需注意分区/快照日期
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '复合主键 (type, id) 唯一性已实测（r=99, d=99，primary_key_unique=true）。label=name。status=draft 待业务确认。'

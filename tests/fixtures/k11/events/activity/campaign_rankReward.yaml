@@ -1,0 +1,124 @@
+name: game.campaign.rankReward
+event_filter: event = 'game.campaign.rankReward'
+description: 历战排行榜奖励：角色在历战排行榜赛季结算时按排名档位领取奖励的事件。记录领奖角色（role_id 为业务主体，account_id 为账号主体）、所在游戏服、角色等级/vip/战力、奖励道具列表（reward 数组含 type/value/size/uid）及当前排名 rank 与榜单总人数 total。2026-07-31 scout 实测 ds=20260729 单日 cnt=2668、role_uv=2620、acc_uv=2528、server_uv=418。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  reward:
+    type: array
+    description: 奖励
+  reward.type:
+    type: int
+    description: 类型
+  reward.value:
+    type: int
+    description: 值
+  reward.size:
+    type: int
+    description: 数量
+  reward.uid:
+    type: int
+    description: 唯一id
+  rank:
+    type: int
+    description: rank
+  total:
+    type: int
+    description: total
+metrics:
+  game_campaign_rankReward_cnt:
+    expression: COUNT(*)
+    description: 历战排行榜领奖事件总次数（事件行数）
+  game_campaign_rankReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领奖角色数（去重 role_id，业务主体）
+  game_campaign_rankReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领奖账号数（去重 account_id）
+  game_campaign_rankReward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及游戏服数（去重 server_id）
+coverage:
+  scenarios:
+    - 评估历战排行榜赛季结算领奖参与规模（次数/角色/账号/服务器覆盖）
+    - 监控不同游戏服排行榜领奖活跃度与服务器分布
+    - 衡量历战排行榜奖励发放的触达范围与角色渗透
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - reward 为数组字段，本批指标未做奖励道具数量/价值聚合（需 LATERAL VIEW 爆表，受 No-JOIN 限制）
+    - 业务主体默认为 role_id（角色维度），account_id 为账号维度补充
+    - rank/total 为标量字段，本批未作为独立指标输出
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 scout 实测 cnt=2668 / role_uv=2620 / acc_uv=2528 / server_uv=418，量级合理，确认 analyst_confirmed
+  coverage_status: analyst_confirmed
+external_refs: []

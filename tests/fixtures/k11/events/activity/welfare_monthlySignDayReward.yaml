@@ -1,0 +1,122 @@
+name: game.welfare.monthlySignDayReward
+event_filter: event = 'game.welfare.monthlySignDayReward'
+description: 玩家领取月签到日奖励时触发的埋点事件(game.welfare.monthlySignDayReward)。记录领奖角色(roleId/roleName)、所属游戏服(serverId/serverName)、领奖当日(day，取值0-28对应月内天数)以及领取后的关键货币余额(coinList.gold 充值钻石/sendgold 赠送钻石/freegold 免费钻石/diamond 紫金/expCoin 经验卷轴/energy 体力)等23个参数。分析主体为 role_id(角色粒度)，账号粒度可通过 account_id 聚合，游戏服粒度通过 server_id 聚合。真实实测 ds=20260729：cnt=4453 行，role_uv=4400，acc_uv=4123，server_uv=483，day 分布覆盖 0-28 全月。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  day:
+    type: int
+    description: day
+metrics:
+  game_welfare_monthly_sign_day_reward_cnt:
+    expression: COUNT(*)
+    description: 月签到日奖励领取总次数（含同一角色多次领取/补领）
+  game_welfare_monthly_sign_day_reward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取月签到日奖励的去重角色数（角色粒度分析主体）
+  game_welfare_monthly_sign_day_reward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取月签到日奖励的去重账号数（账号粒度）
+  game_welfare_monthly_sign_day_reward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 有角色领取月签到日奖励的去重游戏服数
+  game_welfare_monthly_sign_day_reward_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 领奖时记录的充值钻石余额合计（快照余额，非当日产出）
+  game_welfare_monthly_sign_day_reward_freegold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.freegold') AS BIGINT))
+    description: 领奖时记录的免费钻石余额合计（快照余额，非当日产出）
+  game_welfare_monthly_sign_day_reward_diamond_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.diamond') AS BIGINT))
+    description: 领奖时记录的紫金余额合计（快照余额，非当日产出）
+  game_welfare_monthly_sign_day_reward_energy_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.energy') AS BIGINT))
+    description: 领奖时记录的体力余额合计（快照余额，非当日产出）
+  game_welfare_monthly_sign_day_reward_avg_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 平均每个角色的领奖次数（用于识别补领/多日补领）
+coverage:
+  scenarios:
+    - 月签到活动参与度：单日领取次数、参与角色 UV、参与账号 UV、覆盖游戏服数。
+    - 月签到漏领/补领识别：day 字段 0-28 分布与 avg_per_role 结合，判断补领集中日（如月末 day=28 集中补领）。
+    - 领奖角色货币水位：gold/freegold/diamond/energy 余额合计，用于评估签到福利对玩家货币水位的影响（注意为快照余额非增量）。
+    - 角色与账号粒度换算：role_uv 与 account_uv 对比，评估单账号多角色领奖占比。
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核（其他 ds 未抽样验证）。
+    - coinList.* 为领奖时刻的货币快照余额，非当日签到产出增量，不能直接当产出指标使用。
+    - 分析主体默认 role_id（角色粒度），账号粒度需 account_id 单独聚合，二者不可混用。
+    - day 字段取值 0-28 来自实测分布，含义为月内天数索引，跨月对齐需结合活动配置日历。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=4453, role_uv=4400, acc_uv=4123, server_uv=483；day 分布覆盖 0-28 全月（day=28 集中 1457 次疑似月末补领）。数据量与分布合理，事件在线且持续触发。
+coverage_status: analyst_confirmed
+external_refs: []

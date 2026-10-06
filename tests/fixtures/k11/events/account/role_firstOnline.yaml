@@ -1,0 +1,105 @@
+name: game.role.firstOnline
+event_filter: event = 'game.role.firstOnline'
+description: 角色每日首次上线事件：记录每个角色当天首次登录游戏时的快照信息（含游戏服、角色基础属性、货币余额等23个参数）。主体粒度为 role_id（角色级），ds=20260729 单日实测 cnt=4734 / role_uv=4734 / acc_uv=4396 / server_uv=484。
+domains:
+  - 用户生命周期
+domain: account
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  loginIp:
+    type: string
+    description: 登录ip
+metrics:
+  game_role_firstOnline_cnt:
+    expression: COUNT(*)
+    description: 角色每日首次上线事件总记录数（ds=20260729 单日 4734）
+  game_role_firstOnline_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日首次上线的去重角色数（主体粒度 role_id，ds=20260729 单日 4734）
+  game_role_firstOnline_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 当日首次上线事件覆盖的去重账号数（ds=20260729 单日 4396）
+  game_role_firstOnline_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 当日首次上线事件覆盖的去重游戏服数（ds=20260729 单日 484）
+coverage:
+  scenarios:
+    - 监控每日活跃角色/账号/服务器规模，识别首登留存与回流趋势
+    - 评估日活（DAU）基线，作为用户生命周期与付费经济指标的分母
+    - 结合 server_uv 判断上线分布是否集中或分散
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id（角色级）；同账号多角色会重复计入角色级指标
+    - 首次上线为日级口径，与历史首登（创角首次上线）不同
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 scout 实测 cnt=4734 / role_uv=4734 / acc_uv=4396 / server_uv=484，数据合理，确认通过
+  coverage_status: analyst_confirmed
+external_refs: []

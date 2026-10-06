@@ -1,0 +1,121 @@
+name: game.guild.getMissionBox
+event_filter: event = 'game.guild.getMissionBox'
+description: 公会成员领取公会积分宝箱的行为事件。记录领取宝箱的角色（role_id 为分析主体）、所属服务器、宝箱id boxId 及领取后的关键货币变化 coinList（充值钻石/紫金/经验卷轴/体力等），用于分析公会积分宝箱的领取频次、领取人群与产出。scout 实测 ds=20260729 与 ds=20260728 均零命中（cnt=0），事件疑似下线或未触发，数据待复核。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  boxId:
+    type: int
+    description: 宝箱id
+metrics:
+  guild_get_mission_box_cnt:
+    expression: COUNT(*)
+    description: 领取公会积分宝箱的总次数
+  guild_get_mission_box_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取公会积分宝箱的去重角色数（分析主体 role_id）
+  guild_get_mission_box_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取公会积分宝箱的去重账号数
+  guild_get_mission_box_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取公会积分宝箱的去重游戏服数
+  guild_get_mission_box_box_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.boxId'))
+    description: 涉及的去重宝箱id数
+  guild_get_mission_box_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 领取宝箱产出的充值钻石总量
+  guild_get_mission_box_diamond_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.diamond') AS BIGINT))
+    description: 领取宝箱产出的紫金总量
+  guild_get_mission_box_energy_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.energy') AS BIGINT))
+    description: 领取宝箱产出的体力总量
+  guild_get_mission_box_avg_per_role:
+    expression: ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0), 2)
+    description: 人均领取宝箱次数（总次数/去重角色数）
+coverage:
+  scenarios:
+    - 公会积分宝箱领取活跃度：通过 guild_get_mission_box_cnt/role_uv/account_uv 衡量公会积分宝箱领取的频次与人群
+    - 宝箱产出分析：通过 gold_sum/diamond_sum/energy_sum 量化宝箱发放的充值钻石/紫金/体力总量
+    - 宝箱分布与热门识别：通过 box_uv 识别当日被领取的去重宝箱id
+    - 人均领取强度：guild_get_mission_box_avg_per_role 反映单角色领取宝箱的密度
+  limitations:
+    - 日志中零命中(ds=20260729 与 ds=20260728 cnt=0)，事件疑似下线/未触发，metrics 为口径定义待数据回流后实测
+    - 仅 ds=20260729/20260728 单日 scout 实测，未做全量复核
+    - 分析主体粒度默认 role_id（角色），尚未在真实数据中验证
+coverage_status: draft
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=0、role_uv=0、acc_uv=0、server_uv=0；retry ds=20260728 同样 cnt=0。事件疑似下线或未触发，保持 draft，待数据回流后复核。
+external_refs: []

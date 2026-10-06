@@ -1,0 +1,125 @@
+name: game.knightnatalchart.refine
+event_filter: event = 'game.knightnatalchart.refine'
+description: 武将命盘-改命事件：玩家对武将命盘执行改命（refine）操作时上报，记录被改命的武将id、改命方案(scheme)、随机点(nodes)、未触发三橙次数(threeOrangeCoe)及角色基础属性。分析主体为 role_id（角色粒度），单次改命上报一条日志，用于统计改命次数、参与角色数、改命武将数及未触发三橙累计次数。实测 ds=20260729：cnt=4071，role_uv=185，acc_uv=185，server_uv=51。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightId:
+    type: int
+    description: 武将id
+  scheme:
+    type: int
+    description: 方案
+  nodes:
+    type: array
+    description: 随机到的点
+  threeOrangeCoe:
+    type: int
+    description: 未触发三橙的次数
+metrics:
+  knightnatalchart_refine_cnt:
+    expression: COUNT(*)
+    description: 武将命盘改命操作总次数（每条日志为一次改命上报）
+  knightnatalchart_refine_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与改命的角色数（分析主体 role_id 维度去重）
+  knightnatalchart_refine_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与改命的账号数
+  knightnatalchart_refine_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 参与改命的游戏服数
+  knightnatalchart_refine_knight_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.knightId'))
+    description: 被改命的武将种类数（按 knightId 去重）
+  knightnatalchart_refine_threeOrangeCoe_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.threeOrangeCoe') AS BIGINT))
+    description: 未触发三橙的累计次数之和（threeOrangeCoe 字段求和，反映改命过程中未命中三橙稀有度的总尝试量）
+  knightnatalchart_refine_per_role_cnt:
+    expression: ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0), 2)
+    description: 人均改命次数（总次数 / 参与角色数，分母 NULLIF 防零除）
+coverage:
+  scenarios:
+    - 武将命盘改命玩法的参与热度（次数/角色数/账号数/服务器数）
+    - 哪些武将被改命最频繁（knight_uv 及下钻 knightId）
+    - 改命稀有度命中难度的体感（threeOrangeCoe 累计次数越高，三橙越难触发）
+    - 人均改命次数反映改命玩法的复玩深度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核（多日趋势/周累计未验证）
+    - 分析主体默认 role_id（角色粒度），改命操作粒度为单次上报一条日志
+    - threeOrangeCoe 为累计计数，跨多次改命递增，单日 SUM 受起始基数影响，不代表当日净增
+    - 未抽样校验 scheme/nodes 子字段的具体取值分布
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729（event+ds 双过滤加速视图）：cnt=4071, role_uv=185, acc_uv=185, server_uv=51；数据量与 UV 合理，事件在线且正常触发。参数抽样校验 knightId/scheme/threeOrangeCoe 可经 GET_JSON_OBJECT 正常解析。
+coverage_status: analyst_confirmed
+external_refs: []

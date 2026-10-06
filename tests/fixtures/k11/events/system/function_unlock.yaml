@@ -1,0 +1,112 @@
+name: game.function.unlock
+event_filter: event = 'game.function.unlock'
+description: 功能解锁事件：角色在游戏内解锁某项游戏功能（functionId）时触发的埋点，记录玩家进度推进到新功能开放节点。携带游戏服、账号、角色基础信息（角色名/性别/创角时间/上线时间/角色等级/vip等级/角色战力/经验）、当前货币快照（充值钻石/赠送钻石/免费钻石/紫金/经验卷轴/体力）及会话信息，共23个参数。分析主体粒度为 role_id（角色）。2026-07-29 单日 scout 实测：14455 条事件，覆盖 1902 个角色、1801 个账号、100 个游戏服、43 个不同功能。
+domains:
+  - 系统监控
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  functionId:
+    type: int
+    description: 功能id
+metrics:
+  game_function_unlock_cnt:
+    expression: COUNT(*)
+    description: 功能解锁事件总次数
+  game_function_unlock_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 解锁功能的去重角色数（分析主体粒度）
+  game_function_unlock_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 解锁功能的去重账号数
+  game_function_unlock_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及去重游戏服数
+  game_function_unlock_function_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.functionId'))
+    description: 当日去重解锁的功能数（按 params.functionId）
+  game_function_unlock_avg_per_role:
+    expression: ROUND(COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0), 3)
+    description: 人均解锁功能次数（事件次数 / 去重角色数）
+coverage:
+  scenarios:
+    - 单日有多少角色/账号首次解锁游戏功能（活跃广度 + 功能触达）
+    - 解锁事件覆盖多少游戏服、多少不同功能（unlock 分布广度）
+    - 人均解锁功能次数（avg_per_role）评估功能开放密度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度），params.roleId 与 base view role_id 已校验一致（1902 一致）
+    - functionId 为功能配置 id，功能中文名称映射需另查功能配置表，本层不展开
+    - 货币快照字段（coinList.*）为事件发生时的余额快照，非本次解锁产生的增量，不宜当收入用
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729：cnt=14455、role_uv=1902、acc_uv=1801、server_uv=100、function_uv=43；params.roleId/accountId 与 base view 一致，数据合理，确认 analyst_confirmed
+coverage_status: analyst_confirmed
+external_refs: []

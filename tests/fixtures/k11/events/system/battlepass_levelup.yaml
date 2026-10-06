@@ -1,0 +1,147 @@
+name: game.battlepass.levelup
+event_filter: event = 'game.battlepass.levelup'
+description: |-
+  战令升级埋点（game.battlepass.levelup）：角色在主线/挑战塔战令中升至某一阶（order=战令档位等级，enabledStatus=战令激活状态 0-普通未付费/1-高级/2-珍藏）时上报，含角色等级、vip、战力、经验及关键货币快照。
+  分析主体：role_id（角色粒度，account_id 为账号粒度补充）。ds=20260729 单日 scout 实测：cnt=30615、role_uv=3358、acc_uv=3148、server_uv=407。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  cfgId:
+    type: int
+    description: 战令配置id
+  enabledStatus:
+    type: int
+    description: 战令激活状态，0-普通战令（未付费版）1-高级战令 2-珍藏版
+  order:
+    type: int
+    description: order
+metrics:
+  battlepass_levelup_cnt:
+    expression: COUNT(*)
+    description: 战令升级事件总次数（事件行数）
+  battlepass_levelup_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发战令升级的去重角色数（分析主体粒度）
+  battlepass_levelup_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发战令升级的去重账号数
+  battlepass_levelup_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发战令升级的去重服务器数
+  battlepass_levelup_premium_cnt:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params, '$.enabledStatus') AS BIGINT) >= 1 THEN 1 ELSE 0 END)
+    description: 高级/珍藏版战令（enabledStatus>=1）升级事件次数
+  battlepass_levelup_premium_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN CAST(GET_JSON_OBJECT(params, '$.enabledStatus') AS BIGINT) >= 1 THEN role_id END)
+    description: 触发高级/珍藏版战令升级的去重角色数
+  battlepass_levelup_premium_role_rate:
+    expression: CAST(COUNT(DISTINCT CASE WHEN CAST(GET_JSON_OBJECT(params, '$.enabledStatus') AS BIGINT) >= 1 THEN role_id END) AS DOUBLE) / NULLIF(CAST(COUNT(DISTINCT role_id) AS DOUBLE), 0)
+    description: 高级/珍藏版战令升级角色占全部战令升级角色比例（NULLIF 防除零）
+  battlepass_levelup_max_order:
+    expression: MAX(CAST(GET_JSON_OBJECT(params, '$.order') AS BIGINT))
+    description: 当日触发的最高战令档位等级（order 最大值）
+coverage:
+  scenarios:
+    - 战令升级整体量级：单日升级事件次数、覆盖角色/账号/服务器数（battlepass_levelup_cnt/role_uv/account_uv/server_uv）
+    - 付费版战令渗透：高级/珍藏版升级次数与角色数（premium_cnt/premium_role_uv）
+    - 付费转化强度：付费版战令升级角色占比（premium_role_rate）
+    - 战令深度推进：当日达到的最高战令档位（max_order）
+  subject_granularity: role_id（角色粒度；account_id 为账号粒度补充，server_id 为服粒度补充）
+  default_subject: role_id
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核；多日趋势与历史峰值需后续覆盖
+    - enabledStatus=2（珍藏版）当日样本极少，未单独拆分指标
+    - order 解释为战令档位等级，系依据样本取值推断（1-10+ 递增），需业务确认精确含义
+    - 货币快照（coinList.*）为状态字段非增量，未计入 metrics，按需另查
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: ds=20260729 scout 实测：cnt=30615、role_uv=3358、acc_uv=3148、server_uv=407；enabledStatus 分布以普通版(0)为主、高级版(1)约 600 行，order 取值 1-10+。数值合理，确认为真实触发。
+coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_knight_awaken_info_arch
+    join_keys:
+      - dws_column: order
+        dim_column: order
+    derivation: 确定性：事件字段 order 与 dim_10000251_knight_awaken_info_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_story_df
+    join_keys:
+      - dws_column: order
+        dim_column: order
+    derivation: 确定性：事件字段 order 与 dim_10000251_trans_story_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_story_df_arch
+    join_keys:
+      - dws_column: order
+        dim_column: order
+    derivation: 确定性：事件字段 order 与 dim_10000251_trans_story_df_arch 主键精确同名
+    origin: deterministic

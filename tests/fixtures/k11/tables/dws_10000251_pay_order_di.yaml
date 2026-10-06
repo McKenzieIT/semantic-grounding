@@ -1,0 +1,112 @@
+table_name: dws_10000251_pay_order_di
+engine: maxcompute
+table_comment: 付费成功订单汇总日表
+description: "付费成功订单日增量表，记录每笔成功付费订单明细行（subject: 付费订单事件，关联账号 account_id 与角色 role_id）。 粒度：日增量(_di)，每行一笔付费订单。用于付费金额、订单数、付费UV、ARPU 等付费经济指标核算。 主要字段：order_id(订单号), account_id(账号ID), role_id(角色ID), server_id(服务器ID), pay_type(付费类型), pay_amt(订单金额/元), tm(行为时间), cfg_id(商品配置ID), activity_type(活动类型), activity_id(活动ID), ds(分区) 共11列。"
+domains:
+  - 付费经济
+  - 用户生命周期
+granularity: 日增量(_di)，每行一笔付费订单事件，按 ds 分区
+columns:
+  - name: order_id
+    type: string
+    comment: 订单号
+    role: dimension
+  - name: account_id
+    type: string
+    comment: 账号ID
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: server_id
+    type: bigint
+    comment: 服务器ID
+    role: dimension
+  - name: pay_type
+    type: string
+    comment: 付费类型 1-现金购买 2-代金券购买 3-免费代金券购买
+    role: dimension
+  - name: pay_amt
+    type: double
+    comment: 订单金额/元
+    role: measure
+  - name: tm
+    type: datetime
+    comment: 行为时间
+    role: dimension
+  - name: cfg_id
+    type: string
+    comment: 商品配置ID
+    role: dimension
+  - name: activity_type
+    type: string
+    comment: 活动类型
+    role: dimension
+  - name: activity_id
+    type: string
+    comment: 活动ID
+    role: dimension
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  pay_order_cnt:
+    expression: COUNT(DISTINCT order_id)
+    description: 付费成功订单数（去重订单号），日增量口径
+  pay_amt_sum:
+    expression: SUM(pay_amt)
+    description: 付费总金额（元），日增量口径
+  pay_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 付费账号数（去重 account_id）
+  pay_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 付费角色数（去重 role_id）
+  pay_arpu:
+    expression: SUM(pay_amt) / NULLIF(COUNT(DISTINCT account_id), 0)
+    description: 账号口径 ARPU（付费总额/付费账号数）
+coverage:
+  scenarios:
+    - 每日付费订单量、付费金额、付费账号/角色UV、ARPU 等付费经济核心指标核算
+    - 按 pay_type / server_id / cfg_id / activity_type 维度拆解付费结构与渠道贡献
+    - 活动期间（activity_id 非空）付费拉动对比与商品(cfg_id)畅销分析
+  limitations:
+    - 日增量(_di)口径，仅含当日成功付费订单，非全量账号快照；累计需跨 ds 聚合
+    - 仅 scout 抽样验证 ds=20260730（1328 单/57628 元/459 账号UV），未做全量 maxc 实测复核
+    - activity_type/activity_id 取值多为 "0"，活动维度可能稀疏或编码缺失，需业务侧确认
+    - 缺少渠道、货币类型、退款字段，无法拆解渠道净额与退款对冲
+    - subject 为付费订单事件（非账号/角色/设备实体表），账号/角色仅作为关联维度
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: maxc 实测 ds=20260730 得 order_cnt=1328 / amt_sum=57628.0 / acc_uv=459，ARPU≈125.6 元，数值合理；列与 meta describe 一致，故置 analyst_confirmed。
+dimension_refs:
+  - dim_table: dim_10000251_com_order_detail_info
+    join_keys:
+      - dws_column: order_id
+        dim_column: order_id
+    derivation: DWS order_id (订单号) exactly matches dim_10000251_com_order_detail_info primary key order_id (商业化-订单信息维表，order_id 全局唯一)，用于关联订单维度属性。
+    origin: deterministic
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (服务器ID) exactly matches dim_10000251_server_info primary key server_id (区服维度配置表)，用于按区服切片付费经济指标。
+    origin: deterministic
+  - dim_table: dim_10000251_trans_recharge_df
+    join_keys:
+      - dws_column: cfg_id
+        dim_column: id
+    derivation: DWS cfg_id (商品配置ID) semantically matches dim_10000251_trans_recharge_df primary key id (充值商品配置维度表，每行一个商品配置(id)，供交易事实表通过 id 关联做商品维度销售/收入切片)。
+  - dim_table: dim_10000251_com_activity_info
+    join_keys:
+      - dws_column: activity_id
+        dim_column: activity_id
+    derivation: DWS activity_id (活动ID) exactly matches dim_10000251_com_activity_info primary key activity_id (商业化-活动信息配置维表，activity_id 实测唯一)，用于回填活动档期与类型维度。
+    origin: deterministic
+pref_label: 付费订单日表
+alt_labels:
+  - 日表

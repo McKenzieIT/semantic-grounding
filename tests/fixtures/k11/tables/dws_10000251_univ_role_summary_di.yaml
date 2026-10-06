@@ -1,0 +1,69 @@
+table_name: dws_10000251_univ_role_summary_di
+engine: maxcompute
+table_comment: 每日用户集，包含活跃与流失用户，用于经分流失分析
+description: |-
+  每日用户集，包含活跃与流失用户，用于经分流失分析。
+  粒度：日增量(_di)。分析主体=角色（user_type=3）。
+  主要字段：user_type, user_id, act, act_fst, churn_day, ds。
+domains:
+  - 用户生命周期
+granularity: 日增量(_di)
+columns:
+  - name: user_type
+    type: BIGINT
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: STRING
+    comment: 用户id
+    role: dimension
+  - name: act
+    type: BIGINT
+    comment: 活跃标记，1-活跃、0-非活跃
+    role: dimension
+  - name: act_fst
+    type: BIGINT
+    comment: 新增标记，新增即首次活跃，1-新增、0-非新增
+    role: dimension
+  - name: churn_day
+    type: BIGINT
+    comment: 流失天数
+    role: measure
+  - name: ds
+    type: STRING
+    comment: 分区字段
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 当日角色 UV（去重角色 id 数），衡量角色口径盘子规模
+  active_uv:
+    expression: COUNT(DISTINCT CASE WHEN act=1 THEN user_id END)
+    description: 当日活跃角色 UV（act=1），衡量当日活跃角色规模
+  new_uv:
+    expression: COUNT(DISTINCT CASE WHEN act_fst=1 THEN user_id END)
+    description: 当日新增角色 UV（act_fst=1，首次活跃），衡量拉新规模
+  churn_uv:
+    expression: COUNT(DISTINCT CASE WHEN churn_day>0 THEN user_id END)
+    description: 当日流失角色 UV（churn_day>0，已判定流失），衡量流失规模
+  active_rate:
+    expression: COUNT(DISTINCT CASE WHEN act=1 THEN user_id END) / NULLIF(COUNT(DISTINCT user_id),0)
+    description: 活跃角色占比，当日活跃角色 UV / 角色 UV，衡量角色活跃度
+coverage:
+  scenarios:
+    - 角色生命周期分析：role_uv 看盘子，active_uv 看活跃，new_uv 看拉新，churn_uv 看流失，active_rate 看活跃健康度
+    - 可按 user_type（当前=3 角色）/ds 分组分析活跃与流失趋势
+  limitations:
+    - 仅 scout 抽样验证（ds=20260730 单分区实测），未做全量 maxc 实测复核
+    - 粒度为日增量(_di)，仅含 act/act_fst/churn_day 标记与 user_id，缺少注册时间、流失回访、设备关联等维度
+    - 仅覆盖角色(user_type=3)主体
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已对 latest ds=20260730 实测 role_uv=8813、active_uv=4699、new_uv=619、churn_uv=4114、avg_churn_day=3.89，数值合理（活跃<总，新增<活跃），故 analyst_confirmed；指标仅单分区抽样验证，未做全量复核。
+dimension_refs: []
+pref_label: 角色日用户集
+alt_labels:
+  - 经分
+  - 用户集

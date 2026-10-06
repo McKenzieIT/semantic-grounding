@@ -1,0 +1,136 @@
+name: game.scriptActivity.scriptMissionScoreReward
+event_filter: event = 'game.scriptActivity.scriptMissionScoreReward'
+description: 剧本活动任务积分奖励一键领取事件 game.scriptActivity.scriptMissionScoreReward：角色在剧本活动(themeId)中一键领取已达成任务积分档位奖励时上报，记录 scoreRewardedMaxId（当日已领取的最高积分档位ID）与 rewards 数组（type/value/size/uid 描述奖励物品类型、数值与数量）。分析主体为 role_id（角色粒度），account_id 为账号粒度辅助。实测 ds=20260729：cnt=161、role_uv=157、acc_uv=154、server_uv=46。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  themeId:
+    type: int
+    description: 活动ID
+  scoreRewardedMaxId:
+    type: int
+    description: 最高ID
+  rewards:
+    type: array
+    description: 奖励
+  rewards.type:
+    type: int
+    description: 类型
+  rewards.value:
+    type: int
+    description: 值
+  rewards.size:
+    type: int
+    description: 数量
+  rewards.uid:
+    type: int
+    description: 唯一id
+metrics:
+  script_mission_score_reward_cnt:
+    expression: COUNT(*)
+    description: 剧本活动任务积分奖励一键领取事件总次数
+  script_mission_score_reward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取过奖励的 distinct 角色数（分析主体为 role_id）
+  script_mission_score_reward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取过奖励的 distinct 账号数
+  script_mission_score_reward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的 distinct 游戏服数
+  script_mission_score_reward_theme_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.themeId'))
+    description: 涉及的 distinct 剧本活动主题数（按 themeId 去重）
+  script_mission_score_reward_max_tier_id:
+    expression: MAX(CAST(GET_JSON_OBJECT(params, '$.scoreRewardedMaxId') AS BIGINT))
+    description: 当日已领取的最高积分档位ID（scoreRewardedMaxId 取 MAX，反映已解锁的最高档）
+  script_mission_score_reward_avg_per_role:
+    expression: ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0), 3)
+    description: 人均领取次数（事件次数/去重角色数，衡量玩家档位密度与刷分意愿）
+coverage:
+  granularity: 单次剧本活动任务积分奖励一键领取事件（role_id 为默认分析主体粒度，account_id 为账号粒度辅助）
+  scenarios:
+    - 剧本活动参与规模：领取次数/角色UV/账号UV/游戏服数/活动主题数
+    - 最高积分档位进展（max_tier_id 反映当日已解锁的最高档 scoreRewardedMaxId）
+    - 人均领取强度（avg_per_role 衡量玩家档位密度与刷分意愿）
+    - 跨服活跃分布（server_uv 指示活动开放范围）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核；跨日趋势与活动周期累计需多日聚合
+    - rewards/coinList 为数组结构，本指标按事件行计；若需奖励物品发放量需对数组展开后单独建模
+    - scoreRewardedMaxId 取当日 MAX，语义为最高已领档位ID，未还原完整档位序列
+    - 分析主体默认 role_id（已验证 role_id 非空），未逐事件实测 role_id 是否为最细主体
+    - theme_uv/max_tier_id 仅基于 themeId/scoreRewardedMaxId 标量，未对数组 rewards 展开
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729：cnt=161、role_uv=157、acc_uv=154、server_uv=46（event=game.scriptActivity.scriptMissionScoreReward）。量级合理（角色≈账号，单服约 3.5 次/人），事件确有触发。
+coverage_status: analyst_confirmed
+external_refs: []

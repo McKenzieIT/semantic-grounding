@@ -1,0 +1,78 @@
+table_name: dws_10000251_role_lt_tag_df
+engine: maxcompute
+table_comment: 角色生命周期标签表
+description: |-
+  角色生命周期标签表：按角色(user_type=3)记录生命周期N日(lt)各进度标签(tag)的数值(value)，日全量快照(_df)。
+  分析主体=角色（user_type=3，已实测最新ds=20251228仅user_type=3）。 粒度：日全量快照(_df)，双分区(ds+tag_type)；最新ds=20251228仅tag_type=progression分区。 每行=一个角色×一个进度标签的快照值（如战力、SSR卡数量/星级/等级等）。 主要字段：user_type, user_id, tag, lt, value, ds, tag_type。
+domains:
+  - 角色成长
+  - 装备道具
+granularity: 日全量快照(_df)，双分区(ds+tag_type)；分析主体=角色(user_type=3)
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，1-设备、2-账号、3-角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户ID
+    role: dimension
+  - name: tag
+    type: string
+    comment: 用户标签
+    role: dimension
+  - name: lt
+    type: int
+    comment: 生命周期（N日）
+    role: dimension
+  - name: value
+    type: int
+    comment: 用户标签值
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+  - name: tag_type
+    type: string
+    comment: 标签类型（分区列，实测最新ds仅progression）
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 角色UV：日全量快照下去重角色数（user_type=3主体指标；ds=20251228实测=1559829）
+  tag_marks:
+    expression: COUNT(*)
+    description: 标签记录数：快照内角色×标签记录总数（ds=20251228实测≈10.19B）
+  distinct_tags:
+    expression: COUNT(DISTINCT tag)
+    description: 标签种类数：快照内不同进度标签种类（如SSR卡数量/星级/战力等）
+  max_lt:
+    expression: MAX(lt)
+    description: 最大生命周期日：快照内角色达到的最大生命周期N日
+  avg_lt:
+    expression: AVG(lt)
+    description: 平均生命周期日：快照内角色×标签记录的平均生命周期N日
+coverage:
+  scenarios:
+    - 角色规模：快照角色UV（role_uv）与标签记录总量（tag_marks）
+    - 进度标签覆盖：标签种类数（distinct_tags），按tag拆分战力/SSR卡数量/星级/等级
+    - 生命周期分布：最大/平均生命周期日（max_lt/avg_lt），按lt分群拆分角色进度
+    - 装备道具进度：SSR卡佩戴数量/星级/无双等级等进度标签按角色拆分
+  limitations:
+    - 仅 scout 抽样验证，未做全量 maxc 实测复核（COUNT/DISTINCT 实测于 ds=20251228 progression 分区；GROUP BY tag 全表查询超时未跑）
+    - value 列跨 tag 异质（战力/卡数量/星级/等级混存），跨 tag SUM(value) 无意义，须按 tag 分组聚合；本表未提供按 tag 拆分的预聚合指标
+    - max_lt/avg_lt 未做单值 spot-verify（全表聚合未跑），仅 role_uv/tag_marks 实测得合理值
+    - _df 为日全量快照，每 ds 每角色×标签一行；跨 ds 不可直接累加，须以单 ds 快照为准
+    - tag_type 为分区列且最新 ds=20251228 仅 progression 分区；其他 tag_type 分区是否存在未实测
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+dimension_refs: []
+pref_label: 角色生命周期标签表
+alt_labels:
+  - 生命周期
+  - 阶段
+  - LT

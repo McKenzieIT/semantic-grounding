@@ -1,0 +1,118 @@
+name: game.script.unlockcity
+event_filter: event = 'game.script.unlockcity'
+description: 剧本-解锁城池：玩家在剧本(script)玩法中解锁城池时上报的事件。记录解锁发生的剧本 scriptId、城池 cityId 及玩家角色快照(角色等级/战力/经验/货币列表等)。分析主体为 role_id(角色级事件)，可用于统计剧本城池解锁的参与规模(角色/账号/服务器覆盖)与解锁城池/剧本分布。scout 实测 ds=20260729：事件 1750 条，覆盖 654 角色/645 账号/165 服务器，解锁 180 个城池、3 个剧本。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  scriptId:
+    type: int
+    description: 剧本id
+  cityId:
+    type: int
+    description: 城池id
+metrics:
+  unlockcity_cnt:
+    expression: COUNT(*)
+    description: 剧本解锁城池事件总次数(每次解锁一座城池记1条)
+  unlockcity_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 解锁城池的去重角色数(分析主体 role_id；角色级事件)
+  unlockcity_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 解锁城池的去重账号数
+  unlockcity_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 解锁城池事件覆盖的去重游戏服数(反映剧本玩法区服覆盖面)
+  unlockcity_city_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.cityId'))
+    description: 被解锁的去重城池数(cityId)
+  unlockcity_script_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.scriptId'))
+    description: 涉及的去重剧本数(scriptId)
+  unlockcity_unlocks_per_role:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均解锁城池次数(总次数/去重角色数；>1 表示同角色当日解锁多座城池)
+coverage:
+  scenarios:
+    - 剧本城池解锁的参与规模(unlockcity_cnt / unlockcity_role_uv / unlockcity_account_uv / unlockcity_server_uv)
+    - 解锁城池的分布广度(unlockcity_city_uv 去重城池数、unlockcity_script_uv 涉及剧本数)
+    - 人均解锁频次评估剧本推进节奏(unlockcity_unlocks_per_role)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量多日复核
+    - 分析主体默认 role_id；剧本城池解锁以角色为粒度，账号级口径见 unlockcity_account_uv
+    - cityId/scriptId 经抽样实测非空(城市 13111/32109/11204 等、剧本 1/2/3)；GET_JSON_OBJECT 依赖 params 字段，缺失时计为 NULL
+    - 本游戏无 MaxCompute 事件分布查询，无 daily_count/total_count/active_days
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=1750 / role_uv=654 / acc_uv=645 / server_uv=165 / city_uv=180 / script_uv=3；事件正常触发，数值合理。
+external_refs: []

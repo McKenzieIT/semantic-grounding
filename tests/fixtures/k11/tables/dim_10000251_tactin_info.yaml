@@ -1,0 +1,56 @@
+table_name: dim_10000251_tactin_info
+engine: maxcompute
+kind: dim
+primary_key:
+- tactic_id
+primary_key_unique: true
+label_columns:
+- tactic_name
+table_comment: '风物配置维度表（每风物一行）：tactic_id 风物ID、tactic_name 风物名、quality 品质、knight_limit 最大佩戴数、tag 标签名、knight 推荐武将(下划线分隔的武将ID串)。'
+description: '游戏 10000251 的风物(tactic)配置维度表，每行描述一个风物及其属性。以 tactic_id 为唯一主键(38行实测唯一)，tactic_name 为可读标签列。quality/knight_limit 为数值属性，tag 为分类标签，knight 为下划线分隔的推荐武将ID串(复合编码，需二次解码)。配置类维度表，无值度量。'
+domains:
+- 装备道具
+granularity: '每风物(tactic)一行'
+columns:
+- name: tactic_id
+  type: BIGINT
+  comment: 风物ID
+  role: dimension
+- name: tactic_name
+  type: STRING
+  comment: 风物名
+  role: dimension
+- name: quality
+  type: BIGINT
+  comment: 品质
+  role: dimension
+- name: knight_limit
+  type: BIGINT
+  comment: 最大佩戴数
+  role: dimension
+- name: tag
+  type: STRING
+  comment: 标签名
+  role: dimension
+- name: knight
+  type: STRING
+  comment: 推荐武将
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - '通过 tactic_id JOIN 事实表，将风物名/品质/标签等维度属性下发到明细行'
+  - '按 quality 分组统计各品质风物数量；按 tag 聚合分析不同标签下的风物分布'
+  - '通过 knight(下划线分隔串)解析推荐武将，做风物与武将的关联分析(需二次解码)'
+  limitations:
+  - '配置类维度表，无值度量，仅作维度属性下发'
+  - 'knight 字段为下划线分隔的复合武将ID串，JOIN/聚合前需解析拆分'
+  - '当前包含 38 行风物配置(实测)，可能随版本更新变化'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '配置类维度表，primary_key_unique=true 经实测(38行=38 distinct)确认；状态保持 draft 待业务确认。'

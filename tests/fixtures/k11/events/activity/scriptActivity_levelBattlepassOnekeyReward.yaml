@@ -1,0 +1,138 @@
+name: game.scriptActivity.levelBattlepassOnekeyReward
+event_filter: event = 'game.scriptActivity.levelBattlepassOnekeyReward'
+description: 等级战令一键领取战令奖励：玩家在 scriptActivity 等级战令活动中触发一键领取，按当前战令等级批量领取已解锁的普通档与 VIP 档奖励（rewardedNormal/rewardedVip），并在 rewards 数组记录每条奖励的类型/值/数量/uid。分析主体为角色（role_id），同账号多角色分别计角色 UV；通过 serverId/accountId/roleId 可还原领奖来源与归属。ds=20260729 单日 scout 实测：触发 434 次，涉及 387 个角色、383 个账号、89 个游戏服，事件在线正常触发。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  themeId:
+    type: int
+    description: 活动ID
+  battlepassId:
+    type: int
+    description: 战令ID
+  rewardedNormal:
+    type: array
+    description: 新领取过的普通ID
+  rewardedVip:
+    type: array
+    description: 新领取过的vipID
+  rewards:
+    type: array
+    description: 奖励
+  rewards.type:
+    type: int
+    description: 类型
+  rewards.value:
+    type: int
+    description: 值
+  rewards.size:
+    type: int
+    description: 数量
+  rewards.uid:
+    type: int
+    description: 唯一id
+metrics:
+  level_battlepass_onekey_reward_cnt:
+    expression: COUNT(*)
+    description: 等级战令一键领取事件触发总次数
+  level_battlepass_onekey_reward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发一键领取的角色去重数（分析主体 UV）
+  level_battlepass_onekey_reward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发一键领取的账号去重数
+  level_battlepass_onekey_reward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发一键领取的游戏服去重数
+  level_battlepass_onekey_reward_theme_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.themeId'))
+    description: 触发一键领取的活动主题（themeId）去重数
+  level_battlepass_onekey_reward_battlepass_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.battlepassId'))
+    description: 触发一键领取的战令 ID（battlepassId）去重数
+  level_battlepass_onekey_reward_per_role:
+    expression: ROUND(COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0), 2)
+    description: 人均一键领取次数（总次数 / 角色去重数）
+coverage:
+  scenarios:
+    - 评估等级战令一键领取的参与规模与活跃度（次数 / 角色 UV / 账号 UV / 服 UV）
+    - 衡量不同活动主题（themeId）与战令 ID（battlepassId）的领取覆盖范围
+    - 计算人均一键领取频次，识别重度领取/批量补领行为
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id，同账号多角色分别计数
+    - rewards 为数组，本版本仅计事件次数，未对其元素项（type/value/size）做明细求和
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=434, role_uv=387, acc_uv=383, server_uv=89；数字合理，事件在线正常触发
+coverage_status: analyst_confirmed
+external_refs: []

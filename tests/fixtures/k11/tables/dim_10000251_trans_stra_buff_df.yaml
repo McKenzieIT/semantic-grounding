@@ -1,0 +1,52 @@
+table_name: dim_10000251_trans_stra_buff_df
+engine: maxcompute
+table_comment: '词缀/词条配置维度表（trans_stra_buff）的日全量快照，每行描述一条词缀配置：词缀id、难度系数、类型名称、效果描述与品质。'
+description: '词缀/词条配置维度表（trans_stra_buff）的日全量快照。每行对应一条词缀配置（id 唯一），包含难度系数 difficulity、类型 type（如"狂殇壹玄"）、效果描述 desc 与品质 quality。用于通过词缀id关联战斗/装备等事实表，做词缀类型与效果描述的维度查询。'
+domains:
+- 系统监控
+kind: dim
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- type
+- desc
+granularity: '每条词缀配置(id)一行的配置维度表，日全量快照(_df)'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: '词缀配置维度表总行数'
+columns:
+- name: id
+  type: string
+  comment: 词缀id
+  role: dimension
+- name: difficulity
+  type: string
+  comment: 难度系数
+  role: dimension
+- name: type
+  type: string
+  comment: 类型
+  role: dimension
+- name: desc
+  type: string
+  comment: 描述
+  role: dimension
+- name: quality
+  type: bigint
+  comment: 品质
+  role: dimension
+coverage:
+  scenarios:
+    - '事实表按 id 关联本表，查询词缀类型名称(type)与效果描述(desc)'
+    - '按 difficulity/quality 维度聚合统计各难度/品质下的词缀数量'
+    - '战斗/装备事实表 JOIN 本表做词缀效果展示'
+  limitations:
+    - '配置类维度表，无值度量；quality 为配置品质分级，非数值度量'
+    - 'type 字段为复合编码串(如"狂殇壹玄")，使用方按需自行二次解码'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 meta describe 真实列建模；primary_key=id 经 COUNT(*)=COUNT(DISTINCT id)=179 实测唯一；label 取 type+desc；status=draft 待业务确认。'

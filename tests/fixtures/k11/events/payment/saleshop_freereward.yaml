@@ -1,0 +1,131 @@
+name: game.saleshop.freereward
+event_filter: event = 'game.saleshop.freereward'
+description: 折扣商店-领取免费奖励：玩家在折扣商店领取免费奖励时上报，分析主体为 role_id（角色粒度，account_id 可作账号维度下钻）。记录奖励货币（coinList.gold/freegold/expCoin/energy 等）数量及 shopId、round 期次。参数含游戏服id/名字、账号id、角色id/名字、性别、创角/上线时间、等级/vip/战力/经验、看板娘、货币列表、会话id、logUUID、shopId、round 等24项。scout 实测 ds=20260729：cnt=559、role_uv=558、acc_uv=553、server_uv=5、freegold_sum=2570598、expcoin_sum=2304283910、energy_sum=174187、gold_sum=23（异常微量）、shop_uv=1、round_uv=2，数据合理事件在线。
+domains:
+  - 付费经济
+domain: payment
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  shopId:
+    type: int
+    description: 商店id
+  round:
+    type: int
+    description: 哪一期
+metrics:
+  saleshop_freereward_cnt:
+    expression: COUNT(*)
+    description: 免费奖励领取总次数
+  saleshop_freereward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取免费奖励的去重角色数（分析主体粒度）
+  saleshop_freereward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取免费奖励的去重账号数
+  saleshop_freereward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 覆盖的去重游戏服数
+  saleshop_freereward_shop_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.shopId'))
+    description: 涉及的去重商店id数
+  saleshop_freereward_round_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.round'))
+    description: 涉及的去重期次数
+  saleshop_freereward_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 充值钻石奖励发放总量（免费奖励预期近0，异常需业务确认）
+  saleshop_freereward_freegold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.freegold') AS BIGINT))
+    description: 免费钻石奖励发放总量
+  saleshop_freereward_expcoin_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.expCoin') AS BIGINT))
+    description: 经验卷轴奖励发放总量
+  saleshop_freereward_energy_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.energy') AS BIGINT))
+    description: 体力奖励发放总量
+  saleshop_freereward_freegold_per_role_avg:
+    expression: ROUND(SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.freegold') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0), 2)
+    description: 单角色平均领取免费钻石量（NULLIF 防 0 除）
+coverage:
+  scenarios:
+    - 量化每日/全周期折扣商店免费奖励领取规模（次数/角色/账号/服务器覆盖）
+    - 拆分各奖励货币（免费钻石/经验卷轴/体力/充值钻石）发放总量，评估免费奖励投放成本
+    - 单角色平均免费钻石领取密度，衡量投放均衡性与薅羊毛风险
+    - 按 shopId/round 维度看不同期次领取分布与进度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度），account 粒度可作交叉参考
+    - coinList.diamond 在 params_fields 文档中存在但实测样本未观察到该字段，实际数据含未文档化的 coin2/coin3 字段
+    - gold_sum 实测=23（非全 0），偶发微量充值钻石，需业务确认是否异常发放
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=559、role_uv=558、acc_uv=553、server_uv=5、freegold_sum=2570598、expcoin_sum=2304283910、energy_sum=174187、gold_sum=23（异常微量）、shop_uv=1、round_uv=2，数据合理事件在线，确认 analyst_confirmed
+external_refs: []

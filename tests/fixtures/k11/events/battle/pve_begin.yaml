@@ -1,0 +1,335 @@
+name: game.pve.begin
+event_filter: event = 'game.pve.begin'
+description: |-
+  副本挑战：进入副本（包括主线、支线、挑战塔、阵营塔、时间塔）事件，玩家进入副本战斗开始时上报；分析主体为 role_id（角色粒度）。scout 实测 ds=20260729 单日 cnt=132394、role_uv=4310、acc_uv=4066、server_uv=467，事件正常触发。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等90个
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  handbookLevel:
+    type: int
+    description: 图鉴星数
+  isBoost:
+    type: int
+    description: 是否代打，0-否，1-是
+  playType:
+    type: int
+    description: 副本类型
+  playName:
+    type: string
+    description: 关卡名称
+  stageId:
+    type: int
+    description: 关卡id
+  chapter:
+    type: int
+    description: 章节id
+  stageType:
+    type: int
+    description: 关卡类型 @1:精英 2:头目 3:普通
+  battleId:
+    type: string
+    description: 唯一标识一次战斗
+  suggestLevel:
+    type: int
+    description: 推荐等级
+  cardList:
+    type: array
+    description: 上阵的卡牌列表（不包括npc）
+  cardList.id:
+    type: int
+    description: 武将id
+  cardList.name:
+    type: string
+    description: 武将名
+  cardList.pos:
+    type: int
+    description: 站位
+  cardList.power:
+    type: int
+    description: 武将战力
+  cardList.level:
+    type: int
+    description: 武将等级
+  cardList.quality:
+    type: int
+    description: 武将品质
+  cardList.star:
+    type: int
+    description: 武将星级
+  cardList.piece:
+    type: int
+    description: 武将碎片
+  cardList.awakeList:
+    type: array
+    description: 觉醒点列表
+  cardList.awakeList.lvl:
+    type: int
+    description: 节点等级
+  cardList.awakeList.id:
+    type: int
+    description: 节点id
+  cardList.equip:
+    type: array
+    description: 装备列表
+  cardList.equip.pos:
+    type: int
+    description: 装备部位 1：武器/2：头盔/3：护具/4：饰品
+  cardList.equip.id:
+    type: int
+    description: 装备id
+  cardList.equip.uid:
+    type: int
+    description: 装备uid
+  cardList.equip.level:
+    type: int
+    description: 装备等级
+  cardList.equip.quality:
+    type: int
+    description: 装备品质id
+  cardList.ability:
+    type: array
+    description: 潜能列表
+  cardList.ability.id:
+    type: int
+    description: 天赋模板id
+  cardList.ability.num:
+    type: int
+    description: 消耗潜能点数量
+  cardList.ability.value:
+    type: int
+    description: 加成效果
+  cardList.ability.name:
+    type: string
+    description: 名称
+  cardList.abilityPoints:
+    type: int
+    description: 潜能点数量
+  cardList.tactic:
+    type: json
+    description: 战法信息
+  cardList.tactic.tacticId:
+    type: int
+    description: 战法id
+  cardList.tactic.tacticName:
+    type: string
+    description: 战法名称
+  cardList.tactic.tacticLevel:
+    type: int
+    description: 战法等级
+  cardList.tactic.tacticStar:
+    type: int
+    description: 战法星级
+  cardList.job:
+    type: int
+    description: 武将职业
+  cardList.assistRoleId:
+    type: int
+    description: 助战uid
+  cardList.assistType:
+    type: int
+    description: 助战类型
+  cardList.wushuangLevel:
+    type: int
+    description: 觉醒无双等级
+  cardList.isKey:
+    type: bool
+    description: 是否是主力武将
+  cardList.natalchartScheme:
+    type: int
+    description: 当前方案
+  cardList.natalcharts:
+    type: array
+    description: 天命方案（2个）
+  cardList.natalcharts.idx:
+    type: int
+    description: 索引
+  cardList.natalcharts.name:
+    type: string
+    description: 方案名字
+  cardList.natalcharts.nodes:
+    type: array
+    description: id
+  cardList.wsRoad:
+    type: int
+    description: 无双之路
+  cardList.bondKnight:
+    type: int
+    description: 羁绊武将
+  lineupLevel:
+    type: int
+    description: 阵容平均等级
+  npcStatus:
+    type: int
+    description: npc是否上阵1：是 0否
+  qiceBuffStars:
+    type: int
+    description: 奇策buff星数
+  qiceBuff:
+    type: array
+    description: 奇策携带的duff列表
+  qiceBuff.id:
+    type: int
+    description: buffid
+  qiceBuff.stage:
+    type: int
+    description: buff阶段
+  qiceBuff.star:
+    type: int
+    description: buff的难度星数
+  qiceAdvCardCnt:
+    type: int
+    description: 奇策优势阵营上阵武将数
+  lineupPower:
+    type: int
+    description: 阵容战力
+  mainCharm:
+    type: array
+    description: 己方上阵的主灵器
+  mainCharm.id:
+    type: int
+    description: mainCharm.id
+  mainCharm.star:
+    type: int
+    description: mainCharm.star
+  mainCharm.power:
+    type: int
+    description: mainCharm.power
+  assistCharm:
+    type: array
+    description: 己方上阵的助灵器
+  assistCharm.id:
+    type: int
+    description: assistCharm.id
+  assistCharm.star:
+    type: int
+    description: assistCharm.star
+  assistCharm.power:
+    type: int
+    description: assistCharm.power
+  spCaptain:
+    type: int
+    description: sp队长
+metrics:
+  game_pve_begin_cnt:
+    expression: COUNT(*)
+    description: 副本进入总次数
+  game_pve_begin_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 进入副本的去重角色数（分析主体为 role_id）
+  game_pve_begin_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 进入副本的去重账号数
+  game_pve_begin_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的去重游戏服数
+  game_pve_begin_stage_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.stageId'))
+    description: 被挑战的去重关卡数
+  game_pve_begin_battle_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.battleId'))
+    description: 去重战斗会话数（battleId 唯一标识一次战斗）
+  game_pve_begin_elite_stage_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.stageType') = '1' THEN 1 ELSE 0 END)
+    description: 精英关卡(stageType=1)进入次数
+  game_pve_begin_boss_stage_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.stageType') = '2' THEN 1 ELSE 0 END)
+    description: 头目关卡(stageType=2)进入次数
+  game_pve_begin_normal_stage_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.stageType') = '3' THEN 1 ELSE 0 END)
+    description: 普通关卡(stageType=3)进入次数
+  game_pve_begin_boost_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.isBoost') = '1' THEN 1 ELSE 0 END)
+    description: 代打(isBoost=1)进入次数
+  game_pve_begin_avg_lineup_power:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.lineupPower') AS BIGINT))
+    description: 进入副本时的平均阵容战力
+  game_pve_begin_entry_per_role:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均副本进入次数（总次数/去重角色数）
+coverage:
+  scenarios:
+    - 副本参与度：通过总次数、去重角色/账号数衡量副本玩法的活跃度与渗透
+    - 关卡分布：通过 stage_uv 与精英/头目/普通次数拆解各类关卡挑战分布
+    - 代打占比：通过 boost_cnt 占比评估代打玩法的使用情况
+    - 战力水平：通过平均阵容战力衡量参与玩家的整体战力
+    - 人均强度：通过 entry_per_role 评估单人副本挑战频次
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认为 role_id（角色粒度），账号粒度需配合 account_uv 解读
+    - 卡牌/装备/天赋等嵌套列表字段未在指标层展开，仅做参数留存
+    - stageType 取值 1/2/3 之外可能存在其他值未单独统计
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=132394, role_uv=4310, acc_uv=4066, server_uv=467；数值合理，事件正常触发
+external_refs: []

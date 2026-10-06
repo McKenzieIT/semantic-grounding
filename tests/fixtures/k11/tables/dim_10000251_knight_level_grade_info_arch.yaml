@@ -1,0 +1,74 @@
+kind: dim
+table_name: dim_10000251_knight_level_grade_info_arch
+engine: maxcompute
+table_comment: 武将进阶等级配置维度表，按 (knight_id, grade) 唯一标识一武将某阶进阶档位。
+description: '武将进阶等级配置维度表（dim）：每行描述一个武将在某一进阶阶数下的等级上限、消耗、成长系数、奖励与开启条件等配置。主键为复合键 (knight_id, grade)，标签列为 knight_name。用于通过 knight_id/grade 关联事实表做武将成长维度切片。'
+domains:
+- 角色成长
+granularity: 每 (武将, 进阶阶数) 一行的配置维度表
+primary_key:
+- knight_id
+- grade
+label_columns:
+- knight_name
+primary_key_unique: true
+columns:
+- name: knight_id
+  type: string
+  comment: 武将id
+  role: dimension
+- name: grade
+  type: string
+  comment: 进阶阶数
+  role: dimension
+- name: knight_name
+  type: string
+  comment: 武将名称
+  role: dimension
+- name: job_mark
+  type: string
+  comment: 武将职业备注
+  role: dimension
+- name: max_level
+  type: string
+  comment: 武将等级上限
+  role: dimension
+- name: cost
+  type: string
+  comment: 消耗
+  role: dimension
+- name: develop
+  type: string
+  comment: 成长系数
+  role: dimension
+- name: reward
+  type: string
+  comment: 获得奖励
+  role: dimension
+- name: require
+  type: string
+  comment: 开启条件
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+coverage:
+  scenarios:
+  - 通过 knight_id 关联武将相关事实表，做武将维度切片（武将名称、职业备注）
+  - 通过 (knight_id, grade) 关联武将进阶/升级事实，提供该档位的等级上限、消耗、成长系数、奖励与开启条件上下文
+  - 作为武将成长配置查询表，按 grade 聚合统计各阶档位数量与平均成长系数
+  limitations:
+  - 配置类维度表，无值度量（cost/develop/reward 等为配置字符串编码，非数值度量）
+  - cost/reward/require 为复合编码串（如 "3_70101_3|1_3_4000"、"101_45"），需二次解码才能拆解具体资源/物品
+  - 数据按 ds 分区按天归档，同一 (knight_id, grade) 可能跨分区存在多版本，查询时需限定 ds
+  - 唯一性在 ds='20250331' 单分区实测通过 (r=d=670)，未跨全部分区验证
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '自动建模草稿：复合主键 (knight_id, grade) 经单分区实测唯一；label=knight_name；配置类维度表无度量。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（配置档位总数）

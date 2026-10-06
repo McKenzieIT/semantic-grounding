@@ -1,0 +1,139 @@
+table_name: dws_10000251_univ_acc_whole_df
+engine: maxcompute
+disambiguation:
+  term_defaults:
+    paying_users: 有 moneyType=1 真实充值（排除沙盒）的账号
+    active_users: 统计周期内有登录/行为事件的账号
+table_comment: 账号全量日快照表(累计活跃与付费汇总)
+description: |
+  账号粒度的日全量快照表(_df 后缀),每个账号每天保留一行,记录该账号的首次活跃时间、最近活跃时间、首次付费时间、最近付费时间、累计付费金额等生命周期汇总信息。
+  本表固定为【账号表】:分析主体=账号,标识字段=user_id(存账号ID),对应 user_type=2。表名含 acc,按主体类型判定规则归为账号表。DISTINCT user_type 仅返回单一值 2(建议用 SELECT DISTINCT user_type 复核),表中不存在设备/角色维度行,无需按 user_type 过滤即可直接做账号口径分析。同账号在历史多个 ds 上各有一行,可用于观察账号生命周期演进与累计指标变化趋势。
+  能回答的业务问题:
+  - 账号生命周期分析:首次活跃到首次付费的转化时长、活跃留存(基于 act_tm_fst/act_tm_lst)、流失账号识别(长期未活跃)。
+  - 付费分析:累计付费金额分布、付费账号数、付费转化率、新老付费账号识别(基于 pay_tm_fst/pay_tm_lst)。
+  - 账号大盘:截至某日的累计活跃账号数、累计付费账号数、累计付费金额。
+  - 付费转化时长:首活到首付的时间间隔分布,用于评估付费漏斗效率。
+  - 新增付费账号:某 ds 当日首次付费的账号数(pay_tm_fst 落在 ds 当日)。
+  注意事项:
+  - pay_amt_std 为累计付费金额(截至快照日),非当日/当期付费额,计算当期付费需做相邻 ds 差值。
+  - 时间字段为快照时点值,不可直接求和聚合;留存/流失判断需基于 act_tm_lst 与 ds 的差值近似。
+  - ext_info 为非结构化日志索引(JSON/文本),主要用于溯源,不参与常规聚合。
+  - _df 为日全量快照,数据量随账号数线性增长,跨日查询注意去重(取最新 ds 或按时间窗口)。
+domains:
+  - 用户生命周期
+  - 付费经济
+granularity: |
+  日全量快照(_df),每个账号(user_id)每天(ds 分区)一行;同账号在不同 ds 上有多行历史快照。
+  【账号表】本表固定 user_type=2,分析主体=账号,标识字段=user_id(存账号ID)。表名含 acc,按主体类型判定规则归为账号表。DISTINCT user_type 仅返回单一值 2(建议用 SELECT DISTINCT user_type 复核),不存在设备/角色维度行。
+  快照粒度:截至 ds 当日,汇总该账号自首次活跃以来的累计活跃与付费状态。
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: attribute
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: act_tm_fst
+    type: datetime
+    comment: 首次活跃时间
+    role: attribute
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近活跃时间
+    role: attribute
+  - name: pay_tm_fst
+    type: datetime
+    comment: 首次付费时间
+    role: attribute
+  - name: pay_tm_lst
+    type: datetime
+    comment: 最近付费时间
+    role: attribute
+  - name: pay_amt_std
+    type: decimal
+    comment: 累计付费金额
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 附加信息，记录各个首次数据的日志索引
+    role: attribute
+  - name: ds
+    type: string
+    comment: 日期分区(格式 yyyyMMdd,如 20260629;实测 ds='20260629' 无连字符,CAST(ds AS TIMESTAMP/DATETIME) 会返回 NULL,需用 TO_DATE(ds,'yyyyMMdd') 转换);每账号每天一行,作为快照时点与时间维度过滤键;跨日查询账号最新状态时取 MAX(ds)
+    role: dimension
+metrics:
+  acc_cnt:
+    expression: COUNT(DISTINCT user_id)
+    description: 截至快照日的累计账号数(user_id 去重;本表固定账号主体,无需 user_type 过滤)
+  dau_acc:
+    expression: COUNT(DISTINCT CASE WHEN act_tm_lst IS NOT NULL AND DATEDIFF(act_tm_lst, TO_DATE(ds,'yyyyMMdd'), 'dd')=0 THEN user_id END)
+    description: 指定 ds 当日活跃账号数(act_tm_lst 落在 ds 当日,基于最近活跃时点近似;ds 为 yyyyMMdd 字符串,用 TO_DATE 转换,CAST(ds AS TIMESTAMP) 因类型未启用且格式无连字符会返回 NULL)
+  paid_acc_cnt:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN user_id END)
+    description: 截至快照日的累计付费账号数(pay_amt_std>0)
+  paid_acc_ratio:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN user_id END) * 1.0 / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 付费转化率(付费账号数/账号总数,双侧 user_id 去重口径)
+  total_pay_amt:
+    expression: SUM(pay_amt_std)
+    description: 累计付费总额(截至快照日,标准货币元)
+  avg_pay_amt_per_acc:
+    expression: SUM(pay_amt_std) * 1.0 / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 人均累计付费金额(累计付费总额/账号总数,含未付费账号)
+  arppu:
+    expression: SUM(pay_amt_std) * 1.0 / NULLIF(COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN user_id END), 0)
+    description: 付费账号 ARPPU(累计付费总额/付费账号数)
+  paid_dur_days:
+    expression: AVG(CASE WHEN pay_amt_std > 0 AND act_tm_fst IS NOT NULL THEN DATEDIFF(pay_tm_fst, act_tm_fst, 'dd') END)
+    description: 平均付费转化时长(天)=首次付费-首次活跃(pay_tm_fst - act_tm_fst),仅对已付费账号(须用 pay_amt_std>0 过滤;未付费账号 pay_tm_fst 为 1970-01-01 08:00:00 哨兵值而非 NULL,用 IS NOT NULL 会污染分母)
+  active_age_days:
+    expression: AVG(CASE WHEN act_tm_lst IS NOT NULL AND act_tm_fst IS NOT NULL THEN DATEDIFF(act_tm_lst, act_tm_fst, 'dd') END)
+    description: 平均活跃时长(天)=最近活跃-首次活跃(act_tm_lst - act_tm_fst)
+  new_paid_acc_cnt:
+    expression: COUNT(DISTINCT CASE WHEN pay_tm_fst IS NOT NULL AND pay_amt_std > 0 AND DATEDIFF(pay_tm_fst, TO_DATE(ds,'yyyyMMdd'), 'dd')=0 THEN user_id END)
+    description: 新增付费账号数(pay_tm_fst 落在 ds 当日的账号,即当日首充账号数;需叠加 pay_amt_std>0 排除 epoch 哨兵行,ds 用 TO_DATE 转换)
+  churn_acc_cnt:
+    expression: COUNT(DISTINCT CASE WHEN act_tm_lst IS NOT NULL AND DATEDIFF(TO_DATE(ds,'yyyyMMdd'), act_tm_lst, 'dd') > 30 THEN user_id END)
+    description: 流失账号数(近 30 天未活跃,act_tm_lst 早于 ds-30 天的账号去重数;ds 用 TO_DATE 转换,CAST(ds AS TIMESTAMP) 会返回 NULL)
+partitions:
+  - name: ds
+    type: string
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: 已在 10000251 实测数据上复核(ds=20260729,2026-07-30 经 maxc 验证)。列校验:meta describe 确认 9 列全部存在且类型匹配(user_type BIGINT~int、user_id STRING、4 个时间字段 DATETIME、pay_amt_std DOUBLE~decimal、ds STRING),metrics 引用列无缺失。user_type 单值性:WHERE ds='20260729' DISTINCT user_type 仅返回 {2},与账号表移植口径一致(无需修正)。粒度:rows=COUNT(DISTINCT user_id)=1,206,871,每账号每天一行成立。核心指标实测(acc_cnt=1,206,871、paid_acc_cnt=279,280、total_pay_amt=107,314,524.32、avg_pay_amt_per_acc=88.92、dau_acc=4,520、new_paid_acc_cnt=48、paid_dur_days=3.99d、active_age_days=21.83d、churn_acc_cnt=1,182,847)均非空且合理;TO_DATE(ds,'yyyyMMdd') 与 pay_amt_std>0 epoch 哨兵过滤均生效(付费时长未受 epoch 污染)。由 session18-transplant-from-10000312 升级为 analyst_confirmed。
+coverage:
+  scenarios:
+    - 账号累计大盘(截至某 ds 的累计账号数、累计付费账号数、累计付费总额)
+    - 当日活跃账号数与活跃率(act_tm_lst 落在 ds 当日)
+    - 付费转化率(付费账号数/账号总数)与付费账号 ARPPU
+    - 新增付费账号识别(pay_tm_fst 落在 ds 当日)与新增付费账号数趋势
+    - 平均付费转化时长(首活到首付天数分布)
+    - 新老付费账号分层与累计付费金额分档(LTV/大额付费账号识别)
+    - 账号活跃时长分析(首活到最近活跃天数)
+    - 流失账号识别(act_tm_lst 早于 ds-N 天视为流失,如 30 天未活跃)
+    - 累计付费金额趋势(同账号跨 ds 的 pay_amt_std 演进)
+  limitations:
+    - 累计付费金额为快照累计口径,计算当期/单日付费需做相邻 ds 差值,本表不直接提供当期付费额
+    - 本表固定 user_type=2(账号主体),DISTINCT user_type 仅返回 2,不存在设备/角色维度行,无需按 user_type 过滤;若需设备/角色口径请使用对应 univ_dev/univ_role 表
+    - 时间字段为快照时点值,不可直接求和聚合;留存/流失只能基于 act_tm_lst 与 ds 的差值近似判断,非逐日精确留存
+    - 本表无逐日活跃标志位,无法精确还原某历史日期的 DAU,仅能基于 act_tm_lst 近似当日活跃
+    - ext_info 为非结构化 JSON/文本日志索引,不参与聚合与分组
+    - _df 为日全量快照,数据量随账号数线性增长,跨日查询同一账号需去重(取最新 ds 或限定时间窗口)
+    - 付费时间精确到秒级但流失/活跃判定仍依赖快照时点,可能滞后于真实事件发生时间
+    - ds 分区格式为 yyyyMMdd(如 20260629,无连字符),CAST(ds AS TIMESTAMP/DATETIME) 在默认模式下会因类型未启用或格式不可解析返回 NULL;涉及 ds 与时间字段 DATEDIFF 的指标须用 TO_DATE(ds,'yyyyMMdd') 转换(已在 dau_acc/new_paid_acc_cnt/churn_acc_cnt 中修正)
+    - pay_tm_fst 对未付费账号存 epoch 哨兵值 1970-01-01 08:00:00 而非 NULL,过滤付费账号须用 pay_amt_std>0(已在 paid_dur_days/new_paid_acc_cnt 中修正)
+    - supersedes 替代关系未验证(JOIN 受限,SELECT-only 环境无法跨表关联校验,仅基于表结构推断)
+  coverage_status: analyst_confirmed
+supersedes:
+  - source: 账号登录/付费原始事件日志查询
+    when: 需要查询账号的首次活跃时间、最近活跃时间、首次/最近付费时间、累计付费金额等生命周期汇总指标时
+    advantage: 本表为预聚合的账号生命周期宽表,已按账号+ds 汇总累计状态,可替代逐日扫描原始登录/付费事件日志并自行 JOIN 聚合的查询,显著降低计算成本与 SQL 复杂度
+dimension_refs: []
+pref_label: 账号全量快照表
+alt_labels:
+  - 全量
+  - 快照

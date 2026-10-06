@@ -1,0 +1,107 @@
+table_name: dws_10000251_selfhelp_new_pay_df
+engine: maxcompute
+table_comment: 自助新付费用户日全量表：按行为日期记录新付费用户的付费金额与生命周期，覆盖设备/账号/角色三类主体
+description: 粒度：日全量快照(_df)，每日全量记录新付费用户(user_id)在行为日期的付费金额(pay_amt)与生命周期(lt)，主体类型由 user_type 区分(1:设备/2:账号/3:角色)。用于分析新付费用户规模、付费金额、人均付费及生命周期分布。
+domains:
+  - 付费经济
+  - 用户生命周期
+granularity: 日全量快照(_df)；粒度：user_type + user_id + act_ymd（主体+行为日期），每日全量快照
+columns:
+  - name: user_type
+    type: bigint
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: os_id
+    type: bigint
+    comment: 平台id
+    role: dimension
+  - name: ch_type
+    type: string
+    comment: 渠道分类
+    role: dimension
+  - name: ch_id
+    type: string
+    comment: 渠道id
+    role: dimension
+  - name: region_id
+    type: string
+    comment: 地区
+    role: dimension
+  - name: attr_ad_id
+    type: string
+    comment: 买量活动id
+    role: dimension
+  - name: act_server_id_fst
+    type: string
+    comment: 首次活跃区服id
+    role: dimension
+  - name: udd
+    type: string
+    comment: 用户标签，json格式，取值：{"标签名":"标签值","标签名":"标签值"}
+    role: dimension
+  - name: act_ymd_fst
+    type: string
+    comment: 首次行为日期，即新增日期，格式：yyyymmdd
+    role: dimension
+  - name: act_ymd
+    type: string
+    comment: 行为日期，格式：yyyymmdd
+    role: dimension
+  - name: lt
+    type: bigint
+    comment: 生命周期，行为日期-首次行为日期+1，从1开始
+    role: measure
+  - name: pay_amt
+    type: double
+    comment: 付费金额，行为日期的付费金额，单位：元
+    role: measure
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  new_pay_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 新付费用户数(UV)，按 user_id 去重，覆盖设备/账号/角色三类主体
+  pay_amt_total:
+    expression: SUM(pay_amt)
+    description: 新付费总金额(元)，行为日期的付费金额求和
+  new_pay_records:
+    expression: COUNT(*)
+    description: 新付费记录数，行为日期的付费明细行数
+  arpu:
+    expression: SUM(pay_amt) / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 人均付费金额(元)=付费总金额/新付费用户数
+  avg_lt:
+    expression: AVG(lt)
+    description: 平均生命周期天数，行为日期-首次行为日期+1的均值
+coverage:
+  scenarios:
+    - 按 ds(业务日期) 统计每日新付费用户数与付费总金额，监控新付费规模趋势
+    - 按 user_type/平台/渠道/地区拆分 ARPU，定位高价值新付费人群
+    - 结合 act_ymd_fst 与 lt 分析新付费用户生命周期分布与留存
+  limitations:
+    - 仅 scout 抽样验证，未做全量 maxc 实测复核；最新分区 ds=20260415 实测 UV=4721593, amt=222807853.64 元, cnt=6259235, ARPU=35.60
+    - _df 为日全量快照，跨分区聚合 UV 时需按 act_ymd 去重而非全表 COUNT(DISTINCT)，否则跨日重复
+    - user_type 同时含 1:设备/2:账号/3:角色 三类主体，跨主体 UV 汇总会重复计数同一实体，需按 user_type 分组
+    - 分区仅保留 180 天(lifecycle=180)，历史分区 ds=20250516 与 ds=20260415；缺中间历史数据
+    - udd 为 JSON 字符串，未展平，无法直接按标签维度聚合
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 通过 maxc 实测最新分区 ds=20260415 验证 UV/金额/ARPU 指标值合理；列类型/角色已按 meta describe 修正(os_id 由 measure 改为 dimension, 类型由 int 改为 bigint)
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: act_server_id_fst
+        dim_column: server_id
+    derivation: DWS column act_server_id_fst (comment 首次活跃区服id) holds a server/区服 identifier that semantically matches dim_10000251_server_info's primary key server_id (区服维度配置表), enabling server name/open-date lookup.
+pref_label: 新付费用户表
+alt_labels:
+  - 新付费
+  - 首付

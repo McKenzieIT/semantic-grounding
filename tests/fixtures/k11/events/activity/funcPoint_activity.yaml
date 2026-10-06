@@ -1,0 +1,105 @@
+name: game.funcPoint.activity
+event_filter: event = 'game.funcPoint.activity'
+description: '起灵点激活事件：玩家在游戏中激活某一起灵点（params.id 为起灵点 id）时上报，附带角色等级/战力/vip/经验/货币快照等 23 个参数。主体粒度为 role_id（角色级事件），ds=20260729 单日实测 59 条事件、41 角色、41 账号、24 游戏服。'
+domains:
+- 自定义
+domain: activity
+metrics:
+  game_funcPoint_activity_cnt:
+    expression: COUNT(*)
+    description: 起灵点激活事件总次数
+  game_funcPoint_activity_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 激活起灵点的去重角色数
+  game_funcPoint_activity_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 激活起灵点的去重账号数
+  game_funcPoint_activity_point_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.id'))
+    description: 被激活的去重起灵点 id 数
+coverage:
+  scenarios:
+  - 监控起灵点激活频次与覆盖角色/账号/起灵点维度，评估玩法渗透
+  limitations:
+  - 仅 ds=20260729 单日 scout 实测，未做全量复核
+  - 主体粒度为 role_id（角色级事件），账号/起灵点维度为辅助统计
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'ds=20260729 scout 实测：cnt=59, role_uv=41, acc_uv=41, server_uv=24；point_uv 经 GET_JSON_OBJECT(params,''$.id'') 统计'
+coverage_status: analyst_confirmed
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  id:
+    type: int
+    description: 激活的起灵点id
+confirmation:
+  status: draft
+  confirmed_by: ''
+  confirmed_at: ''

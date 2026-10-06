@@ -1,0 +1,182 @@
+domain: social
+events:
+- name: game.group.action
+  description: '进行组队行为
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等36个'
+- name: game.group.battle
+  description: '进行组队挑战
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等34个'
+- name: game.guild.applyJoin
+  description: '申请加入公会
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guild.bargainBuy
+  description: '公会砍价-购买
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guild.battle.result
+  description: '公会战结算
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等45个'
+- name: game.guild.cancelInviteItem
+  description: '取消公会邀请条目
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guild.cancelJoinApply
+  description: '取消加入公会的申请
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guild.create
+  description: '创建公会
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个'
+- name: game.guild.dissolve
+  description: '解散公会
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guild.doBargain
+  description: '公会砍价-砍价
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guild.donate
+  description: '捐献
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.guild.exit
+  description: '退出公会
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guild.getMissionBox
+  description: '领取公会积分宝箱
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guild.gvgExchangeScoreReward
+  description: '公会据点全部摧毁后，兑换积分和奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等29个'
+- name: game.guild.inviteJoin
+  description: '邀请玩家进入公会
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guild.kickout
+  description: '踢出公会
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guild.levelReward
+  description: '领取公会等级奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guild.modifyAnnounce
+  description: '修改公告
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guild.modifyInfo
+  description: '修改公会信息
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等28个'
+- name: game.guild.modifyName
+  description: '修改公会名称
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guild.operateJoinApply
+  description: '处理加入公会的申请
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.guild.operatePlayerInvite
+  description: '处理公会的邀请
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guild.resourcechange
+  description: '公会资源改变
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等29个'
+- name: game.guild.sciencehouselevelup
+  description: '军机处升级
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guild.scienceskilllevelup
+  description: '公会科技升级
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.guild.setMemberJob
+  description: '任命
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.guild.share
+  description: '公会分享
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等30个'
+- name: game.guild.submitMission
+  description: '公会完成任务
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guild.transferPresident
+  description: '转让会长
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guildActivity.bonus
+  description: '领取公会活跃分红
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guildLuckyBag.fetch
+  description: '公会福袋-领取
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.guildLuckyBag.send
+  description: '公会福袋-发送
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.guildapply.onekeyop
+  description: '一键处理加入公会的申请
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.social.boost
+  description: '代打行为
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等30个'
+- name: game.social.friendact
+  description: 'social.friendact
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.social.friendgift
+  description: '好友送礼
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.social.guild.addpoints
+  description: 'social.guild.addpoints
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.social.guild.battle
+  description: '公会战挑战
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等27个'
+- name: game.social.guild.boss
+  description: '公会副本挑战
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等30个'
+- name: game.social.guild.business
+  description: '公会：公会封地经营
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等32个'
+- name: game.social.guild.getmissionbox
+  description: '领取宝箱奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.social.guild.member
+  description: '公会：成员
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等32个'
+- name: game.social.guild.operate
+  description: 'social.guild.operate
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等28个'
+- name: game.social.guild.submitmission
+  description: '领取任务奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.social.setassist
+  description: '设置好友助战
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'

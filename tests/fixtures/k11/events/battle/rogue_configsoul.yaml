@@ -1,0 +1,134 @@
+name: game.rogue.configsoul
+event_filter: event = 'game.rogue.configsoul'
+description: 古战场-配置将魂事件：玩家在古战场(rogue)副本挑战过程中配置武将将魂(knightSouls)时上报，每次配置将魂生成一条事件记录，playId 唯一标识一次古战场副本挑战。分析主体粒度为 role_id（角色级）。真实测量(2026-07-30 scout, ds=20260729)：单日 cnt=1128 条事件，role_uv=119 角色，acc_uv=118 账号，server_uv=47 服，唯一副本挑战 play_uv=209。参数含 26 个字段：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验、看板娘、关键货币列表(coinList)、会话id、logUUID、playId、武将配置将魂列表(knightSouls) 等。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  playId:
+    type: string
+    description: 唯一标识一次古战场副本挑战
+  knightSouls:
+    type: array
+    description: 武将配置的将魂
+  knightSouls.id:
+    type: int
+    description: 武将id
+  knightSouls.soul:
+    type: int
+    description: 将魂id
+metrics:
+  rogue_configsoul_cnt:
+    description: 古战场配置将魂事件总次数(COUNT(*))
+    expression: COUNT(*)
+  rogue_configsoul_role_uv:
+    description: 参与配置将魂的去重角色数
+    expression: COUNT(DISTINCT role_id)
+  rogue_configsoul_account_uv:
+    description: 参与配置将魂的去重账号数
+    expression: COUNT(DISTINCT account_id)
+  rogue_configsoul_server_uv:
+    description: 涉及配置将魂的去重游戏服数
+    expression: COUNT(DISTINCT server_id)
+  rogue_configsoul_play_uv:
+    description: 去重古战场副本挑战次数(playId去重)
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.playId'))
+  rogue_configsoul_event_per_role:
+    description: 平均每个角色配置将魂的次数(事件数/角色数)
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+  rogue_configsoul_play_per_role:
+    description: 平均每个角色发起的古战场副本挑战次数(playId去重/角色数)
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.playId')) / NULLIF(COUNT(DISTINCT role_id), 0)
+  rogue_configsoul_role_force_sum:
+    description: 配置将魂时的角色战力(roleForce)总和
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.roleForce') AS BIGINT))
+  rogue_configsoul_role_force_avg:
+    description: 配置将魂时的角色战力(roleForce)均值
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.roleForce') AS BIGINT)) / NULLIF(COUNT(*), 0)
+  rogue_configsoul_role_level_avg:
+    description: 配置将魂时的角色等级(roleLevel)均值
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS BIGINT)) / NULLIF(COUNT(*), 0)
+coverage:
+  scenarios:
+    - 分析古战场副本挑战中将魂配置的参与规模：通过 rogue_configsoul_cnt/event_per_role 衡量配置密度，识别高频配置角色
+    - 评估古战场玩法活跃度：rogue_configsoul_role_uv/account_uv 反映参与将魂配置的玩家覆盖广度
+    - 量化副本挑战次数：rogue_configsoul_play_uv/play_per_role 衡量人均挑战次数，可做横向玩法对比
+    - 分析配置将魂玩家实力画像：rogue_configsoul_role_force_avg/role_level_avg 反映战力与等级分布
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体粒度默认 role_id(角色级)，未独立验证 account 级聚合
+    - knightSouls 为数组型参数，本事件 metrics 未展开武将/将魂级细分聚合，仅做事件级指标
+    - roleForce/roleLevel 为上报时刻快照值，SUM/AVG 含重复事件权重，非唯一角色去重后的均值
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=1128 / role_uv=119 / acc_uv=118 / server_uv=47 / play_uv=209 / force_sum=4618537695 / role_level_avg≈75.06，数据合理，事件在线触发
+coverage_status: analyst_confirmed
+external_refs: []

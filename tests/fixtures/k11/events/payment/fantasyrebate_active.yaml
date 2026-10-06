@@ -1,0 +1,105 @@
+name: game.fantasyrebate.active
+event_filter: event = 'game.fantasyrebate.active'
+description: 幻想服返利激活事件：记录角色在幻想服返利活动中触发的激活行为，包含账号id/角色id/游戏服/角色等级/vip等级/角色战力/经验及关键货币(充值钻石/赠送钻石/免费钻石/紫金/经验卷轴/体力)等22个参数。分析主体为 role_id（角色粒度）。scout 实测 ds=20260729 与 ds=20260728 均零命中，事件疑似下线或当日未触发。
+domains:
+  - 付费经济
+domain: payment
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+metrics:
+  game_fantasyrebate_active_cnt:
+    expression: COUNT(*)
+    description: 幻想服返利激活事件总记录数
+  game_fantasyrebate_active_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发激活的去重角色数
+  game_fantasyrebate_active_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发激活的去重账号数
+  game_fantasyrebate_active_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发激活的去重游戏服数
+  game_fantasyrebate_active_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 激活时充值钻石总量（JSON路径未实测验证）
+coverage:
+  scenarios:
+    - 幻想服返利活动的角色激活规模与去重角色/账号/服务器覆盖
+    - 激活时刻的充值钻石库存量分析
+  limitations:
+    - 日志中零命中(ds=20260729 cnt=0; ds=20260728 cnt=0)，疑似下线/未触发
+    - 仅 ds=20260729/20260728 单日 scout 实测，未做全量复核
+    - coinList.gold 等 JSON 路径未实测验证（零命中无法取数确认）
+    - 分析主体默认 role_id（角色粒度），未经业务确认
+coverage_status: draft
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=0/role_uv=0/acc_uv=0/server_uv=0；ds=20260728: cnt=0/role_uv=0/acc_uv=0/server_uv=0。零命中，保持 draft。"
+external_refs: []

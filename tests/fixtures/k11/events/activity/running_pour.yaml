@@ -1,0 +1,129 @@
+name: game.running.pour
+event_filter: event = 'game.running.pour'
+description: 赛马玩法下注事件：玩家在赛马小游戏中选择马匹(horseId)并下注(count)时上报，记录下注行为本身、是否启用倍投(useDouble)与保护(useProtect)，以及下注角色画像(等级/VIP/战力)与下注后货币快照(coinList)。分析主体粒度为 role_id。scout 实测 ds=20260729/20260728 均零命中，事件疑似下线或未触发。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  horseId:
+    type: int
+    description: horseId
+  count:
+    type: int
+    description: count
+  useDouble:
+    type: bool
+    description: useDouble
+  useProtect:
+    type: bool
+    description: useProtect
+metrics:
+  game_running_pour_cnt:
+    expression: COUNT(*)
+    description: 赛马下注事件总次数（每次下注计一次）
+  game_running_pour_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与赛马下注的去重角色数
+  game_running_pour_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与赛马下注的去重账号数
+  game_running_pour_count_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.count') AS BIGINT))
+    description: 赛马下注总注数（count 字段累计，反映下注规模）
+  game_running_pour_bets_per_role:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均下注次数（>1 表示同一角色当日多次下注）
+  game_running_pour_horse_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.horseId'))
+    description: 被投注马匹的去重数（反映投注标的集中度）
+  game_running_pour_double_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN GET_JSON_OBJECT(params, '$.useDouble') = 'true' THEN role_id END)
+    description: 使用倍投(useDouble=true)的去重角色数
+  game_running_pour_protect_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN GET_JSON_OBJECT(params, '$.useProtect') = 'true' THEN role_id END)
+    description: 使用保护(useProtect=true)的去重角色数
+coverage:
+  granularity: 单次下注事件（role_id 为默认主体粒度）
+  scenarios:
+    - 赛马下注参与规模（次数/角色UV/账号UV）
+    - 人均下注次数与下注量分布（bets_per_role、count_sum）
+    - 倍投(useDouble)/保护(useProtect)策略使用角色占比
+    - 投注马匹集中度（horse_uv）
+  limitations:
+    - 日志中零命中(ds=20260729/20260728 cnt=0)，疑似下线/未触发，指标定义为待实测验证
+    - 仅 ds=20260729 单日 scout 实测（含 20260728 复测均为 0），未做全量复核
+    - 默认主体粒度为 role_id，因零命中未逐事件实测确认
+    - count/horseId/useDouble/useProtect 字段值域未实测，表达式按参数类型推断
+  coverage_status: draft
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=0 / role_uv=0 / acc_uv=0；ds=20260728 复测 cnt=0；事件疑似下线/未触发，保持 draft
+external_refs: []

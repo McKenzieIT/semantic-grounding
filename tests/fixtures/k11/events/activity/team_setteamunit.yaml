@@ -1,0 +1,149 @@
+name: game.team.setteamunit
+event_filter: event = 'game.team.setteamunit'
+description: 阵容设置事件（setteamunit）：玩家保存/调整整个队伍阵容时上报，记录被设置的队伍槽位 teamId、阵容内容（setlist 武将列表/阵营光环/灵器/自动方案等）及设置角色画像（等级/VIP/战力）。事件粒度为角色（role_id 为分析主体，account_id 作为账号维度可下钻）。scout 实测 ds=20260729：cnt=25959 / role_uv=2998 / acc_uv=2879 / server_uv=430，teamId/roleLevel/vipLevel/roleForce 全非空，setlist 数组在实测中全 NULL（明细未上报）。
+domains:
+  - 自定义
+domain: activity
+metrics:
+  game_team_setteamunit_cnt:
+    expression: COUNT(*)
+    description: 阵容设置事件总次数（每次保存/调整阵容计一次）
+  game_team_setteamunit_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 设置阵容的去重角色数（主体粒度）
+  game_team_setteamunit_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 设置阵容的去重账号数
+  game_team_setteamunit_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及阵容设置的去重游戏服数
+  game_team_setteamunit_team_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.teamId'))
+    description: 被设置的去重队伍/槽位数（teamId）
+  game_team_setteamunit_per_role:
+    expression: ROUND(CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0), 2)
+    description: 单角色平均阵容设置次数（>1 提示同角色多次调整阵容，NULLIF 防 0 除）
+  game_team_setteamunit_role_level_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS BIGINT))
+    description: 设置阵容角色的平均角色等级
+  game_team_setteamunit_vip_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.vipLevel') AS BIGINT))
+    description: 设置阵容角色的平均VIP等级
+  game_team_setteamunit_role_force_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleForce') AS BIGINT))
+    description: 设置阵容角色的平均战力
+coverage:
+  scenarios:
+    - 量化每日阵容设置/调整的参与规模（次数/角色UV/账号UV/服务器数）
+    - 按 teamId 拆分各队伍槽位的设置频次，识别主力阵容与边缘阵容
+    - 单角色重复设置次数（per_role > 1）识别阵容频繁调整的活跃角色
+    - 按等级/VIP/战力分布刻画调整阵容的玩家画像（自定义域）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - setlist 数组在 ds=20260729 实测中全 25959 行 GET_JSON_OBJECT(params,'$.setlist') 均为 NULL，武将列表/阵营光环/灵器/自动方案等明细未上报，无法统计单次阵容武将数与灵器配置
+    - 主体粒度默认 role_id（未在数据中验证角色级唯一性）
+    - teamId 实测仅 6 个去重值，疑似为固定阵容槽位编号（1-6），非玩家自建队伍标识
+coverage_status: analyst_confirmed
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  teamId:
+    type: int
+    description: teamId
+  setlist:
+    type: array
+    description: setlist
+  setlist.knightList:
+    type: array
+    description: 上阵武将列表
+  setlist.effectGroup:
+    type: int
+    description: 生效的阵营光环
+  setlist.knightAutoSkill:
+    type: array
+    description: 武将自动方案
+  setlist.knightAutoSkill.knightId:
+    type: int
+    description: 武将id
+  setlist.knightAutoSkill.schemeId:
+    type: int
+    description: 方案id
+  setlist.mainCharm:
+    type: int
+    description: 主灵器
+  setlist.assistCharm:
+    type: int
+    description: 助灵器
+  setlist.spCaptain:
+    type: int
+    description: setlist.spCaptain
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=25959 / role_uv=2998 / acc_uv=2879 / server_uv=430；teamId(去重6)/roleLevel/vipLevel/roleForce 全非空，setlist 数组全 NULL
+external_refs: []

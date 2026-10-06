@@ -1,0 +1,57 @@
+table_name: dim_10000251_sync_platform_reward_item_df_arch
+engine: maxcompute
+kind: dim
+primary_key: [id]
+label_columns: [name]
+primary_key_unique: false
+table_comment: '平台奖励物品维度归档表(_df_arch) - 按日全量快照累积的平台奖励物品配置/维度表，存储物品名称/图标/类别/单价等属性，供活动奖励发放按 id 关联查询'
+description: 'dim_10000251_sync_platform_reward_item_df_arch 是平台奖励物品的日全量快照归档(_df_arch)维度/配置表。粒度：每个平台奖励物品(id)一行的日快照，跨 ds 分区累积归档，记录物品名称、图标、单价(value)、类别(catalogue)、边框图片等静态属性。供活动奖励发放与日志事实表通过 id 关联进行物品维度查询（需按 ds 限定取指定日期快照）。'
+domains:
+- 装备道具
+granularity: 每个平台奖励物品(id)×日(ds)一行的归档维度/配置表，日全量快照累积
+columns:
+- name: name
+  type: string
+  comment: 物品名称
+  role: dimension
+- name: icon
+  type: string
+  comment: 选填，物品图片
+  role: dimension
+- name: id
+  type: bigint
+  comment: 物品ID，平台奖励发放的是此id
+  role: dimension
+- name: value
+  type: double
+  comment: 选填，物品单价，支持配置到小数点后五位，默认为0
+  role: dimension
+- name: catalogue
+  type: string
+  comment: 物品类别,用于活动中选择奖励时的筛选
+  role: dimension
+- name: icon_border
+  type: string
+  comment: 选填，物品边框图片
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（跨 ds 累积归档）
+coverage:
+  scenarios:
+  - 事实表(奖励发放流水/活动奖励日志)通过 id JOIN 本表取 name/icon/catalogue 作为物品维度标签用于分组/筛选/展示
+  - 跨分区按 id 取指定 ds 日期快照的物品元数据（归档查询历史配置）
+  limitations:
+  - 配置类维度表，无值度量(measure)字段；value 是物品单价属性而非度量值
+  - 跨 ds 分区 id 重复(实测 r=1154489/d=4388)，需按 ds 限定取单日快照；primary_key_unique=false
+  - name/icon/icon_border 为资源路径字符串，icon/icon_border 为 res/icon/... 复合路径，使用时按需解析
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 归档快照表，跨 ds id 不唯一，未做单分区去重实测；与 dim_10000251_sync_platform_reward_item_df(当前快照,unique=true) 同构归档

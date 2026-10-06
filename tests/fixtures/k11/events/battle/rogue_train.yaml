@@ -1,0 +1,115 @@
+name: game.rogue.train
+event_filter: event = 'game.rogue.train'
+description: 古战场（rogue）玩法-角色激活天赋事件。当角色在古战场中激活/升级某个天赋时上报，携带天赋id(talentId)及角色基础属性（等级、战力、vip、经验等）和关键货币快照。分析主体为角色(role_id)，单日实测(ds=20260729) cnt=715 / role_uv=93 / acc_uv=92 / server_uv=39。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  talentId:
+    type: int
+    description: 天赋id
+metrics:
+  game_rogue_train_cnt:
+    expression: COUNT(*)
+    description: 古战场激活天赋事件总次数
+  game_rogue_train_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发激活天赋的去重角色数（分析主体为 role_id）
+  game_rogue_train_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发激活天赋的去重账号数
+  game_rogue_train_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的去重游戏服数
+  game_rogue_train_talent_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.talentId'))
+    description: 被激活的去重天赋id数量
+  game_rogue_train_avg_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均激活天赋次数（总次数/去重角色数）
+  game_rogue_train_role_force_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.roleForce') AS BIGINT))
+    description: 触发激活天赋角色的战力(roleForce)累计值
+coverage:
+  scenarios:
+    - 古战场天赋系统的渗透率与活跃度（多少角色参与天赋激活、人均激活次数）
+    - 不同天赋id的激活热度分布（哪些天赋被优先激活）
+    - 跨服天赋激活参与情况（涉及多少游戏服）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核（多日趋势/周末波动未验证）
+    - 分析主体默认 role_id（事件为角色级上报），account_id 仅作辅助去重
+    - talentId 仅做去重计数，未做分维度（按 talentId 分组的次数/UV 分布未在 metrics 中展开）
+    - roleForce 为事件上报时刻的角色战力快照，SUM 仅供量级参考，非增量
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: ds=20260729 scout 实测：cnt=715, role_uv=93, acc_uv=92, server_uv=39。数字量级合理，事件在线且正常触发。
+coverage_status: analyst_confirmed
+external_refs: []

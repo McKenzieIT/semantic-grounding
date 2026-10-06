@@ -1,0 +1,117 @@
+name: game.toy.gachaMissionOnekey
+event_filter: event = 'game.toy.gachaMissionOnekey'
+description: 抽卡任务一键领取事件：玩家通过一键领取功能批量领取抽卡任务奖励时上报，记录领取时的角色状态、货币余额与抽卡任务进度（mission.point 当前进度、lastFetchPoint 上次领取进度、lastFetchId 上次领取任务id）。分析主体粒度为 role_id（角色），账号粒度 account_id 作为补充。实测 ds=20260729 单日：事件量 7320 条、角色 UV 2194、账号 UV 2117、服务器数 369。
+domains:
+  - 探索收集
+domain: resource
+metrics:
+  gacha_mission_onekey_cnt:
+    expression: COUNT(*)
+    description: 抽卡任务一键领取事件总次数（所有角色所有服务器汇总）
+  gacha_mission_onekey_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发抽卡任务一键领取的去重角色数（分析主体粒度）
+  gacha_mission_onekey_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发抽卡任务一键领取的去重账号数
+  gacha_mission_onekey_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发抽卡任务一键领取的去重服务器数
+  gacha_mission_onekey_avg_per_role:
+    expression: ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0), 2)
+    description: 平均每个角色触发抽卡任务一键领取的次数（人均领取频次）
+coverage:
+  scenarios:
+    - 监控抽卡任务一键领取功能的整体使用规模与覆盖角色/账号/服务器广度
+    - 通过人均领取频次评估一键领取功能的活跃程度与玩家参与度
+    - 结合 mission.point / lastFetchPoint 等进度字段可下钻分析领取节奏与奖励档位分布
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核；多日趋势与节假日波动需后续验证
+    - 分析主体默认为 role_id；account_id 粒度供账号去重补充，未单独验证账号口径
+    - mission.point 等进度字段当前未在 metrics 中聚合，需按业务问题单独下钻
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  mission:
+    type: json
+    description: 抽卡任务
+  mission.point:
+    type: int
+    description: mission.point
+  mission.lastFetchPoint:
+    type: int
+    description: mission.lastFetchPoint
+  mission.lastFetchId:
+    type: int
+    description: mission.lastFetchId
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: ds=20260729 单日 scout 实测：cnt=7320, role_uv=2194, acc_uv=2117, server_uv=369；数量合理且事件活跃，标记 analyst_confirmed
+coverage_status: analyst_confirmed
+external_refs: []

@@ -1,0 +1,145 @@
+name: game.artifact.startup
+event_filter: event = 'game.artifact.startup'
+description: 神器（兵符）升星启动事件：角色对 artifact 兵符执行升星/启动操作时上报，携带 artifact.uid、cfgId、star、addAttrs、randAttrs 等升星结果与新增/随机属性，同时上报角色等级、vip等级、角色战力、经验及关键货币快照。分析粒度为 role_id（角色级），用于度量神器升星参与规模、角色/账号/服务器覆盖及升星战力投入。scout 实测 ds=20260729：触发 826 次、460 角色、455 账号、66 服务器。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  job:
+    type: int
+    description: 升星职业部位
+  artifact:
+    type: json
+    description: 升星兵符
+  artifact.uid:
+    type: int
+    description: artifact.uid
+  artifact.cfgId:
+    type: int
+    description: artifact.cfgId
+  artifact.star:
+    type: int
+    description: artifact.star
+  artifact.addAttrs:
+    type: array
+    description: artifact.addAttrs
+  artifact.addAttrs.attrId:
+    type: int
+    description: artifact.addAttrs.attrId
+  artifact.addAttrs.attrValue:
+    type: int
+    description: artifact.addAttrs.attrValue
+  artifact.randAttrs:
+    type: array
+    description: artifact.randAttrs
+  artifact.randAttrs.cellId:
+    type: int
+    description: artifact.randAttrs.cellId
+  artifact.randAttrs.attrId:
+    type: int
+    description: artifact.randAttrs.attrId
+  artifact.randAttrs.attrValue:
+    type: int
+    description: artifact.randAttrs.attrValue
+  artifact.randAttrs.cfgId:
+    type: int
+    description: artifact.randAttrs.cfgId
+  artifact.randAttrs.type:
+    type: int
+    description: artifact.randAttrs.type
+metrics:
+  game_artifact_startup_cnt:
+    expression: COUNT(*)
+    description: 神器升星启动事件触发总次数
+  game_artifact_startup_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与神器升星的角色数（去重）
+  game_artifact_startup_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与神器升星的账号数（去重）
+  game_artifact_startup_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 覆盖游戏服数（去重）
+  game_artifact_startup_role_force_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.roleForce') AS BIGINT))
+    description: 触发升星角色的战力总和（角色战力快照累加）
+coverage:
+  scenarios:
+    - 神器（兵符）升星启动事件的触发规模与角色/账号/服务器覆盖
+    - 参与升星操作的角色战力投入总规模
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析粒度默认 role_id（角色级事件）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=826, role_uv=460, acc_uv=455, server_uv=66（角色级事件，role_id 为分析主体）
+coverage_status: analyst_confirmed
+external_refs: []

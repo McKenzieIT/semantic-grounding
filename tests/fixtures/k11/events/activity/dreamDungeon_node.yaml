@@ -1,0 +1,107 @@
+name: game.dreamDungeon.node
+event_filter: event = 'game.dreamDungeon.node'
+description: 梦境副本节点事件 game.dreamDungeon.node：玩家在梦境副本到达/触发某个节点(stepId关卡id、stepType节点类型)时上报，记录角色当前状态(等级/vip/战力/经验)及各类货币余额(coinList)。主体粒度为 role_id 角色级。ds=20260729 实测 cnt=6482、role_uv=458、acc_uv=451、server_uv=44。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  stepType:
+    type: int
+    description: 节点类型
+  stepId:
+    type: int
+    description: 关卡id
+metrics:
+  game_dreamDungeon_node_cnt:
+    expression: COUNT(*)
+    description: 梦境副本节点事件总触发次数
+  game_dreamDungeon_node_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发梦境副本节点的去重角色数
+  game_dreamDungeon_node_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发梦境副本节点的去重账号数
+  game_dreamDungeon_node_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发梦境副本节点的去重游戏服数
+coverage:
+  scenarios:
+    - 梦境副本节点的触发量级与参与角色/账号/服务器覆盖度
+    - 各节点(stepId)的触发分布与角色进度评估
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认主体为 role_id 角色级；账号级去重以 account_id 为准
+    - 货币余额(coinList)字段未纳入 metrics，需单独分析时另行统计
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: "ds=20260729 scout: cnt=6482, role_uv=458, acc_uv=451, server_uv=44"
+  coverage_status: analyst_confirmed
+external_refs: []

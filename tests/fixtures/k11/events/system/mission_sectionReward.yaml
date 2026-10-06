@@ -1,0 +1,178 @@
+name: game.mission.sectionReward
+event_filter: event = 'game.mission.sectionReward'
+description: "阶段奖励领奖事件：玩家在游戏内领取阶段(section)奖励时上报，由 type 区分奖励类别（实测 ds=20260729 分布：type=5/11/15）。分析主体为 role_id（角色级），可按 server_id 分服、按 type 下钻统计领奖行为与角色画像。scout 实测 ds=20260729：cnt=4709/role_uv=2050/acc_uv=1952/server_uv=93。参数共24个，含游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验、看板娘、关键货币列表(coinList: gold/sendgold/freegold/diamond/expCoin/energy)、会话id、logUUID、类型(type)、阶段(sections)。"
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  type:
+    type: int
+    description: 类型
+  sections:
+    type: array
+    description: 阶段
+metrics:
+  game_mission_sectionReward_cnt:
+    expression: COUNT(*)
+    description: 阶段奖励领奖事件总上报次数
+  game_mission_sectionReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领奖去重角色数（分析主体 role_id）
+  game_mission_sectionReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领奖去重账号数
+  game_mission_sectionReward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领奖覆盖游戏服去重数
+  game_mission_sectionReward_type_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.type'))
+    description: 领奖涉及的奖励类型(type)去重数
+  game_mission_sectionReward_type5_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.type') = '5' THEN 1 ELSE 0 END)
+    description: type=5 阶段奖励领奖次数（实测 ds=20260729=2457）
+  game_mission_sectionReward_type11_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.type') = '11' THEN 1 ELSE 0 END)
+    description: type=11 阶段奖励领奖次数（实测 ds=20260729=1697）
+  game_mission_sectionReward_type15_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.type') = '15' THEN 1 ELSE 0 END)
+    description: type=15 阶段奖励领奖次数（实测 ds=20260729=555）
+  game_mission_sectionReward_per_role_cnt:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 单角色平均领奖次数（实测 ds=20260729≈2.30）
+  game_mission_sectionReward_per_account_cnt:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT account_id), 0)
+    description: 单账号平均领奖次数（实测 ds=20260729≈2.41）
+  game_mission_sectionReward_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 领奖事件携带的充值钻石余额快照总量（实测 ds=20260729=3006）
+  game_mission_sectionReward_avg_role_level:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS BIGINT))
+    description: 领奖时角色平均等级（实测 ds=20260729≈30.36）
+coverage:
+  scenarios:
+    - 阶段奖励领奖量级与参与规模（次数/角色UV/账号UV/服UV）
+    - 分 type(5/11/15) 的领奖次数分布，衡量各类阶段奖励的领取热度
+    - 单角色与单账号平均领奖次数（per_role_cnt / per_account_cnt），评估领奖强度
+    - 领奖时角色平均等级（avg_role_level）刻画领奖角色画像
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色级），未验证 account 级口径
+    - coinList 为角色货币余额快照（非单次奖励产出），gold_sum 为余额快照总量近似口径
+    - coinList.diamond 字段实测 ds=20260729 全部为 NULL，未纳入指标
+    - vipLevel 实测 ds=20260729 全为 0（疑似未上报），未纳入指标
+    - sections 为数组结构，需在明细层用数组展开进一步核算，本层仅统计事件量级
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729：cnt=4709/role_uv=2050/acc_uv=1952/server_uv=93；type 分布 5=2457/11=1697/15=555；gold_sum=3006/avg_role_level≈30.36；非金额事件，未做营收核验
+external_refs:
+  - dim_table: dim_10000251_trans_gacha_mission_group_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_gacha_mission_group_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df_arch 主键精确同名
+    origin: deterministic

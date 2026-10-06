@@ -1,0 +1,64 @@
+table_name: dim_10000251_trans_test_df
+engine: maxcompute
+kind: dim
+table_comment: '关卡/章节配置维度表（日全量快照 _df）：每行一个关卡 id 的配置信息，含 chapter_id、关卡名称(name/name1/name2) 及 requirement1/2/3 解锁条件。'
+description: '游戏 10000251 的关卡/章节配置维度表（dim_10000251_trans_test_df，日全量快照 _df）。每行对应一个唯一关卡 id 的配置记录，包含章节归属(chapter_id)、关卡名称(name 为组合名如"1-1 徭役"，name1 为章节段编号"1-1"，name2 为关卡短名"徭役")以及解锁条件(requirement1/requirement2/requirement3)。作为维度表供事实表通过 id/chapter_id 进行 JOIN 查询，无值度量。'
+domains:
+- 战斗关卡
+granularity: '每 关卡(id) 一行的配置维度表（日全量快照 _df）'
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+columns:
+- name: id
+  type: string
+  comment: id
+  role: dimension
+- name: chapter_id
+  type: string
+  comment: chapter_id
+  role: dimension
+- name: name
+  type: string
+  comment: name
+  role: dimension
+- name: name1
+  type: string
+  comment: ' name1'
+  role: dimension
+- name: name2
+  type: string
+  comment: name2
+  role: dimension
+- name: requirement2
+  type: string
+  comment: requirement2
+  role: dimension
+- name: requirement3
+  type: string
+  comment: requirement3
+  role: dimension
+- name: requirement1
+  type: string
+  comment: requirement1
+  role: dimension
+coverage:
+  scenarios:
+  - '通过 id JOIN 事实表，将关卡配置属性（chapter_id、name、name1/name2、requirement1/2/3）带入分析结果'
+  - '通过 chapter_id 关联回章节层级，按章节聚合统计关卡数量'
+  - '作为关卡名称字典表，将 id 解析为可读名称"name"用于报表展示'
+  limitations:
+  - '配置类维度表，无值度量（requirement1/2/3 为编码字符串，仅作筛选/标识）'
+  - 'requirement1/2/3 字段为编码值，若需细粒度解读需二次解码逻辑，本表不提供'
+  - 'name 为组合名（章节段+短名），如需分别取章节或短名请用 name1/name2'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'dim 建模草稿：primary_key=id（meta describe 与实测 r=d=372 均确认唯一）；label=name（人类可读组合名）。已做唯一性实测。未确认业务，保持 draft。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数

@@ -1,0 +1,56 @@
+table_name: dim_10000251_trans_stra_buff_df_arch
+engine: maxcompute
+table_comment: '游戏 10000251 战法 buff 词缀维度配置表（按日分区快照），存放词缀 id、难度系数、类型、描述、品质等属性，供事实表按词缀 id 关联查询词缀元数据。'
+description: '游戏 10000251 战法 buff 词缀维度配置表。每行描述一个 buff 词缀在某 ds 分区下的属性：词缀 id、难度系数 difficulity、类型 type、描述 desc、品质 quality。粒度为每个词缀 + ds 分区一行；同一词缀 id 跨多个 ds 分区重复出现（日快照），故 id 单列非唯一。主要用于按词缀 id 与战斗/装备事实表 JOIN 提供词缀维度属性。'
+domains:
+- 战斗关卡
+granularity: 每个 buff 词缀在每个 ds 分区下一行的维度配置表（日快照）
+columns:
+- name: id
+  type: string
+  comment: 词缀id
+  role: dimension
+- name: difficulity
+  type: string
+  comment: 难度系数
+  role: dimension
+- name: type
+  type: string
+  comment: 类型
+  role: dimension
+- name: desc
+  type: string
+  comment: 描述
+  role: dimension
+- name: quality
+  type: bigint
+  comment: 品质
+  role: dimension
+- name: ds
+  type: string
+  comment: 日期分区(YYYYMMDD)
+  role: partition
+kind: dim
+primary_key:
+- id
+primary_key_unique: false
+label_columns:
+- desc
+- type
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度配置表总行数（含多日快照）
+coverage:
+  scenarios:
+  - 按词缀 id 与战斗/装备事实表 JOIN，提供词缀类型、难度系数、描述、品质等维度属性
+  - 支持按 buff 类型/品质分组统计战斗效果
+  limitations:
+  - 配置类维度表，无值度量（quality 为品质档位属性，非可加度量）
+  - 同一词缀 id 跨多个 ds 分区日快照重复，id 单列非唯一（实测 r=190949, d=355），如需唯一需配合 ds
+  - name 字段 desc 为 SQL 保留字，查询时需反引号转义
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 meta describe 真实列建模；id 为词缀自然主键但跨日快照非唯一(r=190949,d=355)故 primary_key_unique=false，保持 draft；label 选 desc+type（人类可读）。未做业务确认。'

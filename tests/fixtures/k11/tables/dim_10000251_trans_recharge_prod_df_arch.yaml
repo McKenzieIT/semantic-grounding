@@ -1,0 +1,72 @@
+table_name: dim_10000251_trans_recharge_prod_df_arch
+engine: maxcompute
+table_comment: '付费商店商品配置维度表（按 ds 分区的每日归档快照）'
+description: '游戏 10000251 付费/充值商店商品配置维度表（_arch 归档快照版）。每行描述一个付费商店商品：商品id(id)、商品名(name)、周期(period)、所需凤翎数量(cost)、所属商店(shop_id)、二/三级页签(2sc_tab/3rd_tab)、商品类型(prod_type)、角标气泡文本(commend)。主键 id 为商品业务键，label 为 name。注意：本表为按 ds 分区归档的每日快照，同一 id 在不同 ds 下存在多份快照，故 id 跨全表非唯一（primary_key_unique=false）。'
+kind: dim
+primary_key:
+- id
+primary_key_unique: false
+label_columns:
+- name
+domains:
+- 系统监控
+granularity: '每付费商店商品一行（按 ds 分区归档快照）的配置/维度表'
+coverage:
+  scenarios:
+  - '通过 id 关联交易/充值事实表，获取商品名、类型、所属页签、所需凤翎数量等商品维度属性'
+  - '按 shop_id / 2sc_tab / 3rd_tab / prod_type 下钻分析付费商店各页签与类型下的商品分布'
+  - '结合 ds 快照还原某一日的付费商店商品配置状态'
+  limitations:
+  - '配置类维度表，无值度量（cost 为商品属性而非可聚合度量）'
+  - 'id 跨全表非唯一（_arch 每日快照归档，同一商品在多个 ds 分区重复存在），JOIN 时需带 ds 限定分区以保证商品唯一性'
+  - 'dim 未做唯一性实测（已查 r=127743 / d=471，id 非唯一；primary_key_unique=false 已标注）'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '配置类维度表建模；id 为业务键但跨 ds 快照非唯一，primary_key_unique=false，保持 draft。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: '维度表总行数（含全部 ds 分区快照）'
+columns:
+- name: id
+  type: string
+  comment: 付费商店商品id
+  role: dimension
+- name: name
+  type: string
+  comment: 付费商店商品名
+  role: dimension
+- name: period
+  type: string
+  comment: 周期
+  role: dimension
+- name: cost
+  type: BIGINT
+  comment: 所需凤翎数量
+  role: dimension
+- name: shop_id
+  type: string
+  comment: 商店id
+  role: dimension
+- name: 2sc_tab
+  type: BIGINT
+  comment: 二级页签
+  role: dimension
+- name: 3rd_tab
+  type: BIGINT
+  comment: 三级页签
+  role: dimension
+- name: prod_type
+  type: BIGINT
+  comment: 商品类型
+  role: dimension
+- name: commend
+  type: string
+  comment: 显示角标气泡文本
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition

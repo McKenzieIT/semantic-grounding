@@ -1,0 +1,71 @@
+table_name: dim_10000251_trans_gacha_mission_group_df_arch
+engine: maxcompute
+table_comment: '扭卡任务页签快照维度表：按卡池+页签类型+快照日期每日归档，含页签名/启停时间/邮件/页签图等配置属性。'
+description: '扭卡(C抽卡/活动)任务页签维度的全量快照归档表(dim)。每行代表一个 (卡池 gacha_id, 页签类型 type, 快照日期 ds) 的页签配置记录。包含页签名 tag_name、开启时间 open_time、关闭时间 close_time、邮件模板 mail_id、页签图标 tag_pic 及背景图 tag_bg_pic 等展示与时间属性。作为 gacha_id/type 的维度表，供事实表 JOIN 查询页签元信息。'
+domains:
+- 探索收集
+granularity: '每 (卡池 gacha_id, 页签类型 type, 快照日期 ds) 一行的快照维度/配置表'
+columns:
+- name: type
+  type: string
+  comment: 页签id
+  role: dimension
+- name: gacha_id
+  type: string
+  comment: 对应卡池id
+  role: dimension
+- name: tag_name
+  type: string
+  comment: 页签名
+  role: dimension
+- name: open_time
+  type: string
+  comment: 开启时间
+  role: dimension
+- name: close_time
+  type: string
+  comment: 关闭时间
+  role: dimension
+- name: mail_id
+  type: string
+  comment: 邮件id
+  role: dimension
+- name: tag_pic
+  type: string
+  comment: 页签图
+  role: dimension
+- name: tag_bg_pic
+  type: string
+  comment: 页签背景图
+  role: dimension
+- name: ds
+  type: string
+  comment: '快照日期分区(yyyymmdd)'
+  role: partition
+kind: dim
+primary_key:
+- gacha_id
+- type
+- ds
+primary_key_unique: true
+label_columns:
+- tag_name
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数(跨快照分区的页签配置行数)
+coverage:
+  scenarios:
+  - '事实表按 gacha_id JOIN 取卡池页签元数据(页签名/启停时间/邮件/页签图)'
+  - '按 type 维度区分不同页签类型(活动页签/常驻页签等)'
+  - '按 ds 取某日全量快照，对比页签启停时间窗口'
+  limitations:
+  - '配置类维度表，无度量值；不携带玩家行为数据'
+  - '为每日全量快照归档表，gacha_id 跨快照不唯一；按 gacha_id 单字段查询时需先过滤 ds 或聚合'
+  - 'tag_pic/tag_bg_pic 为资源标识串，前端展示需经资源管理二次解码拼接'
+  - 'open_time/close_time 为字符串型时间，需在事实侧转换后再做时间过滤'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '复合主键(gacha_id,type,ds)经实测 r=d=7102 验证唯一；保持 draft 待业务复核页签 type 业务语义。'

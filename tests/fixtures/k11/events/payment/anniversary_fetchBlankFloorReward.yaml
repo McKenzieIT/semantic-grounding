@@ -1,0 +1,128 @@
+name: game.anniversary.fetchBlankFloorReward
+event_filter: event = 'game.anniversary.fetchBlankFloorReward'
+description: |
+  周年庆小游戏活动-空白层(blank floor)奖励领取事件：玩家在周年庆小游戏玩法中领取空白层通关奖励，每次领取上报一条日志。参数携带 activityId(活动id)、floor(层号) 与 coinList 多种货币奖励(充值钻石 gold/赠送钻石 sendgold/免费钻石 freegold/紫金 diamond/经验卷轴 expCoin/体力 energy)，并携带角色基础属性(roleId/roleName/roleLevel/vipLevel/roleForce/exp 等)。分析主体粒度为 role_id(角色)，可经 account_id 上卷到账号、server_id 上卷到游戏服。MAXC scout 实测 ds=20260729 与 ds=20260728 均零命中(cnt=0)，事件疑似下线/未触发。
+domains:
+  - 付费经济
+domain: payment
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  activityId:
+    type: int
+    description: activityId
+  floor:
+    type: int
+    description: floor
+metrics:
+  fetchBlankFloorReward_cnt:
+    expression: COUNT(*)
+    description: 周年庆空白层奖励领取总次数（事件日志条数）
+  fetchBlankFloorReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取过空白层奖励的角色数（去重 role_id）
+  fetchBlankFloorReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取过空白层奖励的账号数（去重 account_id）
+  fetchBlankFloorReward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 覆盖的游戏服数（去重 server_id）
+  fetchBlankFloorReward_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.coinList.gold') AS BIGINT))
+    description: 发放的充值钻石(gold)总量
+  fetchBlankFloorReward_freegold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.coinList.freegold') AS BIGINT))
+    description: 发放的免费钻石(freegold)总量
+  fetchBlankFloorReward_diamond_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.coinList.diamond') AS BIGINT))
+    description: 发放的紫金(diamond)总量
+  fetchBlankFloorReward_energy_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.coinList.energy') AS BIGINT))
+    description: 发放的体力(energy)总量
+  fetchBlankFloorReward_per_role_cnt:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均领取次数（总次数 / 去重角色数）
+  fetchBlankFloorReward_per_role_gold:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.coinList.gold') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均充值钻石奖励（gold 总量 / 去重角色数）
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: MAXC scout 实测 ds=20260729 与 ds=20260728 均零命中(cnt=0, role_uv=0, acc_uv=0, server_uv=0)，事件疑似下线/未触发；保持 draft，待业务方确认事件是否仍在投放。
+coverage:
+  scenarios:
+    - 周年庆小游戏空白层奖励领取的参与角色数/账号数/游戏服覆盖面
+    - 各货币(充值钻石/免费钻石/紫金/体力)奖励发放总量与人均
+    - 人均领取次数 / 层号(floor)分布
+  limitations:
+    - 日志中零命中(ds=20260729 cnt=0，回退 ds=20260728 仍 cnt=0)，事件疑似下线/未触发，未做全量复核
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体粒度默认为 role_id，未经业务方二次确认
+    - coinList 各货币字段语义(如 gold=充值钻石)依据现有 params_fields 标注，未做实际值校验
+  coverage_status: draft
+external_refs: []

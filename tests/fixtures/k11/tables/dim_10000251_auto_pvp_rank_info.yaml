@@ -1,0 +1,57 @@
+table_name: dim_10000251_auto_pvp_rank_info
+engine: maxcompute
+kind: dim
+table_comment: 'PVP 段位配置维度表：每行一个段位阶级，记录段位 id、分组、分组名称、阶级名称、完整名称与积分门槛。'
+description: '游戏内 PVP 段位（auto pvp rank）的配置/维度表。每行代表一个段位阶级，包含段位 id（rank_id，主键）、段位分组（rank_group / rank_group_name）、阶级名称（rank_name）、完整名称（rank_whole_name，可用作展示标签）以及积分门槛（rank_score）。用于在事实表中通过 rank_id 关联查找段位名称、分组与积分信息。'
+domains:
+- 战斗关卡
+granularity: '每段位阶级（rank_id）一行的配置/维度表'
+primary_key:
+- rank_id
+primary_key_unique: true
+label_columns:
+- rank_whole_name
+- rank_name
+- rank_group_name
+columns:
+- name: rank_id
+  type: bigint
+  comment: 段位id
+  role: dimension
+- name: rank_group
+  type: string
+  comment: 段位分组
+  role: dimension
+- name: rank_group_name
+  type: string
+  comment: 段位分组名称
+  role: dimension
+- name: rank_name
+  type: string
+  comment: 段位阶级
+  role: dimension
+- name: rank_whole_name
+  type: string
+  comment: 段位完整名称
+  role: dimension
+- name: rank_score
+  type: string
+  comment: 段位积分
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 事实表通过 rank_id 关联本表，查找段位完整名称（rank_whole_name）、分组（rank_group_name）与积分门槛（rank_score），用于战报/排行榜分析中的段位维度切片
+  - 按段位分组（rank_group_name）聚合，统计各分组下段位数量或积分区间
+  limitations:
+  - 配置类维度表，无值度量字段（rank_score 为字符串型积分门槛，非事实度量）
+  - 段位积分（rank_score）以字符串存储，数值比较前需类型转换
+  - 主键 rank_id 经实测唯一（21 行 / 21 distinct），但段位分组编码（rank_group）为字符串编码，跨表关联时需对齐编码口径
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '配置/维度表建模：rank_id 为主键并已实测唯一；label 选 rank_whole_name/rank_name/rank_group_name；rank_score 为字符串型积分门槛（dimension），无度量字段。'

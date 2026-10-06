@@ -1,0 +1,284 @@
+table_name: dws_10000251_role_tag_basic_df
+engine: maxcompute
+table_comment: K11-角色基础标签表
+description: |-
+  K11-角色基础标签表。
+  粒度：日全量快照(_df)。分析主体=角色（user_type=3）。
+  主要字段：account_id, role_id, server_id, os_id, ch_type, pkg_name, act_tm_fst, act_tm_lst 等57列。
+domains:
+  - 角色成长
+  - 付费经济
+  - 社交公会
+granularity: 日全量快照(_df)，分析主体=角色（user_type=3）
+columns:
+  - name: account_id
+    type: string
+    comment: 账号id
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: os_id
+    type: bigint
+    comment: 平台id
+    role: dimension
+  - name: ch_type
+    type: string
+    comment: 渠道
+    role: dimension
+  - name: pkg_name
+    type: string
+    comment: 包名
+    role: dimension
+  - name: act_tm_fst
+    type: datetime
+    comment: 首次活跃时间
+    role: dimension
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近活跃时间
+    role: dimension
+  - name: pay_amt_std
+    type: decimal
+    comment: 累计付费金额
+    role: measure
+  - name: pay_amt_f1d
+    type: decimal
+    comment: 首日付费金额
+    role: measure
+  - name: pay_amt_f7d
+    type: decimal
+    comment: 首7日付费金额
+    role: measure
+  - name: pay_amt_f30d
+    type: decimal
+    comment: 首30日付费金额
+    role: measure
+  - name: pay_amt_7d
+    type: decimal
+    comment: 最近7日付费金额
+    role: measure
+  - name: pay_amt_30d
+    type: decimal
+    comment: 最近30日付费金额
+    role: measure
+  - name: real_pay_amt_std
+    type: decimal
+    comment: 累积实际消费金额，非凤翎直充礼包+用凤翎购买的礼包
+    role: measure
+  - name: real_pay_amt_f1d
+    type: decimal
+    comment: 首日实际消费金额
+    role: measure
+  - name: real_pay_amt_f7d
+    type: decimal
+    comment: 首7日实际消费金额
+    role: measure
+  - name: real_pay_amt_f30d
+    type: decimal
+    comment: 首30日实际消费金额
+    role: measure
+  - name: real_pay_amt_1d
+    type: decimal
+    comment: 最近1日实际消费金额
+    role: measure
+  - name: real_pay_amt_7d
+    type: decimal
+    comment: 最近7日实际消费金额
+    role: measure
+  - name: real_pay_amt_30d
+    type: decimal
+    comment: 最近30日实际消费金额
+    role: measure
+  - name: role_rvip_level
+    type: string
+    comment: 角色付费R级
+    role: dimension
+  - name: vip_level
+    type: int
+    comment: VIP等级
+    role: dimension
+  - name: role_name
+    type: string
+    comment: 角色名
+    role: attribute
+  - name: role_level
+    type: int
+    comment: 角色等级
+    role: dimension
+  - name: role_force
+    type: int
+    comment: 角色战力
+    role: measure
+  - name: role_level_rank
+    type: int
+    comment: 角色等级排名
+    role: dimension
+  - name: role_force_rank
+    type: int
+    comment: 角色战力排名
+    role: measure
+  - name: act_dur_valid
+    type: int
+    comment: 有效游戏时长
+    role: measure
+  - name: guild_id
+    type: string
+    comment: 公会id
+    role: dimension
+  - name: guild_name
+    type: string
+    comment: 公会名
+    role: attribute
+  - name: guild_level
+    type: int
+    comment: 公会等级
+    role: dimension
+  - name: guild_role_num
+    type: int
+    comment: 公会人数
+    role: measure
+  - name: guild_force
+    type: int
+    comment: 公会战力
+    role: measure
+  - name: guild_business_points
+    type: int
+    comment: 公会经营值，以周为单位清空
+    role: measure
+  - name: guild_active_points
+    type: int
+    comment: 公会活跃度，历史累计值
+    role: dimension
+  - name: daily_task_cnt
+    type: int
+    comment: 日常任务完成个数
+    role: measure
+  - name: daily_task_points
+    type: int
+    comment: 日常任务获得点数
+    role: measure
+  - name: weekly_task_list
+    type: string
+    comment: 周常任务列表
+    role: attribute
+  - name: weekly_task_cnt
+    type: int
+    comment: 周常任务完成个数
+    role: measure
+  - name: weekly_task_points
+    type: int
+    comment: 周常任务获得点数
+    role: measure
+  - name: home_level
+    type: int
+    comment: 家园等级
+    role: dimension
+  - name: own_card_list
+    type: string
+    comment: 武将持有列表
+    role: attribute
+  - name: lineup_avg_level
+    type: int
+    comment: 阵容平均等级
+    role: measure
+  - name: lineup_max_level
+    type: int
+    comment: 最高武将等级
+    role: dimension
+  - name: friends_add_cnt
+    type: int
+    comment: 添加好友总数
+    role: measure
+  - name: apvp_score
+    type: int
+    comment: 演武场积分
+    role: measure
+  - name: apvp_level
+    type: int
+    comment: 演武场段位
+    role: measure
+  - name: apvp_rank
+    type: int
+    comment: 演武场排名
+    role: measure
+  - name: spvp_score
+    type: int
+    comment: 竞技场分数
+    role: measure
+  - name: spvp_level
+    type: int
+    comment: 竞技场段位
+    role: measure
+  - name: spvp_rank
+    type: int
+    comment: 竞技场排名
+    role: measure
+  - name: warzone_rogue_score
+    type: int
+    comment: 古战场今日获得军功
+    role: measure
+  - name: warzone_rogue_score_1w
+    type: int
+    comment: 古战场本周累积军功
+    role: measure
+  - name: warzone_rogue_score_std
+    type: int
+    comment: 古战场累计获得军功
+    role: measure
+  - name: maintask_stay_chapter_id
+    type: int
+    comment: 当前主线任务章节
+    role: dimension
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 角色UV（去重角色数），日全量快照角色规模
+  pay_amt_std_total:
+    expression: SUM(pay_amt_std)
+    description: 累计付费金额总额（角色维度汇总）
+  pay_role_cnt:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN role_id END)
+    description: 累计付费角色数（付费渗透）
+  avg_role_level:
+    expression: AVG(role_level)
+    description: 平均角色等级（角色成长水平）
+  avg_role_force:
+    expression: AVG(role_force)
+    description: 平均角色战力（角色实力水平）
+coverage:
+  scenarios:
+    - 角色规模与付费渗透：role_uv / pay_role_cnt 回答日快照活跃角色数与付费角色数
+    - 付费经济：pay_amt_std_total 汇总累计付费金额，配合 pay_role_cnt 算 ARPPU
+    - 角色成长：avg_role_level / avg_role_force 衡量角色成长与战力分布
+  limitations:
+    - 日全量快照(_df)按 ds 分区，指标为当日全量角色快照而非日增量；跨日对比需用两天快照差分
+    - 仅对 20250507 最新分区做 scout 抽样验证（role_uv=36209, pay_amt_std_total≈1,090,109），未做全量 maxc 实测复核
+    - 角色标签维度众多（公会/任务/PVP/家园等），本表仅覆盖核心 5 指标，未穷尽全部可聚合字段
+    - 无 user_type 列，分析主体=角色系按表名 role 推断（user_type=3 概念）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已对最新分区 ds=20250507 跑通 COUNT(DISTINCT role_id)/SUM(pay_amt_std)/AVG(role_force) 等指标，返回合理值（36209 角色、付费 ~109 万、平均战力与等级合理），抽样验证通过
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (区服id) joins to dim_10000251_server_info (PK server_id), the 服务器/区服维度配置表 used for fact-table server attribute lookup.
+    origin: deterministic
+pref_label: 角色基础标签表
+alt_labels:
+  - 标签
+  - 画像
+  - 分类

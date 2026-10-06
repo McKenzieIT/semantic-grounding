@@ -1,0 +1,65 @@
+table_name: dim_10000251_trans_card_df_arch
+engine: maxcompute
+kind: dim
+primary_key:
+- id
+label_columns:
+- name
+primary_key_unique: false
+table_comment: '武将卡片配置维度表（按 ds 分区的快照归档，每个 ds 分区存放当日全量武将配置）。'
+description: '游戏 10000251 的武将卡片配置维度表（dim_10000251_trans_card_df_arch）。每行描述一个武将卡片的静态属性：武将 id、武将名、品质、阵营、职业、性别、初始星数；按 ds 日分区归档当日全量配置。主要用于通过 JOIN 给事实表提供武将维度的属性查询（按 id 关联）。'
+domains:
+- 系统监控
+granularity: 每个 ds 分区内每 武将(id) 一行的配置/维度表；跨分区为同一武将的多日配置快照（故 primary_key_unique=false）。
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含所有 ds 分区）
+columns:
+- name: id
+  type: STRING
+  comment: 武将id
+  role: dimension
+- name: name
+  type: STRING
+  comment: 武将名
+  role: dimension
+- name: quality
+  type: BIGINT
+  comment: 品质
+  role: dimension
+- name: group
+  type: STRING
+  comment: 阵营
+  role: dimension
+- name: job
+  type: BIGINT
+  comment: 职业
+  role: dimension
+- name: sex
+  type: BIGINT
+  comment: 性别
+  role: dimension
+- name: ini_star_num
+  type: BIGINT
+  comment: 初始星数
+  role: dimension
+- name: ds
+  type: STRING
+  comment: 日分区键
+  role: partition
+coverage:
+  scenarios:
+  - 按 id JOIN 事实表，提供武将名/品质/阵营/职业/性别/初始星数等属性维度查询
+  - 按品质/阵营/职业分组统计武将卡片分布
+  - 按 ds 取特定日的全量武将配置快照
+  limitations:
+  - 配置类维度表，无值度量（quality/job/sex/ini_star_num 均为分类编码，非连续度量）
+  - primary_key_unique=false：跨 ds 分区同一武将 id 有多日快照，全局不唯一；按 ds 分区内唯一
+  - 未做按 ds 分区的唯一性实测（已实测全局 r=32567, d=73）
+  - quality/job/sex/ini_star_num 为编码值，部分需关联字典表二次解码
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'dim 建模草稿。primary_key=id、label=name（武将名）。全局未唯一（多分区快照），故 primary_key_unique=false 且保持 draft。已通过 meta describe 校正列类型（int->BIGINT）与角色（measure->dimension，配置类无值度量）。'

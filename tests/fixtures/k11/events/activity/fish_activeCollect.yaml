@@ -1,0 +1,119 @@
+name: game.fish.activeCollect
+event_filter: event = 'game.fish.activeCollect'
+description: 钓鱼玩法：激活图鉴事件，记录角色在钓鱼系统中首次激活/收录某条鱼到图鉴的动作（含 fishId、fishName，激活前后图鉴等级 oldLevel/currLevel 与收藏数量 oldCount/currCount）。主体粒度为角色(role_id)，单日实测 ds=20260729 触发 3814 次、覆盖 1614 角色 / 1558 账号 / 144 服务器。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  fishName:
+    type: string
+    description: fishName
+  fishId:
+    type: int
+    description: fishId
+  oldLevel:
+    type: int
+    description: oldLevel
+  currLevel:
+    type: int
+    description: currLevel
+  oldCount:
+    type: int
+    description: oldCount
+  currCount:
+    type: int
+    description: currCount
+metrics:
+  game_fish_activeCollect_cnt:
+    expression: COUNT(*)
+    description: 钓鱼图鉴激活事件总次数
+  game_fish_activeCollect_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发钓鱼图鉴激活的去重角色数
+  game_fish_activeCollect_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发钓鱼图鉴激活的去重账号数
+  game_fish_activeCollect_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发钓鱼图鉴激活的去重服务器数
+coverage:
+  scenarios:
+    - 衡量钓鱼图鉴激活的总体频次、参与角色/账号/服务器广度
+    - 评估钓鱼收集玩法的活跃度与图鉴完成进度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体默认为 role_id；账号/服务器维度为补充去重统计
+    - 未校验跨日趋势与图鉴等级(currLevel)分布
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 实测：cnt=3814, role_uv=1614, acc_uv=1558, server_uv=144
+  coverage_status: analyst_confirmed
+external_refs: []

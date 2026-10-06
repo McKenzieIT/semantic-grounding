@@ -1,0 +1,92 @@
+table_name: dws_10000251_pvp_team_statistics_di
+engine: maxcompute
+table_comment: PVP阵容统计日表
+description: |-
+  PVP阵容统计日表，按角色(role_id)维度记录每日各PVP系统下阵容(team)、战力(force)、星数(star)及战斗结果(胜/负/平)。
+  粒度：日增量(_di)，分区ds=业务日期(yyyyMMdd)。
+  主体：角色(role_id, user_type=3)。主题域：战斗关卡(PVP阵容与胜负)、角色成长(战力与星数)。
+  主要字段：pvp_type, role_id, team, star, force, force_diff_per, battle_times, win_times 等11列。
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 日增量(_di)，分区ds=业务日期(yyyyMMdd)，按角色(role_id)+PVP系统(pvp_type)+阵容(team)粒度
+columns:
+  - name: pvp_type
+    type: bigint
+    comment: PVP系统
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: team
+    type: string
+    comment: 阵容(角色名|分隔)
+    role: attribute
+  - name: star
+    type: string
+    comment: 星数(角色名(星)|分隔)
+    role: attribute
+  - name: force
+    type: bigint
+    comment: 战力
+    role: measure
+  - name: force_diff_per
+    type: double
+    comment: 战力差值占比
+    role: measure
+  - name: battle_times
+    type: bigint
+    comment: 战斗次数
+    role: measure
+  - name: win_times
+    type: bigint
+    comment: 胜利次数
+    role: measure
+  - name: lose_times
+    type: bigint
+    comment: 失败次数
+    role: measure
+  - name: draw_times
+    type: bigint
+    comment: 平局次数
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区(业务日期yyyyMMdd)
+    role: partition
+metrics:
+  pvp_role_uv:
+    description: 当日参与PVP的去重角色数(角色UV)
+    expression: COUNT(DISTINCT role_id)
+  battle_total_times:
+    description: 当日PVP总战斗次数
+    expression: SUM(battle_times)
+  pvp_win_rate:
+    description: PVP胜率=胜利次数/战斗次数(NULLIF保护)
+    expression: ROUND(SUM(win_times) * 1.0 / NULLIF(SUM(battle_times), 0), 4)
+  lineup_distinct_uv:
+    description: 当日去重阵容(team)数，反映阵容多样性
+    expression: COUNT(DISTINCT team)
+  avg_force:
+    description: 平均战力
+    expression: AVG(force)
+coverage:
+  scenarios:
+    - 角色活跃：pvp_role_uv 回答"每日有多少角色参与PVP"，可按 pvp_type 下钻不同PVP系统参与规模
+    - 战斗强度：battle_total_times 回答"当日PVP总战斗量"，结合 pvp_win_rate 评估各系统胜负分布
+    - 阵容多样性：lineup_distinct_uv 回答"当日使用了多少不同阵容"，结合 avg_force 评估阵容战力水平
+  limitations:
+    - 仅 scout 抽样验证，未做全量 maxc 实测复核；20260730 抽样 uv=6214 bt=65092 wr=0.5102 lineup_uv=4115 合理
+    - _di 日增量语义，跨分区聚合需按 ds 分区逐日累加，非全量快照(_df)
+    - team/star 为字符串拼接文本，未做角色归一，阵容级分析需解析分隔符
+    - 缺少 user_type 列，角色主体(role_id)为推断，未通过 user_type 列校验
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已对最新分区 ds=20260730 抽样执行 pvp_role_uv/pvp_win_rate 等指标查询，数值合理；表非空。
+dimension_refs: []
+pref_label: PVP阵容统计日表
+alt_labels:
+  - 阵容

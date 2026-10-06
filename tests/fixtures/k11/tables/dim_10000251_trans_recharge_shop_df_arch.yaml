@@ -1,0 +1,63 @@
+table_name: dim_10000251_trans_recharge_shop_df_arch
+engine: maxcompute
+kind: dim
+primary_key:
+- id
+- ds
+label_columns:
+- name
+primary_key_unique: true
+table_comment: '付费商店配置维度表（日全量快照 _df_arch）：每条记录为一个付费商店在某 ds 分区下的配置快照。PK=(id, ds)，已实测唯一。'
+description: '付费商店配置维度表（dim，日全量快照 _df_arch）。存储每个付费商店的配置属性：商店 id、名称、关联功能 id（function_id）、关联货币（resource）、显示顺序（order）、二级页签（second_tab），按 ds 日分区归档。键：id（商店自然 id，配合 ds 构成复合主键）；标签：name（商店名）。'
+domains:
+- 付费经济
+granularity: '每个付费商店在每个 ds 日分区下一行的配置/维度快照表（复合主键 id+ds）'
+columns:
+- name: id
+  type: string
+  comment: 付费商店id
+  role: dimension
+- name: name
+  type: string
+  comment: 付费商店名
+  role: dimension
+- name: function_id
+  type: string
+  comment: 关联功能id
+  role: dimension
+- name: resource
+  type: string
+  comment: 关联货币
+  role: dimension
+- name: order
+  type: string
+  comment: 显示顺序
+  role: dimension
+- name: second_tab
+  type: string
+  comment: 二级页签
+  role: dimension
+- name: ds
+  type: string
+  comment: '日分区（df 全量快照日期，yyyymmdd）'
+  role: partition
+coverage:
+  scenarios:
+  - 'JOIN 付费/充值事实表 on shop_id=id（取最近 ds 分区）以获得商店名称、关联功能、货币、二级页签等维度属性'
+  - '按 second_tab 分组分析各二级页签下付费商店的构成与排序'
+  - '通过 function_id 关联功能维度表，下钻到具体功能模块的商店配置'
+  - '按 resource（关联货币）筛选不同货币体系的付费商店'
+  limitations:
+  - '配置类维度表，无值度量（金额/次数等度量需从充值事实表获取）'
+  - '日全量快照：同一 shop id 在多个 ds 分区重复存在，跨分区查询须指定 ds 或去重，否则会重复计数'
+  - 'function_id/resource/second_tab 等为编码字段，部分可能为复合编码串，需结合功能/货币维度表二次解码'
+  - 'id 单列不唯一（74 个不同商店跨 16072 行/分区），复合主键 (id, ds) 已实测唯一（r=d_id_ds=16072）'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: '维度表全量行数（含多 ds 快照）'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '首次 dim 建模：依据 meta describe 真实列与实测唯一性 (id,ds)=唯一；id 单列不唯一故采用复合主键；status 维持 draft 待业务确认。'

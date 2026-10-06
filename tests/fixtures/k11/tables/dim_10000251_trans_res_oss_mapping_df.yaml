@@ -1,0 +1,44 @@
+table_name: dim_10000251_trans_res_oss_mapping_df
+engine: maxcompute
+kind: dim
+primary_key:
+- dim_id
+- res_path
+primary_key_unique: true
+label_columns:
+- oss_path
+table_comment: '资源路径到 OSS 路径的映射配置维度表（按 dim_id 分区）'
+description: '资源路径(本地 res_path) 到 OSS 远端路径(oss_path) 的映射配置维度表，按资源维度类别(dim_id 分区，如 platform_reward_item) 组织。日全量快照(_df)。复合主键 (dim_id, res_path) 实测唯一。'
+domains:
+- 系统监控
+granularity: '每 (dim_id 资源类别, res_path 资源路径) 一行的映射配置维度表'
+columns:
+- name: res_path
+  type: string
+  comment: 资源路径
+  role: dimension
+- name: oss_path
+  type: string
+  comment: oss路径
+  role: dimension
+- name: dim_id
+  type: string
+  comment: ''
+  role: dimension
+coverage:
+  scenarios:
+  - 通过 dim_id + res_path JOIN 查询资源对应的 OSS 远端路径，用于前端资源加载/替换
+  - 按 dim_id 资源类别分组统计映射数量
+  limitations:
+  - 配置类映射维度表，无值度量
+  - dim_id 为分区列(资源维度类别)，非行级唯一键；需与 res_path 组合定位行
+  - oss_path 含日期目录与哈希文件名，解析原文件需二次处理路径
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '复合主键 (dim_id, res_path) 实测唯一(12 行 = 12 distinct)；dim_id 为分区类别列；保持 draft'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数

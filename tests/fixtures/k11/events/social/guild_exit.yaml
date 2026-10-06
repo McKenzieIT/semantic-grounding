@@ -1,0 +1,113 @@
+name: game.guild.exit
+event_filter: event = 'game.guild.exit'
+description: 角色退出公会事件，记录玩家主动/被动离开公会时的角色与公会快照信息。分析主体为 role_id（同时携带 account_id 用于账号维度归因）， 参数包括游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验、看板娘、关键货币列表（gold/sendgold/freegold/diamond/expCoin/energy）、 会话id、logUUID、oldGuildId（退会时所属公会id）共23个。实测 ds=20260729 单日触发 121 次，覆盖 109 个角色 / 107 个账号 / 23 个游戏服。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  oldGuildId:
+    type: int
+    description: 公会id
+metrics:
+  guild_exit_cnt:
+    expression: COUNT(*)
+    description: 退出公会事件总触发次数
+  guild_exit_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 退出公会的去重角色数（分析主体 role_id）
+  guild_exit_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 退出公会的去重账号数（账号维度归因）
+  guild_exit_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发退出公会事件的去重游戏服数
+  guild_exit_per_role_avg:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 单角色平均退出次数（用于识别多次退会的异常角色）
+  guild_exit_per_server_avg_role_uv:
+    expression: CAST(COUNT(DISTINCT role_id) AS DOUBLE) / NULLIF(COUNT(DISTINCT server_id), 0)
+    description: 单服平均退出公会的角色数
+coverage:
+  scenarios:
+    - 单日/区间退出公会规模（事件次数、角色UV、账号UV）
+    - 各游戏服公会流失强度对比（按 server_id 维度聚合）
+    - 识别多次退会的异常角色（per_role_avg 异常高值）
+    - 公会流失与角色等级/战力/vip 的关联（结合 roleLevel、roleForce、vipLevel 参数）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（事件由角色维度触发），账号维度 account_id 仅供归因
+    - 事件不含付费金额字段，货币类参数（coinList.*）为退出时刻快照余额，非收支流水
+    - oldGuildId 为退会时所属公会，未携带新公会信息，无法直接计算转会迁移
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=121, role_uv=109, acc_uv=107, server_uv=23，数据合理，事件在线触发正常
+coverage_status: analyst_confirmed
+external_refs: []

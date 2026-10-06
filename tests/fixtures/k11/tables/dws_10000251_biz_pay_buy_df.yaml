@@ -1,0 +1,105 @@
+table_name: dws_10000251_biz_pay_buy_df
+engine: maxcompute
+table_comment: 付费商品购买汇总（账号-角色-商品粒度付费购买明细，日全量快照）
+description: |-
+  付费商品购买汇总表，记录账号-角色-商品粒度的付费购买明细。
+  粒度：日全量快照(_df)，按账号+角色+商品维度记录每笔付费购买。
+  主体：账号+角色级付费购买行为（含商品与平台维度）。
+  主要字段：ymd, account_id, role_id, server_id, os_id, product_id, goods_id, goods_cnt, pay_amt, voucher_amt, acc_pay_fst, role_pay_fst 等13列。
+domains:
+  - 付费经济
+granularity: 日全量快照(_df)，按账号+角色+商品维度记录
+columns:
+  - name: ymd
+    type: string
+    comment: 数据日期，key
+    role: dimension
+  - name: account_id
+    type: string
+    comment: 账号id，key
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id，key
+    role: dimension
+  - name: os_id
+    type: bigint
+    comment: 付费平台id，key
+    role: dimension
+  - name: product_id
+    type: string
+    comment: 平台商品id，key
+    role: dimension
+  - name: goods_id
+    type: string
+    comment: cp商品id，key
+    role: dimension
+  - name: goods_cnt
+    type: bigint
+    comment: 商品数量
+    role: measure
+  - name: pay_amt
+    type: double
+    comment: 付费金额
+    role: measure
+  - name: voucher_amt
+    type: double
+    comment: 使用代金券金额
+    role: measure
+  - name: acc_pay_fst
+    type: bigint
+    comment: 账号首次付费标记，1-是、0-其它
+    role: dimension
+  - name: role_pay_fst
+    type: bigint
+    comment: 角色首次付费标记，1-是、0-其它
+    role: dimension
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  pay_amt_total:
+    expression: SUM(pay_amt)
+    description: 付费总金额（账号-角色-商品粒度求和）
+  pay_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 付费账号数（去重账号）
+  pay_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 付费角色数（去重角色）
+  voucher_amt_total:
+    expression: SUM(voucher_amt)
+    description: 代金券使用总金额
+  arppu:
+    expression: SUM(pay_amt) / NULLIF(COUNT(DISTINCT account_id), 0)
+    description: 平均每付费账号付费金额
+coverage:
+  scenarios:
+    - 按商品/平台/区服维度查看付费金额与付费账号数，支撑付费经济分析
+    - 监控账号/角色首次付费标记(acc_pay_fst/role_pay_fst)，评估首充贡献与付费转化
+    - 代金券使用金额监控，评估营销投入对付费的拉动
+  limitations:
+    - 表为空/无数据(MAX(ds) NULL)，所有指标未做 maxc 实测复核，仅为结构性定义
+    - 仅 scout 抽样验证，未做全量 maxc 实测复核
+    - _df 为日全量快照，指标为快照聚合；如需每日增量口径需另建 _di 表
+    - pay_amt 毛额/净额口径未在元数据注明，goods_cnt 与 goods_id 商品维度需业务确认
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 表为空(MAX(ds) NULL)，无法做实测复核；指标为结构性定义，待数据落库后验证
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (区服id) exactly matches the DIM PK server_id; dim_10000251_server_info is the 区服 dimension providing server name and open-time attributes.
+    origin: deterministic
+pref_label: 付费商品购买汇总表
+alt_labels:
+  - 商品

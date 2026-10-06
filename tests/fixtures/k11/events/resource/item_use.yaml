@@ -1,0 +1,125 @@
+name: game.item.use
+event_filter: event = 'game.item.use'
+description: 道具使用事件：玩家在游戏内消耗/使用某件道具时上报，记录道具 id、使用数量、堆叠组 id 以及使用前后角色货币快照（coinList.gold 充值钻石等）与角色基础信息（role_id/role_name/level/vip/force 等 25 个参数）。分析主体粒度为 role_id（角色级），账号粒度 account_id 用于关联同账号多角色。scout 实测 ds=20260729 单日 cnt=30453、role_uv=3477、acc_uv=3301、server_uv=434，量级合理（日均道具消耗高频事件，人均约 8.8 次使用）。
+domains:
+  - 装备道具
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  itemId:
+    type: int
+    description: 道具id
+  itemNum:
+    type: int
+    description: 道具数量
+  groupId:
+    type: int
+    description: 堆叠组id
+metrics:
+  game_item_use_cnt:
+    expression: COUNT(*)
+    description: 道具使用事件总次数（每次 item.use 上报 1 条）
+  game_item_use_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发道具使用的去重角色数（分析主体粒度）
+  game_item_use_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发道具使用的去重账号数
+  game_item_use_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及道具使用的去重游戏服数
+  game_item_use_item_num_sum:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.itemNum') IS NOT NULL THEN CAST(GET_JSON_OBJECT(params, '$.itemNum') AS BIGINT) ELSE 0 END)
+    description: 单日消耗道具总数量（按 itemNum 字段求和，反映道具消耗规模）
+  game_item_use_item_kind_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.itemId'))
+    description: 当日被使用的去重道具种类数（按 itemId 去重）
+  game_item_use_gold_cost_sum:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.coinList.gold') IS NOT NULL THEN CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT) ELSE 0 END)
+    description: 单日道具使用伴随的充值钻石(gold)变动累计（来自 coinList.gold，反映付费货币消耗）
+  game_item_use_per_role_avg_num:
+    expression: ROUND(CAST(SUM(CASE WHEN GET_JSON_OBJECT(params, '$.itemNum') IS NOT NULL THEN CAST(GET_JSON_OBJECT(params, '$.itemNum') AS BIGINT) ELSE 0 END) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0), 3)
+    description: 人均道具消耗数量（消耗总数量 / 去重角色数，NULLIF 防零除）
+coverage:
+  scenarios:
+    - 道具消耗日常活跃度量：单日使用次数/参与角色数/涉及服数，判断道具玩法渗透与消耗强度
+    - 人均消耗数量 per_role_avg_num 反映核心玩家道具投入强度，配合 item_kind_uv 观察道具消耗品类分布
+    - gold_cost_sum 监控道具使用伴随的充值钻石消耗，辅助评估付费货币流向与消耗回收
+    - 跨服分布 server_uv 与角色/账号 UV 对比，定位道具消耗热度集中的服务器
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核（多日趋势/周环比未验证）
+    - 分析主体默认 role_id（角色级），account_id 仅用于关联同账号多角色，未单独验证账号粒度业务口径
+    - itemNum/itemId 取自 GET_JSON_OBJECT(params,'$.itemNum'/'$.itemId')，依赖上报端 params 完整性；若个别上报缺字段会落入 NULL，求和/去重计数偏低
+    - gold_cost_sum 取自 coinList.gold（充值钻石），为快照式货币变动值；正值代表获得、负值代表消耗，本指标未区分方向，需结合业务进一步解读
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=30453, role_uv=3477, acc_uv=3301, server_uv=434, item_num_sum=125041, item_kind_uv=132, gold_sum=495351，量级合理（高频道具消耗事件）。
+coverage_status: analyst_confirmed
+external_refs: []

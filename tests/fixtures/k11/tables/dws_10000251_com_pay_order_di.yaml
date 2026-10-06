@@ -1,0 +1,130 @@
+table_name: dws_10000251_com_pay_order_di
+engine: maxcompute
+table_comment: 商业化-付费订单日表
+description: |
+  商业化付费订单日增量表(_di),记录每笔付费成功订单的明细。每行对应一笔订单,当日新增成功订单,非全量快照。
+  表名不含 acc/role/dev,按列内容判定为【账号表】:account_id 为付费主体(付款账号),role_id 为下单时所在角色,server_id 为区服,可用于账号/角色/区服多维度下钻。
+  能回答的业务问题:当日 GMV、付费账号数、付费角色数、客单价、各付费类型金额占比、区服付费分布、订单时段分布等。
+  注意事项:pay_amt 单位为分,聚合求和后需除以 100 转换为元;本表仅含付费成功订单,不含退款与未支付订单;pay_type 为枚举代码不可做数值聚合,仅作分组键。
+  2026-07-22 MaxCompute 实测(ds=20260720)确认 pay_type 仅出现 1(现金,cnt=384,amt=773500分)/2(付费代金券,cnt=157,amt=264100分)/3(免费代金券,cnt=279,amt=290900分)三档,与参考游戏(10000312)文档记录一致,未发现同族游戏(10000329)存在的未文档化第4档——但样本仅为单日单分区,不排除其他日期出现新档位的可能。
+  与事件 game.recharge 覆盖同一类业务问题(充值/付费)但不是同一记录集,不可自由互推——已验证的唯一对齐口径:本表 pay_type=1 ≡ 事件侧 moneyType=1 且 orderId 非空(两侧 role_uv 均为288,ds=20260806实测);事件侧 moneyType=2(现金券)不对应本表 pay_type 任何干净子集("moneyType=2⊇pay_type∈{2,3,4}"假设已被证伪,25,691≠34,419)。选数据源前先确认业务问题要哪种口径,不要假设两表可互相替代或换算(2026-08-07,D16/D18,与10000329同构)。
+domains:
+  - 付费经济
+  - 用户生命周期
+granularity: 日增量(_di),每笔付费成功订单一行,仅记录当日新增成功订单;分析主体=账号(标识字段 account_id),同时携带 role_id(角色)与 server_id(区服)用于下钻。
+columns:
+  - name: order_id
+    type: string
+    comment: 订单号
+    role: dimension
+  - name: account_id
+    type: string
+    comment: 账号ID
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 服务器ID
+    role: dimension
+  - name: pay_type
+    type: int
+    comment: 付费类型 1-现金 2-付费代金券 3-免费代金券（2026-07-22 ds=20260720 实测仅这三档，与参考游戏一致）
+    role: dimension
+  - name: pay_amt
+    type: decimal
+    comment: 订单金额/分
+    role: measure
+  - name: tm
+    type: datetime
+    comment: 付费成功时间
+    role: dimension
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  gmv:
+    expression: SUM(pay_amt)/100.0
+    description: 当日付费订单总金额(GMV,全口径含免费代金券面值),单位元;pay_amt 原单位为分故除以 100
+  pay_order_cnt:
+    expression: COUNT(order_id)
+    description: 当日付费成功订单总数
+  pay_account_cnt:
+    expression: COUNT(DISTINCT account_id)
+    description: 当日付费账号数(去重 account_id,全口径含仅使用免费代金券的账号)
+  pay_role_cnt:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日付费角色数(去重 role_id)
+  arpu:
+    expression: SUM(pay_amt)/100.0/NULLIF(COUNT(DISTINCT account_id),0)
+    description: 客单价(每付费账号平均付费金额,全口径),单位元;用 NULLIF 防除零
+  arpp:
+    expression: COUNT(order_id)*1.0/NULLIF(COUNT(DISTINCT account_id),0)
+    description: 每付费账号平均订单数(人均订单笔数);用 NULLIF 防除零
+  cash_gmv:
+    expression: SUM(CASE WHEN pay_type=1 THEN pay_amt ELSE 0 END)/100.0
+    description: 现金付费(pay_type=1)GMV,单位元,反映真实充值流水;与 revenue_gmv 等价(本游戏仅现金计营收,用户2026-07-22确认,同族游戏10000329同源)
+  cash_pay_account_cnt:
+    expression: COUNT(DISTINCT CASE WHEN pay_type=1 THEN account_id END)
+    description: 现金付费账号数(去重,仅 pay_type=1)
+  voucher_gmv:
+    expression: SUM(CASE WHEN pay_type=2 THEN pay_amt ELSE 0 END)/100.0
+    description: 付费代金券(pay_type=2,现金购买所得)消费金额合计,单位元;不计入 revenue_gmv——对应现金收入已在购买代金券时计入(通常在另一充值事件/表),此处再计会重复统计(用户2026-07-22确认)
+  free_voucher_gmv:
+    expression: SUM(CASE WHEN pay_type=3 THEN pay_amt ELSE 0 END)/100.0
+    description: 免费代金券(pay_type=3)订单金额合计,单位元(系统赠送,不计入营收)
+  revenue_gmv:
+    expression: SUM(CASE WHEN pay_type=1 THEN pay_amt ELSE 0 END)/100.0
+    description: 真实营收口径 GMV,单位元;用户2026-07-22确认**只计现金(pay_type=1)**,与 cash_gmv 等价——付费代金券(2)现金收入已在购买时计入别处(通常在另一充值事件/表)、免费代金券(3)本就非付费,均不应计入营收,否则会重复统计或虚增(同一确认适用于同族游戏10000329)
+  cash_gmv_ratio:
+    expression: SUM(CASE WHEN pay_type=1 THEN pay_amt ELSE 0 END)*1.0/NULLIF(SUM(pay_amt),0)
+    description: 现金付费 GMV 占总 GMV 的比例;用 NULLIF 防除零
+  cash_pay_ratio:
+    expression: COUNT(DISTINCT CASE WHEN pay_type=1 THEN account_id END)*1.0/NULLIF(COUNT(DISTINCT account_id),0)
+    description: 现金付费账号数占付费账号总数的比例;用 NULLIF 防除零
+partitions:
+  - name: ds
+    type: string
+confirmation:
+  status: business_confirmed
+  confirmed_by: user-2026-07-22-pay_type-semantics
+  confirmed_at: "2026-07-22"
+  note: 结构/metrics 移植自参考游戏(10000312)同名表,MaxCompute 实测(ds=20260720)确认列存在性、pay_type 枚举值(1/2/3,与文档一致)、各档位订单数与金额均非空非零;revenue_gmv 仅计现金口径已由用户 2026-07-22 直接确认(同族游戏10000329同源)。非分析师走 Round-5 MaxCompute 全面验证流程,故用 business_confirmed 而非 analyst_confirmed。
+coverage:
+  scenarios:
+    - 当日 GMV(总付费金额,全口径含免费代金券面值)与订单总数
+    - 付费账号数 / 付费角色数 / 客单价(ARPU)/ 人均订单笔数
+    - 各付费方式(现金/付费代金券/免费代金券)GMV 占比与付费账号数
+    - 现金付费 GMV 与现金付费账号数(真实充值流水口径,最严)
+    - 真实营收口径 GMV(现金+付费代金券,剔除免费代金券)
+    - 区服/角色级付费贡献(按 server_id/role_id 下钻)
+  limitations:
+    - revenue_gmv 仅计现金(pay_type=1);付费代金券(2)的现金收入记录在购买代金券的另一事件/表,不在本表重复计入;免费代金券(3)非付费(用户2026-07-22确认,同族游戏10000329同源;10000329 另有限时代金券 pay_type=4,同为非现金购买,10000251 截至抽样日未观测到此档位)
+    - pay_amt 单位为分,聚合后需除以 100 转元
+    - 仅现金(pay_type=1)反映真实充值流水,付费代金券为已发生资金,免费代金券面值不应等同于实际营收
+    - 无支付渠道/平台维度,无法按微信/支付宝/苹果/安卓等渠道下钻
+    - 表内无沙盒标记字段,是否已在上游 ETL 剔除测试订单未经本次验证确认(参考游戏 10000312 同名表已确认剔除,10000251 未逐一复核)
+    - 本次 pay_type 枚举验证仅覆盖 ds=20260720 单日,建议后续接入生产流量后定期抽查是否出现新枚举值(参考同族游戏 10000329 实测发现过未文档化第4档)
+  coverage_status: draft
+supersedes: []
+dimension_refs:
+  - dim_table: dim_10000251_com_order_detail_info
+    join_keys:
+      - dws_column: order_id
+        dim_column: order_id
+    derivation: DWS order_id（订单号）与 dim_10000251_com_order_detail_info 主键 order_id 精确匹配，JOIN 回填订单维度的商品配置属性。
+    origin: deterministic
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id（服务器ID）与 dim_10000251_server_info 主键 server_id 精确匹配，JOIN 回填区服名称与开服时间。
+    origin: deterministic
+pref_label: 商业化-付费订单日表
+alt_labels:
+  - 氪金
+  - 充值
+  - 付费

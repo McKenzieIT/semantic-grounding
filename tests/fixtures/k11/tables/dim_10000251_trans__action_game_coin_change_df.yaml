@@ -1,0 +1,53 @@
+table_name: dim_10000251_trans__action_game_coin_change_df
+engine: maxcompute
+table_comment: 游戏金币变动行为类型配置维度表（日全量快照 _df）
+kind: dim
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+description: '游戏 10000251 金币（coin）变动行为类型的维度/配置表（日全量快照 _df）。
+
+  粒度：每条「金币变动行为类型」一行的配置维度表。
+
+  主键：id（行为类型 ID，STRING）。
+
+  标签：name（行为类型显示名称）。
+
+  用于把金币变动事实表里的行为类型 ID 解析为可读名称，支撑资源产销域的金币流水分析。'
+domains:
+- 资源产销
+granularity: 每条金币变动行为类型一行的配置维度表（日全量快照 _df）
+columns:
+- name: id
+  type: string
+  comment: ID,ID
+  role: dimension
+- name: name
+  type: string
+  comment: 名称,显示名称
+  role: dimension
+coverage:
+  scenarios:
+  - 通过 id 关联金币变动事实表，将行为类型 ID 解析为可读的 name，用于「金币变动行为」维度的下钻/筛选
+  - 提供金币变动行为类型的全量配置清单，支撑资源产销域的金币流水分析（金币产出/消耗按行为分类汇总）
+  limitations:
+  - 配置类维度表，无值度量（无 measure 列）
+  - 唯一性实测：实测时表为空（0 行），r=d=0，唯一性平凡成立（vacuously true），待有数据后复测
+  - 仅含 id/name 两列，无其他属性；如需更丰富的行为分类维度需结合上游源表
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '自动 dim 建模：金币变动行为类型配置维度表。
+
+    主键 id（实测空表 r=d=0，平凡唯一）。
+
+    标签 name。
+
+    域 资源产销。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（配置类，日全量快照）

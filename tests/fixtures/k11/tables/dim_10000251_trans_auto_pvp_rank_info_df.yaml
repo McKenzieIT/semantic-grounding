@@ -1,0 +1,57 @@
+table_name: dim_10000251_trans_auto_pvp_rank_info_df
+engine: maxcompute
+kind: dim
+primary_key:
+- rank_id
+label_columns:
+- rank_name
+- rank_group_name
+primary_key_unique: true
+table_comment: PVP段位配置维度表（日全量快照），每段位一行，提供段位id/名称/分组/积分等维度属性
+description: '游戏 10000251 的 PVP 段位（排位）配置维度表，日全量快照(_df)。每段位(rank_id)一行的维度/配置表，提供段位id、段位名称、段位图标、段位分组、分组名称、段位积分等维度属性，供事实表通过 rank_id 做 JOIN 查询段位维度信息。'
+domains:
+- 系统监控
+granularity: 每 rank_id 段位一行的 PVP 段位配置维度表（日全量快照）
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 事实表（如 PVP 对战/赛季事实表）通过 rank_id JOIN 本表，获取段位名称、段位分组、段位积分等维度标签用于分组聚合与下钻
+  - 按段位分组(rank_group_name)聚合统计玩家段位分布、对战分布
+  - 通过 rank_id 查找段位图标(rank_icon)用于报表展示
+  limitations:
+  - 配置类维度表，无值度量（rank_score 为 STRING 配置值，非数值度量，仅作维度标签）
+  - 仅含段位维度属性，不含玩家/赛季事实数据，需与事实表 JOIN 使用
+  - 经实测 rank_id 唯一（r=21, d=21）
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '已通过 meta describe 校验真实列与类型(BIGINT/STRING)；rank_id 唯一性已实测(r=d=21)；rank_score 为 STRING 配置值设为 dimension 而非 measure；保持 draft 待业务确认'
+columns:
+- name: rank_id
+  type: BIGINT
+  comment: 段位id
+  role: dimension
+- name: rank_name
+  type: STRING
+  comment: 段位名称
+  role: dimension
+- name: rank_icon
+  type: STRING
+  comment: 段位图标
+  role: dimension
+- name: rank_group
+  type: STRING
+  comment: 段位分组
+  role: dimension
+- name: rank_group_name
+  type: STRING
+  comment: 分组名称
+  role: dimension
+- name: rank_score
+  type: STRING
+  comment: 段位积分
+  role: dimension

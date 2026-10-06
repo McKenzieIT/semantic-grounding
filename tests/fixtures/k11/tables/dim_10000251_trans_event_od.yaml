@@ -1,0 +1,39 @@
+table_name: dim_10000251_trans_event_od
+engine: maxcompute
+kind: dim
+table_comment: 事件维表 配置游戏内埋点事件编码与显示名称映射
+description: '游戏内埋点事件维表（配置类维度表）。每行记录一个事件编码 id 及其人类可读的中文名称 name，供事件埋点事实数据按事件维度 JOIN 查询使用。主键：id（事件编码，复合点号分层字符串）；标签列：name（事件中文名）。'
+domains:
+- 系统监控
+granularity: 每一个埋点事件一行 事件编码到显示名称的配置映射维表
+primary_key:
+- id
+label_columns:
+- name
+primary_key_unique: false
+columns:
+- name: id
+  type: string
+  comment: ID,ID
+  role: dimension
+- name: name
+  type: string
+  comment: 名称,显示名称
+  role: dimension
+coverage:
+  scenarios:
+  - 事件埋点事实表按事件编码 JOIN 本表 将事件 id 解析为可读的事件中文名称 name
+  - 按事件名称维度聚合统计各类埋点事件的触发量与活跃分布
+  limitations:
+  - 配置类维度表 仅含 id/name 两个字段 无值度量 measures 不承载数值统计
+  - id 为复合点号分层编码串 如 game.role.create 如需按事件大类/子类分组需在下游二次解码切分
+  - 经实测 id 存在重复 68 行 67 唯一 primary_key_unique=false 未达唯一性要求 JOIN 时需注意一对多风险
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 基于 meta describe 核实列与 maxc COUNT 实测唯一性 因 id 非唯一故保持 draft 未 analyst_confirmed
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 事件维表总行数

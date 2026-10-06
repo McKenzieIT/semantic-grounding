@@ -1,0 +1,110 @@
+name: game.dreamDungeon.talkEffect
+event_filter: event = 'game.dreamDungeon.talkEffect'
+description: 梦境迷宫对话效果事件 (game.dreamDungeon.talkEffect)：玩家在梦境迷宫中触发对话/选项交互时上报，记录迷宫id(dungeonId)、talk选项id(talkId)、isPre战前/战后标志，以及角色基础属性(等级/战力/vip/货币等)。主体粒度为 role_id（角色级事件）。ds=20260729 单日 scout 实测：594 条事件、325 角色、320 账号、33 服务器。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  dungeonId:
+    type: int
+    description: 迷宫id
+  talkId:
+    type: int
+    description: talk选项id
+  isPre:
+    type: bool
+    description: 是战前还是战后对话
+metrics:
+  game_dreamDungeon_talkEffect_cnt:
+    expression: COUNT(*)
+    description: 梦境迷宫对话效果事件总触发次数
+  game_dreamDungeon_talkEffect_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发梦境迷宫对话的去重角色数
+  game_dreamDungeon_talkEffect_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发梦境迷宫对话的去重账号数
+  game_dreamDungeon_talkEffect_dungeon_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.dungeonId'))
+    description: 被触发对话的去重迷宫id数量
+coverage:
+  scenarios:
+    - 用于分析梦境迷宫(maze/dream dungeon)内对话选项的触发规模、参与角色/账号规模，以及涉及到的不同迷宫数量分布，辅助评估剧情对话系统的渗透与活跃。
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id（角色级事件）
+    - GET_JSON_OBJECT 取 dungeonId 依赖日志 params 字段完整上报
+  subject: role_id
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 实测 cnt=594 role_uv=325 acc_uv=320 server_uv=33，数据合理；查询命中加速分区。
+  coverage_status: analyst_confirmed
+external_refs: []

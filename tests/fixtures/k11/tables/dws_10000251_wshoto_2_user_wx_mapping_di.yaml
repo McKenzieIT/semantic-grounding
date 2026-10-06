@@ -1,0 +1,58 @@
+table_name: dws_10000251_wshoto_2_user_wx_mapping_di
+engine: maxcompute
+table_comment: 微盛Id和企微Id映射表
+description: |-
+  微盛(vshoto)用户ID与企微(WeCom)用户ID的映射表，主键 user_id。
+  业务主体：用户(微盛↔企微跨系统身份映射)。
+  粒度：日增量(_di)，每天记录当日新增/同步的映射关系。
+  主要字段：user_id(微盛id)、mapping_id(企微用户ID)、ds(分区)。
+domains:
+  - 社交公会
+  - 系统监控
+granularity: 日增量(_di)，主体=用户(微盛↔企微身份映射)
+columns:
+  - name: user_id
+    type: string
+    comment: 微盛id
+    role: dimension
+  - name: mapping_id
+    type: string
+    comment: 企微用户ID
+    role: dimension
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  daily_uv_user:
+    expression: COUNT(DISTINCT user_id)
+    description: 当日新增/同步的微盛用户数(UV)，映射主体数。
+  daily_uv_wx:
+    expression: COUNT(DISTINCT mapping_id)
+    description: 当日新增/同步的企微用户ID数(UV)。
+  daily_record_count:
+    expression: COUNT(*)
+    description: 当日映射记录总数(增量行数)。
+  mapping_dup_rate:
+    expression: 1 - COUNT(DISTINCT user_id) * 1.0 / NULLIF(COUNT(*), 0)
+    description: 映射重复率(同一 user_id 出现多次的比例)，0 表示无重复。
+coverage:
+  scenarios:
+    - 当日新增微盛↔企微映射的用户规模(daily_uv_user/daily_uv_wx)
+    - 映射增量趋势与重复率监控(mapping_dup_rate)
+  limitations:
+    - 仅对 latest ds=20260730 做 scout 抽样验证，未做全量 maxc 实测复核。
+    - _di 为日增量，历史累计映射总数需跨分区 SUM，本表 metrics 仅描述单日增量。
+    - 表仅含 ID 映射列，无业务量/金额/状态等度量维度，metrics 以 UV/计数为主。
+    - 无 user_type 列，主体(用户)由表名与微盛↔企微语义推断，未做多主体校验。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 在 latest ds=20260730 实测 daily_uv_user=7、daily_uv_wx=7、daily_record_count=7、mapping_dup_rate=0，值合理；已 analyst_confirmed。
+dimension_refs: []
+pref_label: 微盛企微映射日表
+alt_labels:
+  - 微盛
+  - 企微
+  - 映射

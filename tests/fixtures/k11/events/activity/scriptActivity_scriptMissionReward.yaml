@@ -1,0 +1,132 @@
+name: game.scriptActivity.scriptMissionReward
+event_filter: event = 'game.scriptActivity.scriptMissionReward'
+description: 剧本活动-脚本任务奖励一键领取事件：玩家在剧本活动中领取脚本任务奖励时上报。分析主体为 role_id（角色）；同期上报 addScore（活动积分增量）、rewards（奖励明细数组）、coinList（货币变动）。ds=20260729 实测：1591 次领取，879 角色，867 账号，115 服，addScore 累计 49470。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  themeId:
+    type: int
+    description: 活动ID
+  addScore:
+    type: int
+    description: 增加积分
+  addIds:
+    type: array
+    description: 新领取的奖励ID
+  rewards:
+    type: array
+    description: 奖励
+  rewards.type:
+    type: int
+    description: 类型
+  rewards.value:
+    type: int
+    description: 值
+  rewards.size:
+    type: int
+    description: 数量
+  rewards.uid:
+    type: int
+    description: 唯一id
+metrics:
+  script_mission_reward_cnt:
+    expression: COUNT(*)
+    description: 剧本活动脚本任务奖励领取次数（全量事件计数）
+  script_mission_reward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取奖励的去重角色数（分析主体 role_id）
+  script_mission_reward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取奖励的去重账号数
+  script_mission_reward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取奖励覆盖的去重游戏服数
+  script_mission_reward_addscore_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.addScore') AS BIGINT))
+    description: 领取奖励累计增加的活动积分总和
+  script_mission_reward_addscore_per_role:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.addScore') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 领取奖励的人均活动积分增量
+coverage:
+  scenarios:
+    - 剧本活动脚本任务奖励的领取活跃度（次数/角色UV/账号UV/服务器覆盖）
+    - 活动积分发放规模与人均积分（addScore 汇总及人均）
+    - 角色参与剧本活动任务奖励领取的分布与热度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认为 role_id；账号级口径见 account_uv 指标
+    - rewards 与 coinList 为数组结构，本指标仅汇总 addScore 标量积分，未对奖励明细逐项聚合
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: ds=20260729 scout 实测：cnt=1591, role_uv=879, acc_uv=867, server_uv=115, addScore_sum=49470；数据合理，事件在线。
+external_refs: []

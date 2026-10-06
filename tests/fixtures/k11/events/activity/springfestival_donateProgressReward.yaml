@@ -1,0 +1,107 @@
+name: game.springfestival.donateProgressReward
+event_filter: event = 'game.springfestival.donateProgressReward'
+description: 春节预热捐赠活动-进度奖励领取事件。记录角色在春节捐赠预热活动中领取进度阶段奖励的行为；分析主体为角色(role_id)，事件粒度为单次领取。携带游戏服/角色/账号基础信息、货币快照(coinList)、activityId与ids等奖励参数。scout 实测 ds=20260729 与 ds=20260728 均零命中，活动为春节季节性活动，当前窗口已下线/未触发。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  activityId:
+    type: int
+    description: activityId
+  ids:
+    type: array
+    description: ids
+metrics:
+  game_springfestival_donateProgressReward_cnt:
+    expression: COUNT(*)
+    description: 捐赠进度奖励领取事件总次数
+  game_springfestival_donateProgressReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取过奖励的去重角色数
+  game_springfestival_donateProgressReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取过奖励的去重账号数
+  game_springfestival_donateProgressReward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的去重游戏服数
+coverage:
+  scenarios:
+    - 春节预热捐赠活动的进度奖励领取热度(领取次数/参与角色数)
+    - 奖励领取在不同游戏服的分布
+  limitations:
+    - 日志中零命中(ds=20260729/20260728)，事件疑似下线/未触发(春节季节性活动)
+    - 仅 ds=20260729 与 ds=20260728 两个单日 scout 实测，未做全量复核；数据为真实查询结果(cnt=0)
+    - 分析主体粒度默认 role_id(角色级事件)，但因零命中未验证
+  coverage_status: draft
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=0/role_uv=0/acc_uv=0；ds=20260728: cnt=0/role_uv=0/acc_uv=0。两日均零命中，事件疑似下线/未触发(春节季节性活动)，保持 draft 状态。"
+external_refs: []

@@ -1,0 +1,49 @@
+table_name: dim_10000251_trans_fteam_dungeon_df
+engine: maxcompute
+kind: dim
+primary_key:
+- id
+label_columns:
+- name
+primary_key_unique: true
+table_comment: '团队副本关卡维度配置表（日全量快照 _df）：每行一个副本关卡，含关卡 id、关卡名、推荐等级。'
+description: '团队副本（fteam dungeon）关卡维度/配置表，日全量快照(_df)。
+
+  粒度：每行一个团队副本关卡。主键 id（关卡id），标签列 name（关卡名）。
+
+  主要字段：id(关卡id,主键), name(关卡名,标签), reco_level(推荐等级)。
+
+  用途：作为关卡维度的查找/JOIN 表，供事实表按关卡 id 关联获取关卡名与推荐等级。'
+domains:
+- 战斗关卡
+granularity: 每个团队副本关卡一行（日全量快照 _df）
+coverage:
+  scenarios:
+  - 事实表按关卡 id JOIN 本表获取关卡名（name）与推荐等级（reco_level），用于按关卡分组的统计分析。
+  - 作为团队副本关卡的维度字典，支持关卡维度下钻、推荐等级区间切片。
+  limitations:
+  - 配置类维度表，无值度量（reco_level 为属性而非度量，如需聚合请用 COUNT/分组）。
+  - 关卡 id 为字符串编码（如 "21"/"22"），若需解析编码含义需结合业务二次解码。
+  - 日全量快照，同关卡随版本更新可能变化，时点取数需注意快照日期。
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 meta describe 真实列建模；primary_key_unique 经 COUNT(*)=32 / COUNT(DISTINCT id)=32 实测为 true。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（关卡数）
+columns:
+- name: id
+  type: string
+  comment: 关卡id
+  role: dimension
+- name: name
+  type: string
+  comment: 关卡名
+  role: dimension
+- name: reco_level
+  type: bigint
+  comment: 推荐等级
+  role: dimension

@@ -1,0 +1,66 @@
+table_name: dws_10000251_biz_dev_tag_df
+engine: maxcompute
+table_comment: 设备-大事件标签日全量表：每日全量设备与其参与的大事件标签(如CBT1/CBT2)映射，user_type=1设备主体。
+description: 粒度：日全量快照(_df)，按 ds 分区，每分区覆盖全量设备。分析主体=设备（user_type=1，已实测验证：ds=20260730 仅含 user_type=1，共 2,016,807 台设备）。表语义：每个设备在当前快照下被标记为参与某个大事件(biz_name，如 CBT1/CBT2 内测批次)或为 NULL(未参与任何大事件的存量设备)。用于设备级生命周期/批次队列划分与召回分析。主要字段：user_type(主体类型), user_id(设备id), biz_name(大事件标签), ds(分区)。
+domains:
+  - 用户生命周期
+  - 系统监控
+granularity: 日全量快照(_df)，按 ds 分区；分析主体=设备(user_type=1)，每分区为全量设备与大事件标签映射。
+columns:
+  - name: user_type
+    type: BIGINT
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: biz_name
+    type: string
+    comment: 大事件名称
+    role: dimension
+  - name: ds
+    type: string
+    comment: 分区字段
+    role: partition
+metrics:
+  total_device_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 当前快照下全量设备数(主体=user_id,user_type=1)。_df 全量快照口径。
+  tagged_device_uv:
+    expression: COUNT(DISTINCT CASE WHEN biz_name IS NOT NULL THEN user_id END)
+    description: 被标记为参与任意大事件(biz_name 非空，如 CBT1/CBT2)的设备数。
+  cbt2_device_uv:
+    expression: COUNT(DISTINCT CASE WHEN biz_name = 'CBT2' THEN user_id END)
+    description: 参与内测批次 CBT2 的设备数。
+  cbt1_device_uv:
+    expression: COUNT(DISTINCT CASE WHEN biz_name = 'CBT1' THEN user_id END)
+    description: 参与内测批次 CBT1 的设备数。
+  tagged_device_ratio:
+    expression: COUNT(DISTINCT CASE WHEN biz_name IS NOT NULL THEN user_id END) * 1.0 / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 被标记设备占全量设备的比例(0-1)，衡量大事件召回覆盖率。
+coverage:
+  scenarios:
+    - 设备级大事件批次队列划分与召回分析：1) 全量设备口径 UV(total_device_uv)；2) 内测批次 CBT1/CBT2 设备队列规模(cbt1_device_uv/cbt2_device_uv/tagged_device_uv)；3) 大事件召回覆盖率(tagged_device_ratio)。可按 biz_name 分组对比不同批次设备规模与重叠。
+  limitations:
+    - 主体仅为设备(user_type=1)，无账号/角色维度，无法跨主体关联。
+    - biz_name 取值较少(实测 ds=20260730 仅 CBT1/CBT2/NULL 三类)，缺乏更细事件类型枚举。
+    - 仅抽样验证 ds=20260730 一个分区的指标，未做全量多分区 maxc 实测复核。
+    - _df 为日全量快照，跨 ds 聚合会重复计数设备，UV 类指标应限定单分区。
+    - 无数值型度量列，指标均为计数/比率口径。
+  missing_dimensions: 账号(user_type=2)/角色(user_type=3) 主体、设备属性维度(机型/地域/渠道)、事件时间戳。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 已 maxc 实测验证 ds=20260730(最新分区) user_type=1 单一主体 2,016,807 台设备；spot-verify 4 个 UV 指标取值合理(total_uv=2,016,807, tagged_uv=13,757, cbt1_uv=5,948, cbt2_uv=7,809，且 tagged_uv=cbt1_uv+cbt2_uv 自洽)。biz_name 取值枚举已实测(CBT1/CBT2/NULL)。仅抽样验证单分区，未做全量多分区复核。
+dimension_refs:
+  - dim_table: dim_10000251_user_tag_before_ob_info
+    join_keys:
+      - dws_column: user_id
+        dim_column: user_id
+    derivation: DWS user_id (用户id) exactly matches the DIM PK user_id; both tables share the biz_name CBT-batch tagging concept within the 用户生命周期 domain, and the DIM states it is designed for joining fact tables via user_id.
+    origin: deterministic
+pref_label: 设备大事件标签表
+alt_labels:
+  - CBT

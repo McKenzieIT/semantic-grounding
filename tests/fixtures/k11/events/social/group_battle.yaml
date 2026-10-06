@@ -1,0 +1,157 @@
+name: game.group.battle
+event_filter: event = 'game.group.battle'
+description: 组队战斗事件：记录角色参与组队（多人协作）挑战的每次战斗参与。每个日志行代表一个角色在一场组队战斗中的参与记录（battleId 唯一标识一次战斗，role_id 为分析主体粒度）。包含队伍信息（groupId/groupType/roleNum/roleList）、玩法与关卡（playType/playName/floor/stageId/stageType）等参数，共 34 个字段。真实数据验证（ds=20260729）：当日 2692 次参与记录，覆盖 637 个角色 / 631 个账号 / 170 个游戏服 / 1167 个队伍 / 2692 场独立战斗，最大队伍人数 4 人。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  groupId:
+    type: int
+    description: 队伍id
+  groupType:
+    type: int
+    description: 队伍公开模式
+  assistType:
+    type: int
+    description: 助战模式
+  roleNum:
+    type: int
+    description: 队伍人数
+  roleList:
+    type: array
+    description: 队伍成员id
+  roleList.id:
+    type: int
+    description: 队伍成员id
+  playType:
+    type: int
+    description: 玩法id
+  playName:
+    type: string
+    description: 玩法名称
+  floor:
+    type: int
+    description: 层数
+  stageId:
+    type: int
+    description: 关卡id
+  stageType:
+    type: int
+    description: 关卡类型
+  battleId:
+    type: string
+    description: 唯一标识一次战斗
+metrics:
+  group_battle_cnt:
+    description: 组队战斗参与记录数（每个角色每场战斗一行）
+    expression: COUNT(*)
+  group_battle_battle_uv:
+    description: 独立战斗场次数（battleId 去重）
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.battleId'))
+  group_battle_group_uv:
+    description: 参与组队的队伍数（groupId 去重）
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.groupId'))
+  group_battle_role_uv:
+    description: 参与组队战斗的独立角色数
+    expression: COUNT(DISTINCT role_id)
+  group_battle_account_uv:
+    description: 参与组队战斗的独立账号数
+    expression: COUNT(DISTINCT account_id)
+  group_battle_server_uv:
+    description: 参与组队战斗的独立游戏服数
+    expression: COUNT(DISTINCT server_id)
+  group_battle_role_num_sum:
+    description: 各战斗声明队伍人数之和（roleNum 累加，反映声明口径总人次）
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.roleNum') AS BIGINT))
+  group_battle_avg_role_num:
+    description: 平均每场战斗参与队伍人数（roleNum 均值）
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.roleNum') AS BIGINT)) / NULLIF(COUNT(*), 0)
+  group_battle_play_type_uv:
+    description: 当日参与组队战斗的玩法类型数（playType 去重）
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.playType'))
+  group_battle_stage_uv:
+    description: 当日参与组队战斗的关卡数（stageId 去重）
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.stageId'))
+coverage:
+  scenarios:
+    - 组队战斗参与规模与活跃度（参与记录数、角色/账号 UV、覆盖游戏服数）
+    - 组队战斗场次与队伍组织情况（独立战斗数、队伍数、平均队伍人数）
+    - 组队玩法与关卡覆盖广度（玩法类型数、关卡数）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体粒度默认为 role_id（每个角色每场战斗一行）；如需按战斗场次聚合请使用 group_battle_battle_uv 而非 COUNT(*)
+    - ds=20260729 当日仅命中 1 种玩法(playType)与 1 个关卡(stageId)，玩法/关卡覆盖广度指标在该日为 1，跨日分布需另查
+    - roleNum 为客户端声明队伍人数，role_num_sum 反映声明口径人次数，与 role_uv（去重角色）不可直接等同
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: MAXC scout 实测 ds=20260729：cnt=2692, role_uv=637, acc_uv=631, server_uv=170；battle_uv=2692(每行一场战斗), group_uv=1167, role_num_sum=6638, role_num_max=4；数据合理，事件在线
+coverage_status: analyst_confirmed
+external_refs: []

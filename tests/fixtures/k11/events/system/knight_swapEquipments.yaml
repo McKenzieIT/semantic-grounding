@@ -1,0 +1,124 @@
+name: game.knight.swapEquipments
+event_filter: event = 'game.knight.swapEquipments'
+description: 武将装备交换事件：玩家在两个武将(knightId1/knightId2)之间交换各自装备列表(equips1/equips2 -> newEquips1/newEquips2)，用于调整阵容配置。分析主体为 role_id(角色级)，账号粒度由 account_id 覆盖。实测 ds=20260729 单日：事件 1023 次、涉及 154 个角色、151 个账号、59 个游戏服。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightId1:
+    type: int
+    description: 武将1的id
+  knightId2:
+    type: int
+    description: 武将2的id
+  equips1:
+    type: array
+    description: 武将1原来的装备列表
+  equips2:
+    type: array
+    description: 武将2原来的装备列表
+  newEquips1:
+    type: array
+    description: 武将1新的装备列表
+  newEquips2:
+    type: array
+    description: 武将2新的装备列表53689239207249
+metrics:
+  knight_swap_equipments_cnt:
+    expression: COUNT(*)
+    description: 武将装备交换事件总次数
+  knight_swap_equipments_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发装备交换的去重角色数(分析主体=role_id)
+  knight_swap_equipments_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发装备交换的去重账号数
+  knight_swap_equipments_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及装备交换的去重游戏服数
+  knight_swap_equipments_swap_per_role:
+    expression: COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均装备交换次数(事件数/去重角色数，分母用 NULLIF 防除零)
+coverage:
+  scenarios:
+    - 武将装备交换活跃度(总次数、角色UV、账号UV、游戏服分布)
+    - 人均交换频次，识别频繁调整阵容的核心玩家
+    - 跨游戏服装备交换行为分布(系统监控/角色成长)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id(角色级)；账号级用 account_uv 佐证
+    - 未对 equips1/newEquips1 装备明细做条目级 SUM(数组型 params，需另行展开)
+    - 武将维度(knightId1/knightId2) UV 未单列指标，可后续按需补充
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=1023, role_uv=154, acc_uv=151, server_uv=59; 数量合理，确认 analyst_confirmed"
+external_refs: []

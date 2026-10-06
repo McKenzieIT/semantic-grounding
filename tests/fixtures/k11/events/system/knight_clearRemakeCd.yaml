@@ -1,0 +1,102 @@
+name: game.knight.clearRemakeCd
+event_filter: event = 'game.knight.clearRemakeCd'
+description: 记录武将继承/重置清除CD事件。玩家在武将继承/重铸流程中清除重置冷却时间时触发，每条日志记录一次清除操作及角色货币快照，含22个参数(无武将id/节点等扩展字段)。分析粒度为角色(role_id)，亦可经account_id聚合至账号维度。scout实测 ds=20260729 与 ds=20260728：双日零命中(cnt=0,role_uv=0,acc_uv=0,server_uv=0)，疑似事件已下线或当前周期未触发。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 与 ds=20260728：双日零命中(cnt=0, role_uv=0, acc_uv=0, server_uv=0)，事件疑似下线/未触发，暂置 draft
+metrics:
+  knight_clear_remake_cd_cnt:
+    expression: COUNT(*)
+    description: 武将继承清除CD事件总触发次数
+  knight_clear_remake_cd_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发清除CD的去重角色数
+  knight_clear_remake_cd_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发清除CD的去重账号数
+  knight_clear_remake_cd_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发清除CD的去重游戏服数
+coverage:
+  scenarios:
+    - 武将继承清除CD事件的日志命中情况与角色/账号/游戏服覆盖度核查
+    - 清除重置CD操作的角色维度触发规模统计(当前实测为0，需运营侧确认事件是否在线)
+  limitations:
+    - 仅 ds=20260729 与 ds=20260728 双日 scout 实测，未做全量复核
+    - 双日均零命中，事件可能已下线或当前周期未触发，指标值预期为0；建议复核事件埋点状态
+    - 分析粒度默认 role_id；同账号多角色需在用数侧自行去重
+    - 货币(coinList)、战力(roleForce)等参数字段未纳入指标定义，用数侧可按需扩展
+coverage_status: draft
+external_refs: []

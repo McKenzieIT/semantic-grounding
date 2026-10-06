@@ -1,0 +1,63 @@
+table_name: dim_10000251_trans_main_task_df_arch
+engine: maxcompute
+table_comment: '主线任务配置维度表（按 ds 分区的全量快照存档）。每行为主线任务的一个配置项，含任务id、章节、显示顺序、章节名、任务内容、任务内容类型。'
+kind: dim
+primary_key:
+- id
+primary_key_unique: false
+label_columns:
+- chapter_name
+- desc
+description: '主线任务配置维度表（dim_10000251_trans_main_task_df_arch）。IEU_CDM 中的主线任务(main_task)配置存档，按 ds 分区的每日全量快照。每行对应一个主线任务配置项：id 为任务唯一标识，chapter/order 标识所属章节与显示顺序，chapter_name 为章节名，desc 为任务内容描述，type_desc 为任务内容类型（如主线通关、日常副本）。作为任务维度表供事实表通过 task_id 关联查询任务属性。'
+domains:
+- 系统监控
+granularity: 每 主线任务配置项（按 ds 快照）一行 的配置/维度表
+columns:
+- name: id
+  type: string
+  comment: 任务id
+  role: dimension
+- name: chapter
+  type: string
+  comment: 任务章节
+  role: dimension
+- name: order
+  type: string
+  comment: 任务显示顺序
+  role: dimension
+- name: chapter_name
+  type: string
+  comment: 章节名
+  role: dimension
+- name: desc
+  type: string
+  comment: 任务内容
+  role: dimension
+- name: type_desc
+  type: string
+  comment: 任务内容类型
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+coverage:
+  scenarios:
+  - 事实表（如主线任务完成事件、任务进度 dws 表）通过 task_id 关联本表，查询任务所属章节(chapter/chapter_name)、显示顺序(order)、任务内容(desc)、任务内容类型(type_desc)。
+  - 按章节(chapter)聚合统计各章节任务数量与类型分布。
+  - 按任务内容类型(type_desc)分析主线/日常副本等任务类型构成。
+  - 通过 ds 快照对比同一任务在不同日期的配置变化（缓慢变化维度场景）。
+  limitations:
+  - 配置类维度表，无值度量（measure），仅提供任务属性键值与文本标签。
+  - 表为按 ds 分区的每日全量快照存档，同一任务 id 在不同 ds 下重复存在；primary_key[id] 跨全表不唯一（实测 r=103173 vs DISTINCT id=392），跨快照查询需限定 ds 或取最新分区。复合键 (id, ds) 跨全表唯一（实测 r=d=103173）。
+  - chapter/order 字段为字符串编码（如 chapter="10"），数值排序或层级展开需二次处理。
+  - desc/chapter_name 为中文长文本，聚合时建议先做分组或截断。
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'dim 配置维度表建模：primary_key[id]（meta describe 标注 + 自然任务唯一标识）；primary_key_unique=false 因跨 ds 快照不唯一，故保持 draft。label_columns=[chapter_name, desc] 为人类可读章节名与任务内容。未达 analyst_confirmed。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含所有 ds 快照）

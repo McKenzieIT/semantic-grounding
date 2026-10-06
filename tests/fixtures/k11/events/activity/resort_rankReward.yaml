@@ -1,0 +1,113 @@
+name: game.resort.rankReward
+event_filter: event = 'game.resort.rankReward'
+description: 代打-头衔奖励：角色头衔(rank)结算事件，记录 startRank→endRank 头衔段位变更及发放的关键货币(免费钻石 freegold 等)。分析粒度为 role_id(角色)。ds=20260729 scout 实测 cnt=11/role_uv=11/acc_uv=11/server_uv=6。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  startRank:
+    type: int
+    description: 开始头衔
+  endRank:
+    type: int
+    description: 结束头衔
+metrics:
+  resort_rank_reward_cnt:
+    expression: COUNT(*)
+    description: 头衔奖励结算事件总次数
+  resort_rank_reward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发头衔奖励的去重角色数
+  resort_rank_reward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发头衔奖励的去重账号数
+  resort_rank_reward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发头衔奖励的去重游戏服数
+  resort_rank_reward_rankup_cnt:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params,'$.endRank') AS BIGINT) > CAST(GET_JSON_OBJECT(params,'$.startRank') AS BIGINT) THEN 1 ELSE 0 END)
+    description: 头衔段位提升(endRank>startRank)的结算次数
+  resort_rank_reward_freegold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.coinList.freegold') AS BIGINT))
+    description: 通过头衔奖励发放的免费钻石总量
+coverage:
+  scenarios:
+    - 头衔奖励事件每日触发规模(次数/角色UV/账号UV/服务器UV)
+    - 头衔段位提升次数(rankup)及免费钻石发放总量
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析粒度默认 role_id(角色)；startRank/endRank/coinList.freegold 字段实测可解析
+    - gold(充值钻石)样本值为0、diamond(紫金)样本为 null，未计入货币指标
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=11, role_uv=11, acc_uv=11, server_uv=6；样本 startRank/endRank/freegold 可解析"
+coverage_status: analyst_confirmed
+external_refs: []

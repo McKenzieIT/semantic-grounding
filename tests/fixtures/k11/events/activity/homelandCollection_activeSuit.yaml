@@ -1,0 +1,105 @@
+name: game.homelandCollection.activeSuit
+event_filter: event = 'game.homelandCollection.activeSuit'
+description: 家园藏品-套装激活：玩家在家园藏品系统中激活一个套装(suitId)时触发的行为日志，记录激活主体角色与被激活套装标识。分析主体为 role_id（角色粒度），account_id 为账号粒度补充。ds=20260729 实测：cnt=864, role_uv=727, acc_uv=715, server_uv=76。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  suitId:
+    type: int
+    description: 套装id
+metrics:
+  game_homelandCollection_activeSuit_cnt:
+    expression: COUNT(*)
+    description: 家园藏品套装激活事件总记录数
+  game_homelandCollection_activeSuit_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 激活家园藏品套装的角色数（去重）
+  game_homelandCollection_activeSuit_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 激活家园藏品套装的账号数（去重）
+  game_homelandCollection_activeSuit_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及家园藏品套装激活的游戏服数量（去重）
+coverage:
+  scenarios:
+    - 家园藏品套装激活参与度与活跃度（cnt / role_uv / account_uv / server_uv）
+    - 套装激活跨服分布与活跃服数（server_uv）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度）；account_id 可作账号粒度补充
+    - suitId 套装标识枚举未抽样核对，仅统计事件总量与去重主体
+  granularity: role_id
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 实测 ds=20260729：cnt=864, role_uv=727, acc_uv=715, server_uv=76。事件+ds 过滤命中且数值合理。
+coverage_status: analyst_confirmed
+external_refs: []

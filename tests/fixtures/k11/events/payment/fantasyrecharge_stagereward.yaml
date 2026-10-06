@@ -1,0 +1,122 @@
+name: game.fantasyrecharge.stagereward
+event_filter: event = 'game.fantasyrecharge.stagereward'
+description: |-
+  幻想服充值-领取阶段奖励：幻想服角色达成充值阶段目标后领取阶段奖励(stage)的事件，奖励以关键货币(coinList: 充值钻石/赠送钻石/免费钻石/紫金/经验卷轴/体力)发放。主体粒度为角色(role_id)，记录每次阶段奖励领取行为。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个。scout 实测 ds=20260729: cnt=110/role_uv=78/acc_uv=76/server_uv=6
+domains:
+  - 付费经济
+domain: payment
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  stage:
+    type: int
+    description: 阶段id
+metrics:
+  fantasyrecharge_stagereward_cnt:
+    expression: COUNT(*)
+    description: 阶段奖励领取事件触发次数(每次 stage 阶段奖励领取记1条)
+  fantasyrecharge_stagereward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取阶段奖励的独立角色数(去重 role_id；主体粒度为角色)
+  fantasyrecharge_stagereward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取阶段奖励的独立账号数(去重 account_id)
+  fantasyrecharge_stagereward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的区服数(去重 server_id，反映活动覆盖面)
+  fantasyrecharge_stagereward_stage_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.stage'))
+    description: 涉及的阶段id数(去重 stage；反映已被领取的阶段档位覆盖)
+  fantasyrecharge_stagereward_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 充值钻石发放总额(coinList.gold 求和；ds=20260729 scout 实测 sum=8，阶段奖励以小额钻石为主)
+  fantasyrecharge_stagereward_sendgold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.sendgold') AS BIGINT))
+    description: 充值赠送钻石发放总额(coinList.sendgold 求和；ds=20260729 scout 实测 sum=0)
+  fantasyrecharge_stagereward_role_per_account:
+    expression: COUNT(DISTINCT role_id) / NULLIF(COUNT(DISTINCT account_id), 0)
+    description: 平均每账号领取角色数(独立角色/独立账号；衡量多角色账号占比)
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=110/role_uv=78/acc_uv=76/server_uv=6；coinList.gold sum=8、coinList.sendgold sum=0；数字合理(非零、多角色多区服)"
+coverage:
+  scenarios:
+    - 幻想服充值阶段奖励领取规模(fantasyrecharge_stagereward_cnt / _role_uv / _account_uv)
+    - 活动覆盖面与阶段档位(_server_uv 区服数、_stage_uv 已领取阶段数)
+    - 阶段奖励货币发放量(_gold_sum 充值钻石、_sendgold_sum 赠送钻石)
+    - 多角色账号占比(_role_per_account)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测(cnt=110/role_uv=78/acc_uv=76)，未做全量多日复核，建议接入生产流量前抽查
+    - 主体粒度默认 role_id 未逐事件实测角色归属正确性，按 base view 同时含 account_id+role_id 推断为角色级
+    - coinList.gold/sendgold 实测值偏低(sum=8/0)，疑似阶段奖励以其他货币(freegold/diamond/energy)为主或仅低档阶段触发，未逐字段拆解各货币占比
+    - stage(阶段id) 仅做 COUNT(DISTINCT) 实测，未枚举各档业务含义(需配置表/产品确认)
+    - 本游戏无 MaxCompute 事件分布查询，无 daily_count/total_count/active_days
+  coverage_status: analyst_confirmed
+external_refs: []

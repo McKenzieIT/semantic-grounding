@@ -1,0 +1,121 @@
+name: game.social.friendgift
+event_filter: event = 'game.social.friendgift'
+description: 好友送礼事件：记录玩家间好友赠礼/收礼行为，action 区分单次赠礼(1)、一键赠礼(2)、一键收礼(3)。分析主体为 role_id。实测 ds=20260729 单日 cnt=13492 / role_uv=2918 / acc_uv=2778 / server_uv=311。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  action:
+    type: int
+    description: 行为类型，1-赠礼 2-一键赠礼 3-一键收礼
+metrics:
+  friendgift_cnt:
+    expression: COUNT(*)
+    description: 好友送礼事件总次数
+  friendgift_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与好友送礼的角色数（去重）
+  friendgift_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与好友送礼的账号数（去重）
+  friendgift_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 覆盖的服务器数（去重）
+  friendgift_send_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action')='1' THEN 1 ELSE 0 END)
+    description: 单次赠礼（action=1）事件次数
+  friendgift_oneclick_send_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action')='2' THEN 1 ELSE 0 END)
+    description: 一键赠礼（action=2）事件次数
+  friendgift_oneclick_recv_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action')='3' THEN 1 ELSE 0 END)
+    description: 一键收礼（action=3）事件次数
+  friendgift_send_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN GET_JSON_OBJECT(params,'$.action')='1' THEN role_id END)
+    description: 单次赠礼参与角色数（去重）
+  friendgift_avg_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均赠收礼事件次数
+coverage:
+  scenarios:
+    - 好友社交活跃度：赠礼/收礼事件总量与参与角色、账号、服务器数
+    - 赠礼行为结构：单次赠礼(action=1)、一键赠礼(action=2)、一键收礼(action=3)分布
+    - 人均赠收礼频次：总事件数 / 参与角色数
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（社交行为以角色为粒度）
+    - coinList 货币变动字段未在本次实测中验证（仅验证 action 维度）
+  subject_granularity: role_id
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "实测 ds=20260729: cnt=13492 / role_uv=2918 / acc_uv=2778 / server_uv=311；action 分布 1(赠礼)=232/107uv、2(一键赠礼)=5047/2836uv、3(一键收礼)=8213/2766uv，数据合理"
+external_refs: []

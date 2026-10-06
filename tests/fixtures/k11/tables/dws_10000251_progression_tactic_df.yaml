@@ -1,0 +1,81 @@
+table_name: dws_10000251_progression_tactic_df
+engine: maxcompute
+table_comment: 风物培养状态总表
+description: |-
+  角色风物培养状态日全量快照。粒度为角色(role_id)+风物(tactic_id)，记录每个角色已获风物的当前星级、首次获取时间与最近培养时间。主体类型：角色(user_type=3，按表名推断；表内无 user_type 列，未做实例值校验)。
+  粒度：日全量快照(_df)，主体=角色(role_id)。
+  主要字段：role_id, tactic_id, star, act_tm_fst, act_tm_lst, ds。
+domains:
+  - 角色成长
+  - 探索收集
+granularity: 日全量快照(_df)，主体=角色(role_id)
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: tactic_id
+    type: bigint
+    comment: 风物ID
+    role: dimension
+  - name: star
+    type: bigint
+    comment: 星级
+    role: measure
+  - name: act_tm_fst
+    type: datetime
+    comment: 获取时间
+    role: attribute
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近培养时间
+    role: attribute
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  tactic_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 拥有任一风物培养记录的去重角色数(_df 快照，按 ds 分区)
+  tactic_records:
+    expression: COUNT(*)
+    description: 角色×风物记录总数(_df 快照)，即当日角色风物培养对数
+  total_stars:
+    expression: SUM(star)
+    description: 全部角色风物星级之和(_df 快照)，衡量培养总进度
+  avg_star_per_record:
+    expression: SUM(star) / NULLIF(COUNT(*), 0)
+    description: 每条角色风物记录的平均星级(_df 快照)
+  max_star:
+    expression: MAX(star)
+    description: 当日快照中最高风物星级，反映头部培养上限
+coverage:
+  scenarios:
+    - 监控全服角色风物培养覆盖度(tactic_uv)与培养总进度(total_stars)
+    - 评估角色风物平均培养深度(avg_star_per_record)与头部上限(max_star)
+    - 按 ds 观察角色风物培养记录规模(tactic_records)的日级趋势
+  limitations:
+    - 仅在 maxc 实测了最新分区(ds=20260730)的核心聚合，未做全量历史分区复核
+    - 主体角色(user_type=3)按表名推断，表内无 user_type 列，未做实例值校验
+    - _df 为日全量快照，跨 ds 直接 SUM 会重复累计角色×风物记录，趋势比较需固定单分区或用去重口径
+    - 缺失风物维表 JOIN，tactic_id 仅作 ID 维度，无法下钻风物名称/类别
+    - act_tm_fst/act_tm_lst 为时间戳属性，未纳入聚合度量，仅可作筛选/分组
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已在 maxc 对最新分区 ds=20260730 实测 4 项核心聚合(tactic_uv=607698, tactic_records=9159021, total_stars=16738144, avg_star=1.83)，数值合理；角色主体按表名推断(无 user_type 列)，仅抽样验证。
+dimension_refs:
+  - dim_table: dim_10000251_tactic_info
+    join_keys:
+      - dws_column: tactic_id
+        dim_column: tactic_id
+    derivation: DWS column tactic_id (comment 风物ID) is an exact-name foreign key to dim_10000251_tactic_info primary key tactic_id, whose description states it is a 风物(tactic)配置维度表 joined by tactic_id for 风物 attribute lookup.
+    origin: deterministic
+pref_label: 风物培养总表
+alt_labels:
+  - 风物
+  - 培养
+  - 养成
+  - 战术

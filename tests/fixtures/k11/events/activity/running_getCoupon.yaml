@@ -1,0 +1,130 @@
+name: game.running.getCoupon
+event_filter: event = 'game.running.getCoupon'
+description: "赛马（running）玩法每日奖券领取事件：玩家在赛马玩法中领取每日奖券时上报，记录领取行为本身、领取角色画像（等级/VIP/战力/经验）及领取后货币快照(coinList)与奖励列表(rewards: type/value/size/uid)。事件名 game.running.getCoupon，分析主体粒度为 role_id（领取奖券的角色）。scout 实测 ds=20260729/20260728 均零命中(cnt=0)，事件疑似下线或当前未触发，无可用数据。"
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  rewards:
+    type: array
+    description: rewards
+  rewards.type:
+    type: int
+    description: 类型
+  rewards.value:
+    type: int
+    description: 值
+  rewards.size:
+    type: int
+    description: 数量
+  rewards.uid:
+    type: int
+    description: 唯一id
+metrics:
+  running_getCoupon_cnt:
+    expression: COUNT(*)
+    description: 赛马每日奖券领取事件总次数（每次领取计一次）
+  running_getCoupon_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取赛马每日奖券的去重角色数
+  running_getCoupon_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取赛马每日奖券的去重账号数
+  running_getCoupon_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取赛马每日奖券的去重游戏服数
+  running_getCoupon_claims_per_role:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 每个领取角色的平均领取次数（>1 表示同一角色当日多次领取）
+  running_getCoupon_role_level_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS BIGINT))
+    description: 领取角色的平均角色等级
+  running_getCoupon_vip_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.vipLevel') AS BIGINT))
+    description: 领取角色的平均 VIP 等级
+  running_getCoupon_role_force_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleForce') AS BIGINT))
+    description: 领取角色的平均战力
+coverage:
+  granularity: 单次奖券领取事件（role_id 为默认主体粒度）
+  scenarios:
+    - 赛马每日奖券领取的参与规模（次数/角色UV/账号UV/服务器UV）
+    - 不同 VIP/等级/战力玩家领取奖券的画像分布
+    - 单日重复领取行为识别（claims_per_role > 1 提示同角色当日多次领取）
+  limitations:
+    - 日志中零命中(ds=20260729/20260728 cnt=0)，疑似下线/未触发
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认主体粒度为 role_id，未逐事件实测 role_id 是否为最细主体
+    - rewards 为数组(type/value/size/uid)，SUM 需 explode(UDDTF)，未纳入单值指标
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 cnt=0 / role_uv=0 / acc_uv=0；ds=20260728 重试 cnt=0；事件零命中，疑似下线/未触发，保持 draft
+external_refs: []

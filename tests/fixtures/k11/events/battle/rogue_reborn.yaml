@@ -1,0 +1,112 @@
+name: game.rogue.reborn
+event_filter: event = 'game.rogue.reborn'
+description: "古战场(battlefield)角色复活事件，记录角色在古战场战斗中被击败后复活的时刻，携带角色基础属性(等级、战力、VIP、经验)与货币快照(coinList)。分析主体为角色(role_id)，反映复活行为规模与角色属性分布。实测 ds=20260729: cnt=3, role_uv=2, acc_uv=2, server_uv=2。"
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightList:
+    type: array
+    description: 武将id列表
+metrics:
+  game_rogue_reborn_cnt:
+    expression: COUNT(*)
+    description: 古战场复活事件总次数（事件记录数）
+  game_rogue_reborn_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发复活的去重角色数（分析主体为 role_id）
+  game_rogue_reborn_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发复活的去重账号数
+  game_rogue_reborn_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及复活行为的服务器数量
+  game_rogue_reborn_role_force_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.roleForce') AS BIGINT))
+    description: 复活时角色战力(roleForce)累计值
+  game_rogue_reborn_role_level_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params,'$.roleLevel') AS BIGINT))
+    description: 复活时角色等级(roleLevel)平均值
+coverage:
+  scenarios:
+    - 古战场战斗复活行为规模(总次数、角色/账号 UV、服务器覆盖)
+    - 复活时角色战力与等级分布，刻画触发复活的玩家画像
+    - 跨服务器复活热度对比（server_uv 与单服 cnt）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认为 role_id（角色粒度），如需账号粒度请使用 account_uv 指标
+    - 单日样本量较小(cnt=3, role_uv=2)，指标分布不代表长期趋势
+    - 未对 coinList 货币快照与 knightList 武将列表做聚合，如需请联系分析师补充
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=3, role_uv=2, acc_uv=2, server_uv=2，事件真实触发且数量合理"
+coverage_status: analyst_confirmed
+external_refs: []

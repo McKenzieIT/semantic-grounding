@@ -1,0 +1,116 @@
+name: game.equip.onekeyWear
+event_filter: event = 'game.equip.onekeyWear'
+description: |-
+  装备-一键穿戴：玩家使用一键穿戴功能将批量装备(uids)穿戴到武将(knightId)上时触发。每次一键穿戴记一条日志，携带目标武将id与被穿戴装备uid列表及角色/账号/区服上下文(roleLevel/vipLevel/roleForce等)，用于衡量装备穿戴活跃度、武将装备覆盖广度与穿戴玩家画像。主体粒度为角色(role_id)。scout 实测 ds=20260729 触发 16792 次、独立角色 1786、独立账号 1708、区服 214、武将 60。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个
+domains:
+  - 装备道具
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  uids:
+    type: array
+    description: 装备uid列表
+  knightId:
+    type: int
+    description: 武将id
+metrics:
+  equip_onekeyWear_cnt:
+    expression: COUNT(*)
+    description: 一键穿戴事件触发次数(每次一键穿戴记1条)
+  equip_onekeyWear_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 一键穿戴装备的独立角色数(去重 role_id；主体粒度为角色 user_type=3)
+  equip_onekeyWear_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 一键穿戴装备的独立账号数(去重 account_id)
+  equip_onekeyWear_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 发生一键穿戴的区服数(去重 server_id，反映穿戴功能覆盖面)
+  equip_onekeyWear_knight_uv:
+    expression: COUNT(DISTINCT CAST(GET_JSON_OBJECT(params, '$.knightId') AS BIGINT))
+    description: 被穿戴装备涉及的独立武将数(去重 knightId；事件特有维度，scout 实测 60 个)
+  equip_onekeyWear_role_per_server_ratio:
+    expression: ROUND(CAST(COUNT(DISTINCT role_id) AS DOUBLE) / NULLIF(COUNT(DISTINCT server_id), 0), 2)
+    description: 平均每区服一键穿戴角色数(角色UV/区服UV；衡量区服集中度)
+coverage:
+  scenarios:
+    - 一键穿戴参与规模(equip_onekeyWear_cnt / equip_onekeyWear_role_uv / equip_onekeyWear_account_uv)
+    - 穿戴功能覆盖面(equip_onekeyWear_server_uv 区服数、equip_onekeyWear_knight_uv 武将数)
+    - 区服集中度(equip_onekeyWear_role_per_server_ratio)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测(cnt=16792/role_uv=1786/acc_uv=1708)，未做全量多日复核
+    - 主体粒度默认 role_id 未逐事件实测角色归属正确性，按 base view 同时含 account_id+role_id 推断为角色级(user_type=3)
+    - knightId 仅做 COUNT(DISTINCT) 实测(knight_uv=60)，未枚举各武将业务含义(需配置表/产品确认)
+    - uids(穿戴装备列表)为数组，GET_JSON_OBJECT 返回 STRING 无法直接 SIZE，未构建单次穿戴件数指标
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+external_refs: []

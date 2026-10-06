@@ -1,0 +1,113 @@
+name: game.team.setTeamName
+event_filter: event = 'game.team.setTeamName'
+description: |-
+  设置阵容名字：玩家为某个阵容(team)设置/修改名称时触发，记录阵容 id、名称及改名时刻。分析主体为 role_id（角色），可下钻至 account_id、server_id、teamId。
+  scout 实测 ds=20260729 单日：cnt=90、role_uv=52、acc_uv=51、server_uv=33。参数含游戏服、账号、角色基础属性、货币列表(coinList)、阵容 id/名称等 24 个字段。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  teamId:
+    type: int
+    description: 阵容id
+  teamName:
+    type: string
+    description: 阵容名称
+metrics:
+  game_team_setTeamName_cnt:
+    expression: COUNT(*)
+    description: 阵容命名事件总次数（每次设置/改名计一次）
+  game_team_setTeamName_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发命名操作的去重角色数
+  game_team_setTeamName_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发命名操作的去重账号数
+  game_team_setTeamName_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发命名操作的去重游戏服数
+  game_team_setTeamName_team_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.teamId'))
+    description: 被命名的去重阵容数（按 teamId）
+coverage:
+  scenarios:
+    - 阵容命名活跃度：cnt/role_uv/account_uv 回答"每日有多少玩家在编辑阵容名字"
+    - 命名覆盖广度：server_uv/team_uv 回答"覆盖多少服、多少阵容被命名"
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id；如需账号级汇总请改用 account_uv
+    - teamId 来自 params JSON，单日内去重，同一阵容跨日多次改名会被计为多次事件
+    - coinList 等货币字段为快照余额，非本次操作流水，不宜直接累加
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=90、role_uv=52、acc_uv=51、server_uv=33，数值合理
+coverage_status: analyst_confirmed
+external_refs: []

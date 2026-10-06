@@ -1,0 +1,61 @@
+table_name: dim_10000251_trans_equipment_df
+engine: maxcompute
+kind: dim
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+table_comment: '装备配置维度表（日全量快照），每行一条装备配置记录，含品质/套装/阶数/部位等装备属性。'
+description: '装备配置维度表（日全量快照 _df）：源自装备配置主数据，每行一条装备配置记录。
+  主键 id（装备id），标签 name（装备名称）。属性列含 quality（品质）、suit（所属套装）、level（阶数）、part（部位类型）、remark（备注）。
+  用于通过 JOIN 为事实表提供装备维度属性查询（装备名称、品质、套装、部位等）。'
+domains:
+- 装备道具
+granularity: '每条装备配置一行的维度/配置表（日全量快照 _df）'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 通过 id JOIN 事实表，查询装备名称/品质/套装/部位等维度属性
+  - 装备品质、套装、阶数、部位的分组聚合与筛选
+  limitations:
+  - 配置类维度表，无值度量（quality 为品质编码，非度量值）
+  - 日全量快照，同日多次刷新会覆盖；查询时建议取最新分区
+  - level/part/suit 为编码串，需要时配合其他配置表二次解码
+columns:
+- name: id
+  type: string
+  comment: 装备id
+  role: dimension
+- name: name
+  type: string
+  comment: 装备名称
+  role: dimension
+- name: quality
+  type: bigint
+  comment: 品质
+  role: dimension
+- name: remark
+  type: string
+  comment: 备注
+  role: dimension
+- name: suit
+  type: string
+  comment: 所属套装
+  role: dimension
+- name: level
+  type: string
+  comment: 阶数
+  role: dimension
+- name: part
+  type: string
+  comment: 部位类型
+  role: dimension
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '基于 meta describe 真实列建模；唯一性实测通过（r=d=245）；status=draft 待业务确认。'

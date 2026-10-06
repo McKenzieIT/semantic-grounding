@@ -1,0 +1,110 @@
+name: game.knightMap.onekeyLevelup
+event_filter: event = 'game.knightMap.onekeyLevelup'
+description: 武将云图一键升级事件：玩家在武将云图系统中使用一键升级功能批量提升武将等级，记录本次修改的武将及到达等级(knight2lvl 数组)。主体粒度为 role_id（角色），同时携带 account_id/server_id/os_id 等维度。ds=20260729 单日实测 cnt=905、role_uv=476、acc_uv=473、server_uv=234。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knight2lvl:
+    type: array
+    description: 本次有修改的武将以及对应到达等级
+  knight2lvl.key:
+    type: int
+    description: knight2lvl.key
+  knight2lvl.value:
+    type: int
+    description: knight2lvl.value
+metrics:
+  game_knightmap_onekeylevelup_cnt:
+    expression: COUNT(*)
+    description: 武将云图一键升级事件总触发次数
+  game_knightmap_onekeylevelup_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发一键升级的去重角色数（主体粒度 role_id）
+  game_knightmap_onekeylevelup_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发一键升级的去重账号数
+  game_knightmap_onekeylevelup_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发一键升级的去重游戏服数
+coverage:
+  scenarios:
+    - 武将云图系统使用热度（事件触发次数、角色/账号/服 UV）
+    - 一键升级功能渗透度（参与角色数占比）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认主体粒度为 role_id
+    - knight2lvl 为数组，未在指标中展开统计单个武将升级次数
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 实测 cnt=905 role_uv=476 acc_uv=473 server_uv=234，数值合理
+  coverage_status: analyst_confirmed
+external_refs: []

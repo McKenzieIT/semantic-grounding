@@ -1,0 +1,107 @@
+name: game.yanwu.reward
+event_filter: event = 'game.yanwu.reward'
+description: 演武场(竞技场)奖励领取事件：角色在演武场对战中领取奖励时上报，携带赛季(season)、对手索引(oppoIdx)、角色战力(roleForce)、经验(exp)及各货币余额(coinList)等参数。分析主体为 role_id（角色级事件）。scout 实测 ds=20260729/20260728 均零命中(cnt=0)，事件疑似下线或尚未触发，未测得真实量。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  season:
+    type: int
+    description: 赛季
+  oppoIdx:
+    type: int
+    description: 玩家索引
+metrics:
+  game_yanwu_reward_cnt:
+    expression: COUNT(*)
+    description: 演武场领取奖励事件总次数
+  game_yanwu_reward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取奖励的去重角色数（分析主体：role_id）
+  game_yanwu_reward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取奖励的去重账号数
+  game_yanwu_reward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取奖励涉及的去重游戏服数
+coverage:
+  scenarios:
+    - 演武场奖励领取的活跃度与参与规模（次数/角色UV/账号UV/游戏服数）
+    - 结合 season/oppoIdx 分析赛季内各对手位的奖励领取分布
+  limitations:
+    - 日志中零命中(ds=20260729/20260728，cnt=0/role_uv=0/acc_uv=0/server_uv=0)，疑似下线/未触发，无法实测真实量
+    - 仅 scout 单日探测，未做全量复核；事件确认触发后需补充多日实测
+    - 默认分析主体为 role_id（角色级事件），尚未通过实测验证
+coverage_status: draft
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 与 ds=20260728 均零命中(cnt=0/role_uv=0/acc_uv=0/server_uv=0)，事件疑似下线或未触发，保持 draft
+external_refs: []

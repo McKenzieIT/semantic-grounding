@@ -1,0 +1,73 @@
+table_name: dim_10000251_trans_knight_fate_info_arch
+engine: maxcompute
+kind: dim
+table_comment: '武将缘分配置归档维度表（按 ds 分区每日快照）。记录每个缘分ID对应的武将组合、缘分名称、一级/二级效果人数与技能ID、技能类型。'
+description: '武将缘分（fate）配置归档维度表。每行描述一个缘分ID在一日快照下的配置：触发该缘分所需的武将ID集合（knight_id，下划线分隔的复合编码串）、缘分名称、一级/二级效果达成所需人数与对应技能ID及技能效果类型。作为缘分维度表，供事务事实表通过 fate_id JOIN 查询缘分的名称、武将组合、效果阈值与技能映射。'
+primary_key:
+- fate_id
+primary_key_unique: false
+label_columns:
+- fate_name
+domains:
+- 角色成长
+granularity: '每个 ds 分区下每条缘分配置一行（全表 fate_id 跨分区重复：39 个 fate_id × 多日快照 = 12292 行）'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含全部分区快照）
+columns:
+- name: fate_id
+  type: string
+  comment: 缘分ID
+  role: dimension
+- name: knight_id
+  type: string
+  comment: 包含武将ID
+  role: dimension
+- name: character_name
+  type: string
+  comment: 未上线角色名称
+  role: dimension
+- name: fate_name
+  type: string
+  comment: 缘分名称
+  role: dimension
+- name: level1_num
+  type: string
+  comment: 一级效果人数
+  role: dimension
+- name: level1_skill
+  type: string
+  comment: 一级效果
+  role: dimension
+- name: level2_num
+  type: string
+  comment: 二级效果人数
+  role: dimension
+- name: level2_skill
+  type: string
+  comment: 二级效果
+  role: dimension
+- name: skill_type
+  type: string
+  comment: 技能效果类型（对一级二级同时生效）
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+coverage:
+  scenarios:
+  - 事务事实表通过 fate_id JOIN 本表，查询该缘分对应的武将组合（knight_id）、缘分名称（fate_name）及一/二级效果阈值与技能ID
+  - 分析武将缘分激活条件：依据 level1_num/level2_num 阈值与 level1_skill/level2_skill 技能ID解读缘分分级效果
+  - 按 skill_type 汇总缘分技能效果类型分布
+  limitations:
+  - 配置类维度表，无值度量（level1_num/level2_num 为效果人数阈值字符串，非可加度量）
+  - knight_id 为下划线分隔的复合武将ID串（如 1003_1011_3010），需二次拆分解码才能关联武将维度表
+  - fate_id 全表非唯一（primary_key_unique=false）：归档表按 ds 分区保留多日快照，39 个 fate_id 跨 12292 行重复；按日查询需配合 ds 分区过滤
+  - character_name 字段在样本中多为空，依赖上游填充，可能不全
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 meta describe 真实列与 COUNT(*)/COUNT(DISTINCT fate_id) 实测（r=12292, d=39）建模；fate_id 为自然配置主键但跨分区重复故 unique=false，保持 draft。'

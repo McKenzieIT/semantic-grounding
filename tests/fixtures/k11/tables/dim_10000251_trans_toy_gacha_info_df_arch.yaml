@@ -1,0 +1,152 @@
+table_name: dim_10000251_trans_toy_gacha_info_df_arch
+engine: maxcompute
+table_comment: '卡池配置维度表（按日归档）：每行对应某 ds 快照下的一个卡池配置，主键 (id, ds)'
+kind: dim
+primary_key:
+- id
+- ds
+primary_key_unique: true
+label_columns:
+- name
+description: '卡池（抽卡池）配置维度表，按日归档（df_arch）。每行对应某 ds 快照下的一个卡池配置记录，包含卡池ID、名称、所属组、解锁规则、消耗、掉落与保底规则、开放/关闭时间、概率说明等属性。主键 (id, ds) 经实测唯一（r=d=7390）。用于事实表（如抽卡流水）按卡池维度查找配置属性。'
+domains:
+- 探索收集
+granularity: '每 (卡池ID, ds 快照) 一行的卡池配置维度表'
+columns:
+- name: id
+  type: string
+  comment: 卡池ID
+  role: dimension
+- name: directions
+  type: string
+  comment: 卡池备注
+  role: dimension
+- name: name
+  type: string
+  comment: 卡池名称
+  role: dimension
+- name: group_name
+  type: string
+  comment: 卡池组名称
+  role: dimension
+- name: group_bg
+  type: string
+  comment: 卡池组背景
+  role: dimension
+- name: group
+  type: string
+  comment: 卡池组
+  role: dimension
+- name: exchange_id
+  type: string
+  comment: exchange_id
+  role: dimension
+- name: function_id
+  type: string
+  comment: 解锁规则
+  role: dimension
+- name: gacha_type
+  type: string
+  comment: 卡池类型
+  role: dimension
+- name: cost
+  type: string
+  comment: 单抽消耗
+  role: dimension
+- name: gacha_multi_num
+  type: string
+  comment: 默认多抽次数
+  role: dimension
+- name: cost_resource
+  type: string
+  comment: 单抽消耗资源数
+  role: dimension
+- name: gacha_star_drop_id
+  type: string
+  comment: 不同品质掉落编号
+  role: dimension
+- name: gacha_star_weight
+  type: string
+  comment: 不同品质掉落权重
+  role: dimension
+- name: gacha_grade_guarantee
+  type: string
+  comment: 按品质保底
+  role: dimension
+- name: gacha_guarantee_group
+  type: string
+  comment: 卡池保底组
+  role: dimension
+- name: up_gacha_reward
+  type: string
+  comment: up池购买资源
+  role: dimension
+- name: open_time
+  type: string
+  comment: 卡池开放时间
+  role: dimension
+- name: close_time
+  type: string
+  comment: 卡池关闭时间
+  role: dimension
+- name: guarantee_maxmum
+  type: string
+  comment: 奖励限制
+  role: dimension
+- name: display_weight
+  type: string
+  comment: 品质显示
+  role: dimension
+- name: node_name
+  type: string
+  comment: 卡池预览
+  role: dimension
+- name: bg_name
+  type: string
+  comment: 卡池背景图
+  role: dimension
+- name: banner_name
+  type: string
+  comment: 卡池页签图
+  role: dimension
+- name: gacha_desc
+  type: string
+  comment: 卡池说明文本
+  role: dimension
+- name: tab_show
+  type: string
+  comment: 标签描述
+  role: dimension
+- name: drop_desc
+  type: string
+  comment: 概率说明
+  role: dimension
+- name: is_show
+  type: string
+  comment: 卡池未解锁是否展示
+  role: dimension
+- name: points
+  type: string
+  comment: 卡池积分
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+coverage:
+  scenarios:
+  - '作为卡池维度表，供抽卡流水事实表（dws/dwd 层）按 (id, ds) JOIN 查找卡池名称、组别、类型、消耗、掉落/保底规则、开放关闭时间、概率说明等配置属性'
+  - '支持按卡池类型(gacha_type)/卡池组(group)聚合统计'
+  limitations:
+  - '配置类维度表，无值度量（所有字段为 STRING 配置/编码串）'
+  - '多个字段为复合编码串（如 cost=3_90002_1|3_90001_1、gacha_star_drop_id=600001_600002_...、gacha_star_weight=170_709_...、guarantee_maxmum=10_3_600001|...），需二次解码才能用于细粒度分析'
+  - 'id 单列在跨 ds 快照下不唯一（30 个卡池 × 多日快照），主键为 (id, ds) 复合键；已实测唯一'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（跨 ds 快照）
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '初版 dim 建模：主键 (id, ds) 经实测唯一（r=d=7390）；label=name；配置类维度表，无值度量；复合编码字段需二次解码。保持 draft 待业务确认。'

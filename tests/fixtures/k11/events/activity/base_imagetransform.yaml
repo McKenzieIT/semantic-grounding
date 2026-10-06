@@ -1,0 +1,122 @@
+name: game.base.imagetransform
+event_filter: event = 'game.base.imagetransform'
+description: 看板娘形象变换事件 game.base.imagetransform：记录角色切换/变换看板娘形象及 transform 缩放坐标。主体粒度 role_id，含账号、服务器、角色等级、VIP、战力、多种货币、看板娘类型及变换坐标等29个参数。ds=20260729 单日实测 147 条事件、87 角色、41 服务器。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  curImageType:
+    type: int
+    description: 看板娘类型
+  curImage:
+    type: int
+    description: 看板娘
+  knightSkin:
+    type: int
+    description: 武将皮肤
+  transform:
+    type: json
+    description: 变换
+  transform.x:
+    type: int
+    description: x 坐标
+  transform.y:
+    type: int
+    description: y 坐标
+  transform.scale:
+    type: decimal
+    description: 缩放
+metrics:
+  game_base_imagetransform_cnt:
+    expression: COUNT(*)
+    description: 看板娘形象变换事件总次数
+  game_base_imagetransform_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发看板娘形象变换的去重角色数
+  game_base_imagetransform_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发看板娘形象变换的去重账号数
+  game_base_imagetransform_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发看板娘形象变换的去重服务器数
+coverage:
+  scenarios:
+    - 按角色/账号/服务器维度统计看板娘形象变换的触发规模与覆盖面
+    - 评估看板娘形象系统在不同服务器的活跃度分布
+  limitations:
+    - 默认主体粒度为 role_id
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 未对 transform 缩放坐标或看板娘类型分布做细分统计
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 单日实测 cnt=147, role_uv=87, acc_uv=87, server_uv=41
+  coverage_status: analyst_confirmed
+external_refs: []

@@ -1,0 +1,118 @@
+name: game.experienceMission.bonusReward
+event_filter: event = 'game.experienceMission.bonusReward'
+description: |-
+  无双历练（experienceMission）最终大奖领取埋点：玩家完成全部无双历练任务后领取最终大奖时上报，记录领奖角色、所属游戏服/账号、角色等级、VIP、战力及发放的经验经验值。 分析主体为 role_id（角色粒度，account_id 用于账号去重）。20260729 单日 scout 实测：cnt=15，role_uv=15，acc_uv=15，server_uv=9（共 9 个游戏服 15 个角色领奖，exp 累计 68800，平均角色等级 83.13）。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  theme:
+    type: int
+    description: theme
+metrics:
+  game_experience_mission_bonus_reward_cnt:
+    expression: COUNT(*)
+    description: 无双历练最终大奖领取次数（事件总上报条数，按角色/服/日维度聚合）
+  game_experience_mission_bonus_reward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取最终大奖的去重角色数（分析主体 role_id 的 UV）
+  game_experience_mission_bonus_reward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取最终大奖的去重账号数（账号粒度去重，跨多角色场景）
+  game_experience_mission_bonus_reward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发最终大奖事件的去重游戏服数
+  game_experience_mission_bonus_reward_exp_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.exp') AS BIGINT))
+    description: 通过最终大奖发放的经验总量（params.exp 字段累加）
+  game_experience_mission_bonus_reward_avg_role_level:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS BIGINT))
+    description: 领奖角色平均等级（params.roleLevel 均值，反映该终大奖的目标段位）
+  game_experience_mission_bonus_reward_exp_per_role:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.exp') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均获得经验（exp_sum / role_uv，NULLIF 防零除）
+coverage:
+  scenarios:
+    - 无双历练最终大奖领取渗透与频次：领奖角色 UV、领奖次数、人均领奖次数（cnt / role_uv）
+    - 终极奖励经验发放规模与人均产出：exp 总量与人均经验（exp_sum / role_uv）
+    - 多服覆盖广度：触发服数（server_uv）
+    - 领奖用户段位画像：平均角色等级（avg_role_level）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核（多日趋势/周同比未覆盖）
+    - 主体粒度默认 role_id；本事件每角色单日仅 1 条上报（15 条 / 15 UV），无重复领奖场景被验证
+    - coinList 内 gold/sendgold/freegold/diamond 等货币字段未纳入 metrics（本埋点定位为经验大奖，且单日样本小，货币字段语义为领取时的余额快照而非发放增量，需另行确认口径后再补 metric）
+    - theme 仅 1 个取值（单日样本），多 theme 维度切分能力未实测
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=15, role_uv=15, acc_uv=15, server_uv=9, exp_sum=68800, avg_role_level≈83.13, theme_n=1；数据规模与事件语义（无双历练终大奖领取）匹配，事件在线正常触发。仅单日 scout，未做全量复核。
+coverage_status: analyst_confirmed
+external_refs: []

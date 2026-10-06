@@ -1,0 +1,55 @@
+table_name: dim_10000251_trans_apvp_df_arch
+engine: maxcompute
+kind: dim
+table_comment: 'PvP 段位（apvp）配置维度表：定义各段位等级的名称、类型、分数下限与 cost 上限。'
+description: 'PvP 段位（apvp）配置维度表。每行对应一个段位等级（id）的名称（name）、类型（type）、段位分下限（min_score）与 cost 上限（cost_limit），按 ds 分区保存段位配置快照。用于事实表按段位等级 JOIN 查段位名称/门槛的维度 lookup。'
+primary_key:
+- id
+primary_key_unique: false
+label_columns:
+- name
+domains:
+- 系统监控
+granularity: '每 (段位等级 id × ds 分区) 一行的段位配置表'
+columns:
+- name: id
+  type: bigint
+  comment: 段位等级
+  role: dimension
+- name: name
+  type: string
+  comment: 段位名称
+  role: dimension
+- name: type
+  type: bigint
+  comment: 段位类型
+  role: dimension
+- name: min_score
+  type: bigint
+  comment: 段位分下限
+  role: dimension
+- name: cost_limit
+  type: bigint
+  comment: cost上限
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+coverage:
+  scenarios:
+  - '事实表按段位等级 id JOIN 本表查段位名称 name、段位类型 type、分数下限 min_score 与 cost 上限 cost_limit'
+  - '按 type 聚合段位分组，做段位门槛分布与 cost 上限对比的维度切片'
+  limitations:
+  - '配置类维度表，无值度量；id 全表非唯一（r=5166 vs distinct=18，按 ds 分区重复快照），primary_key_unique=false'
+  - 'JOIN 时需带 ds 分区条件以对齐段位配置快照版本，避免跨分区一对多'
+  - 'type 为编码 int，需结合业务字典二次解码段位类型语义'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '基于 maxc meta describe 真实列与 COUNT 实测（id 非唯一）；段位配置类维度，保持 draft 待业务确认'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数

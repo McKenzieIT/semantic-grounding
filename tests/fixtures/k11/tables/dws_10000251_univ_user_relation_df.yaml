@@ -1,0 +1,108 @@
+table_name: dws_10000251_univ_user_relation_df
+engine: maxcompute
+table_comment: ""
+description: |
+  通用用户关系映射日全量快照表(_df),记录用户主体之间的各类关系链路。
+  每行表示一对 source_id → target_id 在某个 relation_type 下的关系映射,每日全量快照。
+  表名不含 acc/role/dev 关键字,按列内容判定为【用户关系表】,分析主体为"关系"本身
+  (由 source_id、target_id、relation_type 三元组共同标识),而非账号/角色/设备单主体。
+  能回答的业务问题:某用户与谁建立了何种关系、各类关系类型的分布与规模、
+  关系链路追溯(如 A→B→C 的间接关系)、关系主体ID在不同 relation_type 下的归一映射、
+  社交发起/接收方活跃度(分别按 source_id/target_id 去重统计主体数)、
+  关系扩张能力(每起点平均出边数)等。
+  注意事项:source_id/target_id 的具体含义(账号ID还是角色ID)取决于 relation_type,
+  使用前需结合 relation_type 判断主体层级;ext_info 为 JSON 扩展字段,内容随关系类型变化,
+  关系建立时间、亲密度等附加属性若需结构化分析需先解析 ext_info。
+  参与社交的完整去重主体并集(同一主体既作起点又作终点)需将 source_id 与 target_id
+  UNION 后再 COUNT(DISTINCT),非单一聚合表达式可直接得出,见 metrics 与 limitations。
+domains:
+  - 社交公会
+  - 自定义
+granularity: |
+  日全量快照(_df),每条用户关系(source_id+target_id+relation_type 组合)每天一行。
+  主体类型判定:表名不含 acc/role/dev,按列内容判定为【用户关系表】;
+  分析主体=关系,标识字段=source_id + target_id + relation_type,分区键=ds。
+columns:
+  - name: relation_type
+    type: string
+    comment: 关系类型
+    role: dimension
+  - name: source_id
+    type: string
+    comment: 来源ID
+    role: dimension
+  - name: target_id
+    type: string
+    comment: 映射ID
+    role: dimension
+  - name: ext_info
+    type: string
+    comment: 扩展信息
+    role: attribute
+  - name: ds
+    type: string
+    comment: 日期分区键,格式 yyyyMMdd,表示该日全量快照日期
+    role: dimension
+metrics:
+  relation_pair_count:
+    expression: COUNT(*)
+    description: 关系对总数,即当前快照下 source_id+target_id+relation_type 组合的记录行数,衡量整体关系规模
+  distinct_source_count:
+    expression: COUNT(DISTINCT source_id)
+    description: 去重关系起点主体数,衡量主动建立关系的用户规模(社交发起方活跃度)
+  distinct_target_count:
+    expression: COUNT(DISTINCT target_id)
+    description: 去重关系终点主体数,衡量被动承接关系的用户规模(社交接收方覆盖度)
+  relation_type_distinct_count:
+    expression: COUNT(DISTINCT relation_type)
+    description: 关系类型种类数,衡量当前快照下业务关系维度的丰富度
+  avg_out_relations_per_source:
+    expression: COUNT(*)*1.0/NULLIF(COUNT(DISTINCT source_id),0)
+    description: 每个起点主体平均拥有的出边关系数,反映社交扩张能力/关系密集度,除零用 NULLIF 保护
+  relation_type_ratio:
+    expression: COUNT_IF(relation_type = '${relation_type}')*1.0/NULLIF(COUNT(*),0)
+    description: 指定 relation_type 在全部关系中的占比,需传入 relation_type 参数(代入后为合法 MaxCompute SQL),除零用 NULLIF 保护
+partitions:
+  - name: ds
+    type: string
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: |
+    数据验证通过(2026-07-30)。真实最新分区 ds=20260729(SELECT MAX(ds) 实测,当日更新)。
+    列存在性:meta describe 确认 5 列(relation_type/source_id/target_id/ext_info/ds)全部存在,
+    metrics 引用的列(COUNT(*)、COUNT(DISTINCT source_id)、COUNT(DISTINCT target_id)、
+    COUNT(DISTINCT relation_type)、COUNT_IF(relation_type=...))均引用真实列,无缺失列。
+    该表为关系表(表名不含 acc/role/dev),无 user_type 列,YAML 未声明 user_type,符合预期。
+    核心指标实测(ds=20260729):relation_pair_count=12,818,525;distinct_source_count=4,632,722;
+    distinct_target_count=4,632,723;relation_type_distinct_count=6;avg_out_relations_per_source=2.767;
+    relation_type_ratio 以 relation_type=31 代入实测=0.198(6 类 relation_type=31/13/21/12/23/32,
+    占比合计≈1.0,均落在 [0,1])。无 1.7e9 时间戳类异常值,数值量级合理。
+    粒度验证:COUNT(*)=COUNT(DISTINCT source_id,target_id,relation_type)=12,818,525,
+    即每行对应唯一关系三元组,日全量快照粒度(1 行/关系/天)成立。
+coverage:
+  coverage_status: draft
+  scenarios:
+    - 查询某用户(source_id)与哪些 target_id 建立了何种 relation_type 关系,构建其关系网
+    - 统计各 relation_type 的关系对数量与占比,了解社交关系类型分布
+    - 计算去重 source_id / target_id 主体数,分别衡量社交发起方与接收方的用户规模与覆盖度
+    - 计算每起点平均出边数(avg_out_relations_per_source),评估社交扩张能力与关系密集度
+    - 跨 relation_type 进行 source_id/target_id 归一映射,追溯同一主体在不同关系下的链路
+    - 关系链路追溯(如 A→B、B→C 的间接关系可达性分析)
+  limitations:
+    - ext_info 为 JSON 字符串,无法直接聚合,涉及亲密度/建立时间等结构化分析需先解析 JSON
+    - source_id/target_id 的主体层级(账号ID还是角色ID)需结合 relation_type 判定,不能默认按账号处理
+    - 该表为日全量快照,仅反映当日关系状态,无法还原历史时点关系建立/断裂的时间序列
+    - 不含关系删除或断裂事件,无法分析关系流失
+    - 无法回答关系持续时间、关系留存率等需时间序列的事件级指标
+    - 完整去重并集(同一主体既是起点又是终点)需将 source_id 与 target_id UNION 后再 COUNT(DISTINCT),非单一聚合表达式可直接得出
+    - 不携带用户属性(如等级、付费),需与其他主体表 JOIN 才能做画像分析
+supersedes: []
+dimension_refs: []
+pref_label: 用户关系表
+alt_labels:
+  - 关系
+  - 好友
+  - 社交
+  - 互动

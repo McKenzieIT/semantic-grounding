@@ -1,0 +1,43 @@
+table_name: dim_10000251_k11_levelshop
+engine: maxcompute
+kind: dim
+table_comment: '等级礼包/充值档位配置维度表：每个 recharge_id 对应一个等级礼包档位（名称+价格），用于事实表关联礼包档位属性。'
+description: '等级礼包/充值档位配置维度表（dim_10000251_k11_levelshop）：存储游戏内等级礼包档位（levelshop/recharge pack）的静态配置，每行一个 recharge_id 对应一个礼包档位，包含礼包名称（name，如"10级礼包·一"）与价格（price，如"12"）。作为维度表供事实表通过 recharge_id JOIN 查礼包档位名称与价格属性。粒度：每 recharge_id 一行的等级礼包档位配置维度表。主要字段：recharge_id（主键），name（标签），price。'
+domains:
+- 付费经济
+granularity: 每 recharge_id 一行的等级礼包档位配置维度表
+primary_key:
+- recharge_id
+label_columns:
+- name
+primary_key_unique: true
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（等级礼包档位数）
+coverage:
+  scenarios:
+  - 通过 recharge_id JOIN 事实表，查询某档位对应的礼包名称与价格
+  - 作为等级礼包/充值档位维度的查表，支撑付费经济分析中档位属性展示
+  limitations:
+  - 配置类维度表，无值度量（price 为档位定价字符串，非度量）
+  - name 含中文礼包序号编码（如"10级礼包·一"），序号部分需二次解析
+  - 行数较小（37行），适合全表扫描与小结果集 JOIN
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '配置类维度表，主键 recharge_id 已实测唯一（r=d=37）；标签列 name 为人类可读礼包名称；保持 draft 待业务确认。'
+columns:
+- name: recharge_id
+  type: string
+  comment: ''
+  role: dimension
+- name: name
+  type: string
+  comment: ''
+  role: dimension
+- name: price
+  type: string
+  comment: ''
+  role: dimension

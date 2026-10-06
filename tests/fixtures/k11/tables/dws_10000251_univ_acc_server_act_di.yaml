@@ -1,0 +1,175 @@
+table_name: dws_10000251_univ_acc_server_act_di
+engine: maxcompute
+disambiguation:
+  term_defaults:
+    active_users: 当日有登录/行为事件的账号（日活跃）
+table_comment: ""
+description: |
+  该表是账号在区服粒度上的日活跃与付费汇总明细表(日增量 _di),每行表示某账号(user_id)在某区服(server_id)于当日(ds)的活跃时长、活跃/新增/付费标记及付费金额。粒度为"每个账号×区服每天一行",仅包含当日有活跃或付费行为的记录(非全量快照)。
+
+  【主体类型(固定)】表名含 acc,按判定规则本表固定为【账号表】,user_type 固定为 2(2=账号),分析主体=账号,标识字段=user_id 存账号ID。DISTINCT user_type 仅返回单一值 2(建议用 SELECT DISTINCT user_type 复核)。本表不存储设备(1)或角色(3)口径数据,不存在按 user_type 切换/过滤不同层级的分支。
+
+  【能回答的业务问题】
+  - 当日活跃账号数、活跃账号时长分布(按区服拆分)。
+  - 当日新增账号数(act_fst=1),新增账号的活跃与付费情况。
+  - 当日付费账号数、付费金额、付费率(pay=1 占活跃账号比例)、首充账号数(pay_fst=1)。
+  - 分区服的活跃/付费规模与首充转化。
+  - 账号的活跃次数(act_pv,登录次数)。
+
+  【注意事项】
+  - _di 为日增量,仅含当日有事件(活跃或付费)的账号-区服记录,统计"全部账号"或"流失"需结合其他全量表/多日拼接。
+  - act_pv 按"角色登录"事件计算,每登录1次计1次活跃,与 act(活跃标记)口径不同:act 标记当日是否活跃(去重),act_pv 为登录次数(不去重);act_pv 单位为次,act_dur 单位为秒,二者口径与单位不同勿混算。
+  - pay/pay_fst 为标记位(0/1),聚合时用 SUM 计数、AVG 计比率;付费金额 pay_amt 单位为元。
+  - new_first_pay_rate 指标为"新增账号中首充账号占比",pay_fst 为首充而非"新增+付费"联合标记,非新增账号当日首充也会计入分子,故该比值为新增付费转化的近似值,精确新增付费率需联合标记(本表无此列)。
+domains:
+  - 用户生命周期
+  - 付费经济
+granularity: 每个账号(user_id)×区服(server_id)每天一行,日增量(_di),仅含当日有活跃或付费行为的记录。【账号表】固定 user_type=2,分析主体=账号,标识字段=user_id 存账号ID。DISTINCT user_type 仅返回单一值 2(建议用 SELECT DISTINCT user_type 复核)。
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: act_dur
+    type: int
+    comment: 活跃时长，单位：秒
+    role: measure
+  - name: pay_amt
+    type: decimal
+    comment: 付费金额，单位：元
+    role: measure
+  - name: act
+    type: int
+    comment: 活跃标记，1-活跃、0-非活跃
+    role: measure
+  - name: act_fst
+    type: int
+    comment: 新增标记，新增即首次活跃，1-新增、0-非新增
+    role: measure
+  - name: pay
+    type: int
+    comment: 付费标记，1-付费、0-非付费
+    role: measure
+  - name: pay_fst
+    type: int
+    comment: 首次付费标记，1-首次付费、0-非首次付费
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 附加信息
+    role: attribute
+  - name: act_pv
+    type: int
+    comment: 活跃次数，用“角色登录”事件计算，每登录1次算1次活跃
+    role: measure
+  - name: ds
+    type: string
+    comment: ""
+    role: dimension
+metrics:
+  dau:
+    expression: SUM(act)
+    description: 当日活跃账号数;act 为去重活跃标记,按账号×区服粒度 SUM
+  new_acc_d1:
+    expression: SUM(act_fst)
+    description: 当日新增账号数;act_fst=1 表示新增(首次活跃)
+  pay_acc_cnt:
+    expression: SUM(pay)
+    description: 当日付费账号数;pay=1 表示当日有付费
+  pay_amt_total:
+    expression: SUM(pay_amt)
+    description: 当日总付费流水,单位元
+  pay_rate:
+    expression: SUM(pay)*1.0/NULLIF(SUM(act),0)
+    description: 付费率=付费账号数/活跃账号数;pay=1 必含于 act=1,等价于对活跃账号计 pay 均值
+  pay_arpu:
+    expression: SUM(pay_amt)*1.0/NULLIF(SUM(act),0)
+    description: 活跃 ARPU=总流水/活跃账号数,单位元/人
+  pay_arppu:
+    expression: SUM(pay_amt)*1.0/NULLIF(SUM(pay),0)
+    description: 付费 ARPPU=总流水/付费账号数,单位元/付费人
+  first_pay_cnt:
+    expression: SUM(pay_fst)
+    description: 当日首充账号数;pay_fst=1 表示首次付费
+  first_pay_rate:
+    expression: SUM(pay_fst)*1.0/NULLIF(SUM(pay),0)
+    description: 首充率=首充账号数/付费账号数
+  new_first_pay_rate:
+    expression: SUM(pay_fst)*1.0/NULLIF(SUM(act_fst),0)
+    description: 新增首充转化(近似新增付费率)=首充账号数/新增账号数;pay_fst 为首充而非"新增+付费"联合标记,非新增账号当日首充也会计入分子,故为近似值,精确新增付费率需联合标记(本表无此列)
+  act_dur_total:
+    expression: SUM(act_dur)
+    description: 当日总活跃时长,单位秒
+  act_dur_avg:
+    expression: SUM(act_dur)*1.0/NULLIF(SUM(act),0)
+    description: 人均活跃时长=总活跃时长/活跃账号数,单位秒/人
+  act_pv_total:
+    expression: SUM(act_pv)
+    description: 当日总登录次数(act_pv,不去重),单位次
+  act_pv_avg:
+    expression: SUM(act_pv)*1.0/NULLIF(SUM(act),0)
+    description: 人均登录次数=总登录次数/活跃账号数,单位次/人
+  new_pay_rate:
+    expression: SUM(pay)*1.0/NULLIF(SUM(act_fst),0)
+    description: 新增账号当日付费率(近似)=付费账号数/新增账号数;分子 pay 含非新增当日付费账号,故为近似值,精确新增付费率需"新增+付费"联合标记(本表无此列)
+partitions:
+  - name: ds
+    type: string
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: |
+    Round5 真实数据验证(2026-07-30)于 ds=20260729 通过。meta describe 核对 12 列全部存在(user_type/user_id/server_id/act_dur/pay_amt/act/act_fst/pay/pay_fst/ext_info/act_pv/ds)。
+    SELECT DISTINCT user_type FROM ... WHERE ds='20260729' 仅返回 {2},符合账号表固定 user_type=2 的判定。
+    核心指标实测(SUM): dau=4864, pay_cnt=415, pay_amt=39986.0, new_acc(act_fst)=625, first_pay(pay_fst)=82, act_dur 总=22297649s, act_pv 总=14009。
+    派生比率: pay_rate=415/4864=0.0854, pay_arpu=39986/4864=8.22元/人, pay_arppu=39986/415=96.35元/付费人, first_pay_rate=82/415=0.198, new_first_pay_rate=82/625=0.131, new_pay_rate=415/625=0.664(近似,含非新增付费), act_dur_avg=22297649/4864≈4584s≈76min/人(合理时长,非时间戳), act_pv_avg=14009/4864≈2.88次/人。所有比率均在 [0,1],金额与时长量级合理,无移植 bug。
+    粒度: rows=4864 = COUNT(DISTINCT user_id,server_id)=4864,1 行/(账号×区服×日),与 _di 增量口径一致;distinct user_id=4520<4864 因账号跨多区服,符合预期。
+    domains={用户生命周期,付费经济},无 活动运营(本批 10 域游戏无该域),无需移除。
+    全部校验通过,upgrade to analyst_confirmed。
+coverage:
+  scenarios:
+    - 日活跃账号规模(dau)及按区服的活跃分布
+    - 当日新增账号数(new_acc_d1)及新增账号的活跃、付费情况
+    - 当日付费账号数、总流水(pay_amt_total)及分区服付费规模
+    - 付费率(pay_rate)、活跃 ARPU(pay_arpu)、付费 ARPPU(pay_arppu)
+    - 首充账号数(first_pay_cnt)与首充率(first_pay_rate)
+    - 新增账号的首充转化(new_first_pay_rate,近似新增付费转化)
+    - 新增账号当日付费率近似(new_pay_rate)
+    - 人均活跃时长(act_dur_avg)与人均登录次数(act_pv_avg)
+    - 账号活跃次数(act_pv)分布,识别高频登录账号
+    - 分区服的活跃/付费/首充综合规模对比
+  limitations:
+    - 日增量(_di)仅含当日有活跃或付费行为的账号-区服记录,非全量快照,无法直接统计"全部账号"或"流失账号"
+    - 无留存天数列(如 ret_d1/d3/d7),不能直接计算留存率与流失,需结合留存宽表或多日拼接
+    - 无累计充值/LTV 相关列,不能计算生命周期价值
+    - act 为去重活跃标记,act_pv 为登录次数(不去重),二者口径不同,勿直接相加或混算
+    - 本表固定 user_type=2(账号主体),不存储设备/角色口径数据,不存在按 user_type 切换层级的分支
+    - 本表无角色/战斗/装备/社交/关卡等维度,不能回答玩法相关业务问题
+    - pay_fst 为"首次付费"标记,口径为首充而非"新增当日付费",跨日累计首充需注意去重
+    - 精确新增付费率需"新增+付费"联合标记,本表无此列,new_first_pay_rate 与 new_pay_rate 均为近似
+    - 数据按 ds 日分区,跨日查询需指定 ds 范围,无实时数据
+  coverage_status: draft
+supersedes: []
+dimension_refs:
+  - dim_table: dim_10000251_user_tag_before_ob_info
+    join_keys:
+      - dws_column: user_id
+        dim_column: user_id
+    derivation: "DWS column user_id (comment: 用户id) is the account identifier, same namespace as the PK user_id of dim_10000251_user_tag_before_ob_info, which is explicitly meant for joining fact tables via user_id to enrich tag dimensions."
+    origin: deterministic
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: "DWS column server_id (comment: 区服id) exactly matches the PK server_id of dim_10000251_server_info, the canonical 区服 dimension used to backfill server name and open-server time for fact tables."
+    origin: deterministic
+pref_label: 账号区服活跃日表

@@ -1,0 +1,112 @@
+name: game.guild.cancelInviteItem
+event_filter: event = 'game.guild.cancelInviteItem'
+description: |-
+  取消公会邀请条目(cancel guild invite item)：公会管理层/邀请方取消已发出的公会邀请(targetUids 目标uid列表)的公会社交行为事件。主体粒度为角色(role_id，即发起取消邀请操作的公会成员)，记录每次取消邀请条目行为，targetUids 为本次取消的目标uid数组。实测 ds=20260729 单日 cnt=7/role_uv=3/acc_uv=3/server_uv=3，量级偏低(取消邀请为低频操作)，事件真实在线。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  targetUids:
+    type: array
+    description: 目标uid列表
+metrics:
+  guild_cancel_invite_item_cnt:
+    expression: COUNT(*)
+    description: 取消公会邀请条目事件触发次数(每次取消邀请条目记1条)
+  guild_cancel_invite_item_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 发起取消邀请的独立角色数(去重 role_id；主体粒度为角色)
+  guild_cancel_invite_item_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 发起取消邀请的独立账号数(去重 account_id)
+  guild_cancel_invite_item_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的区服数(去重 server_id，反映取消邀请行为覆盖面)
+  guild_cancel_invite_item_per_role_avg_cnt:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均取消邀请条目次数(总次数/独立角色数；实测 ≈2.33，3个角色触发7次取消)
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=7/role_uv=3/acc_uv=3/server_uv=3；取消公会邀请为低频操作，量级偏低但事件真实在线。targetUids(目标uid数组)仅做参数描述，未拆解为按目标计数指标(数组字段聚合复杂度高，保留单事件粒度)。主体粒度默认 role_id 未逐事件实测角色归属正确性，按 base view 同时含 account_id+role_id 推断为角色级。"
+coverage:
+  scenarios:
+    - 取消公会邀请条目规模(guild_cancel_invite_item_cnt / guild_cancel_invite_item_role_uv / guild_cancel_invite_item_account_uv)
+    - 取消邀请覆盖面(guild_cancel_invite_item_server_uv 区服数)
+    - 人均取消邀请频次(guild_cancel_invite_item_per_role_avg_cnt)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测(cnt=7/role_uv=3/acc_uv=3/server_uv=3)，未做全量多日复核，建议接入生产流量前抽查
+    - 主体粒度默认 role_id 未逐事件实测角色归属正确性，按 base view 同时含 account_id+role_id 推断为角色级
+    - targetUids(目标uid数组)仅做参数描述，未拆解为按目标uid计数/分摊指标(数组字段聚合复杂度高，保留单事件粒度)；未抽样比对各 targetUids 元素与被取消邀请条目的对应关系
+    - 本事件为低频取消操作，cnt=7 偏低，统计口径建议累积多日后再评估稳定性
+    - 本游戏无 MaxCompute 事件分布查询，无 daily_count/total_count/active_days
+  coverage_status: analyst_confirmed
+external_refs: []

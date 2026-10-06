@@ -1,0 +1,119 @@
+name: game.springfestival.preheattrade
+event_filter: event = 'game.springfestival.preheattrade'
+description: 春节活动-预热商品购买事件：玩家在春节预热活动中购买商品时上报。分析主体为 role_id（角色），可下钻 account_id（账号）/ server_id（游戏服）。日志 scout 实测 ds=20260729 与 ds=20260728 均零命中，事件疑似下线/未触发或活动未开窗。参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验、看板娘、关键货币列表（含充值钻石/赠送钻石/免费钻石/紫金/经验卷轴/体力）、会话id、logUUID、活动id、商品id 等24个。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  activityId:
+    type: int
+    description: 活动id
+  tradeId:
+    type: int
+    description: 商品id
+metrics:
+  springfestival_preheattrade_cnt:
+    expression: COUNT(*)
+    description: 春节预热商品购买事件总上报行数
+  springfestival_preheattrade_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发购买行为的去重角色数（分析主体 role_id）
+  springfestival_preheattrade_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发购买行为的去重账号数
+  springfestival_preheattrade_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发购买行为的去重游戏服数
+  springfestival_preheattrade_trade_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.tradeId'))
+    description: 被购买的预热商品去重数量（按 tradeId 商品id 去重）
+  springfestival_preheattrade_activity_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.activityId'))
+    description: 关联的预热活动去重数量（按 activityId 活动id 去重）
+  springfestival_preheattrade_trade_per_role:
+    expression: COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均购买商品次数（事件总行数 / 去重角色数）
+coverage:
+  scenarios:
+    - 春节活动预热期商品购买渗透：通过 role_uv/account_uv 量化购买角色与账号规模
+    - 热门预热商品识别：通过 trade_uv 与按 tradeId 分组定位最受欢迎的预热商品
+    - 多活动覆盖：通过 activity_uv 评估同一预热事件覆盖的活动数量
+    - 人均购买强度：通过 trade_per_role 衡量人均购买次数
+  limitations:
+    - 日志中零命中(ds=20260729 与 ds=20260728 均为 cnt=0)，事件疑似下线/未触发/活动未开窗，无法进行真实数据校验
+    - 仅 ds=20260729/ds=20260728 单/双日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度），未与账号粒度交叉校验
+    - params 中 coinList 系列为货币快照余额，非交易金额，未计入 revenue/money 指标
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=0/role_uv=0/acc_uv=0/server_uv=0；ds=20260728: cnt=0/role_uv=0/acc_uv=0/server_uv=0。零命中，疑似下线/未触发/活动未开窗，保持 draft。"
+coverage_status: draft
+external_refs: []

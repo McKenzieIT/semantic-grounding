@@ -1,0 +1,122 @@
+name: game.charmactivity.skipallbattle
+event_filter: event = 'game.charmactivity.skipallbattle'
+description: 灵器活动-跳过所有战斗事件：角色在灵器(charm)活动战斗环节触发"跳过所有战斗"快捷通关时上报，记录活动id(activityId)、轮次id(roundId)、开始boss索引(startBossIdx)、看板娘(image)及角色快照(等级/vip/战力/经验/货币)等25个参数。分析主体粒度为 role_id（角色），account_id 作为账号粒度补充；每次跳过通关行为计为一条日志。MAXC scout 实测 ds=20260729 命中 0 行（ds=20260728 同样 0 行），事件疑似下线或当前活动周期未触发。
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  startBossIdx:
+    type: int
+    description: 开始的boss索引
+  activityId:
+    type: int
+    description: 活动id
+  roundId:
+    type: int
+    description: 轮次id
+metrics:
+  game_charmactivity_skipallbattle_cnt:
+    expression: COUNT(*)
+    description: 跳过所有战斗的日志条数（每次跳过通关行为一条）
+  game_charmactivity_skipallbattle_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发跳过战斗的角色去重数（分析主体粒度 role_id）
+  game_charmactivity_skipallbattle_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发跳过战斗的账号去重数
+  game_charmactivity_skipallbattle_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及跳过战斗的游戏服去重数
+  game_charmactivity_skipallbattle_activity_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.activityId'))
+    description: 涉及的灵器活动去重数（activityId）
+  game_charmactivity_skipallbattle_round_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.roundId'))
+    description: 涉及的活动轮次去重数（roundId）
+  game_charmactivity_skipallbattle_image_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.image'))
+    description: 涉及的看板娘去重数（image）
+coverage:
+  scenarios:
+    - 通过 role_uv/account_uv 评估灵器活动"跳过所有战斗"快捷通关的角色/账号渗透规模
+    - 通过 activity_uv、round_uv 监控活动及轮次的覆盖广度，定位高频跳过通关的活动轮次
+    - 通过 server_uv 与按服维度聚合，定位快捷通关使用密集的服务器
+    - 通过 cnt 衡量跳过战斗行为的总触发量，辅助评估快捷通关机制对玩家战斗参与的影响
+  limitations:
+    - 日志中零命中(ds=20260729/20260728)，疑似下线/未触发；当前活动周期或该玩法入口可能未开启，metrics 实测口径下均返回 0
+    - 仅 ds=20260729 单日 scout 实测（并回退 ds=20260728 复核），未做全量多日复核；事件恢复上线后需重新验证数值
+    - 分析主体粒度默认 role_id（角色），未对 account_id 跨角色复用做去重校验
+    - startBossIdx（开始boss索引）、coinList（关键货币快照）为状态字段，未在本事件 metrics 内展开求和/分布，如需按起始进度或货币快照聚合需单独建模
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=0, role_uv=0, acc_uv=0, server_uv=0；回退 ds=20260728 同样 0 命中。事件疑似下线或当前活动周期未触发，维持 draft，待活动开启/事件恢复上线后复核。
+coverage_status: draft
+external_refs: []

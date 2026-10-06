@@ -1,0 +1,45 @@
+table_name: dim_10000251_trans_story_df
+engine: maxcompute
+kind: dim
+primary_key:
+- id
+- order
+primary_key_unique: true
+label_columns:
+- content
+table_comment: '剧情流对话文本配置/维度表(_df 日全量快照)：每个剧情流(id)按对话序号(order)排列的对话文本(content)一行。'
+description: '剧情流对话文本维度/配置表(_df 日全量快照)。存储游戏剧情流(id)中每条按对话序号(order)排列的对话内容(content)文本。粒度：每条(剧情流 id, 对话序号 order)一行；主键 [id, order] 复合唯一(实测 42181 行，distinct 对=42181)。label_columns 取 content(对话文本)。配置类维度表，无值度量。'
+domains:
+- 系统监控
+granularity: '每 (剧情流 id, 对话序号 order) 一行的剧情对话文本维度/配置表（_df 日全量快照）'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+columns:
+- name: id
+  type: string
+  comment: 剧情流id
+  role: dimension
+- name: order
+  type: string
+  comment: 对话序号
+  role: dimension
+- name: content
+  type: string
+  comment: 对话内容
+  role: dimension
+coverage:
+  scenarios:
+  - 'JOIN 事实表 传入 (id, order) 复合键 -> 取该剧情流某句对话的 content 文本，用于在战斗/过场画面还原剧情台词展示'
+  - '按 id 聚合 -> 取整条剧情流的全部对话序列(content order by order)，用于剧情流回放/全文本检索'
+  - '按 content 文本模糊匹配 -> 反查所属剧情流 id 与对话序号，定位特定台词出处'
+  limitations:
+  - '配置类维度表，仅有 id/order/content 三列，无任何数值度量(金额/次数/时长)；不可做聚合统计'
+  - 'content 为原始对话文本，未做分词/情感等结构化处理；如需语义分析需二次加工'
+  - 'id 单列非唯一(同一剧情流含多句对话)，主键为 [id, order] 复合键，JOIN 须同时带 order'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '主键 [id,order] 复合唯一已实测验证(r=d_pair=42181)；primary_key_unique=true。配置类维度表，无值度量；保持 draft 待业务确认。'

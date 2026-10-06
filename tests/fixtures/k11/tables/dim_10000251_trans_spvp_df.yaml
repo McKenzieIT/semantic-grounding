@@ -1,0 +1,46 @@
+table_name: dim_10000251_trans_spvp_df
+engine: maxcompute
+table_comment: SPvP 段位配置维度表（日全量快照 _df），描述每个段位等级的名称、星数细分与分数下限。
+description: 'SPvP（段位赛）段位配置维度表，日全量快照(_df)。每行描述一个段位等级：段位名称(name)、段位星数细分(star)、晋升分数下限(min_score)。用于将事实表中的段位等级 id/名称映射为可读的段位维度属性。'
+kind: dim
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+domains:
+- 系统监控
+granularity: 每段位等级一行（日全量快照 _df）
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 段位配置维度表总行数
+columns:
+- name: id
+  type: int
+  comment: 段位等级
+  role: dimension
+- name: name
+  type: string
+  comment: 段位名称
+  role: dimension
+- name: star
+  type: int
+  comment: 段位星数（用于高段位细分）
+  role: dimension
+- name: min_score
+  type: int
+  comment: 分数下限
+  role: dimension
+coverage:
+  scenarios:
+  - 事实表（赛事/战斗/玩家段位快照）按段位等级 id JOIN 本表，获得段位名称与分数下限等可读维度属性
+  - 段位分布与晋升门槛分析：按 name/star 分组统计玩家或对局分布
+  limitations:
+  - 配置类维度表，无值度量（min_score/star 为段位属性阈值，非可加度量）
+  - 星数 star 用于高段位细分，复合段位编码需结合 name+star 二次解读
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '已基于 meta describe 校验列与类型；primary_key=id 经 COUNT(*)=COUNT(DISTINCT id)=10 实测唯一；状态保持 draft 待业务确认。'

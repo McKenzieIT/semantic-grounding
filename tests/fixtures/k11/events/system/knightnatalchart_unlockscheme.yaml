@@ -1,0 +1,120 @@
+name: game.knightnatalchart.unlockscheme
+event_filter: event = 'game.knightnatalchart.unlockscheme'
+description: 武将命盘-解锁方案：玩家为某武将解锁命盘方案时触发的角色成长事件。分析主体为 role_id（角色）， 每条日志记录一次解锁行为，携带武将id(knightId)、方案id(scheme)、角色等级/战力/vip等上下文。 实测 ds=20260729 单日 cnt=268（188 角色 / 186 账号 / 68 服务器），命中 41 个不同武将、1 种方案类型， 解锁角色等级区间 40~100，参与角色总战力合计约 1.93e9。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightId:
+    type: int
+    description: 武将id
+  scheme:
+    type: int
+    description: 方案id
+metrics:
+  game_knightnatalchart_unlockscheme_cnt:
+    description: 武将命盘解锁方案事件总次数（按日志条数计，每条=一次解锁行为）
+    expression: COUNT(*)
+  game_knightnatalchart_unlockscheme_role_uv:
+    description: 触发解锁方案的去重角色数（分析主体 role_id）
+    expression: COUNT(DISTINCT role_id)
+  game_knightnatalchart_unlockscheme_account_uv:
+    description: 触发解锁方案的去重账号数
+    expression: COUNT(DISTINCT account_id)
+  game_knightnatalchart_unlockscheme_server_uv:
+    description: 触发解锁方案的去重游戏服数
+    expression: COUNT(DISTINCT server_id)
+  game_knightnatalchart_unlockscheme_knight_uv:
+    description: 被解锁方案的去重武将数（取自 params.knightId）
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.knightId'))
+  game_knightnatalchart_unlockscheme_scheme_uv:
+    description: 解锁方案的去重方案类型数（取自 params.scheme）
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.scheme'))
+  game_knightnatalchart_unlockscheme_force_sum:
+    description: 参与解锁方案角色的战力合计（取自 params.roleForce，用于衡量解锁群体的战力规模）
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.roleForce') AS BIGINT))
+  game_knightnatalchart_unlockscheme_force_per_role:
+    description: 解锁方案角色的平均战力（总战力/去重角色数，分母为0时返回NULL避免除零）
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.roleForce') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+coverage:
+  scenarios:
+    - 命盘解锁方案整体热度与参与规模（事件次数、角色/账号/服务器覆盖）
+    - 解锁方案涉及的武将广度与方案类型多样性（knight_uv、scheme_uv）
+    - 解锁群体战力规模与人均战力水平（force_sum、force_per_role），辅助判断解锁方案的受众定位
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核；多日趋势与全量数据需后续补充验证
+    - 分析主体默认 role_id（角色粒度）；角色级上下文 roleLevel/vipLevel/roleForce 来自 params，未对历史 ds 做字段缺失率校验
+    - scheme_uv=1（实测仅出现 1 种方案类型），多样性指标在单日内区分度有限，不代表全量方案分布
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=268 / role_uv=188 / acc_uv=186 / server_uv=68 / knight_uv=41 / scheme_uv=1 / roleLevel 区间 40~100 / force_sum≈1.93e9。数据量级合理，事件在线可观测。
+coverage_status: analyst_confirmed
+external_refs: []

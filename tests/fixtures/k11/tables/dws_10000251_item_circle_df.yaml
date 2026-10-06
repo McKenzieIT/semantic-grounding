@@ -1,0 +1,127 @@
+table_name: dws_10000251_item_circle_df
+engine: maxcompute
+table_comment: 资源产销-物品流水日全量表(角色粒度)
+description: |-
+  资源产销-物品流水日全量快照表(_df)，角色(role)粒度。
+  每个分区 ds 记录各角色(role_id)在区服(server_id)下持有/获取/使用的各物品(item_type+item_id)的当日与累计量。
+  粒度：日全量快照(_df)，角色(role_id)+区服(server_id)+物品(item_type,item_id)维度组合。
+  主要字段：role_id, server_id, item_type, item_id, get_amt, get_pv, use_amt, use_pv, net_amt, get_amt_std, get_pv_std, use_amt_std, use_pv_std, ds 等14列。
+domains:
+  - 资源产销
+  - 装备道具
+granularity: 日全量快照(_df)，角色(role_id)+区服(server_id)+物品(item_type,item_id)粒度
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: item_type
+    type: string
+    comment: 物品类型
+    role: dimension
+  - name: item_id
+    type: string
+    comment: 物品id，缺省值0
+    role: dimension
+  - name: get_amt
+    type: bigint
+    comment: 当日获得数量，缺省值0
+    role: measure
+  - name: get_pv
+    type: bigint
+    comment: 当日获得次数，缺省值0
+    role: measure
+  - name: use_amt
+    type: bigint
+    comment: 当日使用数量，缺省值0
+    role: measure
+  - name: use_pv
+    type: bigint
+    comment: 当日使用次数，缺省值0
+    role: measure
+  - name: net_amt
+    type: bigint
+    comment: 当前剩余数量，缺省值0
+    role: measure
+  - name: get_amt_std
+    type: bigint
+    comment: 累计获得数量，缺省值0
+    role: measure
+  - name: get_pv_std
+    type: bigint
+    comment: 累计获得次数，缺省值0
+    role: measure
+  - name: use_amt_std
+    type: bigint
+    comment: 累计使用数量，缺省值0
+    role: measure
+  - name: use_pv_std
+    type: bigint
+    comment: 累计使用次数，缺省值0
+    role: measure
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日持有/变动物品的活跃角色数(去重)，衡量物品触达角色规模
+  get_amt_total:
+    expression: SUM(get_amt)
+    description: 当日全物品获得数量总和，衡量当日资源产出规模
+  use_amt_total:
+    expression: SUM(use_amt)
+    description: 当日全物品使用(消耗)数量总和，衡量当日资源消耗规模
+  net_amt_total:
+    expression: SUM(net_amt)
+    description: 当日全物品剩余数量总和，衡量角色当前持有库存规模
+  get_use_ratio:
+    expression: SUM(get_amt) / NULLIF(SUM(use_amt), 0)
+    description: 当日获得/使用数量比，反映资源产出与消耗的平衡(>1 净流入)
+coverage:
+  scenarios:
+    - 资源产出与消耗监测：通过 get_amt_total/use_amt_total 跟踪全物品当日产出与消耗规模及趋势
+    - 物品触达角色规模：通过 role_uv 监测当日有物品变动的活跃角色数
+    - 库存水位监控：通过 net_amt_total 评估角色持有库存总量，识别囤积或紧缺
+    - 产销平衡分析：通过 get_use_ratio 判断资源净流入/净流出方向
+  limitations:
+    - 仅对 role_uv/get_amt_total/use_amt_total/net_amt_total 在 latest ds=20260730 上做了 scout 抽样验证，未做全量 maxc 实测复核
+    - 指标为全物品汇总，未按 item_type/item_id 维度细分；如需单品分析需在查询中加 GROUP BY item_type,item_id
+    - _df 为日全量快照，net_amt 为快照当日剩余而非历史净变化；get_amt_std/use_amt_std 为累计量(全生命周期)，区分当日与累计语义
+    - server_id 未纳入场景聚合，跨区服对比需额外 GROUP BY server_id
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已在 latest ds=20260730 上 spot-verify role_uv=1668721/get_amt_total=43611647640/use_amt_total=15554056175/net_amt_total=13370619113182，数值合理(role 级日全量快照)；metrics 仅基于 meta describe 确认的真实列构造；status=analyst_confirmed 反映 spot-verify 通过。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS 列 server_id (comment 区服id) 与 dim server_info 主键 server_id 完全一致；该 dim 为区服维度配置表。
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df
+    join_keys:
+      - dws_column: item_type
+        dim_column: type
+      - dws_column: item_id
+        dim_column: id
+    derivation: DWS 列 item_type (物品类型) + item_id (物品id) 语义对应 dim trans_resource_item_df 复合主键 (type, id)；该 dim 为资源/物品维度表（域 资源产销，与事实表同域），明确供事实表通过 type+id JOIN 查物品名/类型。
+pref_label: 道具产销表
+alt_labels:
+  - 道具
+  - 物品
+  - 产销
+  - 资源
+  - 流水
+  - 金币
+  - 钻石
+  - 消耗
+  - 产出量
+  - 消耗量

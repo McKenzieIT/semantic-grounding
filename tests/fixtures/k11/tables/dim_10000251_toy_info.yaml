@@ -1,0 +1,85 @@
+table_name: dim_10000251_toy_info
+engine: maxcompute
+table_comment: '游戏10000251遗物(toy)配置维度表，每行一个遗物的基础属性与模板引用。'
+kind: dim
+primary_key: [toy_id]
+primary_key_unique: true
+label_columns: [toy_name]
+description: '游戏10000251的遗物配置维度表(dim_10000251_toy_info)：一行一个遗物(toy)，主键 toy_id 唯一标识遗物；toy_name 为人类可读名称；quality 品质、country_type 阵营分类、attr_type 属性分类、group 遗物分组为典型维度切片；suit 套装id、level_attr_id 等级属性模板、starup_id 升星模板、script_id 所属剧本为对外关联的外键/模板引用；res/prefeb/texture 为美术资源引用。配置类维度表，无值度量。'
+domains:
+- 装备道具
+granularity: '每 toy(遗物) 一行的配置维度表，主键 toy_id，共332行。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+columns:
+- name: toy_id
+  type: string
+  comment: 遗物id
+  role: dimension
+- name: toy_name
+  type: string
+  comment: 名称
+  role: dimension
+- name: res
+  type: string
+  comment: icon
+  role: dimension
+- name: directions
+  type: string
+  comment: 道具描述
+  role: dimension
+- name: country_type
+  type: string
+  comment: 阵营分类
+  role: dimension
+- name: quality
+  type: string
+  comment: 品质
+  role: dimension
+- name: suit
+  type: string
+  comment: 套装id
+  role: dimension
+- name: attr_type
+  type: string
+  comment: 属性分类
+  role: dimension
+- name: level_attr_id
+  type: string
+  comment: 等级属性模板
+  role: dimension
+- name: starup_id
+  type: string
+  comment: 升星模板
+  role: dimension
+- name: group
+  type: string
+  comment: 遗物分组
+  role: dimension
+- name: script_id
+  type: string
+  comment: 所属剧本
+  role: dimension
+- name: prefeb
+  type: string
+  comment: 模型
+  role: dimension
+- name: texture
+  type: string
+  comment: 贴图
+  role: dimension
+coverage:
+  scenarios:
+  - '作为遗物维度表，供事实表(如遗物获得/升星事实)通过 toy_id JOIN 关联，支撑按品质(quality)、阵营(country_type)、属性分类(attr_type)、遗物分组(group)、套装(suit) 切片聚合分析；level_attr_id/starup_id/script_id 支持与等级属性模板、升星模板、剧本维度的二次关联。'
+  limitations:
+  - '配置类维度表，无值度量(无金额/计数等数值列)'
+  - 'suit/level_attr_id/starup_id/script_id 为模板/外键引用，实际模板内容需在对应配置表二次查询'
+  - 'res/prefeb/texture 为美术资源引用非业务语义字段'
+  - 'primary_key 唯一性已实测(r=d=332)'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '配置类维度表建模完成；toy_id 唯一性已实测通过(r=d=332)；primary_key_unique=true 经数据验证。保持 draft 状态待业务方确认维度归类与标签列选择。'

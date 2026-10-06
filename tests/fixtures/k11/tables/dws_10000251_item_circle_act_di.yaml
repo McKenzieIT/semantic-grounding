@@ -1,0 +1,105 @@
+table_name: dws_10000251_item_circle_act_di
+engine: maxcompute
+table_comment: 资源产销表-角色物品收支流水(日增量)
+description: 角色(role)维度的物品资源收支流水日增量表(_di)：按 role_id+server_id+item_id+reason1/2/3 记录每日获得/使用/净结存的数量与次数。粒度：角色(role) 物品(item) 日增量(_di)。主要字段：role_id, server_id, item_id, get_amt, get_pv, use_amt, use_pv, net_amt, reason1, reason2, reason3, ext_info, ds 等13列。
+domains:
+  - 资源产销
+  - 装备道具
+granularity: 角色(role) 物品(item) 日增量(_di)
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: item_id
+    type: string
+    comment: 物品id，缺省值0
+    role: dimension
+  - name: get_amt
+    type: bigint
+    comment: 获得数量，缺省值0
+    role: measure
+  - name: get_pv
+    type: bigint
+    comment: 获得次数，缺省值0
+    role: measure
+  - name: use_amt
+    type: bigint
+    comment: 使用数量，缺省值0
+    role: measure
+  - name: use_pv
+    type: bigint
+    comment: 使用次数，缺省值0
+    role: measure
+  - name: net_amt
+    type: bigint
+    comment: 剩余数量，缺省值0
+    role: measure
+  - name: reason1
+    type: string
+    comment: 变更一级原因，缺省值空字符串
+    role: dimension
+  - name: reason2
+    type: string
+    comment: 变更二级原因，缺省值空字符串
+    role: dimension
+  - name: reason3
+    type: string
+    comment: 变更三级原因，缺省值空字符串
+    role: dimension
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  get_amt_total:
+    expression: SUM(get_amt)
+    description: 当日获得物品数量合计(角色+物品粒度求和)
+  use_amt_total:
+    expression: SUM(use_amt)
+    description: 当日使用/消耗物品数量合计
+  net_amt_total:
+    expression: SUM(net_amt)
+    description: 当日净结存物品数量合计
+  act_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日有物品收支流水的角色UV
+  use_get_ratio:
+    expression: SUM(use_amt) / NULLIF(SUM(get_amt), 0)
+    description: 使用/获得数量比，衡量物品产出消耗结构
+coverage:
+  scenarios:
+    - 物品资源每日获得/使用/净结存总量与结构(按item_id、reason1/2/3下钻)
+    - 角色(UV)维度物品收支活跃度与产出消耗比
+  limitations:
+    - 表为空/无数据(MAX(ds) NULL)，所有指标为结构性定义，尚未有真实取值验证
+    - _di 日增量语义：指标为当日增量聚合，非全量快照；跨日累计需按ds累加
+    - reason1/2/3 为变更原因下钻维度，缺少标准化原因字典，跨口径聚合需谨慎
+    - 仅 scout 抽样验证，未做全量 maxc 实测复核
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表为空(MAX(ds) NULL)，指标为结构性定义，仅基于 meta describe 列与口径推断，未实测取值
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS 列 server_id (comment 区服id) 与 dim server_info 主键 server_id 完全一致；该 dim 为区服维度配置表。
+    origin: deterministic
+  - dim_table: dim_10000251_trans_reason1_df
+    join_keys:
+      - dws_column: reason1
+        dim_column: reason1
+    derivation: DWS 列 reason1 (comment 变更一级原因) 与 dim trans_reason1_df 主键 reason1 完全一致；该 dim 为一级原因映射表，专为流水表 JOIN 将变更一级原因编码翻译为可读描述。
+    origin: deterministic
+pref_label: 道具产销活跃表

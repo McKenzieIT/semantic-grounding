@@ -1,0 +1,128 @@
+name: game.role.backup.save
+event_filter: event = 'game.role.backup.save'
+description: 玩家数据备份事件：游戏定期上报玩家数据快照时触发（备份/回退校验依据），记录备份时点的角色完整画像（等级/VIP/战力/经验/性别/创角时间/上线时间）及货币快照（coinList：充值钻石 gold、赠送钻石 sendgold、免费钻石 freegold、紫金 diamond、经验卷轴 expCoin、体力 energy），并携带 sessionId/logUUID/uuid 用于回退时校验一致性。分析主体粒度为 role_id（角色级备份）。scout 实测 ds=20260729 单日 cnt=15913 / role_uv=4744 / acc_uv=4415 / server_uv=484。
+domains:
+  - 用户生命周期
+domain: account
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  time:
+    type: int
+    description: 备份时间
+  tagId:
+    type: int
+    description: tagId
+  uuid:
+    type: string
+    description: 唯一id 回退时检查用
+metrics:
+  game_role_backup_save_cnt:
+    expression: COUNT(*)
+    description: 玩家数据备份事件总次数（每次备份计一次）
+  game_role_backup_save_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 备份事件去重角色数
+  game_role_backup_save_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 备份事件去重账号数
+  game_role_backup_save_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 备份事件涉及的游戏服数
+  game_role_backup_save_backups_per_role:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 每个角色的平均备份次数（>1 表示同角色当日多次备份）
+  game_role_backup_save_role_level_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS BIGINT))
+    description: 备份时角色的平均角色等级
+  game_role_backup_save_vip_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.vipLevel') AS BIGINT))
+    description: 备份时角色的平均 VIP 等级
+  game_role_backup_save_role_force_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleForce') AS BIGINT))
+    description: 备份时角色的平均战力
+  game_role_backup_save_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 备份快照中充值钻石（gold）的累计值（角色级货币快照存量，非全周期支付额）
+coverage:
+  granularity: 单次备份事件（role_id 为默认主体粒度）
+  scenarios:
+    - 玩家数据备份事件的触发规模（次数/角色UV/账号UV/服务器数）
+    - 备份时点玩家画像分布（角色等级/VIP/战力均值），观察活跃玩家构成
+    - 单日同角色多次备份识别（backups_per_role > 1 提示重复备份）
+    - 备份时点货币快照累计（gold 充值钻石总和，反映备份时刻存量）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认主体粒度为 role_id，未逐事件实测 role_id 是否为最细主体
+    - coinList.gold 的 sum 仅反映 ds=20260729 备份时点的角色级货币快照存量，非全周期支付额
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=15913 / role_uv=4744 / acc_uv=4415 / server_uv=484
+external_refs: []

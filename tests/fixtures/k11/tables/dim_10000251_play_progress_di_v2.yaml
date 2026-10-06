@@ -1,0 +1,63 @@
+table_name: dim_10000251_play_progress_di_v2
+engine: maxcompute
+kind: dim
+table_comment: star002 关卡进度配置维度表（含困难模式），按天记录核心/积极/普通玩家的关卡排序与进度上限
+description: 'star002 进度明细配置表（包含困难模式）的维度视图。每行对应一个进度天（datetime2，从 0 开始的第几天），记录当日关卡进度上限（stage_id）以及核心/积极/普通三类玩家的关卡排序（core_stage/active_stage/normal_stage）与关卡进度（core_id/active_id/normal_id）。用于按天/进度阶段对事实表做进度维度补齐与玩家分层进度对比。'
+primary_key:
+- datetime2
+label_columns:
+- stage_id
+domains:
+- 战斗关卡
+granularity: 每个进度天（datetime2）一行的关卡进度配置维度表
+coverage:
+  scenarios:
+  - 事实表按 datetime2（第几天）JOIN 补齐当日关卡进度上限与各分层玩家期望进度
+  - 按核心/积极/普通玩家分层对比关卡排序与进度差异
+  - 进度阶段分布与关卡推进节奏分析
+  limitations:
+  - 配置类维度表，无值度量（仅可选行数指标）
+  - 表当前为空（0 行），未做主键唯一性实测
+  - stage_id 为当日上限进度值，非全局唯一标识；主键以 datetime2（天）为粒度
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 meta describe 字段核验与语义粒度分析建模；表为空未做唯一性实测，保持 draft'
+columns:
+- name: datetime2
+  type: string
+  comment: 0开始的进度第几天
+  role: dimension
+- name: stage_id
+  type: string
+  comment: 当日上限进度
+  role: dimension
+- name: core_stage
+  type: string
+  comment: 核心玩家关卡排序
+  role: dimension
+- name: active_stage
+  type: string
+  comment: 积极玩家关卡排序
+  role: dimension
+- name: normal_stage
+  type: string
+  comment: 普通玩家关卡排序
+  role: dimension
+- name: core_id
+  type: string
+  comment: 核心玩家关卡进度
+  role: dimension
+- name: active_id
+  type: string
+  comment: 积极玩家关卡进度
+  role: dimension
+- name: normal_id
+  type: string
+  comment: 普通玩家关卡进度
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition

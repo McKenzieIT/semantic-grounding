@@ -1,0 +1,110 @@
+name: game.artifact.decompose
+event_filter: event = 'game.artifact.decompose'
+description: |-
+  artifact.decompose（兵符分解）
+  记录角色分解兵符（artifact）的日志事件。事件携带游戏服id、角色id、角色名、性别、等级、VIP、战力、 货币快照（coinList: 充值钻石/赠送钻石/免费钻石/紫金/经验卷轴/体力）以及本次分解的兵符uid列表（uidList）。 分析粒度：角色级（role_id 为分析主体，account_id 可作为账号级汇总）；sessionId/logUUID 用于会话与日志去重。 真实单日实测（ds=20260729）：3251 次分解事件，覆盖 1690 个角色、1641 个账号、281 个游戏服。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  uidList:
+    type: array
+    description: 分解的兵符uidlist
+metrics:
+  game_artifact_decompose_cnt:
+    expression: COUNT(*)
+    description: 兵符分解事件总次数
+  game_artifact_decompose_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发兵符分解的去重角色数
+  game_artifact_decompose_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发兵符分解的去重账号数
+  game_artifact_decompose_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 发生兵符分解的去重游戏服数
+  game_artifact_decompose_avg_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均兵符分解次数（事件次数 / 去重角色数）
+coverage:
+  scenarios:
+    - 角色成长：监控兵符分解玩法的日活参与规模（角色/账号UV、事件次数）及人均分解频次
+    - 系统监控：按 server_id 维度评估各服兵符分解活跃度分布
+    - 数据校验：通过 sessionId/logUUID 进行会话级与日志去重核对
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认为 role_id（角色级），未验证 account_id 多角色聚合边界
+    - 未统计 uidList 内兵符明细数量（数组元素个数未单独拆解度量）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 单日实测 ds=20260729：cnt=3251, role_uv=1690, acc_uv=1641, server_uv=281；数值合理（角色级事件、人均约1.9次分解）。
+coverage_status: analyst_confirmed
+external_refs: []

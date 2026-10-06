@@ -1,0 +1,65 @@
+table_name: dim_10000251_trans_gacha_mission_group_df
+engine: maxcompute
+table_comment: 抽卡任务页签组配置维表（_df 日全量快照）
+description: '抽卡活动任务页签组的配置/维度表（日全量快照 _df）。每行描述一个抽卡活动页签组：所属页签类型(type)、对应卡池(gacha_id)、页签名(tag_name)、开启/关闭时间、补发邮件(mail_id)及页签图标资源(tag_pic/tag_bg_pic)。用于通过 gacha_id 关联事实表，提供页签名、时间窗口与资源位等维度属性。'
+domains:
+- 探索收集
+granularity: 每个抽卡活动页签组一行（gacha_id 唯一）
+kind: dim
+primary_key:
+- gacha_id
+primary_key_unique: true
+label_columns:
+- tag_name
+columns:
+- name: type
+  type: string
+  comment: 页签id
+  role: dimension
+- name: gacha_id
+  type: string
+  comment: 对应卡池id
+  role: dimension
+- name: tag_name
+  type: string
+  comment: 页签名
+  role: dimension
+- name: open_time
+  type: string
+  comment: 开启时间
+  role: dimension
+- name: close_time
+  type: string
+  comment: 关闭时间
+  role: dimension
+- name: mail_id
+  type: string
+  comment: 邮件id
+  role: dimension
+- name: tag_pic
+  type: string
+  comment: 页签图
+  role: dimension
+- name: tag_bg_pic
+  type: string
+  comment: 页签背景图
+  role: dimension
+coverage:
+  scenarios:
+  - 通过 gacha_id 关联抽卡事实表，按页签类型(type)/页签名(tag_name)进行分组统计
+  - 提供卡池活动时间窗口(open_time/close_time)作为时间筛选维度
+  - 提供 mail_id 用于补发邮件维度对照
+  - 提供 tag_pic/tag_bg_pic 用于前端资源位展示与对账
+  limitations:
+  - 配置类维度表，无值度量（无 measure 字段）
+  - open_time/close_time 为字符串格式（非标准 datetime），时间过滤需注意字符串比较规则
+  - 仅含当前上线/历史卡池配置，过期卡池可能不再出现于最新快照
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 meta describe 校验列与唯一性实测(r=d=40)完成 dim 建模；配置类维度表，未与业务方对齐，保持 draft。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（卡池页签组配置条数）

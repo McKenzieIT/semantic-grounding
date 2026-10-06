@@ -1,0 +1,103 @@
+name: game.Monopoly.completeTalk
+event_filter: event = 'game.Monopoly.completeTalk'
+description: 大富翁(Monopoly)玩法完成对话(talk)事件：角色在大富翁小游戏中触发并完成一段对话交互。携带游戏服、账号、角色基础信息、角色等级/vip/战力、看板娘形象及关键货币列表(钻石/紫金/经验卷轴/体力等)。主体粒度为角色(role_id)，单条记录代表一次对话完成行为。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  talkIndex:
+    type: int
+    description: talkIndex
+metrics:
+  game_Monopoly_completeTalk_cnt:
+    expression: COUNT(*)
+    description: 大富翁对话完成事件总条数
+  game_Monopoly_completeTalk_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发大富翁对话的distinct角色数
+  game_Monopoly_completeTalk_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发大富翁对话的distinct账号数
+  game_Monopoly_completeTalk_talk_index_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.talkIndex') AS BIGINT))
+    description: 大富翁对话talkIndex累计值(对话序号求和)
+coverage:
+  scenarios:
+    - 用于评估大富翁(Monopoly)小游戏的对话交互活跃度——参与角色数、对话完成总次数、账号覆盖度及talkIndex累计趋势，帮助判断玩法参与热度与对话推进深度。
+  limitations:
+    - 日志中零命中(ds=20260729/20260728)，疑似下线/未触发
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id，单条记录为一次对话完成行为
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 scout 实测 cnt=0/role_uv=0/acc_uv=0/server_uv=0；ds=20260728 重试 cnt=0/role_uv=0/acc_uv=0/server_uv=0；零命中，保留 draft 待后续复核。
+  coverage_status: draft
+external_refs: []

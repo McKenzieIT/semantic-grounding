@@ -1,0 +1,144 @@
+name: game.champion.guessGetReward
+event_filter: event = 'game.champion.guessGetReward'
+description: 争霸赛(Champion)竞猜奖励领取事件：玩家在争霸赛赛季竞猜(matchId)中押注(0攻击/1防守)并领取竞猜奖励(getCount)时上报，guessOk 标记竞猜是否正确。分析粒度为角色(role_id)，每个角色每次领奖产生一条日志。真实实测 ds=20260729/20260728：事件零命中(cnt=0)，疑似事件下线/未触发或仅在赛季竞猜开启窗口期上报。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  seasonId:
+    type: int
+    description: seasonId
+  uid:
+    type: int
+    description: uid
+  matchId:
+    type: string
+    description: matchId
+  side:
+    type: int
+    description: 0 攻击 1 防守
+  count:
+    type: int
+    description: count
+  getCount:
+    type: int
+    description: getCount
+  guessOk:
+    type: bool
+    description: guessOk
+metrics:
+  game_champion_guessGetReward_cnt:
+    expression: COUNT(*)
+    description: 竞猜奖励领取事件总条数
+  game_champion_guessGetReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 去重领奖角色数
+  game_champion_guessGetReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 去重领奖账号数
+  game_champion_guessGetReward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 去重涉及游戏服数
+  game_champion_guessGetReward_get_count_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.getCount') AS BIGINT))
+    description: 竞猜奖励领取总量(getCount 累加)
+  game_champion_guessGetReward_count_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.count') AS BIGINT))
+    description: 竞猜场次/计数总量(count 累加)
+  game_champion_guessGetReward_guess_ok_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.guessOk') = 'true' THEN 1 ELSE 0 END)
+    description: 竞猜正确(guessOk=true)的领奖条数
+  game_champion_guessGetReward_guess_ok_rate:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.guessOk') = 'true' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 竞猜正确率(正确条数/总条数)
+  game_champion_guessGetReward_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 领奖后充值钻石余额总量
+  game_champion_guessGetReward_energy_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.energy') AS BIGINT))
+    description: 领奖后体力余额总量
+  game_champion_guessGetReward_exp_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.exp') AS BIGINT))
+    description: 领奖后经验总量
+coverage:
+  scenarios:
+    - 争霸赛竞猜奖励领取量、参与角色数与游戏服覆盖度(竞猜活跃度与渗透)
+    - 竞猜正确率(guessOk=true 占比)与人均领奖收益
+    - 领奖后货币(充值钻石/体力/经验)余额分布与人均收益
+  limitations:
+    - 日志中零命中(ds=20260729 与 ds=20260728 cnt=0)，疑似事件下线/未触发或仅在赛季竞猜开启窗口期上报
+    - 因零命中未实测 role_id/account_id 去重语义，分析粒度默认 role_id
+    - metrics 指标定义为声明性，未经实测数据复核
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729 与 ds=20260728: cnt=0/role_uv=0/acc_uv=0/server_uv=0(零命中)，事件疑似下线/未触发，保持 draft"
+coverage_status: draft
+external_refs: []

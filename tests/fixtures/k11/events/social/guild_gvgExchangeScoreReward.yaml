@@ -1,0 +1,136 @@
+name: game.guild.gvgExchangeScoreReward
+event_filter: event = 'game.guild.gvgExchangeScoreReward'
+description: 公会据点全部摧毁后，公会成员通过该事件领取/兑换积分奖励。事件记录会员当次兑换的扣除次数(count)、新增积分(addScore)与所获奖励列表(rewards.type/value/size/uid)，并附带角色静态画像(roleId/roleName/roleLevel/vipLevel/roleForce/exp)与货币快照(coinList.*)。分析主体粒度为 role_id（会员级），按 server_id 可细分到公会据点服。scout 实测 ds=20260729 与 ds=20260728 均零命中（cnt=0/role_uv=0/acc_uv=0/server_uv=0），事件疑似已下线或当期未触发，metrics 定义按设计补齐但暂无真实量级可校验。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  count:
+    type: int
+    description: 扣除次数
+  addScore:
+    type: int
+    description: 增加积分
+  rewards:
+    type: array
+    description: 获得奖励
+  rewards.type:
+    type: int
+    description: 类型
+  rewards.value:
+    type: int
+    description: 值
+  rewards.size:
+    type: int
+    description: 数量
+  rewards.uid:
+    type: int
+    description: 唯一id
+metrics:
+  guild_gvgExchangeScoreReward_cnt:
+    expression: COUNT(*)
+    description: 公会据点兑换积分奖励事件总次数
+  guild_gvgExchangeScoreReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发兑换积分奖励的去重角色数（分析主体粒度=role_id）
+  guild_gvgExchangeScoreReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发兑换积分奖励的去重账号数
+  guild_gvgExchangeScoreReward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发兑换积分奖励的去重游戏服数
+  guild_gvgExchangeScoreReward_addscore_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.addScore') AS BIGINT))
+    description: 兑换新增积分总和（addScore 字段求和）
+  guild_gvgExchangeScoreReward_count_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.count') AS BIGINT))
+    description: 兑换扣除次数总和（count 字段求和）
+  guild_gvgExchangeScoreReward_avg_addscore_per_role:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.addScore') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均新增积分（addScore 总和 / 去重角色数，NULLIF 防除零）
+  guild_gvgExchangeScoreReward_avg_cnt_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均兑换次数（事件次数 / 去重角色数，NULLIF 防除零）
+coverage:
+  scenarios:
+    - 公会据点战（GvG）结束后会员兑换积分奖励的参与度与频次分析
+    - 各服/各会员新增积分(addScore)与扣除次数(count)的总量与人均水平
+    - 公会据点兑换奖励的活跃会员画像（roleLevel/vipLevel/roleForce 分布）
+  limitations:
+    - "日志中零命中(ds=20260729/20260728: cnt=0/role_uv=0/acc_uv=0/server_uv=0)，事件疑似下线/当期未触发"
+    - 仅 ds=20260729 单日 scout 实测，并在 ds=20260728 复测仍为零，未做全量复核
+    - 分析主体粒度默认 role_id（会员级）；事件含 rewards/coinList 为数组结构，未在 metrics 中展开聚合
+    - metrics 表达式基于 params 字段 GET_JSON_OBJECT 提取，零命中下未做值域校验
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 与 ds=20260728 均零命中(cnt=0/role_uv=0/acc_uv=0/server_uv=0)，事件疑似下线/当期未触发，保持 draft；metrics 按 params_fields 设计补齐但暂无真实量级可校验
+coverage_status: draft
+external_refs: []

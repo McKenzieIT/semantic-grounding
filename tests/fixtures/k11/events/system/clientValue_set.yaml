@@ -1,0 +1,135 @@
+name: game.clientValue.set
+event_filter: event = 'game.clientValue.set'
+description: 客户端键值设置事件：客户端通过 key/value/oldValue 三元组上报某项客户端状态的变更（单日实测 key 恒为 2，value 为单调递增整数、oldValue=value-1，疑似某项进度计数器的逐步推进）。分析主体为 role_id（角色粒度），account_id 为账号粒度补充。ds=20260729 单日 scout 实测：cnt=1827、role_uv=734、acc_uv=721、server_uv=54，当日仅观测到 key=2 一种。
+domains:
+  - 系统监控
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  key:
+    type: int
+    description: key
+  value:
+    type: int
+    description: value
+  oldValue:
+    type: int
+    description: oldValue
+metrics:
+  game_client_value_set_cnt:
+    expression: COUNT(*)
+    description: 客户端值设置事件总记录数
+  game_client_value_set_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发客户端值设置的去重角色数
+  game_client_value_set_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发客户端值设置的去重账号数
+  game_client_value_set_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的游戏服数量（去重）
+  game_client_value_set_key_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.key'))
+    description: 当日被设置的客户端 key 种类数（去重）
+  game_client_value_set_value_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.value') AS BIGINT))
+    description: 设置的新 value 累计和（key=2 进度计数器场景下逐次递增会重复累计，更适合用 value_max）
+  game_client_value_set_value_max:
+    expression: MAX(CAST(GET_JSON_OBJECT(params, '$.value') AS BIGINT))
+    description: 当日设置的最大 value（进度计数器场景下达到的最高进度）
+coverage:
+  scenarios:
+    - 客户端值设置事件触发规模与覆盖（cnt / role_uv / account_uv / server_uv）
+    - 当日被设置的客户端 key 维度分布（key_uv）
+    - 进度计数器推进量与达到的最高进度（value_sum / value_max）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度）；account_id 可作账号粒度补充
+    - 当日 key 恒为 2，其他 key 维度的覆盖未验证
+    - value 语义需业务方确认（疑似进度计数器，未与策划配置对齐）
+    - value_sum 为逐次设置值累计，存在重复累计，更适合用 value_max 衡量最高进度
+  granularity: role_id
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729：cnt=1827, role_uv=734, acc_uv=721, server_uv=54；key 恒为 2，value 单调递增、oldValue=value-1，数据形态合理。
+coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_trans_item_df
+    join_keys:
+      - dws_column: value
+        dim_column: value
+    derivation: 确定性：事件字段 value 与 dim_10000251_trans_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df_arch
+    join_keys:
+      - dws_column: value
+        dim_column: value
+    derivation: 确定性：事件字段 value 与 dim_10000251_trans_item_df_arch 主键精确同名
+    origin: deterministic

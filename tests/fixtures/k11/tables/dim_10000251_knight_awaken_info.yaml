@@ -1,0 +1,115 @@
+table_name: dim_10000251_knight_awaken_info
+engine: maxcompute
+table_comment: 武将觉醒信息配置维度表，每行描述一名武将某个觉醒点位/阶数的解锁条件、消耗与属性加成配置。
+kind: dim
+primary_key:
+- knight_id
+primary_key_unique: false
+label_columns:
+- knight_name
+- name
+description: '武将觉醒信息配置维度表（dim）。每行描述一名武将在某个觉醒点位（order/点位）下的觉醒阶数（awaken_stage）、解锁要求（unlock_require/unlock_describtion）、消耗资源（cost）、加成属性（attribute_value/develop）及激活技能（skill_id）等配置。以 knight_id 作为实体键关联武将主维度，label 取 knight_name（武将名称）与 name（点位名称，如"羁绊解锁"）。'
+domains:
+- 角色成长
+granularity: 每 武将×觉醒点位×解锁条件 一行的觉醒配置维度表
+columns:
+- name: knight_id
+  type: string
+  comment: 武将ID
+  role: dimension
+- name: knight_name
+  type: string
+  comment: 武将名称
+  role: dimension
+- name: order
+  type: string
+  comment: 点位
+  role: dimension
+- name: level
+  type: string
+  comment: 等级
+  role: dimension
+- name: type
+  type: string
+  comment: 类型
+  role: dimension
+- name: stage
+  type: string
+  comment: 归属阶段
+  role: dimension
+- name: awaken_stage
+  type: string
+  comment: 阶数
+  role: dimension
+- name: show_type
+  type: string
+  comment: 显示类型
+  role: dimension
+- name: name
+  type: string
+  comment: 名称
+  role: dimension
+- name: former_id
+  type: string
+  comment: 前置id
+  role: dimension
+- name: unlock_require
+  type: string
+  comment: 额外解锁要求
+  role: dimension
+- name: unlock_describtion
+  type: string
+  comment: 特殊解锁条件描述
+  role: dimension
+- name: cost
+  type: string
+  comment: 消耗资源
+  role: dimension
+- name: develop
+  type: string
+  comment: 成长系数
+  role: dimension
+- name: attribute_value
+  type: string
+  comment: 加成属性效果
+  role: dimension
+- name: talent_num
+  type: string
+  comment: 潜能奖励
+  role: dimension
+- name: skill_id
+  type: string
+  comment: 激活技能
+  role: dimension
+- name: skill_type
+  type: string
+  comment: 技能类型
+  role: dimension
+- name: knight_grade
+  type: string
+  comment: 提升后资质
+  role: dimension
+- name: senior_job_type
+  type: string
+  comment: 解锁进阶职业
+  role: dimension
+coverage:
+  scenarios:
+  - 通过 knight_id 关联事实表，按 knight_name/name 维度透视各武将觉醒点位的解锁条件与加成配置
+  - 按 awaken_stage/level/stage 维度聚合，分析各觉醒阶数下的属性加成(attribute_value/develop)与消耗(cost)配置
+  - 按 skill_id/skill_type 查询觉醒激活的技能，辅助技能-觉醒关联分析
+  - 按 former_id/unlock_require/unlock_describtion 查询觉醒点位的前置依赖与解锁路径
+  limitations:
+  - 配置类维度表，无值度量（数值字段如 talent_num/develop 均为编码字符串，不可直接 SUM/AVG）
+  - 复合编码串需二次解码：cost（如"1_3_6000"）、attribute_value（如"102_50|302_25"）、unlock_require（如"3_1"）、former_id（如"8_1"）为下划线/竖线分隔的编码串，使用前需解析
+  - primary_key knight_id 非行唯一（1971 行仅 73 个 distinct knight_id，每武将约 27 个觉醒点位行），primary_key_unique=false；真实行粒度为 武将×觉醒点位×解锁条件 复合，未实测出唯一列组合，故仅以实体键 knight_id 作为主键并保持 draft
+  - unlock_describtion 字段为原表拼写（describtion 而非 description），沿用原名
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 自动 dim 建模：meta describe 校验 20 列与类型/注释一致；knight_id 作实体主键（非行唯一，已实测 r=1971>d=73 故 primary_key_unique=false）；label 取 knight_name/name；domain 归"角色成长"；配置类维度无度量，故保持 draft 待业务确认。
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数

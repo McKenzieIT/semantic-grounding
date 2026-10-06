@@ -1,0 +1,132 @@
+name: game.rechargeshop.resourcebuy
+event_filter: event = 'game.rechargeshop.resourcebuy'
+description: |-
+  充值商店-资源购买：玩家在充值商店使用充值钻石(coinList.gold, 付费货币)购买资源/货物时触发的行为事件，每条日志记录一次购买行为，含商品id(goodsId)、消耗资源(costResources)等。分析主体为 role_id（角色），可统计购买次数、购买角色UV、消耗充值钻石总额、人均消耗等。scout实测 ds=20260729: cnt=6452/role_uv=2531/acc_uv=2410/server_uv=375，事件真实在线、命中量充足。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等28个
+domains:
+  - 付费经济
+domain: payment
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  goodsId:
+    type: int
+    description: 商品id
+  costResources:
+    type: array
+    description: 消耗的资源
+  costResources.type:
+    type: int
+    description: 类型
+  costResources.value:
+    type: int
+    description: 值
+  costResources.size:
+    type: int
+    description: 数量
+  costResources.uid:
+    type: int
+    description: 唯一id
+metrics:
+  rechargeshop_resourcebuy_cnt:
+    description: 充值商店资源购买事件总次数（所有日志行数）
+    expression: COUNT(*)
+  rechargeshop_resourcebuy_role_uv:
+    description: 触发资源购买的去重角色数
+    expression: COUNT(DISTINCT role_id)
+  rechargeshop_resourcebuy_account_uv:
+    description: 触发资源购买的去重账号数
+    expression: COUNT(DISTINCT account_id)
+  rechargeshop_resourcebuy_server_uv:
+    description: 触发资源购买的去重游戏服数
+    expression: COUNT(DISTINCT server_id)
+  rechargeshop_resourcebuy_goods_uv:
+    description: 购买的去重商品种类数（goodsId 去重）
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.goodsId'))
+  rechargeshop_resourcebuy_gold_sum:
+    description: 购买消耗充值钻石总额（coinList.gold 求和，付费货币）
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+  rechargeshop_resourcebuy_gold_per_role:
+    description: 人均消耗充值钻石（gold_sum / role_uv，分母为0时返回NULL）
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+coverage:
+  scenarios:
+    - 充值商店资源购买总体量（次数、角色UV、账号UV、服务器数）
+    - 充值商店付费货币(充值钻石)消耗总额与人均消耗
+    - 商品种类分布（goodsId 去重数）
+  limitations:
+    - 分析主体默认 role_id（角色）；如需账号粒度可改用 account_id
+    - coinList.gold 为游戏内充值钻石（付费货币），非人民币金额；如需人民币收入需关联计费侧数据
+    - costResources 为消耗资源数组(对象数组)，未在 metrics 中直接求和（需 explode，复杂度高）；如需按资源类型统计请联系分析师
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout实测 ds=20260729: cnt=6452/role_uv=2531/acc_uv=2410/server_uv=375；goods_uv=5；gold_sum=58022（充值钻石）；事件在线，命中量充足，确认 analyst_confirmed"
+coverage_status: analyst_confirmed
+external_refs: []

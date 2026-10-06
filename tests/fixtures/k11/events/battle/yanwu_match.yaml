@@ -1,0 +1,134 @@
+name: game.yanwu.match
+event_filter: event = 'game.yanwu.match'
+description: 演武场(PvP竞技场)匹配事件：玩家进入演武场匹配队列并完成一场对战时上报，记录赛季(season)、耗时(duration)、积分(score)、当前段位(rank)、对手类型(relType 0-机器人/1-真人)及角色快照(等级/vip/战力/货币coinList)。分析主体为 role_id（角色粒度），单条记录=一场演武对战。scout 实测 ds=20260729/20260728 日志零命中，疑似事件下线或当日未触发。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  season:
+    type: string
+    description: 赛季
+  duration:
+    type: int
+    description: 耗时
+  score:
+    type: int
+    description: 积分
+  rank:
+    type: int
+    description: 当前段位
+  relType:
+    type: int
+    description: 对手类型，0-机器人 1-真人
+metrics:
+  yanwu_match_cnt:
+    expression: COUNT(*)
+    description: 演武场匹配对战总场次
+  yanwu_match_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与演武匹配的去重角色数
+  yanwu_match_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与演武匹配的去重账号数
+  yanwu_match_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 参与演武匹配的去重游戏服数
+  yanwu_match_robot_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.relType')='0' THEN 1 ELSE 0 END)
+    description: 对手为机器人的场次
+  yanwu_match_real_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.relType')='1' THEN 1 ELSE 0 END)
+    description: 对手为真人的场次
+  yanwu_match_avg_duration:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.duration') AS BIGINT)) / NULLIF(COUNT(*), 0)
+    description: 演武对战平均耗时(秒)
+  yanwu_match_avg_score:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.score') AS BIGINT)) / NULLIF(COUNT(*), 0)
+    description: 演武对战平均积分
+  yanwu_match_real_rate:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.relType')='1' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 真人对战占比
+coverage:
+  scenarios:
+    - 演武场 PvP 玩法参与度与活跃度（场次/角色UV/账号UV/服务器UV）
+    - 机器人 vs 真人对战构成、真人匹配率
+    - 演武对战时长与积分分布
+    - 各赛季/段位参与分布（结合 score、rank 字段）
+  limitations:
+    - 日志中零命中(ds=20260729 与 ds=20260728 均为 cnt=0)，疑似事件下线/未触发，所有 metrics 在实测期为空值，待事件恢复后复核
+    - 仅 ds=20260729/20260728 单日 scout 实测，未做全量历史复核
+    - 分析主体默认 role_id（角色粒度），未与 account 粒度交叉验证
+  subject_granularity: role_id
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 与 ds=20260728 均零命中 (cnt=0, role_uv=0, acc_uv=0, server_uv=0)，事件疑似下线或当日未触发；保留 draft，待事件恢复后复核
+coverage_status: draft
+external_refs: []

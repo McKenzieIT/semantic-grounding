@@ -1,0 +1,130 @@
+name: game.home.catchequip
+event_filter: event = 'game.home.catchequip'
+description: 家园系统捕捞装备事件：记录角色在家园系统中进行捕捞操作及获得的装备结果，包含捕捞次数、捕捞等级、装备uid/配置id/品质、司南与清泉精铁数量等。主体粒度为 role_id（角色）。ds=20260729 实测单日事件量 30365 条，覆盖 2882 个角色、2756 个账号、392 个游戏服。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  catchTimes:
+    type: int
+    description: 捕捞次数
+  catchLevel:
+    type: int
+    description: 当前捕捞等级
+  catchresult:
+    type: array
+    description: 捕捞结果
+  catchresult.euid:
+    type: int
+    description: 装备uid
+  catchresult.id:
+    type: int
+    description: 装备配置id
+  catchresult.quality:
+    type: int
+    description: 装备品质
+  currSiNanCount:
+    type: int
+    description: 当前等级使用司南次数
+  upgradeSiNanCount:
+    type: int
+    description: 突破所需司南次数
+  currFeNum:
+    type: int
+    description: 当前清泉精铁数量
+  upgraderFeNum:
+    type: int
+    description: 突破所需清泉精铁数量
+metrics:
+  game_home_catchequip_cnt:
+    expression: COUNT(*)
+    description: 捕捞装备事件总发生次数
+  game_home_catchequip_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发捕捞装备的去重角色数
+  game_home_catchequip_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发捕捞装备的去重账号数
+  game_home_catchequip_catchtimes_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.catchTimes') AS BIGINT))
+    description: 捕捞次数累计总和（来自 params.catchTimes）
+coverage:
+  scenarios:
+    - 度量家园捕捞装备玩法的活跃度与产出规模，支持分析参与角色/账号数、事件触发量及捕捞次数总量，可按 server_id 分服评估玩法热度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认主体粒度为 role_id；账号级指标基于 account_id 去重
+    - catchTimes 聚合依赖 params JSON 字段，若部分日志缺失该字段会以 NULL 参与求和
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 scout 实测 cnt=30365 / role_uv=2882 / acc_uv=2756 / server_uv=392，数值合理
+  coverage_status: analyst_confirmed
+external_refs: []

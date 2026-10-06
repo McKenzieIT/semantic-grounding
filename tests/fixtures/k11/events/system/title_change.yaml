@@ -1,0 +1,113 @@
+name: game.title.change
+event_filter: event = 'game.title.change'
+description: 称号更换事件：玩家切换展示称号时上报。参数含目标称号id(title)与角色快照(roleId/roleName/roleLevel/vipLevel/roleForce/exp/sex 等)，coinList 携带更换时刻的关键货币余额。分析主体为 role_id(单角色可多次更换称号，故 role_uv<cnt 为常态)。实测 ds=20260729 单日 cnt=333 / role_uv=292 / acc_uv=290 / server_uv=128。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  title:
+    type: int
+    description: 称号id
+metrics:
+  game_title_change_cnt:
+    expression: COUNT(*)
+    description: 称号更换事件总次数（同一角色多次更换计多次）
+  game_title_change_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 更换称号的去重角色数（分析主体 role_id）
+  game_title_change_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 更换称号的去重账号数
+  game_title_change_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 发生称号更换的去重游戏服数
+  game_title_change_title_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.title'))
+    description: 被切换到的去重目标称号id数（覆盖的称号种类）
+  game_title_change_avg_per_role:
+    expression: ROUND(COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0), 2)
+    description: 人均更换次数 = 总次数 / 去重角色数
+coverage:
+  scenarios:
+    - 称号更换活跃度：日/周更换次数与去重角色趋势，定位称号系统使用热度
+    - 称号多样性：被切换到的目标称号id种类(title_uv)，评估称号池覆盖与热门称号
+    - 人均更换强度(avg_per_role)：识别高频更换称号的用户群体
+    - 服务器分布(server_uv)：哪些服称号更换更活跃
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核（多日趋势/周环比未验证）
+    - 分析主体默认 role_id；params.roleId 与 base view role_id 一致性未交叉校验
+    - title 字段为目标称号id（int），不含称号名称映射，需配合称号配置表解读语义
+    - params_fields 来自日志声明，部分嵌套字段(coinList.*)实际命中与类型未逐字段验证
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=333 / role_uv=292 / acc_uv=290 / server_uv=128，单角色人均更换 ~1.14 次，数值合理；事件在线且正常触发
+coverage_status: analyst_confirmed
+external_refs: []

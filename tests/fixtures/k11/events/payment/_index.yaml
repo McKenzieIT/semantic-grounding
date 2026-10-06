@@ -1,0 +1,110 @@
+domain: payment
+events:
+- name: game.anniversary.dungeonReset
+  description: '周年庆-关卡重置
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.anniversary.fetchBlankFloorReward
+  description: '周年庆-小游戏奖励领取
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.auction.bid
+  description: '拍卖行-竞价
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.auction.dividend
+  description: '拍卖行-分红
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等27个'
+- name: game.auction.fixedPriceBuy
+  description: '拍卖行-一口价购买
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.charge.purchase
+  description: '充值
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等30个'
+- name: game.charge.refund
+  description: '退款
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等28个'
+- name: game.chargeShop.buy
+  description: '充值商店-资源购买
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等30个'
+- name: game.chargeShop.genToken
+  description: '充值商店-申请支付token
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等27个'
+- name: game.coin.change
+  description: '货币资源变化
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等32个'
+- name: game.fantasymonthlycard.active
+  description: '月卡-激活
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.fantasyrebate.active
+  description: '幻想服返利-激活
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等22个'
+- name: game.fantasyrebate.freereward
+  description: '幻想服返利-领取免费奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.fantasyrebate.rechargereward
+  description: '幻想服返利-领取充值奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.fantasyrecharge.finalreward
+  description: '幻想服充值-领取最终奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等22个'
+- name: game.fantasyrecharge.stagereward
+  description: '幻想服充值-领取阶段奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.halfprice.fetchactivate
+  description: '半享幻礼-领取激活奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等22个'
+- name: game.knightarchive.buy
+  description: '武将典藏-购买
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.recharge
+  description: '充值
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等32个'
+- name: game.recharge.purcharseActivityReward
+  description: '限时消费
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.rechargebundlepackage.fetch
+  description: '136礼包-领取奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.rechargeseries.free
+  description: '买5送2-免费奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个'
+- name: game.rechargeshop.resourcebuy
+  description: '充值商店-资源购买
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等28个'
+- name: game.saleshop.confirmdiscounts
+  description: '折扣商店-确认折扣
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.saleshop.freereward
+  description: '折扣商店-领取免费奖励
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个'
+- name: game.saleshop.gendiscounts
+  description: '折扣商店-生成折扣
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个'
+- name: game.shop.buy
+  description: '商店-购买
+
+    参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等37个'

@@ -1,0 +1,150 @@
+name: game.customLevel.fetchReward
+event_filter: event = 'game.customLevel.fetchReward'
+description: 演武场(customLevel)奖励领取事件：玩家在演武场完成挑战后领取奖励时上报，params.type 区分奖励来源(1=传说开放奖励 / 2=击破奖励 / 3=赛季任务奖励)，rewardParam 携带奖励参数。主体粒度 role_id(角色)，单日 ds=20260729 scout 实测 cnt=0(零命中)。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  type:
+    type: int
+    description: type == 1 传说开放奖励; type == 2 击破奖励 ;type == 3 赛季任务奖励
+  rewardParam:
+    type: int
+    description: rewardParam
+metrics:
+  game_customLevel_fetchReward_cnt:
+    expression: COUNT(*)
+    description: 演武场奖励领取事件总上报次数
+  game_customLevel_fetchReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取演武场奖励的去重角色数(role_id)
+  game_customLevel_fetchReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取演武场奖励的去重账号数(account_id)
+  game_customLevel_fetchReward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取演武场奖励涉及的去重游戏服数(server_id)
+coverage:
+  scenarios:
+    - 演武场奖励领取总体积与角色/账号/游戏服粒度去重 UV
+    - 不同 type(传说开放/击破/赛季任务)奖励来源分布(需配合 GET_JSON_OBJECT(params,'$.type') 下钻，未作为独立 metric 物化)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 日志中零命中(ds=20260729 cnt=0；retry ds=20260728 cnt=0)，疑似下线/未触发
+    - 默认主体粒度 role_id(角色)；rewardParam 字段语义不明，未作为量化指标
+    - metrics 为依据事件 schema 预置，实测无数据，未做数值合理性核对
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  coverage_status: draft
+  note: ds=20260729 scout cnt=0/role_uv=0/acc_uv=0/server_uv=0；retry ds=20260728 cnt=0；零命中，疑似下线/未触发，保持 draft
+external_refs:
+  - dim_table: dim_10000251_trans_gacha_mission_group_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_gacha_mission_group_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df_arch 主键精确同名
+    origin: deterministic

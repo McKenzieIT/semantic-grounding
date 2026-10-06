@@ -1,0 +1,147 @@
+name: game.guild.levelReward
+event_filter: event = 'game.guild.levelReward'
+description: 公会成员领取公会等级奖励事件：当公会等级提升或玩家可领取等级奖励时触发，记录领取人角色信息及发放的各类货币（充值钻石、赠送钻石、免费钻石、紫金、经验卷轴、体力）。分析主体为 role_id（角色级领取行为），可统计每日领取次数、领取角色数、人均领取次数及各货币发放总量。scout 实测 ds=20260729：cnt=1746、role_uv=1323、acc_uv=1277、server_uv=60。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  level:
+    type: int
+    description: 等级
+metrics:
+  game_guild_levelReward_cnt:
+    expression: COUNT(*)
+    description: 公会等级奖励领取事件总次数（每条=一次角色领取公会等级奖励行为）
+  game_guild_levelReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取公会等级奖励的去重角色数（主体粒度 role_id）
+  game_guild_levelReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取公会等级奖励的去重账号数
+  game_guild_levelReward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 有领取行为发生的去重游戏服数
+  game_guild_levelReward_level_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.level'))
+    description: 涉及的公会等级档位数（去重 level；100%非空实测，ds=20260729 实测27档）
+  game_guild_levelReward_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 充值钻石发放总量（gold 100%非空实测）
+  game_guild_levelReward_sendgold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.sendgold') AS BIGINT))
+    description: 充值赠送钻石发放总量
+  game_guild_levelReward_freegold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.freegold') AS BIGINT))
+    description: 免费钻石发放总量
+  game_guild_levelReward_expcoin_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.expCoin') AS BIGINT))
+    description: 经验卷轴发放总量
+  game_guild_levelReward_energy_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.energy') AS BIGINT))
+    description: 体力发放总量
+  game_guild_levelReward_avg_cnt_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均领取次数（cnt / role_uv，NULLIF 防零除）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 单日：cnt=1746、role_uv=1323、acc_uv=1277、server_uv=60、level_uv=27、gold_sum=897、sendgold_sum=220、freegold_sum=9842552、expCoin_sum=30314898300、energy_sum=403388；数据合理（公会等级奖励正常发放），分析主体粒度 role_id
+coverage:
+  scenarios:
+    - 公会等级奖励领取规模（game_guild_levelReward_cnt / role_uv / account_uv）
+    - 奖励覆盖面（server_uv 游戏服数、level_uv 公会等级档位数）
+    - 各货币发放总量（gold/sendgold/freegold/expCoin/energy _sum，衡量等级奖励经济产出）
+    - 单角色领取强度（avg_cnt_per_role 人均领取次数）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量多日复核，建议接入生产流量前抽查
+    - 分析主体粒度默认 role_id，未独立核对 account_id 维度去重差异
+    - 埋点 params_fields 未含公会ID字段，无法按公会粒度统计 guild_uv；如需公会维度需关联公会成员/日志表
+    - coinList.diamond（紫金）实测全为 NULL（本日该等级奖励未发放紫金），diamond 指标暂未纳入
+    - 本游戏无 MaxCompute 事件分布查询，无 daily_count/total_count/active_days
+  coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_knight_awaken_info_arch
+    join_keys:
+      - dws_column: level
+        dim_column: level
+    derivation: 确定性：事件字段 level 与 dim_10000251_knight_awaken_info_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_knight_level_info
+    join_keys:
+      - dws_column: level
+        dim_column: level
+    derivation: 确定性：事件字段 level 与 dim_10000251_knight_level_info 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_knight_level_info_arch
+    join_keys:
+      - dws_column: level
+        dim_column: level
+    derivation: 确定性：事件字段 level 与 dim_10000251_knight_level_info_arch 主键精确同名
+    origin: deterministic

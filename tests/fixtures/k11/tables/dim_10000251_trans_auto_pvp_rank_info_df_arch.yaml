@@ -1,0 +1,58 @@
+table_name: dim_10000251_trans_auto_pvp_rank_info_df_arch
+engine: maxcompute
+kind: dim
+table_comment: '自动 PVP 段位配置维度表，按 ds 日分区快照，记录每个段位的 id/名称/图标/分组/积分阈值。'
+description: '自动 PVP 段位（rank）配置维度表。主键 rank_id（段位id），标签列 rank_name（段位名称）。每行描述一个段位的 id、名称、图标、分组（rank_group/rank_group_name）及积分阈值（rank_score）。表按 ds 日分区存储段位配置快照。配置类维度表，无值度量。'
+primary_key: [rank_id]
+label_columns: [rank_name]
+primary_key_unique: false
+domains:
+- 战斗关卡
+granularity: '每段位（rank_id）一行的配置维度表，按 ds 日分区快照存储。'
+coverage:
+  scenarios:
+  - '事实表经 rank_id JOIN 查询段位名称（rank_name）、段位图标（rank_icon）做展示与分组。'
+  - '按 rank_group/rank_group_name 聚合统计段位分组下的段位数量与积分阈值区间。'
+  - '玩家段位事实表 JOIN 获取段位名称/分组，用于段位分布与升降段分析。'
+  limitations:
+  - '配置类维度表，无值度量（rank_score 为字符串阈值，非可加度量）。'
+  - 'primary_key_unique=false：rank_id 在不同 ds 快照下重复，全局 9156 行仅 21 个 distinct rank_id；跨分区查询需叠加 ds 过滤或在 ds 内去重。'
+  - 'rank_score 为字符串编码的积分阈值，比较/排序需类型转换；rank_group 同为字符串编码，可能需二次解码映射。'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '配置类 PVP 段位维度表，rank_id 为自然主键但因按 ds 日快照存储导致全局不唯一（primary_key_unique=false），保持 draft。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含各 ds 快照）
+columns:
+- name: rank_id
+  type: bigint
+  comment: 段位id
+  role: dimension
+- name: rank_name
+  type: string
+  comment: 段位名称
+  role: dimension
+- name: rank_icon
+  type: string
+  comment: 段位图标
+  role: dimension
+- name: rank_group
+  type: string
+  comment: 段位分组
+  role: dimension
+- name: rank_group_name
+  type: string
+  comment: 分组名称
+  role: dimension
+- name: rank_score
+  type: string
+  comment: 段位积分
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition

@@ -1,0 +1,111 @@
+table_name: dws_10000251_algo_role_churn_pred
+engine: maxcompute
+table_comment: 角色流失预测算法输出DWS：每日为各活跃角色生成未来N日流失预测（tag=1预测流失，label=1实际流失），含角色行为序列与样本特征。
+description: 粒度：每日全量快照（_df 语义，ds格式<日期>_<预测天数>_<标签>），每行=一个角色在一个预测快照日的预测记录。分析主体=角色（user_type=3，依表名推断，无user_type列）。承载角色级流失预测标签（tag预测值/label真实值）、角色行为序列（role_info）、样本特征JSON（sample_info）、开服与角色第N天等。用于流失预测召回率、命中率、分群流失率评估。
+domains:
+  - 用户生命周期
+  - 系统监控
+granularity: 每日全量快照，角色粒度（role_id + ds）
+columns:
+  - name: role_id
+    type: string
+    comment: 角色ID（主键）
+    role: dimension
+  - name: acc_id
+    type: string
+    comment: 账号ID
+    role: dimension
+  - name: server_ds
+    type: string
+    comment: 开服日期(yyyymmdd)
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 服务器ID
+    role: dimension
+  - name: act_ds
+    type: string
+    comment: 角色激活日期(yyyymmdd)
+    role: dimension
+  - name: role_info
+    type: string
+    comment: 角色历史行为序列(日期,登录态,活跃度)` 分隔文本
+    role: attribute
+  - name: sample_info
+    type: string
+    comment: 样本特征JSON(login/pay/buy/act各窗口,玩家进度,服进度,last_nday等)
+    role: attribute
+  - name: tag
+    type: bigint
+    comment: 预测流失标签(1=预测流失,0=留存)
+    role: measure
+  - name: label
+    type: bigint
+    comment: 实际流失标签(1=实际流失,0=留存)
+    role: measure
+  - name: server_nday
+    type: bigint
+    comment: 开服第N天
+    role: measure
+  - name: role_nday
+    type: bigint
+    comment: 角色第N天
+    role: measure
+  - name: sample_nday
+    type: bigint
+    comment: 样本第N天
+    role: measure
+  - name: start_nday
+    type: bigint
+    comment: 起始第N天
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区键(格式<日期>_<预测天数>_<标签>)
+    role: partition
+metrics:
+  total_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 样本角色总数（预测快照覆盖角色数）
+  predicted_churn_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN tag=1 THEN role_id END)
+    description: 预测流失角色数（tag=1）
+  predicted_churn_rate:
+    expression: SUM(CAST(tag AS BIGINT)) / NULLIF(COUNT(*), 0)
+    description: 预测流失率=预测流失角色数/样本角色总数
+  actual_churn_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN label=1 THEN role_id END)
+    description: 实际流失角色数（label=1，需等待标签回流后才有值）
+  server_count:
+    expression: COUNT(DISTINCT server_id)
+    description: 覆盖服务器数
+coverage:
+  scenarios:
+    - 每日流失预测规模：通过 total_role_uv/predicted_churn_role_uv 监控预测召回的角色覆盖与流失规模
+    - 预测流失率趋势：predicted_churn_rate 反映大盘角色流失压力，可按 server_id/角色第N天 分群
+    - 预测准确度评估：predicted_churn_role_uv 与 actual_churn_role_uv 对比（需 label 回流）可评估精确率/召回率
+    - 算法覆盖服务器范围：server_count 反映快照覆盖的服务器数量
+  limitations:
+    - user_type 列不存在，分析主体=角色系依表名推断（user_type=3），未做列值校验
+    - tag 为模型预测标签，label 为事后真实流失标签；最新快照(20260730_7_0)的 label 全为0，需等待N日回流后才有真实流失值
+    - role_info/sample_info 为长文本/JSON 字段，未在指标中解析；如需提取需配合 GET_JSON_OBJECT 或字符串拆分
+    - 仅对 20260730_7_0 快照抽样验证了5个核心指标（cnt/role_uv/sum_tag/sum_label/server_count），未做全量多分区复核
+    - ds 分区含预测天数维度（_7_ 后缀），跨分区聚合需注意避免重复计数角色
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 在最新分区 ds=20260730_7_0 上抽样验证：cnt=1668716, role_uv=1668716, sum_tag=11766(预测流失), sum_label=0(label未回流), 数据合理。指标为结构性定义，仅抽样验证。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (comment 服务器ID) is an exact-name match to dim_10000251_server_info's primary key server_id, used to look up server name and open-time attributes.
+    origin: deterministic
+pref_label: 流失预测表
+alt_labels:
+  - 流失
+  - 预测
+  - 预警
+  - 留存

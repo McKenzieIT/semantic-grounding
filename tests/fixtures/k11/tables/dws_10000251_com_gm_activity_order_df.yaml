@@ -1,0 +1,106 @@
+table_name: dws_10000251_com_gm_activity_order_df
+engine: maxcompute
+table_comment: 商业化-gm活动付费总表
+description: |-
+  商业化-gM活动付费总表，记录GM活动下账号-角色-商品粒度的付费订单。
+  粒度：日全量快照(_df)，每行=一个账号+角色在某活动某商品下的付费聚合记录。
+  主体：账号(account_id)+角色(role_id) 双主体，无独立 user_type 列。
+  主要字段：activity_id, account_id, role_id, server_id, pay_type, recharge_id, pay_amt, pay_times, last_ymd, ds 等10列。
+domains:
+  - 付费经济
+  - 系统监控
+granularity: 日全量快照(_df)，主体=账号+角色
+columns:
+  - name: activity_id
+    type: BIGINT
+    comment: 活动ID
+    role: dimension
+  - name: account_id
+    type: STRING
+    comment: 账号ID
+    role: dimension
+  - name: role_id
+    type: STRING
+    comment: 角色ID
+    role: dimension
+  - name: server_id
+    type: STRING
+    comment: 服务器ID
+    role: dimension
+  - name: pay_type
+    type: BIGINT
+    comment: 付费类型 1-现金 2-付费代金券 3-免费代金券
+    role: dimension
+  - name: recharge_id
+    type: STRING
+    comment: 商品ID
+    role: dimension
+  - name: pay_amt
+    type: DOUBLE
+    comment: 订单金额/分
+    role: measure
+  - name: pay_times
+    type: BIGINT
+    comment: 付费次数
+    role: measure
+  - name: last_ymd
+    type: STRING
+    comment: 最后一次付费日期
+    role: attribute
+  - name: ds
+    type: STRING
+    comment: 分区
+    role: partition
+metrics:
+  order_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: GM活动付费角色UV（去重角色数，快照口径）
+  order_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: GM活动付费账号UV（去重账号数，快照口径）
+  total_pay_amt:
+    expression: SUM(pay_amt)
+    description: GM活动订单总金额（单位：分，快照汇总）
+  total_pay_times:
+    expression: SUM(pay_times)
+    description: GM活动总付费次数（快照汇总）
+  arppu_role:
+    expression: SUM(pay_amt) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 角色人均付费金额（分，NULLIF防分母为0）
+coverage:
+  scenarios:
+    - GM活动付费角色/账号UV与总金额、总次数，支撑商业化GM活动复盘与人均付费ARPPU评估。
+    - 按 activity_id / server_id / pay_type / recharge_id 维度下钻，定位具体活动/服务器/付费类型/商品的付费贡献。
+  limitations:
+    - 表为空/无数据（MAX(ds) 返回 NULL），所有指标为结构化定义，未做全量 maxc 实测复核，待有数据后补验。
+    - _df 为日全量快照口径，指标为快照时点值而非累计增量；跨日累计需外部聚合。
+    - pay_amt 单位为分，使用时注意除以100换算为元。
+    - 无独立 user_type 列，主体为账号+角色双主体，未做单主体收敛。
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表为空(MAX(ds) NULL)，指标仅结构化定义，未做 maxc 抽样验证；待表有数据后转为 analyst_confirmed。
+dimension_refs:
+  - dim_table: dim_10000251_gmactivity_info
+    join_keys:
+      - dws_column: activity_id
+        dim_column: id
+    derivation: DWS activity_id（活动ID，GM活动付费订单的活动实例）语义对应 dim_10000251_gmactivity_info 主键 id（GM活动实例ID），JOIN 回填 GM 活动名称/类型/生效与发布状态。
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id（服务器ID）与 dim_10000251_server_info 主键 server_id 精确匹配，JOIN 回填区服名称与开服时间。
+    origin: deterministic
+  - dim_table: dim_10000251_com_recharge_info
+    join_keys:
+      - dws_column: recharge_id
+        dim_column: recharge_id
+    derivation: DWS recharge_id（商品ID）与 dim_10000251_com_recharge_info 主键 recharge_id 精确匹配，JOIN 回填礼包名称/类型/主题/价格。
+    origin: deterministic
+pref_label: 活动订单表
+alt_labels:
+  - 活动
+  - 运营
+  - GM

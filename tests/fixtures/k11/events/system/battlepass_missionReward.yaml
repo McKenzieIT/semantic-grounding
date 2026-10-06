@@ -1,0 +1,136 @@
+name: game.battlepass.missionReward
+event_filter: event = 'game.battlepass.missionReward'
+description: |-
+  战令-任务领奖：玩家完成战令(battlepass)任务后领取奖励时上报，含任务id(missionId)、获得战令经验(battlePassExp)、新旧等级/经验(oldLevel/oldExp/newLevel/newExp)。主体粒度为 role_id(角色)。真实测得 ds=20260729：2321 条事件 / 820 角色 / 790 账号 / 177 服务器。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等28个
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  missionId:
+    type: int
+    description: 任务id
+  battlePassExp:
+    type: int
+    description: 获得exp
+  oldLevel:
+    type: int
+    description: 旧等级
+  oldExp:
+    type: int
+    description: 旧经验
+  newLevel:
+    type: int
+    description: 新等级
+  newExp:
+    type: int
+    description: 新经验
+metrics:
+  battlepass_mission_reward_cnt:
+    expression: COUNT(*)
+    description: 战令任务领奖事件触发次数(每次完成战令任务并领取奖励记1条)
+  battlepass_mission_reward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取战令任务奖励的独立角色数(去重 role_id；主体粒度为角色)
+  battlepass_mission_reward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取战令任务奖励的独立账号数(去重 account_id)
+  battlepass_mission_reward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的区服数(去重 server_id，反映战令任务覆盖面)
+  battlepass_mission_reward_mission_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.missionId'))
+    description: 当日被领取奖励的战令任务种类数(去重 missionId)
+  battlepass_mission_reward_bp_exp_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.battlePassExp') AS BIGINT))
+    description: 领奖发放的战令经验总量(battlePassExp 求和)
+  battlepass_mission_reward_levelup_cnt:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params, '$.newLevel') AS BIGINT) > CAST(GET_JSON_OBJECT(params, '$.oldLevel') AS BIGINT) THEN 1 ELSE 0 END)
+    description: 领奖直接触发战令等级提升的记录数(newLevel>oldLevel)
+  battlepass_mission_reward_exp_per_role:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.battlePassExp') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均获得战令经验(总经验/独立角色数，分母为0时返回NULL)
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+coverage:
+  scenarios:
+    - 战令任务领奖活跃度(battlepass_mission_reward_cnt / _role_uv / _account_uv)
+    - 战令任务覆盖面(_server_uv 区服数、_mission_uv 任务种类数)
+    - 战令经验产出规模(_bp_exp_sum 每日发放战令经验总量)
+    - 领奖对升级的驱动(_levelup_cnt 触发等级提升次数、_exp_per_role 人均经验)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测(cnt=2321/role_uv=820/acc_uv=790/server_uv=177)，未做全量多日复核，建议接入生产流量前抽查
+    - 主体粒度默认 role_id 未逐事件实测角色归属正确性，按 base view 同时含 account_id+role_id 推断为角色级
+    - missionId 仅做 COUNT(DISTINCT) 实测，未枚举各任务业务含义(需任务配置表/产品确认)
+    - battlePassExp 为单次领奖获得量，不代表战令总经验库存；levelup_cnt 仅判定领奖瞬间的等级跃迁
+    - 本游戏无 MaxCompute 事件分布查询，无 daily_count/total_count/active_days
+  coverage_status: analyst_confirmed
+external_refs: []

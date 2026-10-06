@@ -1,0 +1,136 @@
+name: game.gmActivity.orientReward
+event_filter: event = 'game.gmActivity.orientReward'
+description: gm活动持续奖励(orientReward)事件。记录角色在gm活动中领取持续(每日)奖励的行为，携带角色、服务器、VIP、货币列表、活动id(actId/subId)、持续天数(persistCount)、已发放次数(rewardCnt)及每日奖励(dailyRewards)等信息。主体粒度为 role_id（角色级）。ds=20260729 单日 scout 实测零命中。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  actId:
+    type: int
+    description: 活动id
+  subId:
+    type: int
+    description: 活动子id
+  genTs:
+    type: int
+    description: 生成时间
+  persistCount:
+    type: int
+    description: 持续天数
+  sendDayBegin:
+    type: int
+    description: 发放日期
+  rewardCnt:
+    type: int
+    description: 以发放次数
+  dailyRewards:
+    type: array
+    description: 奖励
+  dailyRewards.type:
+    type: int
+    description: 类型
+  dailyRewards.value:
+    type: int
+    description: 值
+  dailyRewards.size:
+    type: int
+    description: 数量
+  dailyRewards.uid:
+    type: int
+    description: 唯一id
+  serial:
+    type: int
+    description: 流水号
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 cnt=0/role_uv=0/acc_uv=0；ds=20260728 cnt=0/role_uv=0/acc_uv=0。日志零命中。
+  coverage_status: draft
+metrics:
+  game_gmActivity_orientReward_cnt:
+    expression: COUNT(*)
+    description: gm活动持续奖励事件总次数（按角色级行计）
+  game_gmActivity_orientReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: gm活动持续奖励事件去重角色数
+  game_gmActivity_orientReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: gm活动持续奖励事件去重账号数
+  game_gmActivity_orientReward_rewardcnt_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.rewardCnt') AS BIGINT))
+    description: gm活动持续奖励累计已发放次数
+coverage:
+  scenarios:
+    - gm活动持续奖励事件的发生次数、参与角色/账号数、以及已发放次数(rewardCnt)累计量
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 日志中零命中(ds=20260729/20260728 cnt=0)，疑似下线/未触发
+    - 主体粒度默认 role_id（角色），账号级口径需用 account_uv 单独核算
+external_refs: []

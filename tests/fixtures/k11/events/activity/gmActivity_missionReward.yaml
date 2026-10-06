@@ -1,0 +1,112 @@
+name: game.gmActivity.missionReward
+event_filter: event = 'game.gmActivity.missionReward'
+description: GM活动任务领奖事件：玩家在游戏服内领取GM活动（actId）下任务（missionIds）的奖励，记录角色属性与关键货币列表（coinList：充值钻石/紫金/经验卷轴/体力等）。事件主体粒度为 role_id（角色），account_id 为账号维度。ds=20260729/20260728 实测零命中，疑似已下线或当期未触发。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  actId:
+    type: int
+    description: 活动ID
+  missionIds:
+    type: array
+    description: 任务ID列表
+  tabName:
+    type: string
+    description: 页签名
+metrics:
+  game_gmActivity_missionReward_cnt:
+    expression: COUNT(*)
+    description: GM活动任务领奖事件总记录数（领奖次数）
+  game_gmActivity_missionReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取GM活动任务奖励的去重角色数
+  game_gmActivity_missionReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取GM活动任务奖励的去重账号数
+  game_gmActivity_missionReward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 发生GM活动任务领奖的去重游戏服数
+daily_count: 0
+total_count: 0
+active_days: 0
+coverage:
+  scenarios:
+    - 监控GM活动任务（actId/missionIds）的领奖频次与触达角色规模，评估GM活动投放效果与活跃召回
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 日志中零命中(ds=20260729/20260728)，疑似下线/未触发，指标暂以 COUNT 表达，实际值待事件恢复后复核
+    - 默认主体粒度为 role_id（角色），account_id 仅作账号维度补充
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  coverage_status: draft
+  note: "ds=20260729 scout: cnt=0 role_uv=0 acc_uv=0 server_uv=0；重试 ds=20260728 仍 0，判为零命中/疑似下线"
+external_refs: []

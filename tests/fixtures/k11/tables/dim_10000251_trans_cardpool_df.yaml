@@ -1,0 +1,47 @@
+table_name: dim_10000251_trans_cardpool_df
+engine: maxcompute
+table_comment: 卡池配置维度表（日全量快照 _df），按卡池 id 维护卡池名/描述/类型等属性。
+description: '卡池（抽卡池）配置/维度表，日全量快照(_df)。每行描述一个卡池的 id、名称、描述与类型，供事实表通过卡池 id JOIN 查询卡池维度属性。主要字段：id(卡池id, 主键), name(卡池名), desc(卡池描述), type(卡池类型编码)。'
+kind: dim
+domains:
+- 系统监控
+granularity: 每卡池一行的维度/配置表（日全量快照 _df）
+primary_key:
+- id
+label_columns:
+- name
+primary_key_unique: true
+coverage:
+  scenarios:
+  - 事实表（如抽卡流水）通过 cardpool_id JOIN 本表，获取卡池名、描述、类型等维度属性用于分组/筛选
+  - 按卡池类型(type)聚合统计各类型卡池数量与活动情况
+  limitations:
+  - 配置类维度表，无值度量（无 measure 列）
+  - type 字段为编码串，业务语义需结合上游配置二次解读
+  - desc 为自由文本描述，非结构化字段
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 meta describe 真实列建模；primary_key=id, label=name；实测 r=50 d=50 唯一(primary_key_unique=true)；保持 draft。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（卡池数）
+columns:
+- name: id
+  type: string
+  comment: 卡池id
+  role: dimension
+- name: name
+  type: string
+  comment: 卡池名
+  role: dimension
+- name: desc
+  type: string
+  comment: 卡池描述
+  role: dimension
+- name: type
+  type: string
+  comment: type
+  role: dimension

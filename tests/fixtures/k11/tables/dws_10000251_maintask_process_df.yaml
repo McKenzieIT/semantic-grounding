@@ -1,0 +1,76 @@
+table_name: dws_10000251_maintask_process_df
+engine: maxcompute
+table_comment: 主线任务进度日全量快照（_df）：每业务日每角色一行，记录角色停留在主线任务的章节及该章节未完成任务列表。
+description: 粒度：日全量快照(_df)，每业务日(ds)每角色(role_id)一行主线任务进度。分析主体=角色（user_type=3，由表名 role/主键 role_id 推断；该表无 user_type 列，因表为空未做 SELECT DISTINCT 实测确认）。记录角色当前停留的主线章节(stay_chapter_id)及该章节下未完成任务列表(stay_task_list)，反映角色主线推进进度。
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 日全量快照(_df)：每业务日每角色一行
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: stay_chapter_id
+    type: string
+    comment: 主线任务停留章节
+    role: dimension
+  - name: stay_task_list
+    type: string
+    comment: 主线任务停留章节任务列表
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_uv_snapshot:
+    expression: COUNT(DISTINCT role_id)
+    description: 角色UV快照：当日快照下去重角色数（角色粒度主体指标）
+  server_count:
+    expression: COUNT(DISTINCT server_id)
+    description: 当日活跃区服数：快照内去重区服数
+  distinct_stay_chapters:
+    expression: COUNT(DISTINCT stay_chapter_id)
+    description: 停留章节种类数：当日玩家停留的主线章节去重数
+  role_with_chapter_uv:
+    expression: COUNT(DISTINCT CASE WHEN stay_chapter_id IS NOT NULL THEN role_id END)
+    description: 有停留章节的角色UV：stay_chapter_id 非空的去重角色数
+  avg_roles_per_server:
+    expression: CAST(COUNT(DISTINCT role_id) AS DOUBLE) / NULLIF(COUNT(DISTINCT server_id), 0)
+    description: 区服平均角色数：角色UV / 区服数
+coverage:
+  scenarios:
+    - 主线推进进度：角色停留章节分布与去重章节数（distinct_stay_chapters）
+    - 角色规模：快照角色UV（role_uv_snapshot）、有停留章节角色UV（role_with_chapter_uv）
+    - 区服覆盖：当日活跃区服数（server_count）、区服平均角色数（avg_roles_per_server）
+  limitations:
+    - 仅 scout 抽样验证，未做全量 maxc 实测复核
+    - 全表零行：maxc 实测 SELECT COUNT(*)=0 且 MAX(ds)=NULL；该 dws 主线任务进度表疑似未产出数据/历史遗留空表，无法验证指标合理性
+    - 主体 user_type=3 为由表名 role/主键 role_id 推断；该表无 user_type 列且表为空，未做 SELECT DISTINCT 实测确认
+    - stay_task_list 为列表型文本，未做拆解聚合；按区服/章节维度的明细拆分未实测
+    - _df 为日全量快照，每 ds 每角色一行；跨 ds 不可直接累加，须以单 ds 快照为准
+  coverage_status: draft
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已通过 maxc meta describe 校验全部5列真实名称/类型/注释并据实重排 role（标识/分组键->dimension，列表文本->attribute）。但 maxc 实测全表零行（COUNT(*)=0, MAX(ds)=NULL），无法做指标抽样验证，故保持 draft；指标表达式仅使用已校验真实列且除法均带 NULLIF，待数据产出后复核可升 analyst_confirmed。
+kind: dws
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (区服id) exactly matches dim_10000251_server_info primary key server_id (区服维度配置表，每一个 server_id 一行)，用于回填区服名称与开服时间维度。
+    origin: deterministic
+pref_label: 主线任务进度表
+alt_labels:
+  - 主线
+  - 任务
+  - 章节
+  - 剧情

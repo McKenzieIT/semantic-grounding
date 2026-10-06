@@ -1,0 +1,108 @@
+table_name: dws_10000251_play_lineup_df
+engine: maxcompute
+table_comment: 玩法阵容表
+description: |-
+  玩法阵容表（角色维度，记录各角色在不同玩法/关卡下的阵容参与与首通情况）。
+  主体：角色（role_id，对应 user_type=3 角色表）。
+  粒度：日全量快照(_df)，按 ds 分区，每行一个 角色×区服×玩法×子玩法×关卡×阵容 组合的当日累计参与/首通次数。
+  主要字段：role_id, server_id, play_id, sub_play_id, stage_id, lineup, part_pv, pass_pv, ext_info, ds。
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 日全量快照(_df)，角色×区服×玩法×子玩法×关卡×阵容 粒度，按 ds 分区
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id，key
+    role: dimension
+  - name: play_id
+    type: string
+    comment: 玩法id，key
+    role: dimension
+  - name: sub_play_id
+    type: string
+    comment: 子玩法id，key
+    role: dimension
+  - name: stage_id
+    type: string
+    comment: 关卡id，key
+    role: dimension
+  - name: lineup
+    type: string
+    comment: 阵容，key
+    role: dimension
+  - name: part_pv
+    type: bigint
+    comment: 参与次数
+    role: measure
+  - name: pass_pv
+    type: bigint
+    comment: 首通参与次数
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  lineup_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与玩法阵容的去重角色数（UV）
+  part_pv_total:
+    expression: SUM(part_pv)
+    description: 阵容参与总次数
+  pass_pv_total:
+    expression: SUM(pass_pv)
+    description: 首通参与总次数
+  pass_rate:
+    expression: SUM(pass_pv) / NULLIF(SUM(part_pv), 0)
+    description: 首通率=首通次数/参与次数
+  lineup_variety:
+    expression: COUNT(DISTINCT lineup)
+    description: 阵容多样性（去重阵容数）
+coverage:
+  scenarios:
+    - 按玩法/关卡统计角色参与阵容的 UV 与参与次数，评估玩法热度
+    - 计算首通率，衡量关卡难度与通关进度
+    - 阵容多样性分析，识别主流/小众阵容搭配
+  limitations:
+    - 表为空/无数据（MAX(ds) 为 NULL），无法做实测复核，所有指标为结构性定义
+    - _df 日全量快照语义，指标按当日累计口径，跨日去重需调用方自行处理
+    - 未做全量 maxc 实测复核，仅 scout 抽样验证（抽样为空）
+    - 缺少 user_type 列，角色主体按表名(role_id)推断，未做实测校验
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 表为空（MAX(ds) NULL），仅完成结构性丰富，待有数据后实测复核
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (comment 区服id) exactly matches the PK server_id of dim_10000251_server_info, the canonical 区服 dimension used to join back server name and opening date.
+    origin: deterministic
+  - dim_table: dim_10000251_trans_sub_play_od
+    join_keys:
+      - dws_column: sub_play_id
+        dim_column: sub_play_id
+    derivation: DWS sub_play_id (comment 子玩法id) exactly matches the PK sub_play_id of dim_10000251_trans_sub_play_od, the 子玩法配置 dimension keyed by sub_play_id with roll-up to play_id.
+    origin: deterministic
+  - dim_table: dim_10000251_trans_stage_df
+    join_keys:
+      - dws_column: stage_id
+        dim_column: id
+    derivation: DWS stage_id (comment 关卡id) semantically matches the PK id (关卡id) of dim_10000251_trans_stage_df, the 关卡配置 dimension explicitly intended for fact-table stage lookup by id.
+pref_label: 玩法阵容表
+alt_labels:
+  - 阵容
+  - 玩法
+  - 编队
+  - 配队

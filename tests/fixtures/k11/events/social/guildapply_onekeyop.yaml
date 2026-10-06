@@ -1,0 +1,120 @@
+name: game.guildapply.onekeyop
+event_filter: event = 'game.guildapply.onekeyop'
+description: 公会管理角色一键处理待审加入申请的社交行为事件（role_id 为分析主体，即执行审批的公会管理角色；account_id 为账号主体）。每条记录携带操作类型 op（0 拒绝 / 1 同意）及被处理的玩家 uid 列表 userList，并附角色等级、vip、战力、经验及关键货币快照。单日 ds=20260729 scout 实测：处理操作 3 次，去重操作角色 2 人、账号 2 个、覆盖游戏服 2 个；其中拒绝（op=0）2 次/2 角色人，同意（op=1）1 次/1 角色人。事件在线但日活极低。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  op:
+    type: int
+    description: 0 拒绝 1 同意
+  userList:
+    type: array
+    description: 处理的玩家uid列表
+metrics:
+  game_guildapply_onekeyop_cnt:
+    expression: COUNT(*)
+    description: 一键处理公会加入申请的总操作次数
+  game_guildapply_onekeyop_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 执行一键审批的去重角色数（分析主体，即公会管理角色）
+  game_guildapply_onekeyop_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 执行一键审批的去重账号数
+  game_guildapply_onekeyop_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及审批操作的去重游戏服数
+  game_guildapply_onekeyop_agree_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.op') = '1' THEN 1 ELSE 0 END)
+    description: 同意加入的审批操作次数（op=1）
+  game_guildapply_onekeyop_reject_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.op') = '0' THEN 1 ELSE 0 END)
+    description: 拒绝加入的审批操作次数（op=0）
+  game_guildapply_onekeyop_agree_rate:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.op') = '1' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 同意率，同意操作次数占总审批操作次数的比例
+coverage:
+  scenarios:
+    - 审批吞吐：按日/服统计一键处理操作次数与操作角色数，衡量公会管理活跃度
+    - 审批结果分布：agree_cnt / reject_cnt 反映同意与拒绝的绝对量，识别公会入会门槛松紧度
+    - 同意倾向：agree_rate 反映同意操作占比，判断公会招新策略（积极吸纳 vs 严格筛选）
+    - 跨服覆盖：server_uv 反映审批行为覆盖的游戏服范围
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（执行审批的公会管理角色粒度），account_id 仅供去重参考
+    - 单日实测仅 3 条记录、2 个操作角色，事件日活极低，agree_rate 等比率指标在小样本下波动大，解读需谨慎
+    - params_fields 中 op 类型声明为 int，但日志中经 GET_JSON_OBJECT 读取为字符串（'0'/'1'），metrics 已按字符串比较处理
+    - 未覆盖被处理玩家维度的去重统计（userList 为数组，未做元素展开聚合）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=3，role_uv=2，acc_uv=2，server_uv=2；op 分布：拒绝(op=0)=2 次/2 角色人，同意(op=1)=1 次/1 角色人；事件在线且正常触发，但日活极低
+coverage_status: analyst_confirmed
+external_refs: []

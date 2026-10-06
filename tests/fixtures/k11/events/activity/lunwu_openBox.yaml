@@ -1,0 +1,174 @@
+name: game.lunwu.openBox
+event_filter: event = 'game.lunwu.openBox'
+description: |-
+  论武：开启箱子
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等46个
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  seasonId:
+    type: int
+    description: 当前的剧本id
+  dropId:
+    type: int
+    description: 开出的箱子id
+  oldBox:
+    type: json
+    description: 旧箱子数据
+  oldBox.roundId:
+    type: int
+    description: 轮次
+  oldBox.gridList:
+    type: array
+    description: 格子数据
+  oldBox.gridList.id:
+    type: int
+    description: 格子id
+  oldBox.gridList.rewards:
+    type: array
+    description: 格子资源
+  oldBox.gridList.rewards.type:
+    type: int
+    description: 类型
+  oldBox.gridList.rewards.value:
+    type: int
+    description: 值
+  oldBox.gridList.rewards.size:
+    type: int
+    description: 数量
+  oldBox.gridList.rewards.uid:
+    type: int
+    description: 唯一id
+  oldBox.gridList.rewarded:
+    type: bool
+    description: 是否已经开启
+  oldBox.gridList.weight:
+    type: int
+    description: 权重
+  newBox:
+    type: json
+    description: 新箱子数据
+  newBox.roundId:
+    type: int
+    description: 轮次
+  newBox.gridList:
+    type: array
+    description: 格子数据
+  newBox.gridList.id:
+    type: int
+    description: 格子id
+  newBox.gridList.rewards:
+    type: array
+    description: 格子资源
+  newBox.gridList.rewards.type:
+    type: int
+    description: 类型
+  newBox.gridList.rewards.value:
+    type: int
+    description: 值
+  newBox.gridList.rewards.size:
+    type: int
+    description: 数量
+  newBox.gridList.rewards.uid:
+    type: int
+    description: 唯一id
+  newBox.gridList.rewarded:
+    type: bool
+    description: 是否已经开启
+  newBox.gridList.weight:
+    type: int
+    description: 权重
+metrics:
+  game_lunwu_openBox_cnt:
+    expression: COUNT(*)
+    description: 论武玩法中开启箱子的总次数（日志条数）
+  game_lunwu_openBox_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 论武开启箱子去重角色数
+  game_lunwu_openBox_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 论武开启箱子去重账号数
+  game_lunwu_openBox_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 论武开启箱子去重游戏服数
+coverage:
+  scenarios:
+    - 论武玩法箱子开启的总体活跃度与参与广度（次数、角色、账号、服务器覆盖）
+    - 评估论武箱子玩法的渗透范围与服务器分布
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 统计粒度默认 role_id（单角色维度），账号粒度供交叉参考
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 实测 cnt=2537, role_uv=1759, acc_uv=1707, server_uv=359
+coverage_status: analyst_confirmed
+external_refs: []

@@ -1,0 +1,132 @@
+table_name: dws_10000251_progression_card_snapshot_df
+engine: maxcompute
+table_comment: 卡牌培养快照
+description: 卡牌培养快照。按角色(role)记录每张卡牌的培养状态(品质/星级/等级/战力/觉醒/战法/装备/魂石/无双/共鸣/潜能)。主体：角色(role)。粒度：日全量快照(_df)，每角色每卡牌一行。
+domains:
+  - 角色成长
+  - 探索收集
+granularity: 日全量快照(_df)，主体角色(role)，每角色每卡牌一行
+columns:
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: card_id
+    type: string
+    comment: 卡牌ID
+    role: dimension
+  - name: card_name
+    type: string
+    comment: 卡牌名称
+    role: attribute
+  - name: card_quality
+    type: string
+    comment: 卡牌品质
+    role: dimension
+  - name: card_job
+    type: string
+    comment: 卡牌职业
+    role: dimension
+  - name: card_star
+    type: string
+    comment: 卡牌星级
+    role: dimension
+  - name: card_level
+    type: string
+    comment: 卡牌等级
+    role: measure
+  - name: card_force
+    type: string
+    comment: 卡牌战力
+    role: measure
+  - name: is_key
+    type: string
+    comment: 是否主力卡牌
+    role: dimension
+  - name: resonate_index
+    type: string
+    comment: 共鸣位置
+    role: attribute
+  - name: ability
+    type: string
+    comment: 潜力加点
+    role: attribute
+  - name: ability_points
+    type: string
+    comment: 潜能点总数
+    role: measure
+  - name: awake_list
+    type: string
+    comment: 觉醒列表
+    role: attribute
+  - name: tactic
+    type: string
+    comment: 战法
+    role: attribute
+  - name: equip
+    type: string
+    comment: 装备
+    role: attribute
+  - name: piece
+    type: string
+    comment: 魂石余量
+    role: measure
+  - name: unrival_level
+    type: string
+    comment: 无双等级
+    role: measure
+  - name: tm
+    type: string
+    comment: 更新时间
+    role: attribute
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  card_uv:
+    expression: COUNT(DISTINCT card_id)
+    description: 卡牌快照中不同卡牌类型数(snapshot维度的卡牌池宽度)
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 持有卡牌的角色(role)数(卡牌覆盖角色UV)
+  key_card_count:
+    expression: SUM(CASE WHEN is_key = 'true' THEN 1 ELSE 0 END)
+    description: 主力卡牌(is_key=true)记录数
+  total_card_force:
+    expression: SUM(CAST(card_force AS BIGINT))
+    description: 全部卡牌战力总和(角色卡牌战力池)
+  avg_card_force:
+    expression: SUM(CAST(card_force AS BIGINT)) / NULLIF(COUNT(*), 0)
+    description: 平均单卡战力(衡量卡牌培养强度)
+coverage:
+  scenarios:
+    - 卡牌培养广度：card_uv/role_uv衡量每角色平均持有的卡牌类型数与卡牌池覆盖
+    - 主力卡牌规模：key_card_count衡量阵容上阵卡牌总量
+    - 卡牌战力分布：total_card_force/avg_card_force衡量培养深度与单卡强度
+    - 维度下钻：可按card_quality/card_job/card_star/is_key分组分析培养结构
+  limitations:
+    - 仅 scout 抽样验证(在 ds=20260730 上对5项指标一次聚合复核)，未做全量跨分区趋势复核
+    - _df为日全量快照，跨ds聚合需去重(同一role+card每日一行)，时序UV需用近似/集合去重
+    - 所有数值列以STRING存储，指标已用CAST/SAFE语义聚合，但极少数NULL/脏值可能被过滤
+    - 无user_type列，主体角色(role)为按role_id主键推断，未在表内验证user_type=3
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 在latest ds=20260730上spot-verify 5项指标均得合理值(card_uv=60, role_uv=1668657, key_card_count=9059492, total_card_force=1926256172983, avg_card_force=62043.48)，确认指标语义正确；未做全量跨分区复核
+dimension_refs:
+  - dim_table: dim_10000251_trans_card_df
+    join_keys:
+      - dws_column: card_id
+        dim_column: id
+    derivation: DWS card_id (卡牌ID) is the card/武将 FK; dim_10000251_trans_card_df (武将配置维度表, PK id) is the card dimension, so card_id joins id.
+  - dim_table: dim_10000251_knight_job_name
+    join_keys:
+      - dws_column: card_job
+        dim_column: job_id
+    derivation: DWS card_job (卡牌职业, dimension) is the card's profession code; dim_10000251_knight_job_name (职业配置维度表, PK job_id) translates 职业编码 to 可读名称, so card_job joins job_id.
+pref_label: 卡牌培养快照表
+alt_labels:
+  - 培养
+  - 状态

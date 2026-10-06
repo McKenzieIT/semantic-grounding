@@ -1,0 +1,172 @@
+table_name: dws_10000251_social_fteam_summary_df
+engine: maxcompute
+table_comment: 小队信息总表
+description: 小队信息总表，主体=小队(fteam)。粒度：日全量快照(_df)，每行一个小队当日状态。覆盖小队规模/活跃、协战(含真人组队)、宝箱、爬塔及成员变动(申请/退队/踢人)。
+domains:
+  - 社交公会
+  - 战斗关卡
+granularity: 日全量快照(_df)，主体=小队(fteam)
+columns:
+  - name: fteam_id
+    type: string
+    comment: 小队id
+    role: dimension
+  - name: fteam_name
+    type: string
+    comment: 小队名
+    role: attribute
+  - name: fteam_owner_role_id
+    type: string
+    comment: 小队队长id
+    role: dimension
+  - name: fteam_role_list
+    type: string
+    comment: 小队成员列表
+    role: attribute
+  - name: fteam_role_num
+    type: int
+    comment: 小队人数，为0时表示小队最后一名成员已离开
+    role: measure
+  - name: fteam_act_dt_fst
+    type: string
+    comment: 小队首次活跃日期
+    role: dimension
+  - name: fteam_act_dt_lst
+    type: string
+    comment: 小队最近活跃日期
+    role: dimension
+  - name: fteam_dungeon_level
+    type: int
+    comment: 小队协战等级，从未有过协战行为，记为0
+    role: dimension
+  - name: fteam_mems_fasten_days
+    type: int
+    comment: 小队成员全固定连续天数，未发生过成员变更的连续天数
+    role: measure
+  - name: fteam_mem3_fasten_days
+    type: int
+    comment: 小队成员至少3人固定连续天数，最多发生过1个成员变更的连续天数
+    role: measure
+  - name: fteam_mem2_fasten_days
+    type: int
+    comment: 小队成员至少2人固定连续天数，最多发生过2个成员变更的连续天数
+    role: measure
+  - name: fteam_act_points_daily
+    type: int
+    comment: 当日活跃点数
+    role: measure
+  - name: fteam_box_get_amt_daily
+    type: int
+    comment: 当日宝箱获得数
+    role: measure
+  - name: fteam_apply_cnt_daily
+    type: int
+    comment: 当日申请次数
+    role: measure
+  - name: fteam_quit_cnt_daily
+    type: int
+    comment: 当日主动退队次数
+    role: measure
+  - name: fteam_kick_cnt_daily
+    type: int
+    comment: 当日主动踢人次数
+    role: measure
+  - name: fteam_dungeon_part_pv_daily
+    type: int
+    comment: 当日组队协战参与次数，无论是否是真人组队
+    role: measure
+  - name: fteam_dungeon_pass_pv_daily
+    type: int
+    comment: 当日组队协战通关次数，无论是否是真人组队
+    role: measure
+  - name: fteam_dungeon_real_part_pv_daily
+    type: int
+    comment: 当日小队真人组队协战参与次数，组队时至少有两个是真人
+    role: measure
+  - name: fteam_dungeon_real_pass_pv_daily
+    type: int
+    comment: 当日小队真人组队协战通关次数，组队时至少有两个是真人
+    role: measure
+  - name: fteam_dungeon_part_pv_std
+    type: int
+    comment: 累计组队协战参与次数，无论是否是真人组队
+    role: measure
+  - name: fteam_dungeon_pass_pv_std
+    type: int
+    comment: 累计组队协战通关次数，无论是否是真人组队
+    role: measure
+  - name: fteam_dungeon_real_part_pv_std
+    type: int
+    comment: 累计真人组队协战参与次数，组队时至少有两个是真人
+    role: measure
+  - name: fteam_dungeon_real_pass_pv_std
+    type: int
+    comment: 累计真人组队协战通关次数，组队时至少有两个是真人
+    role: measure
+  - name: fteam_fish_list
+    type: int
+    comment: 观赏鱼列表
+    role: measure
+  - name: preteam_status
+    type: int
+    comment: 是否预组队，0-否 1-是
+    role: dimension
+  - name: fteam_tower_active
+    type: int
+    comment: 小队爬塔积极度
+    role: measure
+  - name: fteam_dungeon_active
+    type: int
+    comment: 小队协战BOSS积极度
+    role: measure
+  - name: fteam_act_role_num
+    type: int
+    comment: 小队当日活跃人数
+    role: measure
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+primary_key:
+  - fteam_id
+metrics:
+  fteam_uv:
+    expression: COUNT(DISTINCT fteam_id)
+    description: 当日小队去重数(快照口径，每行一个小队)
+  fteam_role_num_sum:
+    expression: SUM(fteam_role_num)
+    description: 当日小队成员总数(快照口径加总)
+  fteam_act_role_num_sum:
+    expression: SUM(fteam_act_role_num)
+    description: 当日活跃小队成员总数(快照口径加总)
+  fteam_box_get_amt_sum:
+    expression: SUM(fteam_box_get_amt_daily)
+    description: 当日小队宝箱获得总数(快照口径加总)
+  fteam_dungeon_pass_rate:
+    expression: SUM(fteam_dungeon_pass_pv_daily) / NULLIF(SUM(fteam_dungeon_part_pv_daily), 0)
+    description: 当日组队协战通关率(通关次数/参与次数)
+coverage:
+  scenarios:
+    - 小队规模与活跃度监控(小队数 UV、成员数、当日活跃人数)
+    - 协战参与与通关效率(通关率、真人组队协战次数)
+    - 宝箱获取与成员变动(申请/退队/踢人次数)
+  limitations:
+    - 表为空/无数据(MAX(ds) NULL)，未做实测复核
+    - _df 日全量快照，指标为快照口径的当日聚合，非累计口径
+    - 仅结构性丰富，待表有数据后做全量 maxc 实测复核
+  coverage_status: draft
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+dimension_refs: []
+pref_label: 小队汇总表
+alt_labels:
+  - 小队
+  - 组队
+  - 小队成员
+  - 小队活跃
+  - 协战
+  - 小队
+  - 组队
+  - 队伍

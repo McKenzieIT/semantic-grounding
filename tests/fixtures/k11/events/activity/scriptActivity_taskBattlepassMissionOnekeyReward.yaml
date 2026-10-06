@@ -1,0 +1,182 @@
+name: game.scriptActivity.taskBattlepassMissionOnekeyReward
+event_filter: event = 'game.scriptActivity.taskBattlepassMissionOnekeyReward'
+description: 任务战令(Battlepass)一键领取任务奖励事件 game.scriptActivity.taskBattlepassMissionOnekeyReward：玩家在战令活动中一次性批量领取多个已完成任务奖励时上报。记录领取的任务ID列表(rewardedMissionids)、获得经验(addExp)、领取前后等级与经验(oldLevel/oldExp/newLevel/newExp)、活动ID(themeId)、类型(type)及角色快照。分析主体为 role_id（角色粒度），account_id 为账号粒度辅助。实测 ds=20260729：cnt=3817、role_uv=997、acc_uv=981、server_uv=115，覆盖 3 个活动 themeId，单日战令任务奖励经验总量 addexp_sum=157240（全部 addExp>0）。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  themeId:
+    type: int
+    description: 活动ID
+  type:
+    type: int
+    description: 类型
+  addExp:
+    type: int
+    description: 增加经验
+  rewardedMissionids:
+    type: array
+    description: 领取的任务ID
+  oldLevel:
+    type: int
+    description: 旧的等级
+  oldExp:
+    type: int
+    description: 旧的经验
+  newLevel:
+    type: int
+    description: 新的等级
+  newExp:
+    type: int
+    description: 新的经验
+metrics:
+  bp_onekey_reward_cnt:
+    expression: COUNT(*)
+    description: 战令一键领取任务奖励事件总次数（每次批量领取上报一条）
+  bp_onekey_reward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发战令一键领取的 distinct 角色数（分析主体为 role_id）
+  bp_onekey_reward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发战令一键领取的 distinct 账号数
+  bp_onekey_reward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的 distinct 游戏服数
+  bp_onekey_reward_theme_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.themeId'))
+    description: 涉及的 distinct 战令活动ID数（按 themeId 去重）
+  bp_onekey_reward_addexp_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.addExp') AS BIGINT))
+    description: 单日战令任务一键领取经验总量（addExp 求和，反映奖励经验发放规模）
+  bp_onekey_reward_avg_level:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS DOUBLE))
+    description: 触发一键领取角色的平均等级（领取时刻角色快照等级）
+coverage:
+  granularity: 单次战令一键领取任务奖励事件（role_id 为默认分析主体粒度，account_id 为账号粒度辅助）
+  scenarios:
+    - 战令一键领取活动单日总规模（次数/角色UV/账号UV/游戏服数）
+    - 覆盖的战令活动类型数（bp_onekey_reward_theme_uv 按 themeId 去重）
+    - 单日战令任务奖励经验发放总量（bp_onekey_reward_addexp_sum）
+    - 触发一键领取角色的等级分布（bp_onekey_reward_avg_level）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（已验证 role_id 非空），未逐事件实测 role_id 是否为最细主体
+    - params_fields.vipLevel 实测 ds=20260729 全部为 0（avg_vip_level=0），该字段疑似未填充，不可用于 VIP 分层分析
+    - rewardedMissionids 为领取任务ID数组，GET_JSON_OBJECT 无法聚合数组长度，未计领取任务数 SUM；如需按任务粒度统计需单独展开
+    - coinList.* 为领取时刻货币快照余额，非交易流水，不计 SUM
+    - 跨日趋势与首日/尾日边界效应未核
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729：cnt=3817、role_uv=997、acc_uv=981、server_uv=115；theme_uv=3、addexp_sum=157240（全部 addExp>0）、avg_role_level=82.55。数字合理，事件确有触发，符合战令一键领取场景。
+coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_trans_gacha_mission_group_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_gacha_mission_group_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df_arch 主键精确同名
+    origin: deterministic

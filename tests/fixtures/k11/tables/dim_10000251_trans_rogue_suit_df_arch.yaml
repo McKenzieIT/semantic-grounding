@@ -1,0 +1,56 @@
+kind: dim
+table_name: dim_10000251_trans_rogue_suit_df_arch
+engine: maxcompute
+table_comment: 'BUFF套装配置维度表，按 ds 分区存储各日期快照下的套装配置。'
+description: '游戏 10000251 的 BUFF 套装配置维度表。每行描述一个 BUFF 套装（id）在某个 ds 快照下的配置：套装名 name 及两件套/四件套/六件套效果（desc1/desc2/desc3）。主键为 id（BUFF套装id），label 为 name（BUFF套装名）。表按 ds 分区，同一 id 在不同 ds 快照下重复存在，故 id 全表非唯一。'
+domains:
+- 装备道具
+granularity: '每 BUFF 套装（id）× ds 快照一行的配置/维度表'
+primary_key:
+- id
+primary_key_unique: false
+label_columns:
+- name
+columns:
+- name: id
+  type: string
+  comment: BUFF套装id
+  role: dimension
+- name: name
+  type: string
+  comment: BUFF套装名
+  role: dimension
+- name: desc1
+  type: string
+  comment: 两件套效果
+  role: dimension
+- name: desc2
+  type: string
+  comment: 四件套效果
+  role: dimension
+- name: desc3
+  type: string
+  comment: 六件套效果
+  role: dimension
+- name: ds
+  type: string
+  comment: 'ds 分区键（日期快照，如 20230921）'
+  role: partition
+coverage:
+  scenarios:
+  - '通过 id JOIN 事实表，将 BUFF 套装 id 映射为可读的套装名 name 及套装效果描述'
+  - '按 id 查询某套装在 desc1/desc2/desc3 上对应的两件套/四件套/六件套效果文本'
+  - '按 ds 快照还原历史某日期下 BUFF 套装配置（套装效果随版本可能调整）'
+  limitations:
+  - '配置类维度表，无值度量（desc1/desc2/desc3 均为效果文本，不可聚合）'
+  - 'primary_key_unique=false：同一 id 在不同 ds 快照下重复存在，全表非唯一；按 ds 过滤后单快照内 id 唯一'
+  - 'desc1/desc2/desc3 为中文效果描述串，含数值与文本混合，需二次解析提取数值参数'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '配置类维度表，主键 id 全表非唯一（r=2450, d=5，因 ds 分区快照），保持 draft。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含 ds 快照展开）

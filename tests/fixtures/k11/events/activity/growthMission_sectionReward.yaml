@@ -1,0 +1,104 @@
+name: game.growthMission.sectionReward
+event_filter: event = 'game.growthMission.sectionReward'
+description: 成长助力-阶段奖励事件：玩家在成长助力活动中完成指定阶段任务并领取阶段奖励时上报，主体粒度为 role_id（角色）。参数含游戏服id/名字、账号id、角色id/名字/性别/等级/战力、vip等级、经验、看板娘、关键货币列表（充值钻石/赠送钻石/免费钻石/紫金/经验卷轴/体力）、会话id、logUUID、阶段(section) 等23个字段，用于度量各阶段奖励领取的活跃角色规模与服务器分布。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  section:
+    type: int
+    description: 阶段
+metrics:
+  game_growthMission_sectionReward_cnt:
+    expression: COUNT(*)
+    description: 成长助力阶段奖励领取事件总次数
+  game_growthMission_sectionReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取成长助力阶段奖励的去重角色数
+  game_growthMission_sectionReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取成长助力阶段奖励的去重账号数
+  game_growthMission_sectionReward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取成长助力阶段奖励的去重游戏服数
+coverage:
+  scenarios:
+    - 成长助力活动各阶段奖励领取总规模（次数、角色/账号/服务器 UV）
+    - 评估成长助力阶段奖励领取的活跃角色覆盖面与服务器分布
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 日志中零命中(ds=20260729 cnt=0；回退 ds=20260728 仍 cnt=0)，疑似事件下线/未触发或未接入该视图
+    - 主体粒度默认为 role_id；事件未含独立计数字段，4 项指标均为通用计数/去重计数
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: "ds=20260729 scout: cnt=0, role_uv=0, acc_uv=0, server_uv=0；ds=20260728 回退仍 cnt=0。零命中，保持 draft。"
+  coverage_status: draft
+external_refs: []

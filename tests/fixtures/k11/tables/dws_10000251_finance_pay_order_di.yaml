@@ -1,0 +1,192 @@
+table_name: dws_10000251_finance_pay_order_di
+engine: maxcompute
+table_comment: 10000264财务付费概况-付费订单日度表
+description: |
+  财务付费订单日增量表(_di)。记录每笔付费订单的流水信息,粒度为"每笔订单每天一行"(日增量,非全量快照),
+  以 order_id 为唯一订单标识,同一订单成功(status=1)/失败(status=2)/退款(status=3)分别落位。
+  注:table_comment 中的"10000264"是源表在 MaxCompute 里的固有 comment 文本(疑为数仓建表时从模板游戏10000264 沿用,与本表实际归属的 game_id
+  10000251 无关),description 以本文件为准。
+  主体判定:表名不含 acc/role/dev,同时携带 account_id 与 role_id,可作账号或角色视角分析。
+  能回答的业务问题:当日/某区间各渠道(ch_type)、区服(server_id)、平台(os_id)的付费金额与成功订单数;退款金额与退款率;付费账号数/付费角色数及
+  ARPPU/ARPU;商品(item_id)销量与销售额排行;首单时间。
+  注意事项(2026-07-22 MaxCompute 实测 ds=20260720 确认,与同族游戏 10000329 一致):
+  1) pay_amt 币种为 CNY(人民币),**与参考游戏(10000312)同名表的 USD(美元)口径不同**,不要直接套用参考游戏"美元"的描述;
+  2) pay_amt 已是元(非分),数量级核对:20260720 单日 status=1 共 384 笔,金额合计 7735.00 元,人均 20.14 元/笔,与"分"单位不符,聚合无需除以
+  100;
+  3) status 列类型为 bigint,取值用整数比较(status=1)而非字符串(status='1'),取值 1=成功/2=失败/3=退款(源列 comment
+  自带该枚举定义);
+  4) 与本游戏另一张付费表 com_pay_order_di 是同一批订单在不同视角的记录,二者 pay_amt 单位不同(本表元、com_pay_order_di 分),分析时不要混用未转换的数值。
+domains:
+  - 付费经济
+  - 用户生命周期
+granularity: |
+  日增量(_di),粒度为"每条订单明细每天一行":一行=一条订单明细(order_id + 商品明细),同一 order_id 可携带多个商品明细行
+  (2026-07-30 实测 ds=20260729:877 行 vs 873 distinct order_id,差额 4 行源于同一 order_id 出现 3 行,各自 pay_amt/item_cnt 不同),
+  故 order_id 非行级唯一。同一 order_id 的成功(status=1)/失败(status=2)/退款(status=3)亦可为不同记录。分析主体=订单明细,
+  同时携带 account_id(账号)与 role_id(角色),可支持账号级与角色级付费分析。SUM 类金额/销量指标聚合全部明细行(总金额正确),
+  COUNT(DISTINCT order_id) 类指标按订单去重(订单数口径),二者均自洽。
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: account_id
+    type: string
+    comment: 账号id
+    role: dimension
+  - name: os_id
+    type: int
+    comment: 平台id
+    role: dimension
+  - name: ch_type
+    type: string
+    comment: 渠道id
+    role: dimension
+  - name: os_name
+    type: string
+    comment: 平台名
+    role: attribute
+  - name: ch_type_name
+    type: string
+    comment: 渠道名
+    role: attribute
+  - name: order_id
+    type: string
+    comment: 订单id
+    role: dimension
+  - name: cp_order_id
+    type: string
+    comment: cp订单id
+    role: dimension
+  - name: ch_order_id
+    type: string
+    comment: 渠道订单id
+    role: dimension
+  - name: status
+    type: int
+    comment: 订单状态，取值：1:成功/2:失败/3:退款（整数比较，非字符串；2026-07-22实测抽样仅见status=1，2/3样本待观测）
+    role: dimension
+  - name: currency
+    type: string
+    comment: 货币代码，字母代码，取值：CNY:人民币（2026-07-22实测ds=20260720仅见CNY，与参考游戏USD口径不同）
+    role: dimension
+  - name: item_id
+    type: string
+    comment: 商品id
+    role: dimension
+  - name: item_cnt
+    type: int
+    comment: 商品数量
+    role: measure
+  - name: pay_amt
+    type: decimal
+    comment: 付费金额，单位：元（人民币，非分；2026-07-22实测数量级核对）
+    role: measure
+  - name: success_tm
+    type: datetime
+    comment: 成功时间
+    role: attribute
+  - name: refund_tm
+    type: datetime
+    comment: 退款时间
+    role: attribute
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  total_pay_amt:
+    expression: SUM(pay_amt)
+    description: 付费总金额(含成功/失败/退款,未按 status 筛选),单位元(人民币)
+  success_pay_amt:
+    expression: SUM(CASE WHEN status=1 THEN pay_amt ELSE 0 END)
+    description: 成功订单付费金额(status=1),单位元
+  refund_pay_amt:
+    expression: SUM(CASE WHEN status=3 THEN pay_amt ELSE 0 END)
+    description: 退款订单金额(status=3),单位元;2026-07-22 抽样当日为 0(未观测到退款记录,不代表本口径不存在退款)
+  pay_order_cnt:
+    expression: COUNT(DISTINCT CASE WHEN status=1 THEN order_id END)
+    description: 成功付费订单数(status=1,按 order_id 去重)
+  refund_order_cnt:
+    expression: COUNT(DISTINCT CASE WHEN status=3 THEN order_id END)
+    description: 退款订单数(status=3,按 order_id 去重)
+  refund_rate:
+    expression: COUNT(DISTINCT CASE WHEN status=3 THEN order_id END)*1.0/NULLIF(COUNT(DISTINCT CASE WHEN status=1 THEN order_id END),0)
+    description: 退款率=退款订单数/成功订单数,用 NULLIF 防除零
+  paying_account_cnt:
+    expression: COUNT(DISTINCT CASE WHEN status=1 THEN account_id END)
+    description: 付费账号数(成功订单口径,按 account_id 去重)
+  paying_role_cnt:
+    expression: COUNT(DISTINCT CASE WHEN status=1 THEN role_id END)
+    description: 付费角色数(成功订单口径,按 role_id 去重)
+  arppu:
+    expression: SUM(CASE WHEN status=1 THEN pay_amt ELSE 0 END)*1.0/NULLIF(COUNT(DISTINCT CASE WHEN status=1 THEN account_id END),0)
+    description: 账号级 ARPPU=成功付费金额/付费账号数,单位元,用 NULLIF 防除零
+  arpu_role:
+    expression: SUM(CASE WHEN status=1 THEN pay_amt ELSE 0 END)*1.0/NULLIF(COUNT(DISTINCT CASE WHEN status=1 THEN role_id END),0)
+    description: 角色级 ARPU=成功付费金额/付费角色数,单位元,用 NULLIF 防除零
+  item_sold_cnt:
+    expression: SUM(CASE WHEN status=1 THEN item_cnt ELSE 0 END)
+    description: 成功订单商品销量(件数,仅 status=1)
+  first_order_tm:
+    expression: MIN(CASE WHEN status=1 THEN success_tm END)
+    description: 最早成功支付时间,可用于计算账号/角色首单时间(按主体分组后取 MIN)
+  pay_amt_per_order:
+    expression: SUM(CASE WHEN status=1 THEN pay_amt ELSE 0 END)*1.0/NULLIF(COUNT(DISTINCT CASE WHEN status=1 THEN order_id END),0)
+    description: 笔单价=成功付费金额/成功订单数,单位元,用 NULLIF 防除零
+  refund_amt_ratio:
+    expression: SUM(CASE WHEN status=3 THEN pay_amt ELSE 0 END)*1.0/NULLIF(SUM(CASE WHEN status=1 THEN pay_amt ELSE 0 END),0)
+    description: 退款金额占比=退款金额/成功金额,用 NULLIF 防除零
+partitions:
+  - name: ds
+    type: string
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: 数据验证代理 Round 5 实测确认(ieu_cdm, ds=20260729 为当日最新分区,非假设)。列存在性:18 列全部经 meta describe 核对存在(role_id/account_id/order_id/status/pay_amt/item_cnt/success_tm 等均真实,类型与 YAML 略有出入:os_id/item_cnt/status 实为 BIGINT,pay_amt 实为 DOUBLE,不影响整数比较与求和)。status 实测 ds=20260729 仅取值 1(成功),未见 2/3。核心指标实测(20260729):total_pay_amt=39986.0, success_pay_amt=39986.0, fail/refund_pay_amt=0.0, pay_order_cnt(COUNT DISTINCT order_id)=873, paying_account_cnt=409, paying_role_cnt=415, item_sold_cnt=879, first_order_tm=2026-07-29 00:01:09;ARPPU=39986/409≈97.77 元, 笔单价=39986/873≈45.80 元, 均在合理量级(人民币元,非分)。粒度:877 行 vs 873 distinct order_id,差额 4 行源于同一 order_id 携带多个商品明细行(实测同 order_id 出现 3 行,pay_amt 分别 6/396/98 元,item_cnt 1/2/1),故一行=一条订单明细而非一条订单;SUM 类金额/销量指标正确聚合全部明细行, COUNT(DISTINCT order_id) 类指标按订单去重(873)为"订单数"口径,二者均自洽合理。未发现 verified-broken 指标,全部 metrics 保留。 币种 CNY、金额单位元、status 整数比较三点与移植时修正一致,经最新分区复核无误。
+coverage:
+  scenarios:
+    - 某日/某区间各渠道(ch_type)、区服(server_id)、平台(os_id)的付费金额(pay_amt,人民币元)与成功订单数
+    - 退款金额与退款率(截至抽样日未观测到退款记录,口径已就位待生产数据验证)
+    - 付费账号数(paying_account_cnt)与付费角色数(paying_role_cnt),及账号级 ARPPU / 角色级 ARPU
+    - 商品(item_id)销量(item_sold_cnt)排行
+    - 指定账号/角色的首单时间(first_order_tm)
+  limitations:
+    - pay_amt 币种为人民币(CNY),与参考游戏(10000312)同名表的美元(USD)口径不同,不可直接比较或误用参考游戏文案
+    - 本表比参考游戏同名表少 pay_center_amt/pay_type_name/region_id 等 12 个财务对账字段,无法做原币对账、支付通道/支付中心口径分析
+    - _di 为日增量,跨日分析需按 ds 分区累加,非全量快照
+    - status 为 bigint 整数类型,比较时不要加引号(status=1,非 status='1')
+    - 本表与 com_pay_order_di 是同一批订单的不同视角记录,但 pay_amt 单位不同(本表元、com_pay_order_di 分),两表联合分析前需先统一单位
+    - 退款(status=3)与失败(status=2)在抽样日(20260720)均为 0 条,样本有限,口径正确性依赖未来更多日期数据验证
+    - order_id 非行级唯一:同一 order_id 可携带多个商品明细行(2026-07-30 实测 ds=20260729 同一 order_id 出现 3 行,pay_amt 分别 6/396/98 元,item_cnt 1/2/1)。SUM 类金额/销量指标正确聚合全部明细行(总金额无误);COUNT(DISTINCT order_id) 类指标按订单去重得到"订单数" 而非"明细行数",pay_order_cnt=873 而非 877,使用 pay_amt_per_order 时分母为订单数,与"笔单价(订单口径)"一致
+  coverage_status: draft
+supersedes: []
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS 列 server_id (comment 区服id) 与 dim server_info 主键 server_id 完全一致；该 dim 为区服维度配置表，按 server_id 提供区服名/开服时间。
+    origin: deterministic
+  - dim_table: dim_10000251_com_order_detail_info
+    join_keys:
+      - dws_column: order_id
+        dim_column: order_id
+    derivation: DWS 列 order_id (comment 订单id) 与 dim com_order_detail_info 主键 order_id 完全一致；该 dim 为商业化订单信息维表（每订单一行，order_id 唯一），用于订单维度商品属性查找。
+    origin: deterministic
+  - dim_table: dim_10000251_trans_finance_recharge_info_od
+    join_keys:
+      - dws_column: item_id
+        dim_column: item_id
+    derivation: DWS 列 item_id (comment 商品id) 与 dim trans_finance_recharge_info_od 主键 item_id 完全一致；该 dim 为财务充值商品配置维表，与财务付费订单事实同属财务/付费经济域。
+    origin: deterministic
+pref_label: 现金收入日表
+alt_labels:
+  - 现金
+  - 财务
+  - 收入

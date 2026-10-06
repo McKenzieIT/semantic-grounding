@@ -1,0 +1,74 @@
+table_name: dim_10000251_trans_finance_recharge_info_od
+engine: maxcompute
+kind: dim
+table_comment: 财务充值商品配置维表（OD 层）
+primary_key:
+- item_id
+primary_key_unique: false
+label_columns:
+- name
+description: '财务充值商品配置维表（OD 操作数据层）。每行描述一个可售充值商品（月卡/类月卡/非月卡/代金券）的审核id、商品id、显示名、售价、道具折合一级货币数量、直接一级货币数量、商品类型、月卡摊分天数、代金券张数等属性。
+
+  粒度：每充值商品配置一行（item_id 为商品审核id，业务自然主键；实测 283 行仅 17 个 distinct item_id，存在多版本/重复快照，故 primary_key_unique=false，未达 analyst_confirmed）。
+
+  主要字段：item_id, recharge_id, name, price, props_coin, direct_coin, item_type, delay_wnd, djq_cnt 等 9 列。'
+domains:
+- 系统监控
+granularity: 每充值商品配置一行（item_id 商品审核id 为业务自然主键；因含多版本/重复快照，行级非唯一）
+columns:
+- name: item_id
+  type: string
+  comment: 商品审核id，曾用名：product_id,ID
+  role: dimension
+- name: recharge_id
+  type: string
+  comment: 商品id,属性
+  role: dimension
+- name: name
+  type: string
+  comment: 商品名,显示名称
+  role: dimension
+- name: price
+  type: string
+  comment: 售价，按当地货币标定的售价，曾用名：amount,属性
+  role: dimension
+- name: props_coin
+  type: string
+  comment: 商品中道具折合一级货币数量，曾用名：item_coin_num,属性
+  role: dimension
+- name: direct_coin
+  type: string
+  comment: 商品中一级货币数量，曾用名：coin_num,属性
+  role: dimension
+- name: item_type
+  type: string
+  comment: 商品类型，1-月卡/类月卡、2-非月卡、3-代金券，曾用名：recharge_type,属性
+  role: dimension
+- name: delay_wnd
+  type: string
+  comment: 摊分天数，月卡/类月卡要分成多少天均摊，例如30天填30，非月卡/类月卡商品填0,属性
+  role: dimension
+- name: djq_cnt
+  type: string
+  comment: 该商品对应现金券张数；当商品类型为非代金券时，指购买该商品需要的现金券张数,属性
+  role: dimension
+coverage:
+  scenarios:
+  - 通过 item_id JOIN 充值/订单事实表，获取商品的显示名(name)、售价(price)、商品类型(item_type)、月卡摊分天数(delay_wnd) 等维度属性
+  - 通过 recharge_id 关联充值流水，回填商品的 props_coin/direct_coin 一级货币数量与代金券张数(djq_cnt)
+  - 按 item_type 切分月卡(1)/非月卡(2)/代金券(3) 商品做分组分析
+  - 月卡摊分场景：依据 delay_wnd 将月卡售价按天均摊到收入/留存指标
+  limitations:
+  - 配置类维度表，无值度量（所有数值字段以 STRING 存储，分析前需 CAST）
+  - 实测 283 行仅 17 个 distinct item_id、266 个 distinct recharge_id，存在多版本/重复快照，item_id 行级非唯一；JOIN 时建议按需 DISTINCT 或限定最新版本
+  - price/props_coin/direct_coin/djq_cnt 均为字符串编码，货币单位与正负号需结合业务规则二次确认
+  - 未做唯一性实测通过（primary_key_unique=false），status 维持 draft
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含多版本/重复快照）
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '自动 dim 建模：item_id 为业务自然主键（meta describe 声明），label=name。实测 r=283,d_item_id=17 非唯一，故 primary_key_unique=false、status=draft。djq_cnt 由 measure 改为 dimension（配置属性，STRING 类型）。'

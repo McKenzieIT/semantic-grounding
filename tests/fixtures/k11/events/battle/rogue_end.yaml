@@ -1,0 +1,177 @@
+name: game.rogue.end
+event_filter: event = 'game.rogue.end'
+description: "古战场（Rogue）副本挑战结束事件。记录玩家完成一次古战场副本挑战的最终结果（result: 0=失败/退出, 1=成功）、章节(chapter)、难度(difficulty)、步数(step)、本次获得军功(score)与天赋点数(talentPoints)、历史累计天赋点数(talentPointsStd)、剩余战场币(coin)、卡牌与将魂等。分析主体为 role_id（角色粒度），account_id 为账号粒度补充。ds=20260729 实测：cnt=198, role_uv=102, acc_uv=101, server_uv=42, play_uv=198, success_cnt=185(成功率~93.4%), score_sum=636682, talent_points_sum=1055。"
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  playId:
+    type: string
+    description: 唯一标识一次古战场副本挑战
+  chapter:
+    type: int
+    description: 章节
+  difficulty:
+    type: int
+    description: 难度
+  step:
+    type: int
+    description: 步数
+  result:
+    type: int
+    description: 玩法结果 0-失败或退出 1-成功
+  coin:
+    type: int
+    description: 剩余战场币数量
+  cardList:
+    type: array
+    description: 卡牌列表
+  cardList.id:
+    type: int
+    description: 卡牌id
+  cardList.name:
+    type: string
+    description: 卡牌名称
+  cardList.soul:
+    type: int
+    description: 卡牌装备的将魂
+  cardList.blood:
+    type: int
+    description: 剩余血量比例
+  score:
+    type: int
+    description: 本次获得军功
+  talentPoints:
+    type: int
+    description: 本次获得天赋点数
+  talentPointsStd:
+    type: int
+    description: 历史累计天赋点数
+  rogueStage:
+    type: int
+    description: 阶段
+metrics:
+  game_rogue_end_cnt:
+    expression: COUNT(*)
+    description: 古战场结束事件总记录数（含成功/失败/退出）
+  game_rogue_end_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与古战场副本的角色数（去重）
+  game_rogue_end_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与古战场副本的账号数（去重）
+  game_rogue_end_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的游戏服数量（去重）
+  game_rogue_end_play_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.playId'))
+    description: 古战场副本挑战次数（playId 去重，每次挑战唯一标识）
+  game_rogue_end_success_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.result') = '1' THEN 1 ELSE 0 END)
+    description: 古战场副本挑战成功(result=1)的次数
+  game_rogue_end_success_rate:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.result') = '1' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 古战场副本挑战成功率（成功次数/总次数）
+  game_rogue_end_score_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.score') AS BIGINT))
+    description: 古战场副本获得军功总量（score 求和）
+  game_rogue_end_talent_points_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.talentPoints') AS BIGINT))
+    description: 古战场副本获得天赋点数总量（talentPoints 求和）
+coverage:
+  scenarios:
+    - 古战场副本参与度与挑战次数（play_uv / role_uv / account_uv / server_uv）
+    - 古战场副本挑战成功率分析（success_cnt / success_rate）
+    - 古战场军功与天赋点数产出量（score_sum / talent_points_sum）
+    - 古战场跨服分布与活跃服数（server_uv）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度）；account_id 可作账号粒度补充
+    - playId 单次挑战唯一性未做跨日复核，单日实测 play_uv=cnt 提示每次事件对应一次挑战
+    - result 取值 0=失败/退出、1=成功 依据 params_fields 描述，未抽样核对原始枚举
+  granularity: role_id
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729：cnt=198, role_uv=102, acc_uv=101, server_uv=42, play_uv=198, success_cnt=185, score_sum=636682, talent_points_sum=1055。事件+ds 过滤命中且数值合理。
+coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_trans_rogue_df
+    join_keys:
+      - dws_column: difficulty
+        dim_column: difficulty
+    derivation: 确定性：事件字段 difficulty 与 dim_10000251_trans_rogue_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_rogue_df_arch
+    join_keys:
+      - dws_column: difficulty
+        dim_column: difficulty
+    derivation: 确定性：事件字段 difficulty 与 dim_10000251_trans_rogue_df_arch 主键精确同名
+    origin: deterministic

@@ -1,0 +1,102 @@
+name: game.home.levelup
+event_filter: event = 'game.home.levelup'
+description: 家园系统等级升级事件，记录角色在家园玩法中达成等级提升的行为，携带角色等级、VIP等级、战力、经验、货币列表等23个参数。主体粒度 role_id（角色级）。ds=20260729 单日实测 2339 次事件、1406 角色、1362 账号、97 服务器。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  newLevel:
+    type: int
+    description: 等级
+metrics:
+  game_home_levelup_cnt:
+    expression: COUNT(*)
+    description: 家园升级事件总次数
+  game_home_levelup_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发家园升级的去重角色数
+  game_home_levelup_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发家园升级的去重账号数
+  game_home_levelup_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发家园升级的去重游戏服数
+coverage:
+  scenarios:
+    - 该事件指标可回答家园系统活跃度、参与角色规模、跨服分布等问题
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认主体粒度 role_id
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 scout cnt=2339 role_uv=1406 acc_uv=1362 server_uv=97
+  coverage_status: analyst_confirmed
+external_refs: []

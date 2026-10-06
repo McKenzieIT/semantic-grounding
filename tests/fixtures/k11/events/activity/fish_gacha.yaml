@@ -1,0 +1,108 @@
+name: game.fish.gacha
+event_filter: event = 'game.fish.gacha'
+description: 钓鱼抽卡事件（game.fish.gacha）：记录角色在钓鱼玩法中完成抽卡/钓获鱼的行为日志，携带角色身份、等级战力、货币、钓到的鱼名称列表及次数等参数。主体粒度为 role_id（角色级事件）。ds=20260729 单日 scout 实测：cnt=14926 条日志、role_uv=3694 个角色、acc_uv=3521 个账号、server_uv=451 个游戏服。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  times:
+    type: int
+    description: 次数
+  fishNameList:
+    type: array
+    description: 钓到的鱼名称列表
+metrics:
+  game_fish_gacha_cnt:
+    expression: COUNT(*)
+    description: 钓鱼抽卡事件日志总条数
+  game_fish_gacha_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与钓鱼抽卡的去重角色数
+  game_fish_gacha_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与钓鱼抽卡的去重账号数
+  game_fish_gacha_times_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.times') AS BIGINT))
+    description: 钓鱼抽卡累计次数总和（params.times 字段）
+coverage:
+  scenarios:
+    - 评估钓鱼玩法活跃规模（日志条数、参与角色/账号数）
+    - 衡量钓鱼抽卡累计触发次数以反映玩法消耗强度
+    - 按游戏服/角色维度下钻分析钓鱼行为分布
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id；账号级 UV 仅供参考（一个账号可多角色）
+    - times 字段依赖 params 解析，若日志缺字段则计为 NULL
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 实测：cnt=14926, role_uv=3694, acc_uv=3521, server_uv=451；数据合理，置 analyst_confirmed。
+  coverage_status: analyst_confirmed
+external_refs: []

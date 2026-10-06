@@ -1,0 +1,94 @@
+table_name: dws_10000251_dev_collection_df
+engine: maxcompute
+table_comment: 设备归集日全量快照表（DWS）。记录 utdid 到归集主设备 coll_utdid 的映射及设备属性(品牌/型号/首次活跃时间)。
+description: 粒度：日全量快照(_df)，按 ds(业务日期) 分区。分析主体=设备(user_type=1，按表名 dev 推断；表内无 user_type 列未实测)。每行=一个 utdid 的归集记录：含设备品牌/型号/首次活跃时间，及其归集到的主设备 coll_utdid 与归集侧属性。用于设备去重/归一、设备品牌分布、自归集占比分析。
+domains:
+  - 系统监控
+granularity: 日全量快照(_df)，按 ds(业务日期) 分区；每行=一个 utdid 的归集记录，分析主体=设备(user_type=1)。
+columns:
+  - name: utdid
+    type: string
+    comment: utdid
+    role: dimension
+  - name: os_id
+    type: int
+    comment: 平台id
+    role: dimension
+  - name: dev_brand
+    type: string
+    comment: 设备品牌
+    role: dimension
+  - name: dev_model
+    type: string
+    comment: 设备型号
+    role: dimension
+  - name: act_tm_fst
+    type: datetime
+    comment: 首次活跃时间
+    role: dimension
+  - name: assi_ids
+    type: string
+    comment: 辅助id列表，竖线分隔
+    role: dimension
+  - name: coll_utdid
+    type: string
+    comment: 归集utdid
+    role: dimension
+  - name: coll_dev_brand
+    type: string
+    comment: 归集id设备品牌
+    role: dimension
+  - name: coll_dev_model
+    type: string
+    comment: 归集id设备型号
+    role: dimension
+  - name: coll_act_tm_fst
+    type: datetime
+    comment: 归集id首次活跃时间
+    role: dimension
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  snapshot_device_uv:
+    expression: COUNT(DISTINCT utdid)
+    description: 日全量快照设备UV（按 utdid 去重，快照口径）
+  coll_device_uv:
+    expression: COUNT(DISTINCT coll_utdid)
+    description: 归集后主设备UV（按 coll_utdid 去重，归集收敛口径）
+  self_coll_device_ratio:
+    expression: SUM(CASE WHEN utdid = coll_utdid THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 自归集设备占比（utdid 即为归集主设备的行数占比，反映归集收敛度）
+  brand_diversity:
+    expression: COUNT(DISTINCT dev_brand)
+    description: 设备品牌多样性（去重 dev_brand 数）
+  os_count:
+    expression: COUNT(DISTINCT os_id)
+    description: 平台数（去重 os_id 数）
+coverage:
+  scenarios:
+    - 设备归集/去重：通过 coll_utdid 将多 utdid 归一到主设备，支撑设备口径 UV 核算与去重
+    - 设备品牌分布：按 dev_brand 分组统计设备量与品牌多样性
+    - 自归集占比：衡量 utdid 即为归集主设备的比例，反映归集收敛度
+  limitations:
+    - 仅对最新 ds(20260730) 做了抽样指标实测复核(uv=276017/coll_uv=255734/brand_n=158/self_coll=255734)，未做全量历史 ds 复核
+    - 表名 dev 推断分析主体=设备(user_type=1)，表内无 user_type 列，未通过 DISTINCT 实测验证
+    - _df 为日全量快照，指标为快照口径，跨日累加无意义；时序对比需用同日快照
+    - os_id 在最新 ds 上仅出现 1 个值，平台分布分析需跨多日/历史分区
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已对最新 ds(20260730) 抽样实测 5 项指标，数值合理(uv=276017)；user_type 未经实测(表无此列，按表名推断)。
+dimension_refs: []
+pref_label: 设备归集表
+alt_labels:
+  - 归集
+  - utdid
+  - 品牌
+  - 型号

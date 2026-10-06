@@ -1,0 +1,116 @@
+name: game.autoSkill.setDefaultItems
+event_filter: event = 'game.autoSkill.setDefaultItems'
+description: 玩家在自动战斗系统中为武将设置默认技能方案选项时上报的事件，记录武将id、技能group、目标、条件等方案配置。角色级事件，主体粒度为 role_id。单日实测(ds=20260729)上报 768802 条，覆盖 4267 角色 / 4028 账号 / 467 服务器。参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等27个
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightId:
+    type: int
+    description: 武将id
+  items:
+    type: array
+    description: 选项列表
+  items.skillGroup:
+    type: int
+    description: 技能group
+  items.condition:
+    type: array
+    description: 条件
+  items.target:
+    type: int
+    description: 目标
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 实测 cnt=768802 role_uv=4267 acc_uv=4028 server_uv=467，数据量合理且分布正常
+metrics:
+  game_autoSkill_setDefaultItems_cnt:
+    expression: COUNT(*)
+    description: 自动战斗设置武将默认方案选项事件总上报次数
+  game_autoSkill_setDefaultItems_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发设置武将默认技能方案的去重角色数
+  game_autoSkill_setDefaultItems_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发设置武将默认技能方案的去重账号数
+  game_autoSkill_setDefaultItems_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发设置武将默认技能方案的去重服务器数
+coverage:
+  scenarios:
+    - 自动战斗武将默认方案配置活跃度监控（总次数 / 角色数 / 账号数 / 服务器数）
+    - 评估自动战斗功能使用广度与渗透率，定位高频配置武将方案的用户群体
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度为 role_id（角色级事件，account_id 为账号维度辅助）
+    - 未细化到 skillGroup / knightId 级别分布，仅做事件总体量级核对
+  coverage_status: analyst_confirmed
+external_refs: []

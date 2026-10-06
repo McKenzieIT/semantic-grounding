@@ -1,0 +1,84 @@
+table_name: dws_10000251_analysis_card_progression_di
+engine: maxcompute
+table_comment: 卡牌养成进度分日表
+description: |-
+  卡牌养成进度分日表（日增量 _di）。记录角色对卡牌的养成行为（获取/升星）及进度值。
+  主体：角色（role_id，对应 user_type=3 角色表，无 user_type 列故为推断）。
+  粒度：日增量(_di)，按 ds 分区，每行一条卡牌养成事件（role_id + card_id + progre_type）。
+  主要字段：role_id, card_type, card_id, progre_type, progre_value, tm, ds。
+domains:
+  - 角色成长
+  - 探索收集
+granularity: 日增量(_di)，主体=角色(role_id)，user_type=3(推断，无该列)
+columns:
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: card_type
+    type: bigint
+    comment: 卡牌类型
+    role: dimension
+  - name: card_id
+    type: bigint
+    comment: 卡牌ID
+    role: attribute
+  - name: progre_type
+    type: bigint
+    comment: 养成类型 0-获取 1-升星
+    role: dimension
+  - name: progre_value
+    type: bigint
+    comment: 养成进度
+    role: measure
+  - name: tm
+    type: string
+    comment: 行为时间
+    role: attribute
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  daily_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日有卡牌养成行为的活跃角色数(UV)，按角色(role_id)去重
+  daily_events:
+    expression: COUNT(*)
+    description: 当日卡牌养成事件总条数（每行一条 role_id+card_id+progre_type 事件）
+  daily_progression_sum:
+    expression: SUM(progre_value)
+    description: 当日卡牌养成进度值总增量（progre_value 求和，含获取+升星）
+  daily_distinct_cards:
+    expression: COUNT(DISTINCT card_id)
+    description: 当日被养成的去重卡牌数（按 card_id 去重）
+  avg_progression_per_role:
+    expression: SUM(progre_value) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均卡牌养成进度增量（总进度/参与角色数，分母为0返回NULL）
+coverage:
+  scenarios:
+    - 卡牌养成活跃度：daily_uv 衡量每日参与卡牌养成（获取/升星）的角色规模
+    - 卡牌养成强度：daily_events 与 daily_progression_sum 反映当日养成行为量与进度总量
+    - 卡牌覆盖广度：daily_distinct_cards 反映当日被养成卡牌的去重数量
+    - 人均养成深度：avg_progression_per_role 反映单角色平均养成进度，评估养成投入密度
+  limitations:
+    - 表为日增量(_di)，仅记录当日养成事件，不含卡牌全量状态快照；累计养成度需跨分区聚合
+    - progre_type 仅 0-获取/1-升星 两类，未细分更多养成维度
+    - 主体角色 user_type=3 为表名/主键推断，表内无 user_type 列直接验证
+    - 仅对 latest ds=20250407 做 scout 抽样验证（uv=1, rows=4, progre_sum=12, cards=4, 仅 progre_type=1），未做全量 maxc 实测复核
+    - tm 为字符串时间戳，未做时区/格式标准化校验
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 在 latest ds=20250407 上对 daily_uv/daily_events/daily_progression_sum/daily_distinct_cards 做了 scout 抽样验证，返回合理非空值（uv=1, rows=4, total_progre=12, cards=4）；avg_progression_per_role 为结构性指标未单独跑。
+dimension_refs:
+  - dim_table: dim_10000251_trans_card_df
+    join_keys:
+      - dws_column: card_id
+        dim_column: id
+    derivation: "DWS column card_id (comment: 卡牌ID) semantically matches the primary key id (武将id) of dim_10000251_trans_card_df (武将/角色配置维度表); the table's 卡牌养成 progression (progre_type 0-获取/1-升星 = obtain/star-up) corresponds to 武将 collection mechanics, making trans_card_df the canonical character-card dimension."
+pref_label: 卡牌养成日表
+alt_labels:
+  - 养成
+  - 培养

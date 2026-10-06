@@ -1,0 +1,74 @@
+table_name: dim_10000251_trans_stage_test_df_arch
+engine: maxcompute
+kind: dim
+table_comment: '关卡配置维度表（每关卡一行的关卡信息表，含名称/类型/难度/章节/怪物/NPC/成就条件）'
+description: 'dim_10000251_trans_stage_test_df_arch 是游戏关卡（stage）配置维度表，按关卡 id 唯一记录每个关卡的基础配置：关卡名、关卡类型、难度、所属章节、怪物组、强制上场 NPC、以及三档成就达成条件。作为维度表，通过 id 与事实表（如关卡战斗记录、成就进度）JOIN，提供关卡的属性化标签与分组维度，避免在事实表中冗余存放配置属性。'
+domains:
+- 战斗关卡
+granularity: '每关卡（id）一行的关卡配置维度表'
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+columns:
+- name: id
+  type: string
+  comment: 关卡id
+  role: dimension
+- name: name
+  type: string
+  comment: 关卡名
+  role: dimension
+- name: type
+  type: bigint
+  comment: 关卡类型
+  role: dimension
+- name: difficulty
+  type: bigint
+  comment: 难度
+  role: dimension
+- name: chapter_id
+  type: string
+  comment: 章
+  role: dimension
+- name: monster
+  type: string
+  comment: 怪物组
+  role: dimension
+- name: npc
+  type: string
+  comment: 强制阵容（必须上场的武将或npc）
+  role: dimension
+- name: goal1_term
+  type: string
+  comment: 成就1达成条件
+  role: dimension
+- name: goal2_term
+  type: string
+  comment: 成就2达成条件
+  role: dimension
+- name: goal3_term
+  type: string
+  comment: 成就3达成条件
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 关卡配置维度表总行数
+coverage:
+  scenarios:
+  - '通过 id 与关卡战斗/成就进度事实表 JOIN，按 type（关卡类型）、difficulty（难度）、chapter_id（章节）分组分析关卡通过率/成就达成率/资源消耗分布'
+  - '提供 NPC（强制上场）、monster（怪物组）标签，用于阵容约束或怪物特性相关的关卡聚合分析'
+  limitations:
+  - '配置类维度表，无值度量；monster/npc/goal*_term 等字段为编码串，需参照业务码表二次解码后才能解读其业务含义'
+  - 'primary_key_unique 已实测（r=d=372），但配置快照表存在按 ds 分区拉取的可能性，跨分区联合使用前需确认 ds 取值口径'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'dim 建模草稿：primary_key=id、label=name、domain=战斗关卡；唯一性已实测通过；status=draft 待业务确认'

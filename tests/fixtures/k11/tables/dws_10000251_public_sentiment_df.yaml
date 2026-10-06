@@ -1,0 +1,106 @@
+table_name: dws_10000251_public_sentiment_df
+engine: maxcompute
+table_comment: 舆情监控表
+description: |-
+  舆情监控表：采集外部公开舆情内容（论坛/社媒帖子等）及其互动指标（点赞/阅读/回复/转发/分享）的日全量快照。
+  主体：舆情内容（content-level）；粒度：按内容cid日全量快照(_df)，每日全量快照当前生效内容集。
+  主要字段：source(来源), cid(内容id), type(内容类型), url/title/content(文本属性), up_cnt/view_cnt/reply_cnt/repro_cnt/share_cnt(互动度量), publish_tm(发布时间), ds(业务日期)。
+domains:
+  - 系统监控
+  - 社交公会
+granularity: 舆情内容粒度，日全量快照(_df)，按内容cid每日全量快照
+columns:
+  - name: source
+    type: string
+    comment: 来源
+    role: dimension
+  - name: cid
+    type: string
+    comment: 内容id
+    role: dimension
+  - name: type
+    type: string
+    comment: 内容类型
+    role: dimension
+  - name: url
+    type: string
+    comment: 内容链接
+    role: attribute
+  - name: title
+    type: string
+    comment: 标题
+    role: attribute
+  - name: content
+    type: string
+    comment: 内容详情
+    role: attribute
+  - name: up_cnt
+    type: bigint
+    comment: 点赞人数
+    role: measure
+  - name: view_cnt
+    type: bigint
+    comment: 阅读人数
+    role: measure
+  - name: reply_cnt
+    type: bigint
+    comment: 回复人数
+    role: measure
+  - name: repro_cnt
+    type: bigint
+    comment: 转发人数
+    role: measure
+  - name: share_cnt
+    type: bigint
+    comment: 分享人数
+    role: measure
+  - name: publish_tm
+    type: datetime
+    comment: 发布时间
+    role: dimension
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  content_uv:
+    expression: COUNT(DISTINCT cid)
+    description: 舆情内容条数UV（按内容cid去重），快照内当前生效内容量
+  total_view:
+    expression: SUM(view_cnt)
+    description: 总阅读人数，快照内所有内容阅读量之和
+  total_up:
+    expression: SUM(up_cnt)
+    description: 总点赞人数，快照内所有内容点赞量之和
+  total_reply:
+    expression: SUM(reply_cnt)
+    description: 总回复人数，快照内所有内容回复量之和
+  engagement_rate:
+    expression: (SUM(up_cnt) + SUM(reply_cnt) + SUM(repro_cnt) + SUM(share_cnt)) / NULLIF(SUM(view_cnt), 0)
+    description: 互动率(点赞+回复+转发+分享)/阅读，NULLIF防除零
+coverage:
+  scenarios:
+    - 监控外部公开舆情内容总量与传播规模（content_uv/total_view）
+    - 评估舆情互动健康度与参与度（total_up/total_reply/engagement_rate）
+    - 按source/type分组对比各渠道舆情热度与互动结构
+  limitations:
+    - 表为空/无数据(MAX(ds) NULL)，无法在最新ds做指标抽样验证，指标为结构性定义
+    - _df为日全量快照语义，跨ds累加需注意内容去重，避免重复计数
+    - 舆情内容主体为content-level，非account/role/device主体，无user_type字段
+    - 仅scout结构性定义，未做全量maxc实测复核（表空）
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表为空(MAX(ds) NULL)，仅做结构性丰富，未实测指标；待有数据后补做最新ds抽样验证
+dimension_refs: []
+pref_label: 舆情表
+alt_labels:
+  - 舆情
+  - 论坛
+  - 评价
+  - 口碑
+  - 反馈
+  - 差评
+  - 负面
+  - 社媒

@@ -1,0 +1,145 @@
+table_name: dws_10000251_battle_stage_part_df
+engine: maxcompute
+table_comment: K11-关卡挑战情况表
+description: |-
+  K11-关卡挑战情况表（角色×关卡粒度，日全量快照 _df）。
+  粒度：每角色每关卡一行的关卡挑战记录，日全量快照；主键 account_id，分区 ds。
+  主要字段：account_id, server_id, role_id, play_func_id, chapter_id, stage_id, pass_status, fst_pass_pv_std 等20列。
+  主体：角色(role)维度，记录角色在各关卡的首通情况（通关状态、挑战次数、战力、时长、星级、阵亡、回合等）。
+domains:
+  - 战斗关卡
+granularity: 角色×关卡粒度，日全量快照(_df)
+columns:
+  - name: account_id
+    type: string
+    comment: 账号id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: play_func_id
+    type: string
+    comment: 玩法功能id
+    role: dimension
+  - name: chapter_id
+    type: bigint
+    comment: 章节主题id
+    role: dimension
+  - name: stage_id
+    type: string
+    comment: 关卡id
+    role: dimension
+  - name: pass_status
+    type: bigint
+    comment: 通关状态，0-未通关 1-已通关
+    role: dimension
+  - name: fst_pass_pv_std
+    type: bigint
+    comment: 首通时累计挑战次数
+    role: measure
+  - name: fst_pass_lineup_force
+    type: bigint
+    comment: 首通时部队战力
+    role: measure
+  - name: fst_pass_lineup_level
+    type: bigint
+    comment: 首通时阵容等级
+    role: measure
+  - name: fst_pass_dur
+    type: bigint
+    comment: 首通时挑战时长，单位秒
+    role: measure
+  - name: pass_rate
+    type: double
+    comment: 关卡通关率，已通关玩家，=1/首通时累计挑战次数；未通关玩家=0
+    role: measure
+  - name: failed_status
+    type: bigint
+    comment: 是否失败过，0-否 1-是
+    role: dimension
+  - name: retry_status
+    type: bigint
+    comment: 失败后是否二次挑战，0-否 1-是
+    role: dimension
+  - name: fst_pass_stars_status
+    type: bigint
+    comment: 首通时关卡星级情况，-1 缺省值 0-未满星 1-满星
+    role: dimension
+  - name: fst_pass_back_pv
+    type: bigint
+    comment: 首通时回溯次数，-1 缺省值
+    role: measure
+  - name: fst_pass_dead_pv
+    type: bigint
+    comment: "首通时阵亡武将数，-1 缺省值 "
+    role: measure
+  - name: fst_pass_rounds
+    type: bigint
+    comment: 首通时回合数，-1 缺省值
+    role: measure
+  - name: fst_pass_achieve_status
+    type: bigint
+    comment: 首通时关卡成就情况，-1 缺省值 0-未达成 1-全达成
+    role: dimension
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 挑战角色UV（参与关卡的角色去重数，_df快照口径）
+  stage_record_pv:
+    expression: COUNT(*)
+    description: 关卡挑战记录数（角色×关卡行数，_df快照口径）
+  avg_first_pass_attempts:
+    expression: AVG(fst_pass_pv_std)
+    description: 首通平均累计挑战次数（反映关卡难度/卡点程度）
+  avg_pass_rate:
+    expression: AVG(pass_rate)
+    description: 关卡平均通关率（pass_rate=1/首通累计挑战次数，未通关=0）
+  star3_record_count:
+    expression: SUM(CASE WHEN fst_pass_stars_status = 1 THEN 1 ELSE 0 END)
+    description: 满星首通记录数（首通即满星的角色×关卡行数）
+coverage:
+  scenarios:
+    - 关卡进度分析：通过 role_uv / stage_record_pv 评估各章节/关卡的角色覆盖与挑战规模
+    - 关卡难度评估：通过 avg_first_pass_attempts / avg_pass_rate 识别高卡点关卡（首通挑战次数高、通关率低）
+    - 满星达成分析：通过 star3_record_count 衡量关卡满星通关难度与玩家追求度
+    - 可按 chapter_id / stage_id / server_id / play_func_id 维度下钻分组对比
+  limitations:
+    - 仅抽样验证 ds=20250508 一天的指标（role_uv=30357, stage_record_pv=3508921, avg_first_pass_attempts≈1.13, star3_record_count≈1.49M），未做全量多日 maxc 复核
+    - 表为 _df 日全量快照，metrics 口径为快照当日累计；跨日趋势需按 ds 分组查询，非增量累加
+    - 无 user_type 列，主体角色(role)由 role_id 推断，未经 user_type 字段显式校验
+    - pass_rate/fst_pass_* 系列字段对未通关记录取 0 或 -1 缺省值，按行聚合时需注意缺省值过滤
+    - COUNT(DISTINCT role_id) 在大分区下消耗资源较大，建议限定 ds 与 stage_id 范围
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 抽样验证 ds=20250508 指标值合理（role_uv=30357, stage_record_pv≈3.5M, star3≈1.49M, avg_attempt≈1.13）；列类型/注释已对齐 meta describe；列角色已修正（account_id/chapter_id 归 dimension，fst_pass_lineup_force/level/rounds 归 measure）。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: "DWS column server_id (comment: 区服id) is an exact match to PK server_id of dim_10000251_server_info (服务器维度配置表)."
+    origin: deterministic
+  - dim_table: dim_10000251_function_info
+    join_keys:
+      - dws_column: play_func_id
+        dim_column: function_id
+    derivation: "DWS column play_func_id (comment: 玩法功能id) semantically matches PK function_id of dim_10000251_function_info (功能配置维度表)."
+  - dim_table: dim_10000251_trans_stage_df
+    join_keys:
+      - dws_column: stage_id
+        dim_column: id
+    derivation: "DWS column stage_id (comment: 关卡id) semantically matches PK id (关卡id) of dim_10000251_trans_stage_df (关卡配置维度表)."
+pref_label: 关卡挑战情况表
+alt_labels:
+  - 难度

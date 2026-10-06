@@ -1,0 +1,180 @@
+name: game.charge.purchase
+event_filter: event = 'game.charge.purchase'
+description: 充值购买(直冲)事件：角色通过直冲id(type)购买充值商品，记录订单(orderId/orderUid)、商品(goodsId)、金额(money,单位分)、购买次数(buyCount)、是否超卖(overSell)。分析主体 role_id(角色)，账号粒度可用 account_id。MaxCompute ds=20260729 scout 实测：cnt=864/role_uv=413/acc_uv=408/server_uv=126，money 合计 3,860,600分(38,606元)，单笔 100~199,800分(1~1,998元)。
+domains:
+  - 付费经济
+domain: payment
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  orderId:
+    type: string
+    description: order id
+  orderUid:
+    type: string
+    description: order uid
+  goodsId:
+    type: int
+    description: goods id
+  type:
+    type: string
+    description: 直冲id
+  amount:
+    type: int
+    description: 数量
+  money:
+    type: int
+    description: RMB金额(单位分；2026-07-30 MaxCompute ds=20260729 实测单笔100~199800分，合计3860600分)
+  buyCount:
+    type: int
+    description: 购买次数
+  overSell:
+    type: bool
+    description: 是否超卖
+metrics:
+  charge_purchase_cnt:
+    expression: COUNT(*)
+    description: 充值购买事件触发次数
+  charge_purchase_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 充值购买独立角色数(去重 role_id，分析主体)
+  charge_purchase_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 充值购买独立账号数(去重 account_id)
+  charge_purchase_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 覆盖游戏服数(去重 server_id)
+  charge_purchase_revenue_fen:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.money') AS BIGINT))
+    description: 充值营收合计(单位分，除以100转元)；本事件全部为付费购买，无现金券分档
+  charge_purchase_buycount_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.buyCount') AS BIGINT))
+    description: 购买次数合计(累计 buyCount)
+  charge_purchase_arpu_fen:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.money') AS BIGINT)) / NULLIF(COUNT(DISTINCT account_id), 0)
+    description: ARPU(分/账号，营收/独立账号去重数；单位分，除以100转元)
+  charge_purchase_arppu_fen:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.money') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: ARPPU(分/角色，营收/独立角色去重数；单位分，除以100转元)
+coverage:
+  scenarios:
+    - 充值营收(charge_purchase_revenue_fen)与独立角色/账号/服务器规模追踪
+    - ARPU/ARPPU(分)衡量单账号/单角色付费深度
+    - 购买次数(charge_purchase_buycount_sum)反映下单频次
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id(角色)；账号粒度可用 account_id
+    - money 字段单位为分(人民币)，除以100转元；本事件无 moneyType 分档，全部计入营收(区别于 game.recharge 的 moneyType=1/2 口径)
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "ds=20260729 实测: cnt=864/role_uv=413/acc_uv=408/server_uv=126, money_sum=3860600分(38606元), money_min=100分/money_max=199800分"
+external_refs:
+  - dim_table: dim_10000251_trans_gacha_mission_group_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_gacha_mission_group_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df_arch 主键精确同名
+    origin: deterministic

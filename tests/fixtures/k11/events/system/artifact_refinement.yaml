@@ -1,0 +1,207 @@
+name: game.artifact.refinement
+event_filter: event = 'game.artifact.refinement'
+description: |-
+  兵符精炼事件：玩家消耗低阶兵符（params.uid）对已穿戴兵符（wearArtifact）进行精炼升级，
+  记录穿戴/被消耗兵符的星级、属性（addAttrs/randAttrs）及槽位变化。
+  分析主体为 role_id。ds=20260729 单日实测 1925 条/722 角色/706 账号/144 服务器。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  job:
+    type: int
+    description: 职业
+  uid:
+    type: int
+    description: 要使用的兵符uid
+  wearCellId:
+    type: int
+    description: 被替换槽位
+  usedCellId:
+    type: int
+    description: 使用的槽位
+  wearArtifact:
+    type: json
+    description: 穿戴兵符
+  wearArtifact.uid:
+    type: int
+    description: wearArtifact.uid
+  wearArtifact.cfgId:
+    type: int
+    description: wearArtifact.cfgId
+  wearArtifact.star:
+    type: int
+    description: wearArtifact.star
+  wearArtifact.addAttrs:
+    type: array
+    description: wearArtifact.addAttrs
+  wearArtifact.addAttrs.attrId:
+    type: int
+    description: wearArtifact.addAttrs.attrId
+  wearArtifact.addAttrs.attrValue:
+    type: int
+    description: wearArtifact.addAttrs.attrValue
+  wearArtifact.randAttrs:
+    type: array
+    description: wearArtifact.randAttrs
+  wearArtifact.randAttrs.cellId:
+    type: int
+    description: wearArtifact.randAttrs.cellId
+  wearArtifact.randAttrs.attrId:
+    type: int
+    description: wearArtifact.randAttrs.attrId
+  wearArtifact.randAttrs.attrValue:
+    type: int
+    description: wearArtifact.randAttrs.attrValue
+  wearArtifact.randAttrs.cfgId:
+    type: int
+    description: wearArtifact.randAttrs.cfgId
+  wearArtifact.randAttrs.type:
+    type: int
+    description: wearArtifact.randAttrs.type
+  usedArtifact:
+    type: json
+    description: 被使用的兵符
+  usedArtifact.uid:
+    type: int
+    description: usedArtifact.uid
+  usedArtifact.cfgId:
+    type: int
+    description: usedArtifact.cfgId
+  usedArtifact.star:
+    type: int
+    description: usedArtifact.star
+  usedArtifact.addAttrs:
+    type: array
+    description: usedArtifact.addAttrs
+  usedArtifact.addAttrs.attrId:
+    type: int
+    description: usedArtifact.addAttrs.attrId
+  usedArtifact.addAttrs.attrValue:
+    type: int
+    description: usedArtifact.addAttrs.attrValue
+  usedArtifact.randAttrs:
+    type: array
+    description: usedArtifact.randAttrs
+  usedArtifact.randAttrs.cellId:
+    type: int
+    description: usedArtifact.randAttrs.cellId
+  usedArtifact.randAttrs.attrId:
+    type: int
+    description: usedArtifact.randAttrs.attrId
+  usedArtifact.randAttrs.attrValue:
+    type: int
+    description: usedArtifact.randAttrs.attrValue
+  usedArtifact.randAttrs.cfgId:
+    type: int
+    description: usedArtifact.randAttrs.cfgId
+  usedArtifact.randAttrs.type:
+    type: int
+    description: usedArtifact.randAttrs.type
+metrics:
+  refinement_cnt:
+    expression: COUNT(*)
+    description: 兵符精炼事件总次数
+  refinement_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与精炼的去重角色数（分析主体）
+  refinement_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与精炼的去重账号数
+  refinement_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 覆盖的去重游戏服数
+  refined_artifact_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.uid'))
+    description: 被精炼的去重兵符 uid 数（要使用的兵符 uid）
+  avg_wear_artifact_star:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.wearArtifact.star') AS BIGINT))
+    description: 穿戴兵符的平均星级（精炼目标）
+  refinement_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均精炼次数（总次数 / 去重角色数）
+coverage:
+  subject: role_id
+  subject_note: 兵符精炼以 role_id 为分析主体（穿戴兵符属角色装备）
+  scenarios:
+    - 各游戏服兵符精炼活跃度与渗透角色数（refinement_cnt / refinement_role_uv / refinement_server_uv）
+    - 人均精炼强度（refinement_per_role）定位重度精炼用户
+    - 被精炼兵符规模与穿戴兵符星级分布（refined_artifact_uv / avg_wear_artifact_star）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - usedArtifact.uid / wearArtifact.uid 在 ds=20260729 解析为 0 distinct（疑似字段缺失或嵌套结构差异），改用顶层 uid 作为被精炼兵符标识
+    - GET_JSON_OBJECT 依赖运行时 params JSON 结构，跨日结构可能漂移
+    - 实测 GET_JSON_OBJECT(params,'$.roleId')=722 与 base role_uv=722 一致，role_id 主体校验通过
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=1925, role_uv=722, acc_uv=706, server_uv=144; refined_artifact_uv(uid)=568, avg_wear_star=2.81, avg_used_star=1.0（消耗1星材料精炼穿戴兵符）"
+external_refs: []

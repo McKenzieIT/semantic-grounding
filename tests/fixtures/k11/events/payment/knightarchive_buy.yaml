@@ -1,0 +1,112 @@
+name: game.knightarchive.buy
+event_filter: event = 'game.knightarchive.buy'
+description: 武将典藏购买事件：玩家在武将典藏玩法中购买/解锁典藏条目（archive 字段为典藏id）。分析粒度为角色（role_id），单角色一日可多次购买不同典藏。ds=20260729 scout 实测：cnt=195、role_uv=140、acc_uv=140、server_uv=93、archive_uv=38。参数含游戏服/账号/角色基础属性、货币列表(coinList)、典藏id 等23个字段。
+domains:
+  - 付费经济
+domain: payment
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  archive:
+    type: int
+    description: 典藏id
+metrics:
+  knightarchive_buy_cnt:
+    expression: COUNT(*)
+    description: 武将典藏购买事件总次数
+  knightarchive_buy_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 购买典藏的去重角色数（参与角色口径）
+  knightarchive_buy_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 购买典藏的去重账号数
+  knightarchive_buy_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 发生典藏购买的去重游戏服数
+  knightarchive_buy_archive_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.archive'))
+    description: 当日被购买的不同典藏条目种类数
+  knightarchive_buy_per_role:
+    expression: ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0), 2)
+    description: 单角色平均购买次数（人均购买深度）
+coverage:
+  scenarios:
+    - 武将典藏购买参与度：role_uv / account_uv 衡量每日参与典藏购买的角色与账号规模
+    - 典藏条目覆盖：archive_uv 反映当日被购买的不同典藏种类数
+    - 购买深度：cnt 与 per_role 反映单角色购买频次/深度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析 subject 粒度默认 role_id（事件为角色级购买行为）
+    - params_fields 中 coinList.diamond 等虚拟货币字段在当日样本为 null，未构造货币消耗指标以避免误报
+    - payment 域内本事件无真实货币/金额字段，为游戏内虚拟购买，不含真实收入指标
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=195, role_uv=140, acc_uv=140, server_uv=93, archive_uv=38；coinList.diamond 当日为 null
+coverage_status: analyst_confirmed
+external_refs: []

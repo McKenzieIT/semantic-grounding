@@ -1,0 +1,160 @@
+name: game.charmStone.onekeySynthesis
+event_filter: event = 'game.charmStone.onekeySynthesis'
+description: 灵石一键合成事件：角色使用一键合成功能批量消耗多个灵石并产出新灵石时上报，记录每次合成消耗的石头列表(uids)、产出的灵石信息(charmStoneList)、合成组数(num)与合成前后货币(coinList)。分析主体粒度为 role_id（角色），单次一键合成行为计为一条日志。ds=20260729 实测：cnt=1514，role_uv=744，acc_uv=739，server_uv=208；当日累计合成组数(num合计) 17485，单次平均合成组数 11.55，单次最大组数 188，全部事件 num>1（一键合成均为批量）。
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  modelId:
+    type: int
+    description: 使用模板
+  uids:
+    type: array
+    description: 消耗的石头
+  charmStoneList:
+    type: array
+    description: 实际石头信息
+  charmStoneList.uid:
+    type: int
+    description: charmStoneList.uid
+  charmStoneList.id:
+    type: int
+    description: charmStoneList.id
+  charmStoneList.shape:
+    type: int
+    description: 对应charm_stone_shape_info
+  charmStoneList.isLock:
+    type: bool
+    description: 是否被上锁
+  charmStoneList.attrs:
+    type: array
+    description: 灵石实际属性
+  charmStoneList.attrs.id:
+    type: int
+    description: 第几个槽
+  charmStoneList.attrs.attrId:
+    type: int
+    description: 属性id
+  charmStoneList.attrs.attrValue:
+    type: int
+    description: 属性值
+  charmStoneList.stagedAttrs:
+    type: array
+    description: 洗练待替换属性（空表or nil为没有）
+  charmStoneList.stagedAttrs.id:
+    type: int
+    description: 第几个槽
+  charmStoneList.stagedAttrs.attrId:
+    type: int
+    description: 属性id
+  charmStoneList.stagedAttrs.attrValue:
+    type: int
+    description: 属性值
+  num:
+    type: int
+    description: 一键合成多少组
+metrics:
+  game_charmstone_onekeysynthesis_cnt:
+    expression: COUNT(*)
+    description: 灵石一键合成日志条数（每次一键合成行为一条）
+  game_charmstone_onekeysynthesis_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 发起一键合成的角色去重数（分析主体粒度 role_id）
+  game_charmstone_onekeysynthesis_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 发起一键合成的账号去重数
+  game_charmstone_onekeysynthesis_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及一键合成的游戏服去重数
+  game_charmstone_onekeysynthesis_group_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.num') AS BIGINT))
+    description: 当期一键合成累计组数（num 求和，合成体量）
+  game_charmstone_onekeysynthesis_avg_group_per_event:
+    expression: AVG(CAST(GET_JSON_OBJECT(params,'$.num') AS DOUBLE))
+    description: 单次一键合成平均组数（num 均值，批量规模）
+  game_charmstone_onekeysynthesis_group_per_role:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.num') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id),0)
+    description: 人均合成组数 = 累计组数 / 角色去重数（NULLIF 防零除）
+coverage:
+  scenarios:
+    - 通过 role_uv/account_uv/server_uv 评估灵石一键合成玩法的角色/账号/游戏服渗透规模
+    - 通过 group_sum、avg_group_per_event 衡量一键合成产出体量与单次批量规模，辅助合成消耗节奏分析
+    - 通过 group_per_role 评估人均合成强度，定位重度合成玩家
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量多日复核；多日趋势需另行批量校验
+    - 分析主体粒度默认 role_id（角色），未对 account_id 跨角色复合成做去重校验
+    - uids（消耗石头列表）与 charmStoneList（产出灵石信息）为数组参数，未在本事件 metrics 内展开逐元素求和/计数，如需按石头 id 或属性维度聚合需单独建模
+    - 当日全部事件 num>1（multi_group_cnt=cnt=1514），一键合成均为批量行为，无单组样本
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=1514, role_uv=744, acc_uv=739, server_uv=208; num合计=17485, num均值=11.5489, num最大=188, multi_group_cnt(>1)=1514(全部批量), param_role_uv=744。数值合理，event+ds 双过滤命中，确认在线可查。
+coverage_status: analyst_confirmed
+external_refs: []

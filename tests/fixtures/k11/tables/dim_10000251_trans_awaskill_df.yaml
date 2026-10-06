@@ -1,0 +1,40 @@
+table_name: dim_10000251_trans_awaskill_df
+engine: maxcompute
+table_comment: 'AwaSkill 技能配置维度表（日全量快照 _df）：每技能一行的配置维度表，含技能 id 与是否超绝标记。'
+description: '游戏 10000251 的 AwaSkill 技能配置维度表（日全量快照 _df）。粒度为每技能一行，记录技能 id（主键）及其是否为超绝技能的标记（special：1=超绝，0=非超绝）。供事实表按技能 id 进行维度关联与超绝属性查询使用。'
+domains:
+- 系统监控
+granularity: 每技能一行的配置维度表（日全量快照 _df）
+kind: dim
+primary_key:
+- id
+label_columns:
+- special
+primary_key_unique: true
+columns:
+- name: id
+  type: string
+  comment: 技能id
+  role: dimension
+- name: special
+  type: bigint
+  comment: 是否超绝，1：超绝，0：非超绝
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 事实表按技能 id（skill_id）JOIN 本表，获取技能的配置维度属性
+  - 按是否超绝（special=1/0）筛选或分组聚合技能集合
+  - 作为技能维度的 lookup 表，用于报表中展示技能超绝标记
+  limitations:
+  - 配置类维度表，无值度量（special 为 0/1 标记，非度量字段）
+  - label_columns 仅有 special（0/1 超绝标记），缺乏技能名称等人类可读标签列
+  - 主键唯一性已实测（r=6=d，行数极少），已通过 SELECT COUNT(*)/COUNT(DISTINCT id) 验证
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 基于 meta describe 真实列建模；主键 id 唯一性已实测通过；special 作为唯一可用属性列兼作 label（无名称列）。

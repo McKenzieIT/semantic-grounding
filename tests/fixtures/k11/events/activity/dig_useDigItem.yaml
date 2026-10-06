@@ -1,0 +1,158 @@
+name: game.dig.useDigItem
+event_filter: event = 'game.dig.useDigItem'
+description: 挖宝玩法中使用挖掘道具的行为事件。记录玩家在挖宝系统中使用道具进行挖掘操作，包含道具ID(digItemId)、当前层级(digLevel)、累计挖掘次数(digCount)及格子变化与奖励产出(changeItems/rewards)。主体粒度为 role_id（角色），真实度量体积为挖掘道具使用事件次数。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  digItemId:
+    type: int
+    description: 道具ID
+  param:
+    type: int
+    description: 参数
+  digLevel:
+    type: int
+    description: 层级
+  digCount:
+    type: int
+    description: 挖掘次数
+  changeItems:
+    type: array
+    description: 变化的格子
+  changeItems.pos:
+    type: int
+    description: 位置
+  changeItems.rewards:
+    type: array
+    description: 奖励，领取后清空
+  changeItems.rewards.type:
+    type: int
+    description: 类型
+  changeItems.rewards.value:
+    type: int
+    description: 值
+  changeItems.rewards.size:
+    type: int
+    description: 数量
+  changeItems.rewards.uid:
+    type: int
+    description: 唯一id
+  changeEffects:
+    type: array
+    description: 变化的效果
+  changeEffects.effect:
+    type: int
+    description: 效果类型DIG_EFFECT_TYPE
+  changeEffects.value1:
+    type: int
+    description: 效果值
+  rewards:
+    type: array
+    description: 奖励
+  rewards.type:
+    type: int
+    description: 类型
+  rewards.value:
+    type: int
+    description: 值
+  rewards.size:
+    type: int
+    description: 数量
+  rewards.uid:
+    type: int
+    description: 唯一id
+metrics:
+  game_dig_useDigItem_cnt:
+    expression: COUNT(*)
+    description: 挖掘道具使用事件总次数
+  game_dig_useDigItem_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 使用挖掘道具的去重角色数
+  game_dig_useDigItem_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 使用挖掘道具的去重账号数
+  game_dig_useDigItem_dig_count_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.digCount') AS BIGINT))
+    description: 挖掘次数累计总和(按 digCount 字段汇总)
+coverage:
+  scenarios:
+    - 衡量挖宝玩法中挖掘道具的使用规模与活跃度（事件次数、角色/账号 UV）
+    - 统计玩家累计挖掘次数总量，评估挖宝系统产出消耗节奏
+  limitations:
+    - 日志中零命中(ds=20260729/20260728)，疑似下线/未触发
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认为 role_id，账户粒度作为补充口径
+  coverage_status: draft
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 scout 实测 cnt=0,role_uv=0,acc_uv=0;ds=20260728 复测仍为 0;判定为零命中,疑似事件下线或当日未触发,保留 draft 待业务确认
+external_refs: []

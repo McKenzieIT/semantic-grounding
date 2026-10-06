@@ -1,0 +1,73 @@
+table_name: dws_10000251_vip_role_tag_df
+engine: maxcompute
+table_comment: VIP角色支付标签日全量快照表(ieu_cdm.dws_10000251_vip_role_tag_df)：每角色一行，记录最近30天及上个月支付金额与支付天数，用于付费角色识别与LTV/付费渗透分析。
+description: 粒度：日全量快照(_df)，每角色一行(user_id为主键，user_type=3角色)。分析主体=角色（user_type=3）。业务含义：VIP角色付费标签宽表，刻画各角色近30天/上月支付金额与支付天数，支撑付费角色渗透、LTV分层与VIP运营决策。主要字段：user_type, user_id, pay_amt_l30d, pay_days_l30d, pay_amt_l1m, pay_days_l1m, ds。
+domains:
+  - 付费经济
+  - 角色成长
+granularity: 日全量快照(_df)，分析主体=角色(user_type=3)，主键user_id，每角色每日一行
+columns:
+  - name: user_type
+    type: bigint
+    comment: 用户类型，1-设备、2-账号、3-角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: pay_amt_l30d
+    type: double
+    comment: 最近30天支付金额
+    role: measure
+  - name: pay_days_l30d
+    type: bigint
+    comment: 最近30天支付天数
+    role: measure
+  - name: pay_amt_l1m
+    type: double
+    comment: 上个月支付金额
+    role: measure
+  - name: pay_days_l1m
+    type: bigint
+    comment: 上个月支付天数
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区字段
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 当日快照角色UV，去重统计参与快照的角色数
+  pay_amt_l30d_total:
+    expression: SUM(pay_amt_l30d)
+    description: 全角色最近30天支付金额合计，反映短期付费盘子
+  pay_days_l30d_total:
+    expression: SUM(pay_days_l30d)
+    description: 全角色最近30天支付天数合计，反映付费活跃频次
+  pay_amt_l1m_total:
+    expression: SUM(pay_amt_l1m)
+    description: 全角色上个月支付金额合计，反映上月付费盘子
+  paying_role_rate_l30d:
+    expression: SUM(CASE WHEN pay_amt_l30d > 0 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 近30天付费角色占比，L30D付费渗透率
+coverage:
+  scenarios:
+    - VIP付费角色规模与渗透：通过role_uv与paying_role_rate_l30d量化付费角色池与渗透率
+    - 短期付费盘子监测：pay_amt_l30d_total/pay_days_l30d_total追踪近30天付费金额与天数趋势
+    - 月份环比：pay_amt_l1m_total对照pay_amt_l30d_total做月度付费盘环比
+    - VIP分层运营：按user_id钻取识别高/低付费角色，支撑VIP分层触达
+  limitations:
+    - _df为日全量快照，指标为快照时点口径而非区间增量，跨日聚合需注意口径
+    - 仅在latest ds(20260730)抽样验证UV/金额/天数合计，未做全量逐日maxc实测复核
+    - 缺乏付费档位/渠道/区服等维度，分层钻取受限(表中仅有user_type/user_id两个标识)
+    - pay_days_l30d/pay_days_l1m为窗口累计字段，不可用于跨快照线性相加
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 在latest ds=20260730实测验证role_uv=322201、pay_amt_l30d_total≈858434、pay_days_l30d_total=9507、user_type=3(角色)，结果合理故标记analyst_confirmed；指标为结构化口径，未做全量逐日复核
+dimension_refs: []
+pref_label: VIP角色支付标签表
+alt_labels:
+  - 支付

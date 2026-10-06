@@ -1,0 +1,160 @@
+name: game.group.action
+event_filter: event = 'game.group.action'
+description: 组队行为埋点（社交公会域，分析主体=role_id）。记录角色对队伍的操作（创建/加入/退出/踢人/换队长等，由 params.action 区分），含队伍id、队伍公开模式、助战模式、队伍人数、玩法/关卡上下文及成员快照。ds=20260729 实测：10470 条事件，1088 角色uv，1067 账号uv，240 服，1479 支队伍，平均队伍人数 1.54（区间1-4），平均角色等级 58.9。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  action:
+    type: int
+    description: 行为类型
+  groupId:
+    type: int
+    description: 队伍id
+  groupType:
+    type: int
+    description: 队伍公开模式
+  assistType:
+    type: int
+    description: 助战模式
+  roleNum:
+    type: int
+    description: 队伍人数
+  roleList:
+    type: array
+    description: 操作后队伍成员id
+  roleList.id:
+    type: int
+    description: 队伍成员id
+  opRoleid:
+    type: int
+    description: 被操作玩家角色id(被踢)
+  playType:
+    type: int
+    description: 玩法id
+  playName:
+    type: string
+    description: 玩法名称
+  floor:
+    type: int
+    description: 层数
+  stageId:
+    type: int
+    description: 关卡id
+  lowlevel:
+    type: int
+    description: 队伍等级下限
+  lineupLevel:
+    type: int
+    description: 队伍等级上限
+metrics:
+  group_action_cnt:
+    description: 组队行为事件总次数（所有 action 类型合计）
+    expression: COUNT(*)
+  group_action_role_uv:
+    description: 触发组队行为的去重角色数
+    expression: COUNT(DISTINCT role_id)
+  group_action_account_uv:
+    description: 触发组队行为的去重账号数
+    expression: COUNT(DISTINCT account_id)
+  group_action_server_uv:
+    description: 发生组队行为的去重游戏服数
+    expression: COUNT(DISTINCT server_id)
+  group_action_group_uv:
+    description: 涉及的去重队伍数（params.groupId）
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.groupId'))
+  group_action_avg_role_num:
+    description: 平均队伍人数（params.roleNum 均值，反映队伍规模）
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleNum') AS DOUBLE))
+  group_action_avg_role_level:
+    description: 组队角色平均等级（params.roleLevel 均值）
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS DOUBLE))
+  group_action_events_per_role:
+    description: 人均组队操作次数（总次数/角色uv，分母用 NULLIF 防零）
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+coverage:
+  scenarios:
+    - 组队行为总活跃度与覆盖（group_action_cnt / role_uv / account_uv / server_uv / group_uv）
+    - 队伍规模与角色等级形态（avg_role_num / avg_role_level）
+    - 人均组队操作频次（events_per_role，粗略反映组队操作复杂度）
+    - 按 server_id / role_level 分组拆解组队覆盖与规模
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核（多日趋势/跨日留存未验证）
+    - 分析主体默认 role_id（角色级事件）；account_id 可作账号粒度补充
+    - action 子类型分布未单独成指标，需按 GET_JSON_OBJECT(params,$.action) 自行 GROUP BY
+    - avg_* 为全量均值，未按 action/server 拆分
+    - metrics 表达式仅使用基础视图列与 GET_JSON_OBJECT(params,$.<field>)，未 JOIN
+  granularity: role_id
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=10470, role_uv=1088, acc_uv=1067, server_uv=240, group_uv=1479, avg_role_num=1.54(min1/max4), avg_role_level=58.9。数据合理，事件在线且持续触发。
+external_refs: []

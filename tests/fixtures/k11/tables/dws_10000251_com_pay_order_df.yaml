@@ -1,0 +1,140 @@
+table_name: dws_10000251_com_pay_order_df
+engine: maxcompute
+table_comment: 商业化-付费订单总表
+description: |
+  记录玩家每笔成功付费订单的明细数据,粒度为每笔付费订单一行,日全量快照(_df,按 ds 分区,每天保留截至当日全部历史订单)。
+  本表为【账号表】,分析主体=账号,标识字段=account_id;同时包含 role_id(角色维度下钻)与 server_id(服务器维度下钻)。
+  能回答的业务问题:每日/累计付费总额与订单笔数、付费人数(去重 account_id 或 role_id)、各商品(recharge_id)/服务器/付费类型(pay_type)的订单与金额分布、大R订单筛选、首充与复购订单识别、人均付费(ARPPU)、客单价、现金收入(排除代金券)拆分等。
+  注意事项:(1) pay_amt 单位为分,统计人民币金额需除以 100;(2) pay_type 枚举 1=现金、2=付费代金券、3=免费代金券,其中免费代金券订单不计入真实收入,现金收入需用 pay_type=1 过滤;(3) tm 为付费成功时间精确到秒,ymd 为其日期形式;(4) 本表为订单明细,如需账号/角色维度汇总留存(LTV/cohort/留存率)应使用对应汇总表;(5) _df 为全量快照,查询时按 ds 分区选择目标日期,同一 order_id 在多日分区中重复存在,跨分区查询需去重避免重复计数。
+domains:
+  - 付费经济
+granularity: 每笔付费订单一行,日全量快照(_df,按 ds 分区保留全部历史订单)。主体类型判定:表名不含 acc/role/dev,但存在 account_id 与 role_id,按列内容判定为【账号表】,分析主体=账号,标识字段=account_id(另含 role_id 角色标识、server_id 服务器标识)。
+columns:
+  - name: order_id
+    type: string
+    comment: 订单号
+    role: dimension
+  - name: account_id
+    type: string
+    comment: 账号ID
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 服务器ID
+    role: dimension
+  - name: pay_type
+    type: int
+    comment: 付费类型 1-现金 2-付费代金券 3-免费代金券
+    role: attribute
+  - name: pay_amt
+    type: decimal
+    comment: 订单金额/分
+    role: measure
+  - name: tm
+    type: datetime
+    comment: 付费成功时间
+    role: attribute
+  - name: ymd
+    type: string
+    comment: 付费成功日期
+    role: dimension
+  - name: recharge_id
+    type: string
+    comment: 商品ID
+    role: dimension
+  - name: ds
+    type: string
+    comment: 分区
+    role: dimension
+partitions:
+  - name: ds
+    type: string
+metrics:
+  pay_amt_total:
+    expression: SUM(pay_amt)
+    description: 付费总金额(单位:分),换算人民币需除以100;含现金与代金券,如需真实收入用 cash_pay_amt
+  cash_pay_amt:
+    expression: SUM(CASE WHEN pay_type=1 THEN pay_amt ELSE 0 END)
+    description: 现金收入金额(单位:分),仅统计 pay_type=1 现金订单,排除代金券
+  pay_order_cnt:
+    expression: COUNT(order_id)
+    description: 付费订单总笔数,含所有 pay_type
+  cash_order_cnt:
+    expression: SUM(CASE WHEN pay_type=1 THEN 1 ELSE 0 END)
+    description: 现金订单笔数,仅统计 pay_type=1
+  pay_user_cnt_acc:
+    expression: COUNT(DISTINCT account_id)
+    description: 付费账号数(去重 account_id),按账号主体统计付费人数
+  pay_user_cnt_role:
+    expression: COUNT(DISTINCT role_id)
+    description: 付费角色数(去重 role_id),按角色主体统计付费人数
+  arppu_account:
+    expression: SUM(pay_amt)*1.0/NULLIF(COUNT(DISTINCT account_id),0)
+    description: 账号人均付费金额(单位:分),基于含代金券的付费总额/付费账号数;NULLIF 防除零;如需现金 ARPPU 应改用 cash_pay_amt 口径
+  avg_order_amt:
+    expression: AVG(pay_amt)
+    description: 平均订单金额(客单价,单位:分),单笔订单实付金额均值
+  big_r_user_cnt_acc:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt>=100000 THEN account_id END)
+    description: 大R付费账号数(阈值单笔 pay_amt>=100000 分即1000元,可按业务调整阈值),筛选高消费账号
+coverage:
+  scenarios:
+    - 每日/累计付费总额(pay_amt_total)与订单笔数(pay_order_cnt)趋势分析
+    - 付费人数统计(按账号 account_id 或角色 role_id 去重)
+    - 各充值商品/档位(recharge_id)的订单数与金额分布
+    - 各服务器(server_id)的付费规模与人数对比
+    - 付费类型(pay_type)结构分析:现金 vs 付费代金券 vs 免费代金券占比
+    - 现金收入(cash_pay_amt)拆分,排除代金券还原真实收入
+    - 大R订单/账号筛选(按 pay_amt 阈值过滤)
+    - 人均付费(ARPPU)与客单价(avg_order_amt)分析
+    - 首充时间识别(按 account_id 取 MIN(ymd) 聚合)
+    - 复购订单识别(同一 account_id 多笔订单)
+  limitations:
+    - 本表为订单明细表,非账号/角色汇总表;计算留存率/LTV/cohort 留存需使用专用汇总表或自行做窗口聚合
+    - 免费代金券(pay_type=3)订单不计入真实收入,统计收入时需用 cash_pay_amt(pay_type=1)过滤
+    - pay_amt 单位为分,输出人民币金额需除以 100,否则数值偏大
+    - 本表仅含成功付费订单,不含退款/取消/失败订单数据
+    - recharge_id 仅为档位ID,如需档位面额/商品名称需外接档位配置表
+    - _df 为日全量快照,跨分区查询历史订单时需注意 ds 分区选择,避免重复计数(同一 order_id 在多日分区中重复存在)
+    - 首充/复购判断需基于全量历史订单做 MIN/COUNT 窗口聚合,本表单行无法直接给出
+  coverage_status: draft
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: 真实数据验证通过(2026-07-30,latest ds=20260729,与昨日分区一致,数据当日更新)。meta describe 确认全部 10 个引用列(order_id,account_id,role_id,server_id,pay_type,pay_amt,tm,ymd,recharge_id,ds)真实存在,类型匹配(BIGINT/DOUBLE/STRING/DATETIME)。本表无 user_type 列,主体类型按列内容判定为账号表(account_id 主体+role_id 下钻),description/granularity 已正确表述。核心 metrics 实测:pay_amt_total=13467295932 分(约1.35亿元累计)、cash_pay_amt=10731452432 分(pay_type=1 现金口径,小于总额合理)、pay_order_cnt=2941242、pay_user_cnt_acc=281119、pay_user_cnt_role=325067(>账号数,一账号多角色,合理)、arppu_account=47906 分(约479元/人,合理)、avg_order_amt=4578.78 分(约45.79元/单,合理)、big_r_user_cnt_acc 阈值100000分(1000元)。粒度:total_rows=2941242=pay_order_cnt(1行/订单无重复),rows>accounts 属订单明细表正常(非账号粒度)。pay_type 枚举实测恰好 {1,2,3} 与注释一致,现金过滤(pay_type=1)金额与 cash_pay_amt 完全对齐。所有除法使用 NULLIF 防除零。无 onlinetime/时间戳误用问题。无活动运营域需剔除(domains 仅付费经济)。
+supersedes: []
+dimension_refs:
+  - dim_table: dim_10000251_com_order_detail_info
+    join_keys:
+      - dws_column: order_id
+        dim_column: order_id
+    derivation: DWS order_id（订单号）与 dim_10000251_com_order_detail_info 主键 order_id 精确匹配，JOIN 回填订单维度的商品配置属性。
+    origin: deterministic
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id（服务器ID）与 dim_10000251_server_info 主键 server_id 精确匹配，JOIN 回填区服名称与开服时间。
+    origin: deterministic
+  - dim_table: dim_10000251_com_recharge_info
+    join_keys:
+      - dws_column: recharge_id
+        dim_column: recharge_id
+    derivation: DWS recharge_id（商品ID）与 dim_10000251_com_recharge_info 主键 recharge_id 精确匹配，JOIN 回填礼包名称/类型/主题/价格。
+    origin: deterministic
+pref_label: 付费订单总表
+alt_labels:
+  - 付费
+  - 充值
+  - 订单
+  - 金额
+  - ARPU
+  - ARPPU
+  - 消费
+  - 流水
+  - 充值流水

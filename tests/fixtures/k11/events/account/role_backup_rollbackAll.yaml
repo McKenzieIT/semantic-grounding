@@ -1,0 +1,117 @@
+name: game.role.backup.rollbackAll
+event_filter: event = 'game.role.backup.rollbackAll'
+description: 玩家数据全部回退(rollbackAll)事件，记录玩家执行整档回退到指定 tag 存档点的行为，区别于按模块回退的 rollback 事件。每次全量回退记一条日志，参数含游戏服id、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验、关键货币列表(coinList)、回退时间、回退tagId/tagUuid 等25个字段。分析粒度以 role_id 为主（account 域 role_* 事件）。scout 实测 ds=20260729/20260728 均零命中，事件疑似下线或近期未触发。
+domains:
+  - 用户生命周期
+domain: account
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  time:
+    type: int
+    description: 回退时间
+  tagId:
+    type: int
+    description: 回退的tagId
+  tagUuid:
+    type: string
+    description: 回退的tag的唯一id
+metrics:
+  rollbackAll_cnt:
+    expression: COUNT(*)
+    description: 玩家全量数据回退总次数
+  rollbackAll_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发全量回退的去重角色数
+  rollbackAll_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发全量回退的去重账号数
+  rollbackAll_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发全量回退的去重服务器数
+  rollbackAll_tag_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.tagId'))
+    description: 被回退到的去重 tagId 存档点数
+  rollbackAll_avg_per_role:
+    expression: ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id),0), 3)
+    description: 人均全量回退次数（总次数/去重角色数）
+coverage:
+  scenarios:
+    - 玩家全量数据回退操作频次（总次数、去重角色数、去重账号数）
+    - 回退 tag 存档点选择分布（去重 tagId 数）
+    - 全量回退在服务器/平台维度的覆盖广度
+  limitations:
+    - 日志中零命中(ds=20260729 与 ds=20260728 cnt=0)，事件疑似下线/未触发，metrics 为结构性定义待事件恢复后实测
+    - subject 粒度默认 role_id（account 域 role_* 事件），未逐事件实测角色级聚合准确性
+    - tagId/tagUuid 字段仅统计去重数，未做 tag 分布直方图
+coverage_status: draft
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 单日实测 ds=20260729 与 ds=20260728 均零命中(cnt=0/role_uv=0/acc_uv=0)，事件疑似下线或近期未触发，保持 draft
+external_refs: []

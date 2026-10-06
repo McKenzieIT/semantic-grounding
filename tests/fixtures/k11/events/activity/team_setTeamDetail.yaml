@@ -1,0 +1,168 @@
+name: game.team.setTeamDetail
+event_filter: event = 'game.team.setTeamDetail'
+description: |-
+  编队：设置队伍详细信息。玩家在编队界面设置某支队伍（teamId）中某个槽位（index）的武将/装备/战法/法宝等详细配置后上报，用于还原队伍阵容快照。
+  分析主体：role_id（单个角色的编队操作记录）。参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验、teamId、index、detail(武将/装备/战法/法宝)、coinList(各类货币) 等41个。scout 实测 ds=20260729 全服事件量 852 条，覆盖 282 个角色 / 280 个账号 / 82 个游戏服。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  teamId:
+    type: int
+    description: teamId
+  index:
+    type: int
+    description: index
+  detail:
+    type: json
+    description: detail
+  detail.knightIds:
+    type: array
+    description: detail.knightIds
+  detail.effectGroup:
+    type: int
+    description: detail.effectGroup
+  detail.knightDetail:
+    type: array
+    description: detail.knightDetail
+  detail.knightDetail.id:
+    type: int
+    description: 武将id
+  detail.knightDetail.seniorJob:
+    type: int
+    description: 选择的武将职业
+  detail.knightDetail.equip:
+    type: array
+    description: 装备列表
+  detail.knightDetail.equip.uid:
+    type: int
+    description: 装备 uid
+  detail.knightDetail.equip.id:
+    type: int
+    description: 装备配置id
+  detail.knightDetail.equip.name:
+    type: string
+    description: 装备名字
+  detail.knightDetail.equip.quality:
+    type: int
+    description: 品质
+  detail.knightDetail.equip.level:
+    type: int
+    description: level
+  detail.knightDetail.tactic:
+    type: int
+    description: 战法
+  detail.knightDetail.schemeId:
+    type: int
+    description: 自动技能方案
+  detail.mainCharm:
+    type: array
+    description: detail.mainCharm
+  detail.assistCharm:
+    type: array
+    description: detail.assistCharm
+  detail.spCaptain:
+    type: int
+    description: detail.spCaptain
+metrics:
+  team_setteamdetail_cnt:
+    expression: COUNT(*)
+    description: 编队设置事件总次数（所有槽位/队伍设置动作汇总）
+  team_setteamdetail_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发编队设置的去重角色数
+  team_setteamdetail_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发编队设置的去重账号数
+  team_setteamdetail_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发编队设置的去重游戏服数
+  team_setteamdetail_team_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.teamId'))
+    description: 被编辑的去重队伍数（按 teamId 去重）
+  team_setteamdetail_avg_actions_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均编队设置动作次数（总次数 / 去重角色数）
+coverage:
+  scenarios:
+    - 量化每日编队阵容调整活跃度（总设置次数、参与角色/账号/游戏服数）
+    - 评估玩家对队伍阵容打磨的投入度（人均动作次数、被编辑队伍数）
+    - 作为编队玩法参与度指标，可关联角色成长/战斗关卡表现
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（事件记录角色级编队操作，未单独验证账号级聚合口径）
+    - detail/coinList 为复杂嵌套结构，本次仅统计事件级与 teamId 级指标，未下钻至武将/装备明细
+    - team_setteamdetail_team_uv 依赖 GET_JSON_OBJECT 解析 params.teamId，若个别行该字段缺失会按 NULL 处理（不影响 COUNT DISTINCT 计数逻辑）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=852, role_uv=282, acc_uv=280, server_uv=82，数据合理（角色级编队操作事件）。event view 已按 (event,ds) 加速过滤。
+coverage_status: analyst_confirmed
+external_refs: []

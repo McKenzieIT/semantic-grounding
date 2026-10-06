@@ -1,0 +1,118 @@
+name: game.social.guild.addpoints
+event_filter: event = 'game.social.guild.addpoints'
+description: 公会活跃值增加事件。每次角色在公会内通过日常行为(任务/活动)产生公会活跃贡献时触发，记录本次新增活跃点数(guildActiveAddPoints)及当前公会累计活跃值(guildActivePoints)。分析粒度默认 role_id(角色)，每次活跃贡献按角色归集，可统计公会活跃度分布、活跃贡献榜、人均活跃产出等。ds=20260729 scout 实测：cnt=9582，role_uv=3761，acc_uv=3581，server_uv=461，新增活跃点数合计 431310，累计活跃值合计 68036710。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  guildActivePoints:
+    type: int
+    description: 公会活跃值
+  guildActiveAddPoints:
+    type: int
+    description: 公会增加活跃值
+metrics:
+  guild_addpoints_cnt:
+    description: 公会活跃值增加事件触发总次数
+    expression: COUNT(*)
+  guild_addpoints_role_uv:
+    description: 触发活跃值增加的去重角色数
+    expression: COUNT(DISTINCT role_id)
+  guild_addpoints_account_uv:
+    description: 触发活跃值增加的去重账号数
+    expression: COUNT(DISTINCT account_id)
+  guild_addpoints_server_uv:
+    description: 触发活跃值增加的去重游戏服数
+    expression: COUNT(DISTINCT server_id)
+  guild_addpoints_add_points_sum:
+    description: 当日新增公会活跃点数总和(来自 params.guildActiveAddPoints)
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.guildActiveAddPoints') AS BIGINT))
+  guild_addpoints_total_points_sum:
+    description: 当前公会累计活跃值总和(来自 params.guildActivePoints)
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.guildActivePoints') AS BIGINT))
+  guild_addpoints_avg_add_points_per_role:
+    description: 人均(角色)新增活跃点数(新增点数总和/去重角色数)
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.guildActiveAddPoints') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id),0)
+coverage:
+  scenarios:
+    - 公会日活跃度分布与活跃度趋势(单服/全服)
+    - 公会成员活跃贡献榜(Top-N 角色新增活跃点数)
+    - 人均活跃产出与人均事件次数(角色粒度)
+    - 跨服活跃度对比(参与服数与点数)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析粒度默认 role_id(角色)，同一账号下多角色需自行聚合
+    - guildActiveAddPoints 为本次增量，guildActivePoints 为累计值快照，使用时注意区分
+    - 同一角色当日多次触发按多次计入，未做会话内去重
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+coverage_status: analyst_confirmed
+external_refs: []

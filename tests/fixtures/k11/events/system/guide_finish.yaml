@@ -1,0 +1,122 @@
+name: game.guide.finish
+event_filter: event = 'game.guide.finish'
+description: |-
+  引导步骤完成事件。当游戏角色完成某个新手/功能引导步骤（guideId）时触发，记录完成该引导步骤时的角色快照（角色等级 roleLevel、vip 等级 vipLevel、角色战力 roleForce、经验 exp）以及关键货币余额快照（coinList.gold 充值钻石、coinList.diamond 紫金、coinList.energy 体力等）。分析主体为 role_id（角色级事件，每个角色完成引导步骤即产生一条日志）。真实测量（ds=20260729）：日志条数 12947，角色去重 801，账号去重 759，游戏服去重 110。
+  参数（共23个）：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验、看板娘、关键货币列表(coinList.gold/sendgold/freegold/diamond/expCoin/energy)、会话id、logUUID、引导id(guideId) 等
+domains:
+  - 系统监控
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  guideId:
+    type: int
+    description: 引导id
+metrics:
+  game_guide_finish_cnt:
+    expression: COUNT(*)
+    description: 引导完成日志总条数（每个角色每完成一个引导步骤计一条）
+  game_guide_finish_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 完成引导的去重角色数（分析主体 role_id）
+  game_guide_finish_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 完成引导的去重账号数
+  game_guide_finish_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 完成引导涉及的去重游戏服数
+  game_guide_finish_guide_uv:
+    expression: COUNT(DISTINCT CAST(GET_JSON_OBJECT(params, '$.guideId') AS BIGINT))
+    description: 被完成的去重引导步骤数（guideId），用于衡量引导覆盖广度
+  game_guide_finish_avg_role_level:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS BIGINT))
+    description: 完成引导时角色的平均等级快照
+  game_guide_finish_avg_vip_level:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.vipLevel') AS BIGINT))
+    description: 完成引导时角色的平均 vip 等级快照
+  game_guide_finish_per_role_guide_cnt:
+    expression: COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均完成引导步骤数（日志条数 / 去重角色数，NULLIF 防除零）
+coverage:
+  scenarios:
+    - 新手引导漏斗与完成度分析：通过 guide_uv 与 cnt 评估引导覆盖广度，结合 role_uv 衡量渗透
+    - 引导完成时的角色状态画像：avg_role_level / avg_vip_level 反映玩家完成引导时的进度分布
+    - 引导完成的服务器分布：server_uv 用于跨服引导执行情况监控
+    - 人均引导完成强度：per_role_guide_cnt 衡量单角色完成引导步骤的密集度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核（多日趋势/周末效应未覆盖）
+    - 分析主体默认 role_id（角色级事件，已通过 params.roleId 与 base role_id 共存确认）
+    - coinList.* 货币字段为引导完成时刻的余额快照，非交易金额，未在 metrics 中做 SUM 聚合
+    - 引导步骤内容字典（guideId -> 步骤名）需结合离线 guide 配置表解读，本视图未关联
+  granularity: role_id
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=12947, role_uv=801, acc_uv=759, server_uv=110，数据合理（引导事件高频、角色去重 > 账号去重符合一账号多角色预期），已确认
+coverage_status: analyst_confirmed
+external_refs: []

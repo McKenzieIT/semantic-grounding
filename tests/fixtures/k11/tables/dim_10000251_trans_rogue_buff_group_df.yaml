@@ -1,0 +1,66 @@
+table_name: dim_10000251_trans_rogue_buff_group_df
+engine: maxcompute
+kind: dim
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+table_comment: 'rogue(肉鸽) buff 套装组配置维度表：每个套装(激活数档位1-3 + 描述)一行，日全量快照。'
+description: 'rogue(肉鸽) buff 套装组(buff group / suit)配置维度表，日全量快照(_df)。
+
+  粒度：每个套装组(id)一行，记录套装名及 3 个激活档位的数量阈值与描述文案。
+
+  主要字段：id(套装id, 主键), name(套装名, 标签列), suit_num1/2/3(激活数档位1/2/3), suit_desc1/2/3(激活描述档位1/2/3)。'
+domains:
+- 系统监控
+granularity: 每 buff 套装组(id) 一行的配置维度表(日全量快照)
+columns:
+- name: id
+  type: string
+  comment: 套装id
+  role: dimension
+- name: name
+  type: string
+  comment: 套装名
+  role: dimension
+- name: suit_num1
+  type: string
+  comment: 激活数1
+  role: dimension
+- name: suit_desc1
+  type: string
+  comment: 激活描述1
+  role: dimension
+- name: suit_num2
+  type: string
+  comment: 激活数2
+  role: dimension
+- name: suit_desc2
+  type: string
+  comment: 激活描述2
+  role: dimension
+- name: suit_num3
+  type: string
+  comment: 激活数3
+  role: dimension
+- name: suit_desc3
+  type: string
+  comment: 激活描述3
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数(套装组数量)
+coverage:
+  scenarios:
+  - 通过 id 关联事实表，按 buff 套装组(id/name)分组聚合，分析各套装在肉鸽战斗中的出场与效果。
+  - 按 suit_num1/2/3 档位阈值筛选，查看不同激活档位的 buff 描述文案。
+  limitations:
+  - 配置类维度表，无值度量；suit_num1/2/3 为激活阈值档位(配置常量)，非事实度量。
+  - 套装描述文案为富文本，复杂的数值/效果表达式需二次解析解码后才能精确量化。
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 maxc meta describe 列结构 + SELECT COUNT(*)=COUNT(DISTINCT id) 实测唯一性(r=d=5)，确认 id 为主键、name 为标签列。配置类维度表，状态保持 draft。'

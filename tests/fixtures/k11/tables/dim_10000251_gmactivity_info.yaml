@@ -1,0 +1,123 @@
+table_name: dim_10000251_gmactivity_info
+engine: maxcompute
+table_comment: 活动 GM 配置维度表，按日（pt 分区）快照的活动配置信息。
+kind: dim
+primary_key:
+- id
+- pt
+primary_key_unique: true
+label_columns:
+- name
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+description: 'GM 活动配置维度表：每行描述一个活动实例（id）在某个日期快照（pt）下的配置信息。
+
+  键列：id（活动实例 ID，与活动名 name 1:1）；pt（快照分区日期 YYYYMMDD）。
+
+  标签列：name（活动名字，如「枭鸾礼匣」）。
+
+  属性列：type（活动类型）、effect（生效标志）、state（发布状态）、begin_time/end_time/present_time（开始/结束/预览时间戳）、editor/editor_name（编辑者）、publisher/publisher_name（发布者）、edit_time/publish_time（编辑/发布时间戳）、theme（活动主题）、tab_sort（页签排序）、plat_server（适用平台）、effect_conds（生效条件编码串）、json_data（活动详细配置 JSON，含礼包/价格/奖励）。
+
+  粒度：每个活动 id 与快照日期 pt 的组合一行。'
+domains:
+- 系统监控
+granularity: 每个活动实例（id）在某个快照日期（pt）下一行的配置维度表。
+columns:
+- name: id
+  type: bigint
+  comment: 活动实例 ID（与 name 一对一，自然键）
+  role: dimension
+- name: name
+  type: string
+  comment: 活动名字
+  role: dimension
+- name: plat_server
+  type: string
+  comment: 平台（格式 plat:<平台>,<区服>，0 表示全平台/全服）
+  role: dimension
+- name: type
+  type: bigint
+  comment: 活动类型编码
+  role: dimension
+- name: effect
+  type: bigint
+  comment: 生效标志（1 生效）
+  role: dimension
+- name: state
+  type: bigint
+  comment: 发布状态编码
+  role: dimension
+- name: begin_time
+  type: bigint
+  comment: 活动开始时间（Unix 时间戳，秒）
+  role: dimension
+- name: end_time
+  type: bigint
+  comment: 活动结束时间（Unix 时间戳，秒）
+  role: dimension
+- name: present_time
+  type: bigint
+  comment: 预览时间（Unix 时间戳，秒，0 表示无预览）
+  role: dimension
+- name: editor
+  type: string
+  comment: 编辑者账号
+  role: dimension
+- name: editor_name
+  type: string
+  comment: 编辑者名字
+  role: dimension
+- name: edit_time
+  type: bigint
+  comment: 编辑时间（Unix 时间戳，秒）
+  role: dimension
+- name: publisher
+  type: string
+  comment: 发布者账号
+  role: dimension
+- name: publisher_name
+  type: string
+  comment: 发布者名字
+  role: dimension
+- name: publish_time
+  type: bigint
+  comment: 发布时间（Unix 时间戳，秒）
+  role: dimension
+- name: json_data
+  type: string
+  comment: 活动详细配置 JSON（含礼包 hot_giftbags_v2、价格 price_rmb、奖励 rewards 等）
+  role: dimension
+- name: effect_conds
+  type: string
+  comment: 生效条件编码串（如 1_75，需二次解码）
+  role: dimension
+- name: theme
+  type: bigint
+  comment: 活动主题编码
+  role: dimension
+- name: tab_sort
+  type: bigint
+  comment: 页签排序
+  role: dimension
+- name: pt
+  type: string
+  comment: 快照分区日期 YYYYMMDD
+  role: dimension
+coverage:
+  scenarios:
+  - 事实表通过活动 id JOIN 本表，获取活动名、类型、生效/发布状态、起止时间、平台等维度属性
+  - 按快照日期 pt 取某个时间点的活动配置视图，用于回溯活动历史配置
+  - 按 type/theme 维度对活动分组，统计各类型/主题下活动实例数量
+  limitations:
+  - 配置类维度表，无值度量（数值列均为编码/时间戳，不应聚合求和）
+  - 同一活动 id 在不同 pt 分区下重复出现（按日快照），单分区外 id 非唯一；复合键 (id, pt) 唯一
+  - json_data 为 JSON 字符串，需在 ETL/查询层二次解析才能取得礼包/价格/奖励明细
+  - effect_conds 等字段为编码串，需配合字典表二次解码
+  - 时间列（begin_time/end_time 等）为 Unix 秒时间戳，分析时需转换
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '基于 maxc meta describe 真实列与 SELECT 唯一性实测 (r=d=48685) 完成 dim 建模；status=draft，待业务确认。'

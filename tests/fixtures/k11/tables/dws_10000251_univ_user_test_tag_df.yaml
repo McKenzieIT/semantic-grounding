@@ -1,0 +1,113 @@
+table_name: dws_10000251_univ_user_test_tag_df
+engine: maxcompute
+table_comment: 测试期用户标签表
+description: |
+  dws_10000251_univ_user_test_tag_df 为测试期（预约/测试阶段）用户标签日全量快照表（_df），
+  以主体（user_type+user_id）为粒度，记录每个主体是否命中原生规则(rule1)与扩展规则(rule2)、
+  命中的大事件集合(rule_info)、以及首个活跃大事件名称(event_name)与日期(event_ymd)。
+  本表为多主体共存表：DISTINCT user_type 实测返回 1/2/3（1-设备、2-账号、3-角色），
+  主体标识字段 user_id 按 user_type 分别存 dev_id/账号ID/role_id。
+  跨主体聚合前应按 user_type 过滤；指标默认跨全部主体类型统计。
+domains:
+  - 用户生命周期
+  - 自定义
+granularity: |
+  主体粒度（user_type + user_id，每主体每天一行）。
+  本表为多主体共存表：DISTINCT user_type 实测返回 1/2/3（1-设备、2-账号、3-角色），
+  主体标识字段 user_id 按 user_type 分别存 dev_id/账号ID/role_id；
+  跨主体聚合前应按 user_type 过滤。
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，1-设备、2-账号、3-角色
+    role: attribute
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: rule1
+    type: int
+    comment: 命中原生规则，1-是、0-否
+    role: measure
+  - name: rule2
+    type: int
+    comment: 命中扩展规则，1-是、0-否
+    role: measure
+  - name: rule_info
+    type: string
+    comment: 命中大事件，用英文竖线|分隔的大事件id
+    role: attribute
+  - name: event_name
+    type: string
+    comment: 首个活跃大事件名
+    role: dimension
+  - name: event_ymd
+    type: string
+    comment: 首个活跃大事件的日期
+    role: dimension
+  - name: ds
+    type: string
+    comment: 统计日期分区（yyyyMMdd）
+    role: dimension
+metrics:
+  active_acc_cnt:
+    expression: COUNT(DISTINCT user_id)
+    description: 测试期活跃主体数（跨全部 user_type 去重主体数；如需仅账号请加 WHERE user_type=2）
+  rule1_hit_cnt:
+    expression: SUM(CASE WHEN rule1 = 1 THEN 1 ELSE 0 END)
+    description: 命中原生规则的主体数（跨全部 user_type）
+  rule2_hit_cnt:
+    expression: SUM(CASE WHEN rule2 = 1 THEN 1 ELSE 0 END)
+    description: 命中扩展规则的主体数（跨全部 user_type）
+  any_rule_hit_cnt:
+    expression: SUM(CASE WHEN rule1 = 1 OR rule2 = 1 THEN 1 ELSE 0 END)
+    description: 命中任一规则（原生或扩展）的主体数（跨全部 user_type）
+  both_rule_hit_cnt:
+    expression: SUM(CASE WHEN rule1 = 1 AND rule2 = 1 THEN 1 ELSE 0 END)
+    description: 同时命中原生与扩展规则的主体数（跨全部 user_type）
+  rule1_hit_rate:
+    expression: ROUND(SUM(CASE WHEN rule1 = 1 THEN 1 ELSE 0 END) / NULLIF(COUNT(DISTINCT user_id), 0), 4)
+    description: 原生规则命中率（命中原生规则主体数 / 活跃主体数，跨全部 user_type）
+  rule2_hit_rate:
+    expression: ROUND(SUM(CASE WHEN rule2 = 1 THEN 1 ELSE 0 END) / NULLIF(COUNT(DISTINCT user_id), 0), 4)
+    description: 扩展规则命中率（命中扩展规则主体数 / 活跃主体数，跨全部 user_type）
+partitions:
+  - name: ds
+    type: string
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: |-
+    本游戏 10000251 真实数据验证通过（2026-07-30）。实测最新分区 ds=20260729（与业务同期，未停更）。
+    1) 列核对：meta describe 确认 8 列全部存在（user_type BIGINT/user_id STRING/rule1 BIGINT/rule2 BIGINT/rule_info STRING/event_name STRING/event_ymd STRING/ds STRING），metrics 引用的 user_id、rule1、rule2 均为真实列。
+    2) user_type 实测：SELECT DISTINCT user_type WHERE ds=20260729 返回 {1,2,3}，与 YAML 多主体共存主张一致（1-设备/2-账号/3-角色），description/granularity 已如实声明跨主体聚合前应按 user_type 过滤。
+    3) 粒度：COUNT(*)=148826 = COUNT(DISTINCT user_id)=148826，每主体每天一行，粒度主张成立。
+    4) 核心 metrics 实测值（ds=20260729）：active_acc_cnt=148826、rule1_hit_cnt=98713、rule2_hit_cnt=59535、any_rule_hit_cnt=148826、both_rule_hit_cnt=9422、rule1_hit_rate=0.6633、rule2_hit_rate=0.4000；UV>0、比率在 [0,1]、无异常值（无 onlinetime 类时间戳列 bug）。
+    7 个 metrics 全部通过，无 verified-broken 项需剔除。domains=[用户生命周期, 自定义]，无 活动运营。
+  verified_ds: "20260729"
+coverage:
+  scenarios:
+    - 测试期/预约期用户标签识别与命中规则统计
+    - 原生规则与扩展规则命中账号数、命中率分析
+    - 首个活跃大事件归因（按 event_name/event_ymd 分组统计账号数）
+    - 测试期活跃账号规模盘点
+  limitations:
+    - 仅记录测试期/预约期标签，不覆盖主体全生命周期行为序列
+    - 多主体共存表（user_type 1-设备/2-账号/3-角色），跨主体聚合前应按 user_type 过滤
+    - rule_info 为竖线分隔的"事件ID-事件名"字符串，需解析后才能与大事件维表关联
+    - event_ymd 为字符串日期，非完整时间序列；缺少大事件持续时长与次数等明细
+    - 无具体规则命中时间戳，仅保留首个活跃大事件日期
+  coverage_status: draft
+supersedes: []
+dimension_refs:
+  - dim_table: dim_10000251_user_tag_before_ob_info
+    join_keys:
+      - dws_column: user_id
+        dim_column: user_id
+    derivation: The DWS column user_id (用户id) is the multi-subject user identifier, and dim_10000251_user_tag_before_ob_info is keyed by PK user_id to store pre-OB test-batch tags and is explicitly built for user_id fact-table lookups; both tables cover the test/beta-period user cohort.
+    origin: deterministic
+pref_label: 测试期用户标签表
+alt_labels:
+  - 测试期
+  - 用户

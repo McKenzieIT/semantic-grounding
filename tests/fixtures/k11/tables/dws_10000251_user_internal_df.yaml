@@ -1,0 +1,73 @@
+table_name: dws_10000251_user_internal_df
+engine: maxcompute
+table_comment: 内部用户日全量快照表（设备/账号/角色）
+description: |-
+  内部用户（设备 user_type=1 / 账号 user_type=2 / 角色 user_type=3）日全量快照表，按 ds 分区。
+  粒度：日全量快照(_df)，每行一个内部 user_id（user_type+user_id 唯一）。
+  主要字段：user_type, user_id, ip, tm, ext_info, ds。
+domains:
+  - 系统监控
+  - 用户生命周期
+granularity: 日全量快照(_df)，每行一个内部用户(user_type+user_id)，按 ds 业务日期分区
+columns:
+  - name: user_type
+    type: bigint
+    comment: 用户类型(1=设备,2=账号,3=角色)
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 内部用户id(主键)
+    role: dimension
+  - name: ip
+    type: string
+    comment: 内部用户ip
+    role: dimension
+  - name: tm
+    type: datetime
+    comment: 记录时间
+    role: dimension
+  - name: ext_info
+    type: string
+    comment: 扩展内容(文本)
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  internal_user_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 内部用户去重数(日全量快照UV)，覆盖设备/账号/角色三类
+  distinct_ip_cnt:
+    expression: COUNT(DISTINCT ip)
+    description: 内部用户去重IP数(日快照)
+  device_user_cnt:
+    expression: SUM(IF(user_type=1,1,0))
+    description: 设备型(user_type=1)内部用户数(日快照)
+  account_user_cnt:
+    expression: SUM(IF(user_type=2,1,0))
+    description: 账号型(user_type=2)内部用户数(日快照)
+  role_user_cnt:
+    expression: SUM(IF(user_type=3,1,0))
+    description: 角色型(user_type=3)内部用户数(日快照)
+coverage:
+  scenarios:
+    - 监控每日内部用户(设备/账号/角色)规模与构成，识别内部测试/灰度账号活跃情况
+    - 追踪内部用户IP分布，辅助安全审计与异常访问排查
+    - 按 user_type 分组统计各类内部主体数量变化趋势
+  limitations:
+    - 仅 scout 抽样验证（ds=20260730 抽样：UV=5365、IP=67、user_type 分组 1994/1594/1777 合计一致），未做全量 maxc 实测复核
+    - _df 为日全量快照，指标为快照口径而非当日增量；跨日累计需自行聚合
+    - ext_info 字段抽样多为空，未纳入指标；tm 为记录时间而非业务事件时间
+    - 内部用户语义界定(设备1/账号2/角色3)依据 user_type 取值推断，未经业务方确认
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 已对 latest ds=20260730 抽样验证 5 项指标(5365/67/1994/1594/1777)，分组求和一致且值合理；analyst 级确认，待业务方复核 user_type 语义。
+dimension_refs: []
+pref_label: 内部用户表
+alt_labels:
+  - 内部
+  - 员工
+  - 白名单

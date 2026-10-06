@@ -1,0 +1,140 @@
+name: game.guild.resourcechange
+event_filter: event = 'game.guild.resourcechange'
+description: 公会资源变更事件，记录公会仓库/资源池中各类资源(resType)的增加(action=1)与减少(action=2)流水，含变更前后数量(oldAmount/newAmount)、变更量(amount)及公会(guildId/guildName)与角色上下文。分析主体为 role_id(角色维度)，事件以资源变更流水粒度上报。scout 实测 ds=20260729 单日 cnt=4986(role_uv=1、acc_uv=1、server_uv=1)，其中增加 4788 次、减少 198 次，涉及 1 种资源类型。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  guildId:
+    type: int
+    description: 公会id
+  guildName:
+    type: string
+    description: 公会名
+  resType:
+    type: int
+    description: 资源类型
+  oldAmount:
+    type: int
+    description: 原来的数量
+  newAmount:
+    type: int
+    description: 新的数量
+  amount:
+    type: int
+    description: 改变的数量
+  action:
+    type: int
+    description: 1 增加 2 减少
+metrics:
+  game_guild_resourcechange_cnt:
+    expression: COUNT(*)
+    description: 公会资源变更事件总次数(含增加与减少流水)
+  game_guild_resourcechange_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发公会资源变更的去重角色数(分析主体=role_id)
+  game_guild_resourcechange_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发公会资源变更的去重账号数
+  game_guild_resourcechange_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及公会资源变更的去重游戏服数
+  game_guild_resourcechange_guild_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.guildId'))
+    description: 发生资源变更的去重公会数
+  game_guild_resourcechange_inc_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action')='1' THEN 1 ELSE 0 END)
+    description: 资源增加(action=1)流水次数
+  game_guild_resourcechange_dec_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action')='2' THEN 1 ELSE 0 END)
+    description: 资源减少(action=2)流水次数
+  game_guild_resourcechange_amount_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.amount') AS BIGINT))
+    description: 公会资源变更量绝对值合计(amount 求和)
+  game_guild_resourcechange_inc_dec_ratio:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action')='1' THEN 1 ELSE 0 END) / NULLIF(SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action')='2' THEN 1 ELSE 0 END), 0)
+    description: 资源增加次数与减少次数之比(分母为0返回NULL)
+coverage:
+  scenarios:
+    - 公会资源池增减流水监控与活跃度统计(role_id 角色维度)
+    - 各公会(guildId)资源变更频次排行及增减比对比
+    - 资源类型(resType)维度变更量(amount)趋势分析
+    - 增减行为(action=1/2)分布与异常波动识别
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核(多日/多分区)
+    - 单日测得 role_uv=1/acc_uv=1/server_uv=1(单一角色单一服)，样本面较窄，需结合多日数据复核角色面
+    - 单日 res_type_uv=1，仅覆盖当日变更的资源类型，不等于全量资源类型集合
+    - amount_sum 为变更量绝对值合计，未按 action 拆分正负向净值
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=4986, role_uv=1, acc_uv=1, server_uv=1, inc_cnt=4788, dec_cnt=198, res_type_uv=1, guild_uv=567。事件真实触发，数据合理。"
+coverage_status: analyst_confirmed
+external_refs: []

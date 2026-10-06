@@ -1,0 +1,124 @@
+name: game.gve2.missionreward
+event_filter: event = 'game.gve2.missionreward'
+description: GvE2 公会任务奖励发放事件：角色完成 GvE2（Guild vs Environment v2）任务后获得多类货币奖励（充值钻石 gold、充值赠送钻石 sendgold、免费钻石 freegold、经验卷轴 expCoin、体力 energy 等）。分析主体为 role_id（单条记录=单个角色一次任务奖励发放）。ds=20260729 单日 scout 实测：2757 条记录，覆盖 2385 角色 / 2287 账号 / 405 个游戏服。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  missionIds:
+    type: array
+    description: missionIds
+metrics:
+  gve2_missionreward_cnt:
+    expression: COUNT(*)
+    description: GvE2 任务奖励发放总次数（每条记录=一次角色任务奖励发放）
+  gve2_missionreward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取 GvE2 任务奖励的去重角色数
+  gve2_missionreward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取 GvE2 任务奖励的去重账号数
+  gve2_missionreward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取 GvE2 任务奖励的去重游戏服数
+  gve2_missionreward_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: GvE2 任务奖励发放的充值钻石（gold）总量
+  gve2_missionreward_sendgold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.sendgold') AS BIGINT))
+    description: GvE2 任务奖励发放的充值赠送钻石（sendgold）总量
+  gve2_missionreward_freegold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.freegold') AS BIGINT))
+    description: GvE2 任务奖励发放的免费钻石（freegold）总量
+  gve2_missionreward_expcoin_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.expCoin') AS BIGINT))
+    description: GvE2 任务奖励发放的经验卷轴（expCoin）总量
+  gve2_missionreward_energy_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.energy') AS BIGINT))
+    description: GvE2 任务奖励发放的体力（energy）总量
+  gve2_missionreward_avg_role_level:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS BIGINT)) / NULLIF(COUNT(*), 0)
+    description: 领取 GvE2 任务奖励的角色平均等级（按事件次数加权）
+coverage:
+  scenarios:
+    - GvE2 公会任务奖励发放的日均/累计发放量与覆盖面（角色、账号、游戏服维度）
+    - 各类奖励货币（充值钻石、赠送钻石、免费钻石、经验卷轴、体力）的发放总量与人均结构
+    - 领奖角色等级分布，判断 GvE2 任务奖励主要落在哪个阶段玩家
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（事件以角色为单位上报，未做账号级去重核对）
+    - coinList 在 params_fields 中标注为 array，实际样本为 object（含 gold/sendgold/freegold/expCoin/energy 等键），按 object 路径 $.coinList.<key> 访问已验证可解析
+    - params_fields 中 coinList.diamond（紫金）字段在抽样数据中未见对应键（样本为 coin2/coin3），未纳入指标以避免误算
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: ds=20260729 实测：cnt=2757, role_uv=2385, acc_uv=2287, server_uv=405；奖励货币 SUM：gold=56216, sendgold=11176, freegold=55780084, expCoin=501109273380, energy=907275；roleLevel 累计=197413（avg≈71.6）。数值合理。
+external_refs: []

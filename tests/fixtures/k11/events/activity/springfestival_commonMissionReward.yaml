@@ -1,0 +1,110 @@
+name: game.springfestival.commonMissionReward
+event_filter: event = 'game.springfestival.commonMissionReward'
+description: 春节(预热)活动-通用任务奖励领取事件：角色完成春节预热活动通用任务并领取奖励时上报，携带 activityId/missionIds/dailyMissionIds 及角色基础属性与多币种货币快照(coinList)。分析主体为 role_id(角色粒度)。scout 实测 ds=20260729 与 ds=20260728 均零命中，事件疑似下线或当日未触发。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  activityId:
+    type: int
+    description: activityId
+  missionIds:
+    type: array
+    description: missionIds
+  dailyMissionIds:
+    type: array
+    description: dailyMissionIds
+metrics:
+  springfestival_common_mission_reward_cnt:
+    expression: COUNT(*)
+    description: 春节通用任务奖励领取总次数(事件行数)
+  springfestival_common_mission_reward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取奖励的去重角色数
+  springfestival_common_mission_reward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取奖励的去重账号数
+  springfestival_common_mission_reward_activity_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.activityId'))
+    description: 被领取奖励的去重活动(activityId)数
+coverage:
+  scenarios:
+    - 春节/预热活动通用任务领取的参与角色数、领取次数、覆盖账号数
+    - 活动维度(activityId)分布与漏斗参与度分析
+  limitations:
+    - 日志中零命中(ds=20260729 cnt=0；ds=20260728 cnt=0)，事件疑似下线/未触发
+    - 仅 ds=20260729/20260728 scout 单日实测，未做全量复核
+    - 分析主体默认 role_id(角色粒度)，因零命中未做主体字段校验
+  coverage_status: draft
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=0/role_uv=0/acc_uv=0/server_uv=0；重试 ds=20260728: cnt=0；事件零命中，疑似下线/未触发，保持 draft"
+external_refs: []

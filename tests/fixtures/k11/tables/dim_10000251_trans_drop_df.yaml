@@ -1,0 +1,46 @@
+table_name: dim_10000251_trans_drop_df
+engine: maxcompute
+kind: dim
+primary_key:
+- id
+label_columns:
+- name
+table_comment: '游戏 10000251 掉落库维度/配置表（日全量快照 _df），按掉落库 id 维护掉落库名称、品质与备注'
+description: '游戏 10000251 掉落库配置维度表（日全量快照 _df）。以掉落库 id 为主键，承载掉落库名称、品质与备注等静态属性，供事实表通过 id 关联查询掉落库维度信息。'
+domains:
+- 装备道具
+granularity: '每个掉落库一行（日全量快照 _df）'
+coverage:
+  scenarios:
+  - '通过掉落库 id 关联事实表，查询掉落库名称、品质与备注等维度属性'
+  - '作为掉落库主数据，支撑掉落相关分析的下钻与筛选'
+  limitations:
+  - '配置类维度表，无值度量（quality 为品质档位编码，非可加度量）'
+  - '主键 id 存在重复（实测 1073 行 vs 1072 去重值，存在 1 条重复），primary_key_unique=false，保持 draft'
+  - '日全量快照，跨日期切片可能存在历史副本；使用时建议按业务需要的快照日期过滤'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'dim 建模：id 为主键、name 为标签列；实测 id 非唯一（1 条重复），故 primary_key_unique=false 且保持 draft；domain 归属 装备道具（掉落库配置）。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+columns:
+- name: id
+  type: string
+  comment: 掉落库id
+  role: dimension
+- name: name
+  type: string
+  comment: 掉落库名
+  role: dimension
+- name: quality
+  type: bigint
+  comment: 品质
+  role: dimension
+- name: remark
+  type: string
+  comment: 备注
+  role: dimension

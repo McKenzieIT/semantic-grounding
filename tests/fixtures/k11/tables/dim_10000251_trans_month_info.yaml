@@ -1,0 +1,43 @@
+table_name: dim_10000251_trans_month_info
+engine: maxcompute
+table_comment: '月份维度配置表，每行一个自然月的配置信息。'
+description: '月份维度/配置表：每行一个自然月，以 month（如 202606）为主键与标签，附该月天数与实际天数属性。'
+domains:
+- 系统监控
+granularity: '每自然月一行的月份维度/配置表'
+kind: dim
+primary_key:
+- month
+primary_key_unique: true
+label_columns:
+- month
+columns:
+- name: month
+  type: STRING
+  comment: 月份
+  role: dimension
+- name: month_days
+  type: BIGINT
+  comment: 月份天数
+  role: dimension
+- name: month_real_days
+  type: BIGINT
+  comment: 月份实际天数
+  role: dimension
+coverage:
+  scenarios:
+  - 通过 month 关联事实表，按月聚合/过滤交易数据，提供月份维度标签
+  - 提供月份天数属性，支持按月归一化、日均指标计算等衍生维度
+  limitations:
+  - 配置类维度表，无值度量
+  - month 为 YYYYMM 字符串编码，需按需二次解析为年/月
+  - 仅含全月配置，不含月内分片或跨月合并粒度
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 meta describe 与唯一性实测（r=d=15）建模；month 为主键与标签列；属性列 role=dimension；保持 draft 待业务确认。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数

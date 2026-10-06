@@ -1,0 +1,107 @@
+name: game.digong.getReward
+event_filter: event = 'game.digong.getReward'
+description: 地宫（digong）玩法领奖事件：角色在地宫玩法中领取通关/层数奖励时上报，携带地宫id（digongId）与最高领取位置（maxOrder）及角色货币快照。主体粒度 role_id（单角色领奖行为），ds=20260729 实测单日 243 次领奖、176 角色、174 账号、48 服。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  digongId:
+    type: int
+    description: 地宫id
+  maxOrder:
+    type: int
+    description: 最高领取位置
+metrics:
+  game_digong_getReward_cnt:
+    description: 地宫领奖事件总次数（COUNT(*)）
+    expression: COUNT(*)
+  game_digong_getReward_role_uv:
+    description: 地宫领奖触达角色数（COUNT DISTINCT role_id）
+    expression: COUNT(DISTINCT role_id)
+  game_digong_getReward_account_uv:
+    description: 地宫领奖触达账号数（COUNT DISTINCT account_id）
+    expression: COUNT(DISTINCT account_id)
+  game_digong_getReward_max_order_sum:
+    description: 地宫领奖最高领取位置累计（SUM maxOrder，反映领奖进度总量）
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.maxOrder') AS BIGINT))
+coverage:
+  scenarios:
+    - 评估地宫玩法领奖活跃度与参与角色/账号规模
+    - 通过 maxOrder 累计衡量地宫领奖进度总量
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id（单角色领奖行为），跨日去重需上层汇总
+    - maxOrder 为单次上报的最高领取位置，累加不等同于去重层数进度
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 scout 实测：cnt=243, role_uv=176, acc_uv=174, server_uv=48，数据合理，确认 analyst_confirmed
+  coverage_status: analyst_confirmed
+external_refs: []

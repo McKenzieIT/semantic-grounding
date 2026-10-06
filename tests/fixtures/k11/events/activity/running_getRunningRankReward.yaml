@@ -1,0 +1,126 @@
+name: game.running.getRunningRankReward
+event_filter: event = 'game.running.getRunningRankReward'
+description: 领取赛马排行榜奖励事件：角色在赛马玩法中领取排行榜名次奖励时上报，含奖励物品类型/值/数量及关键货币快照。分析主体为 role_id（角色粒度），可通过 role_id/account_id/server_id 统计领取人数与去重角色覆盖。scout 实测 ds=20260729/20260728 均零命中（cnt=0），疑似该赛马排行奖励活动未在窗口期触发或已下线。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  rewards:
+    type: array
+    description: rewards
+  rewards.type:
+    type: int
+    description: 类型
+  rewards.value:
+    type: int
+    description: 值
+  rewards.size:
+    type: int
+    description: 数量
+  rewards.uid:
+    type: int
+    description: 唯一id
+metrics:
+  running_getRunningRankReward_cnt:
+    expression: COUNT(*)
+    description: 领取赛马排行榜奖励事件总上报条数
+  running_getRunningRankReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取赛马排行榜奖励的去重角色数（分析主体 role_id 粒度）
+  running_getRunningRankReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取赛马排行榜奖励的去重账号数
+  running_getRunningRankReward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取赛马排行榜奖励的去重游戏服数
+  running_getRunningRankReward_avg_role_force:
+    expression: AVG(CAST(GET_JSON_OBJECT(params,'$.roleForce') AS BIGINT))
+    description: 领取奖励时角色的平均战力
+  running_getRunningRankReward_avg_role_level:
+    expression: AVG(CAST(GET_JSON_OBJECT(params,'$.roleLevel') AS BIGINT))
+    description: 领取奖励时角色的平均等级
+  running_getRunningRankReward_avg_vip_level:
+    expression: AVG(CAST(GET_JSON_OBJECT(params,'$.vipLevel') AS BIGINT))
+    description: 领取奖励时角色的平均VIP等级
+coverage:
+  scenarios:
+    - 赛马排行榜奖励领取次数与去重领取角色/账号/服务器覆盖
+    - 领取奖励角色的人口学特征（战力/等级/VIP）分布
+  limitations:
+    - 日志中零命中(ds=20260729 cnt=0；ds=20260728 cnt=0)，疑似赛马排行榜奖励活动未在窗口期触发或已下线
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id（角色粒度），因零命中未做实测复核
+    - rewards/coinList 为 JSON 数组字段，奖励物品数量求和需 lateral view 数组展开，本指标集未实现
+coverage_status: draft
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 cnt=0、role_uv=0、acc_uv=0、server_uv=0；ds=20260728 cnt=0、role_uv=0、acc_uv=0、server_uv=0。双日均零命中，事件疑似未触发/已下线，维持 draft 状态待后续活动期复核。
+external_refs: []

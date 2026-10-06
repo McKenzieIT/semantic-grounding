@@ -1,0 +1,45 @@
+kind: dim
+table_name: dim_10000251_knight_job_name_arch
+engine: maxcompute
+table_comment: '游戏职业维度配置归档表（按 ds 分区的每日快照）。存储职业ID与职业名称的映射，支持按职业维度做 JOIN 关联与历史回溯。'
+description: '游戏职业维度配置归档表（dim_10000251_knight_job_name_arch），按 ds 日期分区存储每日职业ID与职业名称映射快照。主键为复合键 (job_id, ds)，每行对应某 ds 快照日下的一个职业。用于按职业维度关联事实表并回溯历史职业配置。'
+domains:
+- 角色成长
+granularity: '每 (job_id, ds) 快照日 + 职业 一行的维度归档表'
+columns:
+- name: job_id
+  type: string
+  comment: 职业ID
+  role: dimension
+- name: job_name
+  type: string
+  comment: 职业名称
+  role: dimension
+- name: ds
+  type: string
+  comment: '数据快照日期分区（YYYYMMDD）'
+  role: partition
+primary_key:
+- job_id
+- ds
+label_columns:
+- job_name
+primary_key_unique: true
+coverage:
+  scenarios:
+  - '按职业ID/职业名称维度对事实表做 JOIN 关联（如玩家职业分布、职业战力/付费/活跃统计）'
+  - '历史职业配置回溯：通过 ds 分区查询某快照日的职业清单与命名变更'
+  - '作为角色成长主题下的职业枚举维度，支撑跨表职业维度上卷/下钻分析'
+  limitations:
+  - '配置类维度表，无值度量（measure）；仅提供职业ID->名称的映射，不含职业属性数值'
+  - 'job_id 单列在整表范围内非唯一（r=12687, d=30），唯一性依赖复合键 (job_id, ds)；按 ds 单分区使用时 job_id 唯一'
+  - '历史归档表，职业清单可能随版本迭代变化，跨期统计需注意快照口径一致性'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 maxc meta describe 真实列与 SELECT COUNT(*)/COUNT(DISTINCT CONCAT(job_id,|,ds)) 实测 r=d=12687 确认复合主键唯一；job_id 单列非唯一。配置类维度表，无值度量。保持 draft 状态。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度归档表总行数（含所有 ds 快照分区）

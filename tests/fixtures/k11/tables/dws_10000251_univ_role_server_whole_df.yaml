@@ -1,0 +1,133 @@
+table_name: dws_10000251_univ_role_server_whole_df
+engine: maxcompute
+table_comment: 全服角色-区服全量汇总快照表(角色层,含活跃与付费生命周期)
+description: |
+  【角色表】该表为日全量快照(df),记录每个角色(user_id 即角色ID)×server_id 组合在当天时点的活跃与付费生命周期状态。
+  本表固定为 user_type=3 的【角色表】,主体=角色,标识字段为 user_id(列内实际存储的是角色ID role_id;表内无独立 role_id 列)。DISTINCT user_type 仅返回单一值 3(建议用 SELECT DISTINCT user_type 复核)。
+  粒度:每 user_id(角色ID)×server_id 每天一行。
+  能回答的业务问题:各角色的累计付费金额(pay_amt_std)、最近活跃时间、最近付费时间、按区服聚合的角色数与付费规模、按区服的累计付费率、按 ds 切片的累计付费时序对比、以最近活跃距快照日间隔衡量的流失判断。(首次活跃/首次付费时间与获客到首充时长因 act_tm_fst/pay_tm_fst 存在 epoch-0 哨兵值,对应度量已移除,详见 coverage.limitations)
+  注意事项:
+  1) 该表为全量快照,跨天不能直接对 pay_amt_std 等"累计值"列做 SUM(会重复累加);做时序对比应以 ds 为切片取快照(同一 user_id 跨 ds 取不同快照值对比)。
+  2) 本表仅含角色层(user_type 恒为 3),user_id 即角色ID,无需按 user_type 过滤即可直接作为角色主体聚合。
+  3) 全量快照,统计活跃/付费角色数需用 COUNT(DISTINCT user_id);该口径为"截至快照日累计存在"的角色数,非当日活跃角色数。
+  4) 该表为状态快照型,记录"截至快照日的首末次时点+累计总额",不能回答每日新增活跃/付费明细、单笔流水、逐日留存曲线。
+  5) ext_info 为 JSON,记录各首次事件的日志索引,非结构化,不宜直接分组。
+  6) 不含渠道/平台维度,无法做渠道归因;pay_amt_std 为标准金额(假定元),跨币种需外部口径补充。
+domains:
+  - 用户生命周期
+  - 付费经济
+  - 角色成长
+granularity: 日全量快照(df),每 user_id(角色ID)×server_id 每天一行。本表固定为 user_type=3 的【角色表】,主体=角色,标识字段=user_id(实际存角色ID,无独立 role_id 列)。DISTINCT user_type 仅返回单一值 3(建议用 SELECT DISTINCT user_type 复核)。全量快照,累计型度量(pay_amt_std)不可跨天直接 SUM。
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: act_tm_fst
+    type: datetime
+    comment: 首次活跃时间
+    role: attribute
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近活跃时间
+    role: attribute
+  - name: pay_tm_fst
+    type: datetime
+    comment: 首次付费时间
+    role: attribute
+  - name: pay_tm_lst
+    type: datetime
+    comment: 最近付费时间
+    role: attribute
+  - name: pay_amt_std
+    type: decimal
+    comment: 累计付费金额
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 附加信息，记录各个首次数据的日志索引
+    role: attribute
+  - name: ds
+    type: string
+    comment: 分区日期串,格式 yyyyMMdd,标识快照日,作为时间维度切片使用(累计付费时序对比须按此列取快照)。
+    role: dimension
+metrics:
+  total_pay_amt:
+    expression: SUM(pay_amt_std)
+    description: 累计付费总额(标准金额,元)。注意全量快照,单 ds 内可 SUM;跨 ds 不可直接累加。
+  pay_role_cnt:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std>0 THEN user_id END)
+    description: 付费角色数(截至快照日累计付费>0 的角色去重数)。
+  active_role_cnt:
+    expression: COUNT(DISTINCT user_id)
+    description: 累计活跃角色数(截至快照日出现于该快照的角色去重数;为累计口径,非当日活跃角色数)。
+  pay_rate:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std>0 THEN user_id END)*1.0/NULLIF(COUNT(DISTINCT user_id),0)
+    description: 累计付费率=累计付费角色数/累计活跃角色数(除零保护;分母为累计口径,非当日活跃率)。
+  last_pay_tm:
+    expression: MAX(pay_tm_lst)
+    description: 角色最近付费时间最大值(快照型 MAX)。
+  last_active_tm:
+    expression: MAX(act_tm_lst)
+    description: 角色最近活跃时间最大值(快照型 MAX)。
+  avg_cum_pay_amt:
+    expression: AVG(pay_amt_std)
+    description: 角色平均累计付费金额(元,单 ds 快照内均值,自动忽略 NULL)。
+  server_cnt:
+    expression: COUNT(DISTINCT server_id)
+    description: 有角色记录的区服数(去重 server_id)。
+  pay_amt_std_per_role:
+    expression: SUM(pay_amt_std)*1.0/NULLIF(COUNT(DISTINCT user_id),0)
+    description: 角色人均累计付费(元)=角色累计付费总额/角色去重数,除零保护。
+  lost_role_cnt_30d:
+    expression: COUNT(DISTINCT CASE WHEN DATEDIFF(TO_DATE(ds,'yyyymmdd'), act_tm_lst, 'dd')>30 THEN user_id END)
+    description: 流失倾向角色数(最近活跃距快照日 ds 超过 30 天的角色去重数;act_tm_lst 为空则不计入)。
+partitions:
+  - name: ds
+    type: string
+confirmation:
+  status: draft
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: Round5 真实数据验证(latest ds=20260729)。列覆盖全存在(meta describe 10列与YAML一致);DISTINCT user_type 仅返回单一值 3,角色表声明成立;粒度 rows=distinct_user_id=1668110,1行/角色/天 成立。实测合理度量含 total_pay_amt(1.07亿元)、pay_role_cnt(32.2万)、active_role_cnt(166.8万)、pay_rate(19.3%)、avg_cum_pay_amt(64.33元)、server_cnt(608)、last_active_tm、last_pay_tm、lost_role_cnt_30d(1639829,与 act_tm_lst<2026-06-29 计数一致,真实累计流失,非哨兵膨胀)。发现3个度量因 epoch-0 哨兵值(1970-01-01 08:00:00,非NULL)损坏已移除:first_active_tm、first_pay_tm(MIN 返回哨兵)、avg_first_pay_gap_days(返回负值 -16349.5天)。verified-broken,保留 draft。
+coverage:
+  scenarios:
+    - 全服/单区服累计付费规模(总额、付费角色数、人均累计付费)
+    - 累计付费率(付费角色数/累计活跃角色数,累计口径非当日活跃率)按区服或整体口径
+    - 角色首末次活跃时间分布(获客时点、最新活跃)
+    - 角色首末次付费时间分布(首充时点、最近付费)
+    - 付费-活跃时间差(首次活跃到首次付费的间隔,衡量获客到首充时长)
+    - 区服付费排行与区服数统计
+    - 按 ds 快照切片做累计付费金额时序对比(同一角色跨快照变化)
+    - 流失判断(以 act_tm_lst 距快照日 ds 的间隔衡量,如 >30 天视为流失倾向)
+  limitations:
+    - 全量快照累计值(pay_amt_std)跨天不可直接 SUM,否则重复累加;时序对比须按 ds 切片取快照。
+    - 表内无独立 role_id 列,user_id 即角色ID(本表固定 user_type=3,无需按 user_type 过滤)。
+    - active_role_cnt/pay_rate 为累计口径(截至快照日存在),非当日活跃角色数/当日活跃率;无日级 act/pay 计数列,不能计算当日活跃率与逐日留存曲线。
+    - 该表为状态快照型,记录"截至快照日的首末次时点+累计总额",不能回答每日新增活跃/付费明细、单笔流水。
+    - ext_info 为 JSON 日志索引,非结构化,不宜直接作分组键。
+    - 缺少渠道/平台维度,无法做渠道归因。
+    - pay_amt_std 为标准金额(假定元),表中无币种/汇率字段,跨币种场景需外部口径补充。
+    - 首次活跃/首次付费时间与获客到首充时长指标已移除——act_tm_fst/pay_tm_fst 列存在 epoch-0 哨兵值(1970-01-01 08:00:00,非 NULL),MIN(act_tm_fst)/MIN(pay_tm_fst) 返回哨兵而非真实首末次时间;avg_first_pay_gap_days 因 134.6 万未付费角色的 pay_tm_fst 哨兵产生负值(-16349.5 天),语义失效。如需真实首次时间,应过滤 act_tm_fst/pay_tm_fst > '1970-01-02' 后取 MIN(实测真实首次活跃=2025-05-16,真实首次付费=2025-05-16)。
+    - last_active_tm/last_pay_tm(MAX 型)不受 epoch-0 哨兵影响,可正常取最近时点。
+  coverage_status: draft
+supersedes:
+  - source: 角色生命周期首末次活跃/付费事件明细查询(lifecycle 事件源)
+    when: 当业务仅需截至某快照日的角色生命周期状态聚合(首次活跃、最近活跃、首次付费、最近付费、累计付费金额),且不需求单笔流水或逐日留存曲线时,此表可替代逐日扫描原始生命周期事件日志。
+    advantage: 预聚合宽表,免去海量事件日志扫描;口径统一(标准金额 pay_amt_std);查询更稳定、成本更低,适合 LLM 直接取用"截至当日全服角色-区服生命周期状态"。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (comment 区服id) exactly matches dim_10000251_server_info.primary_key server_id, the 服务器/区服配置维度表 used to resolve 区服名称与开服时间.
+    origin: deterministic
+pref_label: 角色区服全量表

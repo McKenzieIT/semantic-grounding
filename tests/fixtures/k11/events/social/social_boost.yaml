@@ -1,0 +1,146 @@
+name: game.social.boost
+event_filter: event = 'game.social.boost'
+description: 代打悬赏（社交-boost）事件：玩家在社交公会场景下发布/接取/完成代打悬赏，记录悬赏生命周期动作。参数包含发布方 postRoleId、唯一悬赏 boostId、奖励 rewardId、目标类型 targetType（1-星级/2-成就/3-演武场）、关卡 stageId、关联战斗 battleId，以及角色基础属性（roleLevel/vipLevel/roleForce/exp）与多币种 coinList。分析主体为 role_id（执行代打动作的角色），按 action 维度区分发布(1)/接取(3)/完成(4)。实测 ds=20260729：cnt=416，role_uv=232，account_uv=230，server_uv=25。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  action:
+    type: int
+    description: 行为类型 @Const.BOOST_TYPE
+  postRoleId:
+    type: int
+    description: 发布悬赏的角色id
+  boostId:
+    type: string
+    description: 唯一代打悬赏id
+  rewardId:
+    type: int
+    description: 悬赏奖励id
+  targetType:
+    type: int
+    description: 目标类型 1-星级 2-成就 3-演武场
+  targetValue:
+    type: int
+    description: 目标值
+  stageId:
+    type: int
+    description: 关卡id
+  battleId:
+    type: string
+    description: 唯一战斗id，与game.pve.begin、game.pvp.begin中的battleId一一对应
+metrics:
+  game_social_boost_cnt:
+    expression: COUNT(*)
+    description: 代打悬赏事件总次数（含发布/接取/完成所有 action）
+  game_social_boost_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 执行代打动作的去重角色数（分析主体 role_id）
+  game_social_boost_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 执行代打动作的去重账号数
+  game_social_boost_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及代打悬赏的去重游戏服数
+  game_social_boost_post_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.postRoleId'))
+    description: 发布悬赏的去重发布方角色数（postRoleId）
+  game_social_boost_id_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.boostId'))
+    description: 去重悬赏单数（唯一 boostId）
+  game_social_boost_post_cnt:
+    expression: COUNT(CASE WHEN GET_JSON_OBJECT(params, '$.action') = '1' THEN 1 END)
+    description: 发布悬赏次数（action=1）
+  game_social_boost_accept_cnt:
+    expression: COUNT(CASE WHEN GET_JSON_OBJECT(params, '$.action') = '3' THEN 1 END)
+    description: 接取悬赏次数（action=3）
+  game_social_boost_complete_cnt:
+    expression: COUNT(CASE WHEN GET_JSON_OBJECT(params, '$.action') = '4' THEN 1 END)
+    description: 完成悬赏次数（action=4）
+  game_social_boost_accept_rate:
+    expression: COUNT(CASE WHEN GET_JSON_OBJECT(params, '$.action') = '3' THEN 1 END) / NULLIF(COUNT(*), 0)
+    description: 接取动作占整体动作比例（基于 NULLIF 防除零）
+coverage:
+  scenarios:
+    - 代打悬赏整体规模与参与度（事件总量、角色/账号/服务器覆盖）
+    - 悬赏生命周期漏斗（发布 post_cnt -> 接取 accept_cnt -> 完成 complete_cnt）
+    - 发布方与悬赏单去重规模（post_uv / boost_id_uv）
+    - 接取转化率 accept_rate（接取动作占比，分母 NULLIF 防零）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（执行代打动作的角色），postRoleId 为发布方角色，两者不同
+    - action 枚举语义基于实测值(1/3/4)推断，未对照 Const.BOOST_TYPE 常量表逐一确认
+    - targetType/stageId/rewardId 维度的下钻未在本日 scout 覆盖
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=416 / role_uv=232 / acc_uv=230 / server_uv=25；action 分布 1=232(发布)/3=67(接取)/4=117(完成)，boostId 去重 232/66/60，postRoleId 去重 177/56/53，数值合理。
+external_refs: []

@@ -1,0 +1,131 @@
+name: game.happyLottery.gacha
+event_filter: event = 'game.happyLottery.gacha'
+description: 刮刮乐活动抽卡事件：玩家在刮刮乐活动中进行抽卡操作，记录抽卡获得的图鉴id列表、保底计数及积分变动。主体粒度为 role_id（角色）。ds=20260729 实测 cnt=20724 / role_uv=3326 / acc_uv=3193 / server_uv=447。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  lotteryId:
+    type: int
+    description: 活动id
+  cycleId:
+    type: int
+    description: 周期id
+  ids:
+    type: array
+    description: 抽到的图鉴id列表
+  addPoint:
+    type: int
+    description: 增加的积分
+  point:
+    type: int
+    description: 当前积分
+  illustrate:
+    type: array
+    description: 当前图鉴id列表
+  currNormalCount:
+    type: array
+    description: 普通保底
+  currSpCount:
+    type: array
+    description: 隐藏款保底
+  afterNormalCount:
+    type: array
+    description: 普通保底
+  afterSpCount:
+    type: array
+    description: 隐藏款保底
+metrics:
+  game_happyLottery_gacha_cnt:
+    expression: COUNT(*)
+    description: 刮刮乐抽卡总次数
+  game_happyLottery_gacha_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与刮刮乐抽卡的去重角色数
+  game_happyLottery_gacha_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与刮刮乐抽卡的去重账号数
+  game_happyLottery_gacha_point_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.addPoint') AS BIGINT))
+    description: 刮刮乐抽卡累计增加的积分总和
+coverage:
+  scenarios:
+    - 监控刮刮乐活动的抽卡活跃度与参与规模
+    - 量化活动积分产出与角色/账号覆盖度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id（角色）
+    - point_sum 依赖 addPoint 字段解析，缺值按 NULL 求和
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  coverage_status: analyst_confirmed
+  note: ds=20260729 实测 cnt=20724 / role_uv=3326 / acc_uv=3193 / server_uv=447 / point_sum=287054
+external_refs: []

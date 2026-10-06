@@ -1,0 +1,52 @@
+table_name: dim_10000251_trans_stra_buff_group_df_arch
+engine: maxcompute
+kind: dim
+table_comment: '词缀组(buff group)配置维度表，按 ds 日分区存储快照。'
+description: '词缀组(buff group)配置维度表。每行描述一个词缀组：其唯一 id、包含的词缀 id
+  串(buff_id，以下划线分隔的复合编码)、解锁条件、描述与词缀组名(name)。按 ds 日分区存储配置快照，
+  用于词缀组维度查询与 JOIN。主要字段：id, buff_id, unlock, desc, name, ds。'
+domains:
+- 系统监控
+granularity: '每词缀组(buff group)一行(按 ds 日分区快照)的配置维度表'
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+columns:
+- name: id
+  type: string
+  comment: 词缀组id
+  role: dimension
+- name: buff_id
+  type: string
+  comment: 包含的词缀id
+  role: dimension
+- name: unlock
+  type: string
+  comment: 解锁条件
+  role: dimension
+- name: desc
+  type: string
+  comment: 描述
+  role: dimension
+- name: name
+  type: string
+  comment: 词缀组名
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+coverage:
+  scenarios:
+  - '通过 id 关联事件/事实表，可查询某词缀组的名称(name)、解锁条件(unlock)、描述(desc)与组成词缀(buff_id)。'
+  limitations:
+  - '配置类维度表，无值度量。'
+  - 'buff_id 为下划线分隔的复合编码串，需二次拆分解码后才能映射到具体词缀。'
+  - '唯一性实测按日分区校验(最新分区 r=d=25)，跨分区存在历史快照故 id 全局不唯一。'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '配置类维度表，按日分区校验 primary_key 唯一(primary_key_unique=true)，状态保持 draft。'

@@ -1,0 +1,113 @@
+name: game.guild.applyJoin
+event_filter: event = 'game.guild.applyJoin'
+description: 玩家申请加入公会的社交行为事件。记录发起申请的角色（role_id 为分析主体，account_id 为账号主体）及其目标公会 targetGuildId，同时携带角色等级、vip等级、战力、经验及关键货币等快照信息。单日 ds=20260729 实测：申请次数 420 次，去重角色 380 人、账号 374 个、覆盖游戏服 29 个、目标公会 73 个。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  targetGuidId:
+    type: int
+    description: 公会id（注意：实际日志 params 键名为 targetGuildId，本字段名与日志不一致，metrics 使用 targetGuildId）
+metrics:
+  game_guild_apply_join_cnt:
+    expression: COUNT(*)
+    description: 申请加入公会的总次数
+  game_guild_apply_join_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 发起申请的去重角色数（分析主体）
+  game_guild_apply_join_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 发起申请的去重账号数
+  game_guild_apply_join_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的去重游戏服数
+  game_guild_apply_join_target_guild_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.targetGuildId'))
+    description: 被申请的去重目标公会数（取自 params.targetGuildId）
+  game_guild_apply_join_apply_per_role_rate:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 平均每个角色发起的申请次数
+coverage:
+  scenarios:
+    - 公会申请热度：按日/服统计申请次数与发起角色数，衡量社交活跃度
+    - 目标公会分布：统计被申请的去重公会数，识别热门公会
+    - 申请集中度：apply_per_role_rate 反映人均申请次数，判断是否存在刷量/重复申请
+    - 跨服社交：server_uv 反映申请行为覆盖的游戏服范围
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度），account_id 仅供去重参考
+    - params_fields 中声明为 targetGuidId，但实际日志 params 键名为 targetGuildId，metrics 已采用真实键名
+    - 未覆盖申请审批结果链路（通过/拒绝需结合 guild_applyJoin_audit 等后续事件）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=420，role_uv=380，acc_uv=374，server_uv=29，target_guild_uv=73；数字合理，事件在线且正常触发
+coverage_status: analyst_confirmed
+external_refs: []

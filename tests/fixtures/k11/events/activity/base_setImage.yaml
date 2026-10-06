@@ -1,0 +1,107 @@
+name: game.base.setImage
+event_filter: event = 'game.base.setImage'
+description: 玩家设置/切换看板娘（形象）事件：记录角色选择或更换看板娘形象（image/newImage/newImageType），同时携带角色基础属性（等级、vip、战力、经验）与多类货币快照（gold/sendgold/freegold/diamond/expCoin/energy）。主体粒度 role_id，单日 scout 实测 ds=20260729 cnt=714 / role_uv=445 / acc_uv=438。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  newImage:
+    type: int
+    description: 看板娘
+  newImageType:
+    type: int
+    description: 看板娘类型
+metrics:
+  game_base_setImage_cnt:
+    expression: COUNT(*)
+    description: 看板娘形象设置事件总发生次数（按角色每次设置计一次）
+  game_base_setImage_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 设置过看板娘形象的独立角色数
+  game_base_setImage_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 设置过看板娘形象的独立账号数
+  game_base_setImage_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 发生看板娘形象设置事件的独立游戏服数
+coverage:
+  scenarios:
+    - 看板娘形象系统的日活/总参与度（事件次数、角色/账号/服务器覆盖）
+    - 形象更换热度趋势与服务器分布
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id，跨日去重未校验
+    - 未细分 newImage/newImageType 形象类型分布（仅总量级）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: "ds=20260729 scout: cnt=714, role_uv=445, acc_uv=438, server_uv=91 (event=game.base.setImage, view=ieu_ods.ods_10000251_all_view)"
+  coverage_status: analyst_confirmed
+external_refs: []

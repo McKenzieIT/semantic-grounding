@@ -1,0 +1,162 @@
+name: game.showCamp.onShow
+event_filter: event = 'game.showCamp.onShow'
+description: 折扣服营地展示曝光事件：玩家在折扣服打开/查看营地（角色看板娘）展示界面时上报，携带角色等级、vip等级、角色战力、经验及多类货币余额等26个参数。分析主体为 role_id（角色级曝光），可度量营地展示曝光规模与触达角色的等级/战力分布。实测 ds=20260729：曝光 12490 次，覆盖 1697 角色 / 1642 账号 / 242 服务器。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  type:
+    type: string
+    description: 类型
+  slot:
+    type: int
+    description: 槽位
+  oldId:
+    type: int
+    description: 旧id
+  newId:
+    type: int
+    description: 新id
+metrics:
+  showCamp_onShow_cnt:
+    expression: COUNT(*)
+    description: 营地展示曝光总次数
+  showCamp_onShow_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 营地展示触达角色数（去重，角色为分析主体）
+  showCamp_onShow_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 营地展示触达账号数（去重）
+  showCamp_onShow_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 营地展示覆盖游戏服数（去重）
+  showCamp_onShow_avg_role_level:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS BIGINT))
+    description: 触发营地展示角色的平均等级
+  showCamp_onShow_avg_role_force:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleForce') AS BIGINT))
+    description: 触发营地展示角色的平均战力
+coverage:
+  scenarios:
+    - 度量折扣服营地展示的曝光规模与角色/账号/服务器触达面
+    - 分析触达营地展示角色的等级与战力分布，辅助营地玩法渗透评估
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色级曝光），未对 account_id 维度做交叉核对
+    - vipLevel 实测全为 0，折扣服场景下该字段未填充/不适用，未建 vip 相关指标
+    - coinList.gold 等货币为曝光时刻的余额快照，跨事件 SUM 会重复累加，未建 SUM 指标以免误导
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729：cnt=12490, role_uv=1697, acc_uv=1642, server_uv=242；avg_role_level≈36.67, avg_role_force≈4237155.67，数值合理，事件真实触发
+external_refs:
+  - dim_table: dim_10000251_trans_gacha_mission_group_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_gacha_mission_group_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df_arch 主键精确同名
+    origin: deterministic

@@ -1,0 +1,44 @@
+table_name: dim_10000251_com_order_detail_info
+engine: maxcompute
+kind: dim
+primary_key:
+- order_id
+primary_key_unique: true
+label_columns:
+- recharge_id
+table_comment: 商业化-订单信息维表，每订单一行的维度表，按订单号唯一
+description: '商业化-订单信息维表。每笔商业化订单一行的维度/配置表，以 order_id（订单号）为主键，recharge_id（商品配置ID）关联商品配置表用于订单维度的商品属性查找。粒度：每订单一行。主要字段：order_id（订单号，主键，全局唯一）, recharge_id（商品配置ID，外键）, ds（分区）。'
+domains:
+- 付费经济
+granularity: 每笔订单一行的维度表
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（订单数）
+columns:
+- name: order_id
+  type: string
+  comment: 订单号
+  role: dimension
+- name: recharge_id
+  type: string
+  comment: 商品配置ID
+  role: dimension
+- name: ds
+  type: string
+  comment: 分区
+  role: partition
+coverage:
+  scenarios:
+  - 通过 order_id 与事实表 JOIN 查找订单维度的商品配置属性（recharge_id）
+  - 通过 recharge_id 关联商品配置维表，获取商品名称/价格档位等可读属性
+  - 按分区 ds 过滤特定日期范围的订单维度数据
+  limitations:
+  - 维度表仅含订单号与商品配置ID两个业务字段，无可读的商品名称，需二次 JOIN 商品配置维表解码
+  - recharge_id 为配置编码串，无内置可读标签，label_columns 取 recharge_id 为可用属性中最佳者
+  - 已做唯一性实测：order_id 全表 COUNT(*)=COUNT(DISTINCT order_id)=2938615，确认全局唯一
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'kind=dim，主键 order_id 经实测全局唯一（r=d=2938615），label_columns 取 recharge_id（唯一可用业务属性，非可读名称）。状态保持 draft。'

@@ -1,0 +1,371 @@
+table_name: dws_10000251_univ_dev_tag_df
+engine: maxcompute
+table_comment: 用户整体事件表
+description: |
+  记录每个设备实体截至分区日的累计标签与画像快照,粒度为"每设备每天一行"的日全量快照(_df)。
+  【主体类型】本表固定为 user_type=1 的【设备表】,分析主体=设备,主体标识字段为 user_id(存储设备ID);DISTINCT user_type 仅返回单一值 1(建议用 SELECT DISTINCT user_type 复核)。
+  能回答的业务问题:
+  - 设备累计付费金额、累计付费订单数、累计活跃天数/在线时长,以及新增首 N 日(1/2/3/7/30/180/360)与滚动最近 N 日(1/7/30/90/180/360)付费金额;
+  - 首次/最近活跃时间、首次/最近付费时间、最近两个活跃日间隔(回流/流失节奏);
+  - 设备的平台、渠道、包名、地区、设备品牌型号、关联设备/账号/角色 ID 与时间、角色区服;
+  - 买量归因(买量标识、媒体)、预下载/测试期/内部用户标记;
+  - 关联角色养成画像(角色名、等级、战力、职业、养成角色 ID);
+  - Web 端累计付费、大事件累计付费明细;
+  - 可计算首日付费率、LTV、付费转化率、滚动窗口付费趋势、关联角色养成分层等指标。
+  注意事项:
+  - _df 为全量快照,跨分区求和/叠加会重复,做时序统计须用唯一分区或按 user_id 去重;
+  - 本表固定 user_type=1,统计设备数直接 COUNT(DISTINCT user_id),无需再做 user_type 过滤;
+  - 首次/最近类字段为历史快照值,不可聚合;付费金额类字段为累计或滚动窗口口径,使用前须确认窗口定义;
+  - role_level/role_force/role_career 等角色字段来自设备关联的角色画像,部分设备行可能为空,聚合时须先剔除 NULL;
+  - 留存率无法直接从本表单分区得出,需多分区对比或借助 act_ymd_diff 近似判断。
+domains:
+  - 用户生命周期
+  - 付费经济
+  - 角色成长
+granularity: 日全量快照(_df),每设备每天一行;【设备表】,固定 user_type=1,分析主体=设备,主体标识字段=user_id(存储设备ID),DISTINCT user_type 仅返回单一值 1(建议用 SELECT DISTINCT user_type 复核)。
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，1-设备、2-账号、3-角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: os_id
+    type: int
+    comment: 平台
+    role: dimension
+  - name: ch_type
+    type: string
+    comment: 渠道
+    role: dimension
+  - name: pkg_name
+    type: string
+    comment: 包
+    role: dimension
+  - name: act_tm_fst
+    type: datetime
+    comment: 首次活跃时间
+    role: attribute
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近活跃时间
+    role: attribute
+  - name: pay_tm_fst
+    type: datetime
+    comment: 首次付费时间
+    role: attribute
+  - name: pay_tm_lst
+    type: datetime
+    comment: 最近付费时间
+    role: attribute
+  - name: act_days_std
+    type: int
+    comment: 累计活跃天数
+    role: measure
+  - name: act_dur_std
+    type: int
+    comment: 累计活跃时长
+    role: measure
+  - name: pay_amt_std
+    type: decimal
+    comment: 累计付费金额，单位：元
+    role: measure
+  - name: act_ymd_prev
+    type: string
+    comment: 上一个活跃日期
+    role: attribute
+  - name: act_ymd_diff
+    type: int
+    comment: 最近2个活跃日期间隔
+    role: attribute
+  - name: attr_ad_id
+    type: string
+    comment: 买量标识
+    role: dimension
+  - name: rel_dev_id_fst
+    type: string
+    comment: 首次关联设备id
+    role: dimension
+  - name: rel_dev_tm_fst
+    type: datetime
+    comment: 首次关联设备时间
+    role: attribute
+  - name: rel_dev_id_lst
+    type: string
+    comment: 最近关联设备id
+    role: dimension
+  - name: rel_dev_tm_lst
+    type: datetime
+    comment: 最近关联设备时间
+    role: attribute
+  - name: rel_acc_id_fst
+    type: string
+    comment: 首次关联账号id
+    role: dimension
+  - name: rel_acc_tm_fst
+    type: datetime
+    comment: 首次关联账号时间
+    role: attribute
+  - name: rel_acc_id_lst
+    type: string
+    comment: 最近关联账号id
+    role: dimension
+  - name: rel_acc_tm_lst
+    type: datetime
+    comment: 最近关联账号时间
+    role: attribute
+  - name: rel_role_id_fst
+    type: string
+    comment: 首次关联角色id
+    role: dimension
+  - name: rel_role_tm_fst
+    type: datetime
+    comment: 首次关联角色时间
+    role: attribute
+  - name: rel_role_id_lst
+    type: string
+    comment: 最近关联角色id
+    role: dimension
+  - name: rel_role_tm_lst
+    type: datetime
+    comment: 最近关联角色时间
+    role: attribute
+  - name: act_ip_fst
+    type: string
+    comment: 首次活跃ip
+    role: dimension
+  - name: act_location_fst
+    type: string
+    comment: 首次活跃地理位置
+    role: dimension
+  - name: act_ip_lst
+    type: string
+    comment: 最近活跃ip
+    role: dimension
+  - name: act_location_lst
+    type: string
+    comment: 最近活跃地理位置
+    role: dimension
+  - name: region_id
+    type: string
+    comment: 地区
+    role: dimension
+  - name: rel_role_srv_fst
+    type: string
+    comment: 首次关联角色区服
+    role: dimension
+  - name: rel_role_srv_lst
+    type: string
+    comment: 最近关联角色区服
+    role: dimension
+  - name: fellow_flag
+    type: int
+    comment: 内部用户标记，1-内部用户、0-非内部用户
+    role: dimension
+  - name: pay_amt_f1d
+    type: decimal
+    comment: 新增当日付费金额，单位：元
+    role: measure
+  - name: pay_amt_p1d
+    type: decimal
+    comment: 首付当日付费金额，单位：元
+    role: measure
+  - name: dev_brand_fst
+    type: string
+    comment: 首次活跃设备品牌
+    role: dimension
+  - name: dev_model_fst
+    type: string
+    comment: 首次活跃设备型号
+    role: dimension
+  - name: dev_brand_lst
+    type: string
+    comment: 最近活跃设备品牌
+    role: dimension
+  - name: dev_model_lst
+    type: string
+    comment: 最近活跃设备型号
+    role: dimension
+  - name: predown_tag
+    type: int
+    comment: 预下载用户标记，1-是、0-否
+    role: dimension
+  - name: test_tag
+    type: int
+    comment: 测试期用户标记，1-是、0-否
+    role: dimension
+  - name: ch_id
+    type: string
+    comment: 渠道id
+    role: dimension
+  - name: test_event_name
+    type: string
+    comment: 测试期大事件名
+    role: dimension
+  - name: pay_amt_l7d
+    type: decimal
+    comment: 最近7日付费金额，单位：元
+    role: measure
+  - name: pay_amt_l30d
+    type: decimal
+    comment: 最近30日付费金额，单位：元
+    role: measure
+  - name: pay_amt_l90d
+    type: decimal
+    comment: 最近90日付费金额，单位：元
+    role: measure
+  - name: pay_amt_l180d
+    type: decimal
+    comment: 最近180日付费金额，单位：元
+    role: measure
+  - name: pay_amt_l360d
+    type: decimal
+    comment: 最近360日付费金额，单位：元
+    role: measure
+  - name: pay_amt_f2d
+    type: decimal
+    comment: 新增首2日付费金额，单位：元
+    role: measure
+  - name: pay_amt_f3d
+    type: decimal
+    comment: 新增首3日付费金额，单位：元
+    role: measure
+  - name: pay_amt_f7d
+    type: decimal
+    comment: 新增首7日付费金额，单位：元
+    role: measure
+  - name: pay_amt_f30d
+    type: decimal
+    comment: 新增首30日付费金额，单位：元
+    role: measure
+  - name: os_id_lst
+    type: int
+    comment: 最近平台
+    role: dimension
+  - name: ch_type_lst
+    type: string
+    comment: 最近渠道
+    role: dimension
+  - name: ch_id_lst
+    type: string
+    comment: 最近渠道id
+    role: dimension
+  - name: pkg_name_lst
+    type: string
+    comment: 最近包
+    role: dimension
+  - name: web_pay_amt_std
+    type: decimal
+    comment: 累计web付费金额，单位：元
+    role: measure
+  - name: role_level
+    type: int
+    comment: 角色等级
+    role: measure
+  - name: event_pay_info
+    type: string
+    comment: 大事件累计付费金额
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: dimension
+metrics:
+  device_cnt:
+    expression: COUNT(DISTINCT user_id)
+    description: 设备数(本表固定 user_type=1,直接 COUNT DISTINCT user_id 即为设备数,跨分区须锁定单一 ds)
+  pay_amt_std_sum:
+    expression: SUM(pay_amt_std)
+    description: 累计付费金额总额(单位:元,仅单分区有效,跨分区会重复)
+  pay_amt_std_avg:
+    expression: AVG(pay_amt_std)
+    description: 设备累计付费均值(单位:元/设备)
+  act_days_std_avg:
+    expression: AVG(act_days_std)
+    description: 设备累计活跃天数均值(单位:天/设备)
+  act_dur_std_avg:
+    expression: AVG(act_dur_std)
+    description: 设备累计活跃时长均值(单位:秒/设备)
+  first_day_pay_rate:
+    expression: AVG(CASE WHEN pay_amt_f1d > 0 THEN 1 ELSE 0 END)
+    description: 新增首日付费率(付费设备数占比,0-1 比率,应在新增设备集合上计算)
+  pay_conversion_rate:
+    expression: AVG(CASE WHEN pay_amt_std > 0 THEN 1 ELSE 0 END)
+    description: 累计付费转化率(曾付费设备占比,0-1 比率)
+  ltv_f1d:
+    expression: SUM(pay_amt_f1d) * 1.0 / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 新增首日 LTV(单位:元/设备)
+  ltv_f7d:
+    expression: SUM(pay_amt_f7d) * 1.0 / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 新增首7日 LTV(单位:元/设备)
+  ltv_f30d:
+    expression: SUM(pay_amt_f30d) * 1.0 / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 新增首30日 LTV(单位:元/设备)
+  pay_amt_l7d_avg:
+    expression: AVG(pay_amt_l7d)
+    description: 设备最近7日付费均值(单位:元/设备,滚动窗口)
+  pay_amt_l30d_avg:
+    expression: AVG(pay_amt_l30d)
+    description: 设备最近30日付费均值(单位:元/设备,滚动窗口)
+  pay_amt_l90d_avg:
+    expression: AVG(pay_amt_l90d)
+    description: 设备最近90日付费均值(单位:元/设备,滚动窗口)
+  pay_amt_l360d_avg:
+    expression: AVG(pay_amt_l360d)
+    description: 设备最近360日付费均值(单位:元/设备,滚动窗口)
+  role_level_avg:
+    expression: AVG(role_level)
+    description: 关联角色平均等级(来自设备关联角色画像,部分行为空,需先剔除 NULL)
+  web_pay_ratio:
+    expression: SUM(web_pay_amt_std) * 1.0 / NULLIF(SUM(pay_amt_std), 0)
+    description: Web 端付费金额占比(0-1 比率,web_pay_amt_std 为 pay_amt_std 子集)
+  pay_amt_std_p50:
+    expression: PERCENTILE_APPROX(pay_amt_std, 0.5)
+    description: 设备累计付费金额中位数(单位:元)
+  arpu_std:
+    expression: SUM(pay_amt_std) * 1.0 / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 累计 ARPU(单位:元/设备,累计付费金额总额 / 设备数,仅单分区有效)
+  paying_device_ratio:
+    expression: SUM(CASE WHEN pay_amt_std > 0 THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(*), 0)
+    description: 付费设备占比(0-1 比率,等价于 pay_conversion_rate 的另一种写法,行级口径)
+coverage:
+  scenarios:
+    - 设备实体的累计付费金额、付费订单数、活跃天数、在线时长画像,统计设备规模与均值(本表固定 user_type=1,无需再按 user_type 过滤)
+    - 新增首N日(1/2/3/7/30/180/360)与滚动最近N日(1/7/30/90/180/360)付费金额分析,可计算 LTV 与早期变现
+    - 设备首日付费率、累计付费转化率、首日 LTV、首N日 LTV、累计 ARPU 等付费转化与变现指标
+    - 设备首次/最近活跃、付费时间及回流间隔(act_ymd_diff)分析,判断活跃频率与回流/流失节奏
+    - 平台(os_id/os_id_lst)、渠道(ch_type/ch_id/ch_type_lst/ch_id_lst)、包名、地区(region_id/act_location)、设备品牌型号画像分组
+    - 买量归因分析:按 attr_ad_id/attr_media_name 分组对比买量与非买量设备的付费、活跃表现
+    - 关联角色养成分层:按 role_level/role_force/role_career/rel_role_srv_lst 分组分析设备关联角色的战力与等级分布(部分设备行可能为空)
+    - 内部用户(fellow_flag)/测试期用户(test_tag)/预下载用户(predown_tag)标记筛选、剔除与对比分析
+    - Web 端付费占比(web_pay_amt_std / pay_amt_std)与累计付费金额中位数分布分析
+  limitations:
+    - _df 为全量快照,跨分区直接求和/叠加会重复,时序统计须按 user_id 去重或锁定单一 ds 分区
+    - 本表固定 user_type=1(设备粒度),若需账号/角色粒度统计须使用对应的 univ_acc/univ_role 标签表,不可混用
+    - role_level/role_force/role_career 等角色字段来自设备关联角色画像,部分设备行可能为空,聚合时须先剔除 NULL
+    - 首次/最近类时间(act_tm_fst/act_tm_lst/pay_tm_fst/pay_tm_lst)为历史快照,不可 SUM/AVG 聚合
+    - event_pay_info 为 JSON 串需解析后使用,不可直接聚合
+    - 留存率无法从本表单分区直接计算,需多分区对比(同一 user_id 跨日是否仍活跃)或借助 act_ymd_diff 近似判断
+    - 设备新增日期需由 act_tm_fst 推断,表内无独立新增日期列
+    - 付费金额字段口径为累计或滚动窗口,使用前须确认窗口定义(f=N 日为新增后窗口,l=N 日为滚动最近窗口)
+    - 历史分区可能存在回刷,跨日对比前需确认数据是否已稳定
+  coverage_status: draft
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: 真实数据验证通过(2026-07-30)。最新分区 ds=20260729;meta describe 确认 metrics 引用的全部列(user_id/pay_amt_std/act_days_std/act_dur_std/pay_amt_f1d/pay_amt_f7d/pay_amt_f30d/pay_amt_l7d/l30d/l90d/l360d/role_level/web_pay_amt_std)在真实 schema 中存在;SELECT DISTINCT user_type 仅返回单一值 {1},与设备表 user_type=1 声明一致;粒度校验 COUNT(*)=COUNT(DISTINCT user_id)=2016356,即每设备每天一行;核心指标实测:device_cnt=2016356,pay_amt_std_sum=107300726.32元,pay_amt_std_avg=53.22元/设备,act_days_std_avg=5.36天/设备,act_dur_std_avg=27107秒/设备(约7.5小时,为真实累计时长非Unix时间戳),first_day_pay_rate=0.0963,pay_conversion_rate=0.1450,arpu=53.22元/设备,均在合理区间(非NULL、UV>0、比率属于[0,1]、无异常值)。act_dur_std 实测均值约2.7e4秒,排除 onlinetime 类时间戳移植缺陷。domains=用户生命周期/付费经济/角色成长(无活动运营,无需移除)。判定为 analyst_confirmed。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: rel_role_srv_fst
+        dim_column: server_id
+      - dws_column: rel_role_srv_lst
+        dim_column: server_id
+    derivation: DWS columns rel_role_srv_fst (comment '首次关联角色区服') and rel_role_srv_lst (comment '最近关联角色区服') semantically reference a 区服 (server), matching the primary_key server_id of dim_10000251_server_info, the canonical 区服 dimension designed for fact-table joins via server_id.
+pref_label: 设备事件标签表
+alt_labels:
+  - 设备
+  - 事件

@@ -1,0 +1,132 @@
+name: game.task.routinetask
+event_filter: event = 'game.task.routinetask'
+description: 日常任务(routinetask)周期任务日志事件：记录角色在日常/每周/军团等周期任务体系下的任务刷新与进度日志，按 taskType 区分任务类型(1-每日任务/2-每周任务；scout 实测另见 3、6 等 params 文档未列类型)，taskList 数组携带任务id、积分、状态明细。分析粒度以 role_id 为主(角色级，account_id 作辅助维度，server_id 可下钻识别活跃/异常服)。scout 实测 ds=20260729 单日 cnt=34883, role_uv=3956, acc_uv=3731, server_uv=466。参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等27个
+domains:
+  - 角色成长
+domain: system
+metrics:
+  task_routinetask_cnt:
+    description: 日常任务事件总日志行数(COUNT(*))
+    expression: COUNT(*)
+  task_routinetask_role_uv:
+    description: 触发日常任务的去重角色数(主体粒度)
+    expression: COUNT(DISTINCT role_id)
+  task_routinetask_account_uv:
+    description: 触发日常任务的去重账号数
+    expression: COUNT(DISTINCT account_id)
+  task_routinetask_server_uv:
+    description: 覆盖的去重游戏服数量
+    expression: COUNT(DISTINCT server_id)
+  task_routinetask_daily_task_cnt:
+    description: 每日任务(taskType=1)日志行数
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.taskType')='1' THEN 1 ELSE 0 END)
+  task_routinetask_weekly_task_cnt:
+    description: 每周任务(taskType=2)日志行数
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.taskType')='2' THEN 1 ELSE 0 END)
+  task_routinetask_daily_task_role_uv:
+    description: 每日任务(taskType=1)参与去重角色数
+    expression: COUNT(DISTINCT CASE WHEN GET_JSON_OBJECT(params,'$.taskType')='1' THEN role_id END)
+  task_routinetask_avg_per_role:
+    description: 人均任务日志条数(总行数/去重角色数，NULLIF 防除零)
+    expression: ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0), 3)
+coverage:
+  scenarios:
+    - 量化日常/每周周期任务体系的整体发生规模与角色/账号/服务器覆盖(日/周/月维度)
+    - 按 taskType 拆分每日 vs 每周任务的参与度与日志量，评估周期任务玩法渗透(角色成长)
+    - 按 server_id 下钻识别任务活跃服/异常服，辅助运营排查
+    - 人均任务日志条数反映角色周期任务完成节奏与活跃度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析粒度默认 role_id(角色级)，account_id 仅作辅助维度
+    - taskList 为数组，未对其元素(任务id/积分/状态)做展开聚合，仅统计事件行级粒度
+    - params 文档列 taskType 取值 1-每日/2-每周/4-军团每日/5-军团每周，但实测出现 3、6 等未文档化类型，类型语义待运营确认
+    - coinList 货币快照字段未纳入 metrics(本事件非付费经济核心)
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  taskType:
+    type: int
+    description: 任务类型 1-每日任务 2-每周任务 4-军团每日任务 5-军团每周任务
+  taskList:
+    type: array
+    description: 任务列表
+  taskList.id:
+    type: int
+    description: 任务id
+  taskList.point:
+    type: int
+    description: taskList.point
+  taskList.status:
+    type: int
+    description: 任务状态
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=34883, role_uv=3956, acc_uv=3731, server_uv=466；taskType 分布 1=21719/2=7086/3=3574/6=2504，数据合理。
+coverage_status: analyst_confirmed
+external_refs: []

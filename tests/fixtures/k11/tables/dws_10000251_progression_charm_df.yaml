@@ -1,0 +1,91 @@
+table_name: dws_10000251_progression_charm_df
+engine: maxcompute
+table_comment: 灵器培养状态总表
+description: |-
+  灵器培养（卡牌/灵器）状态日全量快照总表，按角色(role_id)维度记录每个角色持有的灵器培养状态。
+  粒度：日全量快照(_df)，每行=角色×灵器维度的一条培养记录。
+  主体：角色(role_id 主键，对应 user_type=3 角色主体)。
+  主要字段：role_id, server_id, charm_id, charm_star, act_tm_fst, act_tm_lst, ds。
+domains:
+  - 角色成长
+  - 装备道具
+granularity: 日全量快照(_df)，角色(role_id)×灵器(charm_id)维度
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 服务器id
+    role: dimension
+  - name: charm_id
+    type: bigint
+    comment: 卡牌ID
+    role: dimension
+  - name: charm_star
+    type: bigint
+    comment: 卡牌星级
+    role: measure
+  - name: act_tm_fst
+    type: datetime
+    comment: 获取时间
+    role: attribute
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近培养时间
+    role: attribute
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  charm_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 持有灵器的角色UV（日全量快照去重角色数）
+  charm_record_cnt:
+    expression: COUNT(*)
+    description: 灵器培养记录总数（日全量快照行数，角色×灵器粒度）
+  charm_star_sum:
+    expression: SUM(charm_star)
+    description: 灵器星级总和（日全量快照累加，体现培养投入度）
+  charm_star_avg:
+    expression: SUM(charm_star) / NULLIF(COUNT(*), 0)
+    description: 平均灵器星级（每条培养记录的平均星级，NULLIF 防零除）
+  charm_kind_cnt:
+    expression: COUNT(DISTINCT charm_id)
+    description: 灵器种类数（日全量快照去重灵器ID数）
+coverage:
+  scenarios:
+    - 监控每日持有灵器的角色规模与活跃培养规模(charm_role_uv, charm_record_cnt)
+    - 评估灵器培养强度与人均投入(charm_star_sum, charm_star_avg)
+    - 跟踪灵器种类覆盖度(charm_kind_cnt)，辅助灵器系统调优
+  limitations:
+    - 仅 scout 抽样验证，未做全量 maxc 实测复核（已在 latest ds=20260730 抽样验证 5 指标合理）
+    - _df 为日全量快照，指标为快照口径而非当日增量；跨日对比需注意口径
+    - 缺少角色等级/付费分层维度，无法直接拆分付费/非付费角色培养差异
+    - charm_id 维度仅有少量种类（抽样观测 7 种），低基数聚合需注意
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已在 latest ds=20260730 抽样验证 COUNT/SUM/UV 指标合理（cnt=119745, uv=65928, charms=7, star_sum=169811, max_star=5）
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (服务器id) is the server FK; dim_10000251_server_info (PK server_id) provides 区服名称/开服时间 dimension attributes.
+    origin: deterministic
+  - dim_table: dim_10000251_charm_info
+    join_keys:
+      - dws_column: charm_id
+        dim_column: charm_id
+    derivation: DWS charm_id (灵器ID) exactly matches dim_10000251_charm_info PK charm_id (灵器配置维度表).
+    origin: deterministic
+pref_label: 灵器培养总表
+alt_labels:
+  - 灵器
+  - 培养
+  - 养成
+  - 装备

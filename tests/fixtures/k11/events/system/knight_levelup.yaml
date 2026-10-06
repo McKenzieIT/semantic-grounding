@@ -1,0 +1,117 @@
+name: game.knight.levelup
+event_filter: event = 'game.knight.levelup'
+description: 武将升级事件：角色对其麾下武将执行升级时触发的行为日志，记录武将id、升级后等级及角色快照（等级/战力/vip/经验/多类货币）。分析主体为 role_id（角色），按武将维度可统计升级频次与等级分布。实测 ds=20260729 单日命中 cnt=36002，role_uv=2284，acc_uv=2169，server_uv=152。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightId:
+    type: int
+    description: 武将id
+  knightLevel:
+    type: int
+    description: 等级
+metrics:
+  knight_levelup_cnt:
+    description: 武将升级事件总次数（COUNT(*)）
+    expression: COUNT(*)
+  knight_levelup_role_uv:
+    description: 触发武将升级的去重角色数（主体粒度 role_id）
+    expression: COUNT(DISTINCT role_id)
+  knight_levelup_account_uv:
+    description: 触发武将升级的去重账号数
+    expression: COUNT(DISTINCT account_id)
+  knight_levelup_server_uv:
+    description: 涉及游戏服去重数
+    expression: COUNT(DISTINCT server_id)
+  knight_levelup_knight_uv:
+    description: 被升级的去重武将数（按 knightId）
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.knightId'))
+  knight_levelup_level_sum:
+    description: 升级后武将等级累计求和（可用于估算总升级量级）
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.knightLevel') AS BIGINT))
+  knight_levelup_avg_level:
+    description: 触发升级角色的平均武将升级次数（升级事件数/去重角色数，NULLIF 防除零）
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+coverage:
+  scenarios:
+    - 武将养成热度：通过升级事件次数与去重角色数评估武将养成系统的活跃度与渗透率
+    - 升级集中度：通过 avg_level（人均升级次数）判断升级是否集中在少数重度角色
+    - 武将覆盖广度：通过 knight_uv 衡量玩家养成武将的多样性
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核（多日趋势/周间波动未验证）
+    - 分析主体默认 role_id（角色粒度），尚未交叉验证 account_id 跨服多角色叠加情况
+    - knightId/knightLevel 取自 params 的 GET_JSON_OBJECT 解析，未校验空值率；若个别日志缺字段可能被 CAST 视为 NULL
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: ds=20260729 scout 实测 cnt=36002, role_uv=2284, acc_uv=2169, server_uv=152；量级合理（武将养成高频事件），单日数据可信。
+coverage_status: analyst_confirmed
+external_refs: []

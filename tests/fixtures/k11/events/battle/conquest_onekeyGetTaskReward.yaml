@@ -1,0 +1,124 @@
+name: game.conquest.onekeyGetTaskReward
+event_filter: event = 'game.conquest.onekeyGetTaskReward'
+description: 讨伐(Conquest)任务一键领奖事件：玩家在讨伐系统中一键领取已完成的多个任务/塔层奖励时上报(奖励含充值钻石/紫金/经验卷轴/体力/经验等，携带讨伐塔ID towerId 与本次领取的奖励 id 列表 addIds)。分析粒度为角色(role_id)，每个角色每次一键领奖产生一条日志。真实实测 ds=20260729 与 ds=20260728 均为零命中(疑似事件下线/未触发或未接入上报)。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  towerId:
+    type: int
+    description: 讨伐塔ID
+  addIds:
+    type: array
+    description: 领取到的id列表
+metrics:
+  game_conquest_onekeyGetTaskReward_cnt:
+    expression: COUNT(*)
+    description: 讨伐任务一键领奖事件总条数
+  game_conquest_onekeyGetTaskReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 去重一键领奖角色数
+  game_conquest_onekeyGetTaskReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 去重一键领奖账号数
+  game_conquest_onekeyGetTaskReward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 去重涉及游戏服数
+  game_conquest_onekeyGetTaskReward_tower_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.towerId'))
+    description: 去重讨伐塔ID数（玩法覆盖广度）
+  game_conquest_onekeyGetTaskReward_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 奖励发放充值钻石总量
+  game_conquest_onekeyGetTaskReward_energy_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.energy') AS BIGINT))
+    description: 奖励发放体力总量
+  game_conquest_onekeyGetTaskReward_exp_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.exp') AS BIGINT))
+    description: 奖励发放经验总量
+  game_conquest_onekeyGetTaskReward_gold_per_role:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均发放充值钻石量
+coverage:
+  scenarios:
+    - 讨伐任务一键领奖的参与角色数、账号数与游戏服覆盖度（活跃度与渗透）
+    - 讨伐塔(towerId)覆盖广度与一键领取频次（玩法参与度）
+    - 奖励货币/经验/体力总产出与人均产出（经济产出与单角色价值）
+  limitations:
+    - 日志中零命中(ds=20260729/ds=20260728 cnt=0)，疑似事件下线/未触发或未接入上报；指标表达式为预期口径，待事件恢复后复测
+    - 仅 ds=20260729/ds=20260728 单日 scout 实测（均零命中），未做全量复核
+    - 分析粒度默认 role_id（事件 params.roleId 为角色id，未独立校验去重语义）
+    - coinList.diamond(紫金)/sendgold/freegold/expCoin 在事件恢复后可能为零或NULL，仅 gold/energy/exp 列入产出指标
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 cnt=0, role_uv=0, acc_uv=0, server_uv=0; 回退 ds=20260728 仍 cnt=0; 事件疑似下线/未触发，保持 draft
+coverage_status: draft
+external_refs: []

@@ -1,0 +1,117 @@
+name: game.equip.unware
+event_filter: event = 'game.equip.unware'
+description: 装备脱下事件：角色卸下装备，携带装备列表uids、武将knightId与副事件subEvent。分析粒度为角色(role_id)；单日实测ds=20260729计163条/22角色UV/22账号UV/20服。
+domains:
+  - 装备道具
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  uids:
+    type: array
+    description: 要脱下的装备列表
+  knightId:
+    type: int
+    description: 武将id
+  subEvent:
+    type: int
+    description: 副事件
+metrics:
+  game_equip_unware_cnt:
+    expression: COUNT(*)
+    description: 装备脱下事件总次数
+  game_equip_unware_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 脱下装备的去重角色数（分析主体：role_id）
+  game_equip_unware_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 脱下装备的去重账号数
+  game_equip_unware_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 脱下装备涉及的去重服务器数
+  game_equip_unware_knight_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.knightId'))
+    description: 脱下装备涉及的去重武将数
+  game_equip_unware_role_per_server:
+    expression: COUNT(DISTINCT role_id) / NULLIF(COUNT(DISTINCT server_id), 0)
+    description: 平均每服脱装角色数
+coverage:
+  scenarios:
+    - 装备脱下行为总量与角色/账号覆盖（脱装活跃度）
+    - 脱装涉及的服务器分布与平均每服角色数
+    - 脱装涉及的武将(knightId)分布
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体粒度默认 role_id（脱下行为由角色触发）
+    - uids 为脱下装备数组，单条事件可含多件装备，未在指标层展开数组计数
+    - knightId/subEvent 取自 params JSON，空值或缺失计为 NULL，去重统计予以忽略
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+coverage_status: analyst_confirmed
+external_refs: []

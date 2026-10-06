@@ -1,0 +1,164 @@
+table_name: dws_10000251_play_pvp_df
+engine: maxcompute
+table_comment: 玩法PVP总表（角色粒度，日全量快照）
+description: |-
+  玩法PVP总表：记录每个角色在演武场(异步,play_func_id=109)/校武场(同步,play_func_id=3)等PVP玩法下的积分、段位、排名及进攻/防守挑战次数与阵容快照。
+  主体：角色(role_id)。
+  粒度：日全量快照(_df)，按 ds + role_id + play_func_id 去重，每日全量刷新角色级PVP状态。
+  主要字段：role_id, server_id, play_func_id, season, score, rank_level, rank, atk_pv_daily, atk_win_pv_daily, def_pv_daily, def_win_pv_daily 等25列。
+domains:
+  - 战斗关卡
+granularity: 日全量快照(_df)，角色粒度(role_id)
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: play_func_id
+    type: string
+    comment: PVP类型，109-演武场（异步） 3-校武场（同步）
+    role: dimension
+  - name: season
+    type: string
+    comment: 赛季
+    role: dimension
+  - name: score
+    type: bigint
+    comment: 最新积分
+    role: measure
+  - name: rank_level
+    type: string
+    comment: 最新段位
+    role: dimension
+  - name: rank
+    type: bigint
+    comment: 最新排名
+    role: measure
+  - name: atk_card_list
+    type: string
+    comment: 进攻武将列表，最后一次挑战使用的武将列表
+    role: dimension
+  - name: atk_lineup
+    type: string
+    comment: 进攻阵容，最后一次挑战使用的阵容
+    role: dimension
+  - name: atk_lineup_group
+    type: string
+    comment: 进攻阵营
+    role: dimension
+  - name: atk_pv_daily
+    type: bigint
+    comment: 当日挑战次数
+    role: measure
+  - name: atk_win_pv_daily
+    type: bigint
+    comment: 当日挑战胜利次数
+    role: measure
+  - name: atk_pv_season
+    type: bigint
+    comment: 累计挑战次数（赛季）
+    role: measure
+  - name: atk_win_pv_season
+    type: bigint
+    comment: 累计挑战胜利次数（赛季）
+    role: measure
+  - name: def_card_list
+    type: string
+    comment: 防守武将列表，仅异步PVP
+    role: dimension
+  - name: def_lineup
+    type: string
+    comment: 防守阵容，仅异步PVP
+    role: dimension
+  - name: def_lineup_group
+    type: string
+    comment: 防守阵营，仅异步PVP
+    role: dimension
+  - name: def_layout_list
+    type: string
+    comment: 防守战场布置列表，仅异步PVP
+    role: dimension
+  - name: def_stra_list
+    type: string
+    comment: 防守策略列表，仅异步PVP
+    role: dimension
+  - name: def_pv_daily
+    type: bigint
+    comment: 当日防守次数，仅异步PVP
+    role: measure
+  - name: def_win_pv_daily
+    type: bigint
+    comment: 当日防守胜利次数，仅异步PVP
+    role: measure
+  - name: def_pv_season
+    type: bigint
+    comment: 累计防守次数（赛季），仅异步PVP
+    role: measure
+  - name: def_win_pv_season
+    type: bigint
+    comment: 累计防守胜利次数（赛季），仅异步PVP
+    role: measure
+  - name: box_card_list
+    type: string
+    comment: BOX列表，仅同步PVP
+    role: dimension
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  pvp_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: PVP参与角色数（快照去重角色数，按 play_func_id 可拆分演武场/校武场）
+  atk_pv_daily_sum:
+    expression: SUM(atk_pv_daily)
+    description: 当日挑战总次数（全角色求和）
+  atk_win_rate_daily:
+    expression: SUM(atk_win_pv_daily) / NULLIF(SUM(atk_pv_daily), 0)
+    description: 当日挑战胜率（胜利次数/挑战次数，0-1）
+  def_win_rate_daily:
+    expression: SUM(def_win_pv_daily) / NULLIF(SUM(def_pv_daily), 0)
+    description: 当日防守胜率（仅异步PVP有效，胜利次数/防守次数，0-1）
+  avg_score:
+    expression: AVG(score)
+    description: 角色平均最新积分
+coverage:
+  scenarios:
+    - 角色级PVP参与规模与活跃度（快照UV、当日挑战次数）
+    - PVP胜负表现（当日挑战/防守胜率，区分同步/异步玩法）
+    - 角色竞技水平分布（平均积分、段位、排名）
+  limitations:
+    - 表为空/无数据（SELECT MAX(ds) 返回 NULL，无法做指标抽样验证）
+    - 仅 scout 结构化建模，未做全量 maxc 实测复核
+    - _df 为日全量快照，指标为快照口径（COUNT DISTINCT 即快照UV、SUM 为快照合计），非当日增量
+    - def_* 字段仅异步PVP(play_func_id=109)有意义；同步PVP(play_func_id=3)防守口径缺失
+    - 武将/阵容/BOX为字符串列表字段，未结构化为可聚合维度
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表空（MAX(ds) NULL），指标为结构化草稿，仅 schema 校验通过，未做数据抽样验证
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (comment 区服id) exactly matches the PK server_id of dim_10000251_server_info, the canonical 区服 dimension for server name/opening date lookup.
+    origin: deterministic
+  - dim_table: dim_10000251_trans_pvp_rank_df
+    join_keys:
+      - dws_column: play_func_id
+        dim_column: play_func_id
+      - dws_column: rank_level
+        dim_column: id
+    derivation: DWS play_func_id (PVP类型) exactly matches and rank_level (comment 最新段位) semantically matches the PK id (段位等级) of dim_10000251_trans_pvp_rank_df, the PVP段位 dimension explicitly keyed by (play_func_id, id) for fact-table rank-name lookup.
+pref_label: PVP对战表
+alt_labels:
+  - PVP
+  - 对战
+  - 演武
+  - 竞技

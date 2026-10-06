@@ -1,0 +1,256 @@
+table_name: dws_10000251_univ_role_churn_di
+engine: maxcompute
+table_comment: 角色流失日增量汇总表（_di）：记录当日新增的流失角色(user_type=3)及其累计活跃、付费、设备/渠道、流失天数等画像。
+description: |-
+  粒度：日增量(_di)，每行=当日新增的1个流失角色。分析主体=角色（user_type=3，meta+SELECT DISTINCT 实测）。
+  主要字段：user_type, user_id, os_id, ch_type, pkg_name, act_tm_fst, act_tm_lst, pay_tm_fst, pay_amt_std, act_days_std, churn_day 等49列。
+  覆盖：流失规模(UV)、流失角色付费总额、流失付费角色ARPU、流失角色平均活跃天数。
+domains:
+  - 用户生命周期
+  - 付费经济
+granularity: 日增量(_di)；角色粒度（user_type=3，每行1角色）
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，1-设备、2-账号、3-角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: os_id
+    type: bigint
+    comment: 平台
+    role: dimension
+  - name: ch_type
+    type: string
+    comment: 渠道
+    role: dimension
+  - name: pkg_name
+    type: string
+    comment: 包
+    role: dimension
+  - name: act_tm_fst
+    type: datetime
+    comment: 首次活跃时间
+    role: dimension
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近活跃时间
+    role: dimension
+  - name: pay_tm_fst
+    type: datetime
+    comment: 首次付费时间
+    role: dimension
+  - name: pay_tm_lst
+    type: datetime
+    comment: 最近付费时间
+    role: dimension
+  - name: act_days_std
+    type: bigint
+    comment: 累计活跃天数
+    role: measure
+  - name: act_dur_std
+    type: int
+    comment: 累计活跃时长
+    role: measure
+  - name: pay_amt_std
+    type: decimal
+    comment: 累计付费金额，单位：元
+    role: measure
+  - name: act_ymd_prev
+    type: string
+    comment: 上一个活跃日期
+    role: dimension
+  - name: act_ymd_diff
+    type: bigint
+    comment: 最近2个活跃日期间隔
+    role: measure
+  - name: attr_ad_id
+    type: string
+    comment: 买量标识
+    role: dimension
+  - name: act_ip_fst
+    type: string
+    comment: 首次活跃ip
+    role: dimension
+  - name: act_location_fst
+    type: string
+    comment: 首次活跃地理位置
+    role: dimension
+  - name: act_ip_lst
+    type: string
+    comment: 最近活跃ip
+    role: dimension
+  - name: act_location_lst
+    type: string
+    comment: 最近活跃地理位置
+    role: dimension
+  - name: region_id
+    type: string
+    comment: 地区
+    role: dimension
+  - name: rel_role_srv_fst
+    type: string
+    comment: 首次关联角色区服
+    role: dimension
+  - name: rel_role_srv_lst
+    type: string
+    comment: 最近关联角色区服
+    role: dimension
+  - name: fellow_flag
+    type: int
+    comment: 内部用户标记，1-内部用户、0-非内部用户
+    role: dimension
+  - name: pay_amt_f1d
+    type: decimal
+    comment: 新增当日付费金额，单位：元
+    role: measure
+  - name: pay_amt_p1d
+    type: decimal
+    comment: 首付当日付费金额，单位：元
+    role: measure
+  - name: dev_brand_fst
+    type: string
+    comment: 首次活跃设备品牌
+    role: dimension
+  - name: dev_model_fst
+    type: string
+    comment: 首次活跃设备型号
+    role: dimension
+  - name: dev_brand_lst
+    type: string
+    comment: 最近活跃设备品牌
+    role: dimension
+  - name: dev_model_lst
+    type: string
+    comment: 最近活跃设备型号
+    role: dimension
+  - name: predown_tag
+    type: bigint
+    comment: 预下载用户标记，1-是、0-否
+    role: dimension
+  - name: test_tag
+    type: bigint
+    comment: 测试期用户标记，1-是、0-否
+    role: dimension
+  - name: ch_id
+    type: string
+    comment: 渠道id
+    role: dimension
+  - name: test_event_name
+    type: string
+    comment: 测试期大事件名
+    role: dimension
+  - name: pay_amt_l7d
+    type: decimal
+    comment: 最近7日付费金额，单位：元
+    role: measure
+  - name: pay_amt_l30d
+    type: decimal
+    comment: 最近30日付费金额，单位：元
+    role: measure
+  - name: pay_amt_l90d
+    type: decimal
+    comment: 最近90日付费金额，单位：元
+    role: measure
+  - name: pay_amt_l180d
+    type: decimal
+    comment: 最近180日付费金额，单位：元
+    role: measure
+  - name: pay_amt_l360d
+    type: decimal
+    comment: 最近360日付费金额，单位：元
+    role: measure
+  - name: pay_amt_f2d
+    type: decimal
+    comment: 新增首2日付费金额，单位：元
+    role: measure
+  - name: pay_amt_f3d
+    type: decimal
+    comment: 新增首3日付费金额，单位：元
+    role: measure
+  - name: pay_amt_f7d
+    type: decimal
+    comment: 新增首7日付费金额，单位：元
+    role: measure
+  - name: pay_amt_f30d
+    type: decimal
+    comment: 新增首30日付费金额，单位：元
+    role: measure
+  - name: os_id_lst
+    type: bigint
+    comment: 最近平台
+    role: dimension
+  - name: ch_type_lst
+    type: string
+    comment: 最近渠道
+    role: dimension
+  - name: ch_id_lst
+    type: string
+    comment: 最近渠道id
+    role: dimension
+  - name: pkg_name_lst
+    type: string
+    comment: 最近包
+    role: dimension
+  - name: web_pay_amt_std
+    type: decimal
+    comment: 累计web付费金额，单位：元
+    role: measure
+  - name: churn_day
+    type: int
+    comment: 用户流失天数
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区字段
+    role: partition
+metrics:
+  churn_role_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 当日新增流失角色数（_di日增量，UV）。实测 ds=20260730 得 4114。
+  churn_pay_amt_total:
+    expression: SUM(pay_amt_std)
+    description: 流失角色累计付费总额（元，全量求和）。实测 ds=20260730 得 525356.0。
+  churn_pay_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN user_id END)
+    description: 流失角色中的付费角色数。实测 ds=20260730 得 972。
+  churn_pay_arpu:
+    expression: SUM(pay_amt_std) / NULLIF(COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN user_id END), 0)
+    description: 流失付费角色ARPU=流失付费总额/流失付费角色数（元/人，NULLIF防除零）。
+  churn_avg_act_days:
+    expression: SUM(act_days_std) / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 流失角色平均累计活跃天数=累计活跃天数和/流失角色数（NULLIF防除零）。
+coverage:
+  scenarios:
+    - 按 ds 监控每日新增流失角色规模（churn_role_uv），定位流失高峰日
+    - 结合 churn_pay_amt_total / churn_pay_role_uv 评估流失造成的付费损失与付费流失占比
+    - 通过 churn_pay_arpu 与 churn_avg_act_days 识别高价值/高黏性流失角色画像
+    - 可按 os_id/ch_type/pkg_name/region_id/rel_role_srv_lst 等维度下钻流失结构
+  limitations:
+    - 仅抽样验证 ds=20260730（最新分区）的 5 个核心指标，未做全量 maxc 实测复核；其余指标为结构化定义
+    - _di 为日增量，跨 ds 汇总需重新聚合；本表不提供历史回填快照（_df 语义见对应 _df 表）
+    - churn_day（流失天数）在 _di 中随分区递增，跨日 SUM(churn_day) 会重复计数，不可直接跨日加总
+    - 未覆盖设备/区服等长尾维度的基数核查；流失定义口径（阈值）由上游 DWS 确定，本层不重算
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已对最新分区 ds=20260730 抽样验证 5 个核心指标（churn_role_uv=4114, churn_pay_amt_total=525356, churn_pay_role_uv=972, churn_pay_arpu≈540.3, churn_avg_act_days≈19.0），值合理；user_type=3 单值与角色主体推断一致。仅抽样验证，未全量复核。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: rel_role_srv_fst
+        dim_column: server_id
+      - dws_column: rel_role_srv_lst
+        dim_column: server_id
+    derivation: DWS rel_role_srv_fst/rel_role_srv_lst (comment 首次/最近关联角色区服) store server (区服) ids; dim_10000251_server_info has PK server_id and is the 服务器(区服)维度配置表 explicitly meant for fact tables to JOIN via server_id to backfill server name/open date.
+pref_label: 角色流失日表
+alt_labels:
+  - 流失
+  - 流失用户
+  - 流失角色
+  - 流失率
+  - 流失预警
+  - 沉默

@@ -1,0 +1,108 @@
+table_name: dws_10000251_role_pvp_feature_di
+engine: maxcompute
+table_comment: 活跃角色PVP画像日表
+description: |-
+  活跃角色PVP画像日表。
+  粒度：日增量(_di)。分析主体=角色（user_type=3）。
+  主要字段：role_id, arena_pvp_score, arena_pvp_rank, arena_battle_times, arena_win_times, arena_lose_times, auto_pvp_score, auto_pvp_rank 等13列。
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 日增量(_di)；分析主体=角色（user_type=3，由表名 role 推断，表内无 user_type 列未做实测复核）
+columns:
+  - name: role_id
+    type: STRING
+    comment: 角色id
+    role: dimension
+  - name: arena_pvp_score
+    type: BIGINT
+    comment: 同步PVP分数
+    role: measure
+  - name: arena_pvp_rank
+    type: BIGINT
+    comment: 同步PVP段位
+    role: dimension
+  - name: arena_battle_times
+    type: BIGINT
+    comment: 同步PVP场次
+    role: measure
+  - name: arena_win_times
+    type: BIGINT
+    comment: 同步PVP胜场
+    role: measure
+  - name: arena_lose_times
+    type: BIGINT
+    comment: 同步PVP败场
+    role: measure
+  - name: auto_pvp_score
+    type: BIGINT
+    comment: 自动PVP分数
+    role: measure
+  - name: auto_pvp_rank
+    type: BIGINT
+    comment: 自动PVP段位
+    role: dimension
+  - name: auto_battle_times
+    type: BIGINT
+    comment: 自动PVP场次
+    role: measure
+  - name: auto_win_times
+    type: BIGINT
+    comment: 自动PVP胜场
+    role: measure
+  - name: auto_lose_times
+    type: BIGINT
+    comment: 自动PVP败场
+    role: measure
+  - name: auto_battle_atk_times
+    type: BIGINT
+    comment: 自动PVP攻方场次
+    role: measure
+  - name: ds
+    type: STRING
+    comment: 分区
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日参与PVP的活跃角色数（去重）
+  arena_total_battles:
+    expression: SUM(arena_battle_times)
+    description: 同步PVP当日总场次
+  auto_total_battles:
+    expression: SUM(auto_battle_times)
+    description: 自动PVP当日总场次
+  arena_win_rate:
+    expression: SUM(arena_win_times) / NULLIF(SUM(arena_battle_times), 0)
+    description: 同步PVP胜率（胜场/总场次）
+  auto_win_rate:
+    expression: SUM(auto_win_times) / NULLIF(SUM(auto_battle_times), 0)
+    description: 自动PVP胜率（胜场/总场次）
+coverage:
+  scenarios:
+    - 角色PVP活跃规模与胜率画像（同步PVP与自动PVP分别评估）
+    - PVP胜负场次分布对比，识别高参与/高胜率角色群体
+  limitations:
+    - 表内无 user_type 列，主体=角色（user_type=3）由表名 role 推断，未做 SELECT DISTINCT 实测复核
+    - _di 为日增量，未做与 _df 全量快照的交叉对账
+    - 仅对 latest ds=20260730 做了 1 次聚合抽样验证（uv/场次/胜场均合理），未做全量历史复核
+    - score/rank 段位字段在历史样本中存在 NULL（未参与PVP角色），聚合时未纳入
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 对 latest ds=20260730 抽样验证 role_uv=6214、arena_total_battles=2420、auto_total_battles=63742、arena_win=1450、auto_win=31871，聚合值合理，定为 analyst_confirmed；user_type 主体未实测。
+dimension_refs:
+  - dim_table: dim_10000251_trans_arena_rank_info_df
+    join_keys:
+      - dws_column: arena_pvp_rank
+        dim_column: rank_id
+    derivation: DWS column arena_pvp_rank (role:dimension, comment 同步PVP段位; 同步PVP即竞技场 per other DWS comments) is the arena-tier identifier matching primary key rank_id of dim_10000251_trans_arena_rank_info_df (竞技场段位配置维度表, described as 事实表段位维 lookup via rank_id).
+  - dim_table: dim_10000251_auto_pvp_rank_info
+    join_keys:
+      - dws_column: auto_pvp_rank
+        dim_column: rank_id
+    derivation: DWS column auto_pvp_rank (role:dimension, comment 自动PVP段位) is the auto-PVP tier identifier matching primary key rank_id of dim_10000251_auto_pvp_rank_info (auto pvp rank 段位配置表, described as purpose-built for fact-table rank_id join).
+pref_label: 角色PVP画像日表
+alt_labels:
+  - 段位

@@ -1,0 +1,212 @@
+name: game.rogue.shop
+event_filter: event = 'game.rogue.shop'
+description: 古战场-商店购买/刷新行为埋点。记录玩家在古战场（rogue）副本商店中执行购买（action=1）或刷新（action=2）货架的每一次操作，含消费的战场币（coinCost）、剩余战场币（coinLeft）、章节（chapter）、难度（difficulty）、rogue阶段（rogueStage）、选购选项（choice：祝福/将魂/奇珍）及商店刷新后的buff/将魂/奇珍货架状态。分析主体粒度为 role_id（角色），可按 server_id 拆分到游戏服。ds=20260729 实测单日 cnt=617、role_uv=100、acc_uv=99、server_uv=41、战场币消费 54701、购买 587 次、刷新 30 次。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  playId:
+    type: string
+    description: 唯一标识一次古战场副本挑战
+  chapter:
+    type: int
+    description: 章节
+  difficulty:
+    type: int
+    description: 难度
+  step:
+    type: int
+    description: 步数
+  action:
+    type: int
+    description: 行为 1：购买 2：刷新
+  choice:
+    type: array
+    description: 选项列表
+  choice.type:
+    type: int
+    description: 1 祝福 2 将魂 3 奇珍
+  choice.id:
+    type: int
+    description: id
+  choice.name:
+    type: string
+    description: 名字
+  choice.choose:
+    type: int
+    description: 是否被选择 1：是 0：否
+  coinCost:
+    type: int
+    description: 消费的战场币
+  coinLeft:
+    type: int
+    description: 剩余战场币
+  buff:
+    type: array
+    description: buff列表
+  buff.id:
+    type: int
+    description: buff的id
+  buff.name:
+    type: string
+    description: buff名称
+  buff.level:
+    type: int
+    description: 强化等级
+  buff.quality:
+    type: int
+    description: buff品质
+  buff.suitId:
+    type: int
+    description: 套装id
+  soul:
+    type: array
+    description: 将魂列表
+  soul.id:
+    type: int
+    description: 将魂id
+  soul.suitId:
+    type: int
+    description: 套装id
+  soul.suitNum:
+    type: int
+    description: 套装下将魂数量
+  treasure:
+    type: array
+    description: 奇珍列表
+  treasure.id:
+    type: int
+    description: 奇珍id
+  treasure.name:
+    type: string
+    description: 奇珍名
+  treasure.quality:
+    type: int
+    description: 奇珍品质
+  rogueStage:
+    type: int
+    description: 阶段
+metrics:
+  game_rogue_shop_cnt:
+    expression: COUNT(*)
+    description: 古战场商店操作总次数（购买+刷新）
+  game_rogue_shop_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发商店操作的去重角色数
+  game_rogue_shop_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发商店操作的去重账号数
+  game_rogue_shop_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发商店操作的去重游戏服数
+  game_rogue_shop_buy_cnt:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params,'$.action') AS BIGINT)=1 THEN 1 ELSE 0 END)
+    description: 购买行为次数（action=1）
+  game_rogue_shop_refresh_cnt:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params,'$.action') AS BIGINT)=2 THEN 1 ELSE 0 END)
+    description: 刷新货架行为次数（action=2）
+  game_rogue_shop_coincost_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.coinCost') AS BIGINT))
+    description: 消费的战场币总量
+  game_rogue_shop_coincost_per_role:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.coinCost') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id),0)
+    description: 人均战场币消费（消费总量/去重角色数）
+  game_rogue_shop_buy_rate:
+    expression: SUM(CASE WHEN CAST(GET_JSON_OBJECT(params,'$.action') AS BIGINT)=1 THEN 1 ELSE 0 END) / NULLIF(COUNT(*),0)
+    description: 购买行为占比（购买次数/总操作次数）
+coverage:
+  scenarios:
+    - 古战场商店参与度与渗透（角色/账号/游戏服 UV、人均操作次数）
+    - 商店行为结构（购买 vs 刷新占比，货架刷新频率）
+    - 战场币消耗规模与人均消耗（资源产出投放验证、商店定价对消耗的贡献）
+    - 章节/阶段分布对商店消耗的影响（需配合 chapter、rogueStage 维度筛选）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度），账号粒度需改用 account_id
+    - coinCost 为古战场战场币（游戏内货币），非真实付费金额，不纳入付费经济口径
+    - 货架内容（buff/将魂/奇珍选项）的选购偏好分析需按 GET_JSON_OBJECT(params,'$.choice') 等子字段进一步展开
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: ds=20260729 scout 实测：cnt=617, role_uv=100, acc_uv=99, server_uv=41, coinCost_sum=54701, buy_cnt=587, refresh_cnt=30；数字合理，事件在线正常触发
+coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_trans_rogue_df
+    join_keys:
+      - dws_column: difficulty
+        dim_column: difficulty
+    derivation: 确定性：事件字段 difficulty 与 dim_10000251_trans_rogue_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_rogue_df_arch
+    join_keys:
+      - dws_column: difficulty
+        dim_column: difficulty
+    derivation: 确定性：事件字段 difficulty 与 dim_10000251_trans_rogue_df_arch 主键精确同名
+    origin: deterministic

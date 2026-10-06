@@ -1,0 +1,124 @@
+name: game.team.setTeamKnight
+event_filter: event = 'game.team.setTeamKnight'
+description: 设置阵容武将事件：玩家设置阵容(teamId)上阵武将列表(knights)时上报。分析主体为 role_id（角色粒度），可按 account_id 汇总到账号、按 server_id 汇总到游戏服。包含阵容id、武将列表、角色等级/战力/vip等上下文。scout 实测 ds=20260729：事件数 196770，角色 UV 4187，账号 UV 3942，服务器数 465。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  teamId:
+    type: int
+    description: 阵容id
+  knights:
+    type: array
+    description: 武将列表
+  mainCharm:
+    type: array
+    description: mainCharm
+  assistCharm:
+    type: array
+    description: assistCharm
+  spCaptain:
+    type: int
+    description: spCaptain
+metrics:
+  team_setTeamKnight_cnt:
+    expression: COUNT(*)
+    description: 阵容武将设置事件总次数
+  team_setTeamKnight_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 设置过阵容武将的去重角色数
+  team_setTeamKnight_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 设置过阵容武将的去重账号数
+  team_setTeamKnight_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 覆盖的去重游戏服数
+  team_setTeamKnight_team_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.teamId'))
+    description: 被设置的去重阵容id数（阵容配置多样性）
+  team_setTeamKnight_avg_per_role:
+    expression: COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 平均每个角色设置阵容武将的次数
+coverage:
+  scenarios:
+    - 阵容武将设置参与度（日活角色/账号数）
+    - 阵容配置多样性（去重 teamId 数量）
+    - 服务器覆盖广度（去重 server_id 数量）
+    - 人均设置频次（事件数/角色UV）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色事件），未独立核对 teamId 全局唯一性
+    - knights 数组长度等明细维度未在 scout 阶段展开核对
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729，event=game.team.setTeamKnight，cnt=196770 / role_uv=4187 / acc_uv=3942 / server_uv=465，数据合理
+external_refs: []

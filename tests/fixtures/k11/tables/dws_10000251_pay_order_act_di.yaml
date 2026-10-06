@@ -1,0 +1,91 @@
+table_name: dws_10000251_pay_order_act_di
+engine: maxcompute
+table_comment: K11-活跃商品付费表
+description: |-
+  K11-活跃商品付费表(日增量)。
+  粒度：日增量(_di)，每行一条支付订单明细(order_id 可因活跃商品拆行重复)，主体为支付订单。
+  主要字段：order_id, account_id, role_id, server_id, pay_type, pay_amt, tm, ds。
+domains:
+  - 付费经济
+  - 用户生命周期
+granularity: 日增量(_di)，粒度为支付订单(order_id，活跃商品拆行可重复)
+columns:
+  - name: order_id
+    type: string
+    comment: 订单id，订单中心cp_order_id
+    role: dimension
+  - name: account_id
+    type: string
+    comment: 账号id
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: pay_type
+    type: bigint
+    comment: 付费类型，1-充值购买 2-现金券购买
+    role: dimension
+  - name: pay_amt
+    type: double
+    comment: 付费金额，货币单位RMB，单位元
+    role: measure
+  - name: tm
+    type: datetime
+    comment: 付费时间
+    role: dimension
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  pay_order_cnt:
+    expression: COUNT(DISTINCT order_id)
+    description: 日支付订单数(按 order_id 去重)
+  pay_amt_total:
+    expression: SUM(pay_amt)
+    description: 日支付金额合计(RMB 元，按行明细累加)
+  pay_acc_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 日支付账号数(UV)
+  pay_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 日支付角色数(UV)
+  arpu_per_acc:
+    expression: SUM(pay_amt) / NULLIF(COUNT(DISTINCT account_id), 0)
+    description: 账号 ARPU(元/账号，金额合计/支付账号数)
+coverage:
+  scenarios:
+    - 每日支付订单量与金额合计(付费经济核心日报)
+    - 支付账号/角色 UV 及账号 ARPU(付费转化与人均付费)
+    - 按 pay_type/server_id 下钻充值 vs 现金券购买结构
+  limitations:
+    - order_id 在活跃商品拆行场景下可重复(COUNT(DISTINCT order_id) 去重；行级 SUM(pay_amt) 累加，非按订单去重)
+    - 仅对 latest ds=20260730 抽样验证指标合理性，未做全量跨分区复核
+    - 缺渠道/商品维度列，无法做商品级付费归因
+    - _di 为日增量，跨日累计需自行按 ds 聚合
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: meta describe 核对列类型(pay_type bigint/pay_amt double)；latest ds=20260730 抽样验证 5 指标均得非空合理值(order_cnt=1329, amt_sum=57628.0, acc_uv=4364, role_uv=4699, rc=5562)。order_id 拆行重复已在 limitations 注明。
+dimension_refs:
+  - dim_table: dim_10000251_com_order_detail_info
+    join_keys:
+      - dws_column: order_id
+        dim_column: order_id
+    derivation: DWS order_id (订单id，订单中心cp_order_id) exactly matches dim_10000251_com_order_detail_info primary key order_id (商业化-订单信息维表，每订单一行，order_id 全局唯一)，用于回填订单维度商品属性。
+    origin: deterministic
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (区服id) exactly matches dim_10000251_server_info primary key server_id (区服维度配置表)，用于按区服/开服批次切片付费分析。
+    origin: deterministic
+pref_label: 活跃商品付费表
+alt_labels:
+  - 商品

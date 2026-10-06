@@ -1,0 +1,72 @@
+kind: dim
+table_name: dim_10000251_trans_resouce_type_df
+engine: maxcompute
+table_comment: 游戏内资源/道具类型的配置维度表，按 (resouce_type, resouce_value) 唯一标识一项资源，关联其名称、品质、图标、描述、引用配置表与价值等属性。
+description: '游戏 10000251 的资源/道具类型配置维度表（dim/df 日全量快照）。每行对应一项资源类型记录，以 (resouce_type, resouce_value) 复合编码作为唯一键，name 为人类可读的资源名称，并携带 quality/res/new_res/directions/table/size_ban/price 等属性列。'
+domains:
+- 系统监控
+granularity: 每 (resouce_type, resouce_value) 一行的资源/道具配置维度表（日全量快照）
+primary_key:
+- resouce_type
+- resouce_value
+primary_key_unique: true
+label_columns:
+- name
+columns:
+- name: resouce_type
+  type: string
+  comment: 资源type
+  role: dimension
+- name: resouce_value
+  type: string
+  comment: 资源value
+  role: dimension
+- name: quality
+  type: string
+  comment: 品质
+  role: dimension
+- name: name
+  type: string
+  comment: 资源名称
+  role: dimension
+- name: res
+  type: string
+  comment: 资源图标
+  role: dimension
+- name: new_res
+  type: string
+  comment: 资源图标
+  role: dimension
+- name: directions
+  type: string
+  comment: 描述
+  role: dimension
+- name: table
+  type: string
+  comment: 引用配置表
+  role: dimension
+- name: size_ban
+  type: string
+  comment: reward限制
+  role: dimension
+- name: price
+  type: string
+  comment: 道具价值
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+    type: number
+coverage:
+  scenarios:
+  - 通过 (resouce_type, resouce_value) 复合键 JOIN 到事实表/明细表，将资源编码翻译为人类可读的 name/quality/directions 等属性，用于奖励发放、道具掉落、消耗流水等分析场景的资源维度解释。
+  - 作为资源/道具维度的查找表，提供资源名称、品质、图标引用(res/new_res)、引用配置表(table)、reward限制(size_ban)、道具价值(price) 等展示属性。
+  limitations:
+  - 配置类维度表，无值度量(measure)字段；价格/数值列(quality/size_ban/price)为编码字符串，需结合业务字典二次解码后才能作为度量使用。
+  - 主键 (resouce_type, resouce_value) 为复合编码串，JOIN 事实表时需保证两侧编码口径一致（已实测 r=d=99 唯一）。
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 meta describe 校验列结构；主键唯一性已实测 (r=d=99)；配置类维度，未做业务侧口径确认，保持 draft。'

@@ -1,0 +1,170 @@
+table_name: dws_10000251_univ_role_server_act_di
+engine: maxcompute
+disambiguation:
+  term_defaults:
+    active_users: 当日有登录/行为事件的角色（日活跃）
+table_comment: ""
+description: |
+  日增量(_di)汇总表,记录每个角色在各区服(server_id)当日的活跃时长、活跃次数、活跃/新增/付费/首次付费标记以及付费金额。
+  主体类型:本表固定为 user_type=3 的【角色表】(表名含 role,依约定固定为角色口径),分析主体=角色,主体标识字段为 user_id(该列实际存储角色ID role_id;本表无独立 role_id 列)。DISTINCT user_type 仅返回单一值 3(建议用 SELECT DISTINCT user_type 复核)。
+  粒度:每 角色(user_id,即 role_id)+ 区服(server_id)每天一行,为日增量而非全量快照,跨天累计需先按 ds 分区聚合。
+  能回答的业务问题:各区服当日活跃角色数/活跃时长分布、新增角色数、付费角色数与付费金额、首充角色数、付费转化率、活跃次数(登录频次)、跨区服活跃与付费对比、ARPPU、ARPU、新增占活跃比。
+  注意事项:(1) _di 为日增量,做累计/留存类分析须配合 ds 分区;(2) 本表主体固定为角色(user_type=3),不存在设备/账号口径切换,无需也不能按 user_type 切换主体层级;(3) act/act_fst/pay/pay_fst 为 0/1 标记列,SUM 即得对应人数;(4) ext_info 为 JSON 扩展字段,使用前需解析;(5) 指标字典见 metrics,可替代事件源见 supersedes。
+domains:
+  - 角色成长
+  - 付费经济
+granularity: |
+  日增量(_di),每 角色(user_id,即 role_id)+ 区服(server_id)每天一行。
+  主体类型:本表固定为【角色表】,user_type 恒为 3,分析主体=角色,主体标识字段为 user_id(实际存储角色ID role_id;本表无独立 role_id 列)。DISTINCT user_type 仅返回单一值 3(建议用 SELECT DISTINCT user_type 复核)。
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: act_dur
+    type: int
+    comment: 活跃时长，单位：秒
+    role: measure
+  - name: pay_amt
+    type: decimal
+    comment: 付费金额，单位：元
+    role: measure
+  - name: act
+    type: int
+    comment: 活跃标记，1-活跃、0-非活跃
+    role: measure
+  - name: act_fst
+    type: int
+    comment: 新增标记，新增即首次活跃，1-新增、0-非新增
+    role: measure
+  - name: pay
+    type: int
+    comment: 付费标记，1-付费、0-非付费
+    role: measure
+  - name: pay_fst
+    type: int
+    comment: 首次付费标记，1-首次付费、0-非首次付费
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 附加信息
+    role: attribute
+  - name: act_pv
+    type: int
+    comment: 活跃次数，用“角色登录”事件计算，每登录1次算1次活跃
+    role: measure
+  - name: ds
+    type: string
+    comment: ""
+    role: dimension
+metrics:
+  active_role_cnt:
+    expression: SUM(act)
+    description: 活跃角色数,当日有活跃行为的角色数(act 为 0/1 标记,SUM 得人数);本表固定角色口径(user_type=3)
+  new_role_cnt:
+    expression: SUM(act_fst)
+    description: 新增角色数,当日首次活跃的角色数(act_fst 为 0/1 标记)
+  pay_role_cnt:
+    expression: SUM(pay)
+    description: 付费角色数,当日有付费行为的角色数(pay 为 0/1 标记)
+  first_pay_role_cnt:
+    expression: SUM(pay_fst)
+    description: 首充角色数,当日首次付费的角色数(pay_fst 为 0/1 标记)
+  pay_amt_sum:
+    expression: SUM(pay_amt)
+    description: 付费总金额,当日该区服所有角色付费金额合计,单位:元
+  act_dur_avg:
+    expression: AVG(act_dur)
+    description: 人均活跃时长,当日活跃角色平均在线时长,单位:秒
+  act_dur_total:
+    expression: SUM(act_dur)
+    description: 总活跃时长,当日所有角色在线活跃时长合计,单位:秒
+  act_pv_avg:
+    expression: AVG(act_pv)
+    description: 人均登录频次,当日活跃角色平均登录次数
+  act_pv_total:
+    expression: SUM(act_pv)
+    description: 总登录次数,当日所有角色登录次数合计
+  pay_rate:
+    expression: SUM(pay)*1.0/NULLIF(SUM(act),0)
+    description: 付费转化率,当日付费角色数占活跃角色数比例=SUM(pay)/SUM(act),0~1 之间;用 NULLIF 防除零
+  first_pay_rate:
+    expression: SUM(pay_fst)*1.0/NULLIF(SUM(act),0)
+    description: 首充率,当日首充角色数占活跃角色数比例=SUM(pay_fst)/SUM(act),0~1 之间;用 NULLIF 防除零
+  arppu:
+    expression: SUM(pay_amt)/NULLIF(SUM(pay),0)
+    description: 付费用户人均付费金额(ARPPU),付费总金额/付费角色数,单位:元;用 NULLIF 防除零
+  arpu:
+    expression: SUM(pay_amt)/NULLIF(SUM(act),0)
+    description: 活跃用户人均付费金额(ARPU),付费总金额/活跃角色数,单位:元;用 NULLIF 防除零
+  new_role_ratio:
+    expression: SUM(act_fst)*1.0/NULLIF(SUM(act),0)
+    description: 新增占活跃比,当日新增角色数占活跃角色数比例,0~1;用 NULLIF 防除零
+  pay_amt_avg:
+    expression: AVG(pay_amt)
+    description: 笔均付费金额,当日所有角色(含未付费)平均付费金额,单位:元;与 ARPPU(仅付费)区分
+partitions:
+  - name: ds
+    type: string
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: |
+    真实数据验证通过(2026-07-30, maxc 直连 ieu_cdm)。最新分区 ds=20260729(当日 02:42 UTC 已更新,数据未停更)。
+    1) 列覆盖:meta describe 确认 12 列全部存在(user_type BIGINT/user_id STRING/server_id STRING/act_dur BIGINT/pay_amt DOUBLE/act BIGINT/act_fst BIGINT/pay BIGINT/pay_fst BIGINT/ext_info STRING/act_pv BIGINT/ds STRING),metrics 全部 16 项表达式引用列均命中,无缺失列。
+    2) 主体口径:SELECT DISTINCT user_type WHERE ds=20260729 仅返回单一值 {3},角色表(user_type=3)声明成立,无多值意外。
+    3) 核心指标实测(全表 ds=20260729):SUM(act)=4782 活跃角色数;SUM(pay)=415 付费角色数;SUM(pay_amt)=39986.0 元;AVG(act_dur)=4661.01 秒(≈78 分钟,为真实活跃时长而非 Unix 时间戳,排除移植 onlinetime≈1.7e9 陷阱);SUM(act_fst)=625 新增角色数;SUM(act_pv)=14009、AVG(act_pv)=2.93(最新分区 act_pv 全非空 4782/4782,历史分区 20250314 曾为 NULL 但不影响最新口径)。
+    4) 粒度:COUNT(*)=4782 = COUNT(DISTINCT user_id)=4782,每角色每天一行成立(主键 user_id),无多行。
+    派生指标合理性:付费转化率=415/4782≈8.68%、ARPPU=39986/415≈96.35 元、ARPU=39986/4782≈8.36 元,均落在合理区间,无荒谬值。
+    结论:列存在、主体口径成立、指标值合理、粒度成立,四项全过,提升为 analyst_confirmed。domains(角色成长/付费经济)无活动运营,无需剔除。
+coverage:
+  scenarios:
+    - 各区服当日活跃角色数、活跃时长分布与人均时长(按 server_id 聚合 SUM(act)/AVG(act_dur))
+    - 各区服当日新增角色数及新增占活跃比(SUM(act_fst)/SUM(act))
+    - 各区服当日付费角色数、付费金额、首充角色数(SUM(pay)/SUM(pay_amt)/SUM(pay_fst))
+    - 各区服付费转化率、首充率、ARPPU、ARPU(SUM(pay)/NULLIF(SUM(act),0) 等)
+    - 各区服登录频次分布与人均登录次数(SUM(act_pv)/AVG(act_pv))
+    - 跨区服活跃规模、付费规模、人均时长对比(按 server_id 分组对比)
+    - 单日区服维度付费贡献排名与首充贡献排名(ORDER BY SUM(pay_amt) DESC)
+  limitations:
+    - _di 为日增量,跨天累计/留存分析须先按 ds 分区聚合,本表单分区无法直接计算多日留存率
+    - 本表主体固定为角色(user_type=3),不存在设备/账号口径;若需设备/账号级口径须另寻对应 univ_dev/univ_acc 表
+    - 本表无独立 role_id 列,角色级分析以 user_id 作为角色标识(列名 user_id 实存 role_id)
+    - 无 LTV/留存/流失标记列,生命周期价值与留存率指标需配合生命周期宽表(dws_*_lifecycle)计算
+    - 无渠道、礼包、道具、订单明细维度,付费结构拆分需关联订单/道具明细表
+    - ext_info 为 JSON 扩展字段,需解析且结构可能不稳定,不宜作为稳定聚合维度
+    - 仅记录当日增量数据,不保留历史全量快照,无法做时间点回溯快照对比
+    - 仅覆盖活跃与付费维度的汇总,不含战斗/装备/社交/任务等行为明细
+    - act_dur/act_pv 为当日累计值,无法拆分到小时级或会话级粒度
+    - supersedes 非空(4 条),跨源等价性需 JOIN 源事件表核验,受 SELECT-only 与禁 JOIN 守卫限制,本轮未验证(JOIN受限)
+  coverage_status: draft
+supersedes:
+  - source: 角色登录事件(role_login)
+    when: 仅需日级、区服粒度的活跃角色数/活跃次数/活跃时长统计,且不需要事件级明细时
+    advantage: 本表已按 user_id+server_id+ds 预聚合 act/act_pv/act_dur,免去逐条事件扫描,口径统一且查询更快
+  - source: 付费订单事件(pay_order)
+    when: 仅需日级、区服粒度的付费金额/付费人数汇总,且不需要订单/道具明细时
+    advantage: 本表已预聚合 pay_amt/pay 标记,SUM 即得金额与人数,免去逐订单扫描
+  - source: 首次活跃事件(act_first/first_login)
+    when: 仅需日级新增角色数统计,且不需要新增来源/渠道明细时
+    advantage: 本表 act_fst 标记已预聚合,SUM 即得新增人数,口径与活跃表一致
+  - source: 首充事件(pay_first/first_pay)
+    when: 仅需日级首充角色数统计,且不需要首充订单明细时
+    advantage: 本表 pay_fst 标记已预聚合,SUM 即得首充人数,与付费口径同源
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (comment 区服id) exactly matches dim_10000251_server_info.primary_key server_id, the 服务器/区服配置维度表 used to resolve 区服名称与开服时间.
+    origin: deterministic
+pref_label: 角色区服活跃日表

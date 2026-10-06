@@ -1,0 +1,62 @@
+table_name: dim_10000251_trans_rogue_buff_df
+engine: maxcompute
+kind: dim
+table_comment: BUFF 配置维度表（rogue 肉鸽模式 BUFF 字典，日全量快照 _df）
+description: '游戏 10000251 肉鸽（rogue）模式 BUFF 配置维度表，日全量快照(_df)。每行记录一个 BUFF 的配置属性：BUFFid、名称、类型、关联技能/套装、品质、描述。用于事实表 BUFF 维度查找（JOIN）。
+粒度：每 BUFFid 一行的配置/维度表。'
+domains:
+- 系统监控
+granularity: 每 BUFFid 一行的配置维度表（日全量快照 _df）
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+columns:
+- name: id
+  type: string
+  comment: BUFFid
+  role: dimension
+- name: name
+  type: string
+  comment: BUFF名
+  role: dimension
+- name: type
+  type: string
+  comment: BUFF类型
+  role: dimension
+- name: skill_id
+  type: string
+  comment: 技能id
+  role: dimension
+- name: suit_id
+  type: string
+  comment: 所属套装id
+  role: dimension
+- name: quality
+  type: bigint
+  comment: 品质
+  role: dimension
+- name: desc
+  type: string
+  comment: 描述
+  role: dimension
+coverage:
+  scenarios:
+  - 事实表通过 buff_id 关联本表，查找 BUFF 名称、类型、描述等维度属性
+  - 肉鸽战斗分析中按 BUFF 类型/品质分组统计 BUFF 出现频次与效果
+  - 结合 skill_id / suit_id 联动技能与套装维度，分析 BUFF 与技能/套装的关联关系
+  limitations:
+  - 配置类维度表，无值度量（quality 为枚举品质值，非可聚合度量）
+  - 表当前为空（实测 COUNT(*)=0, COUNT(DISTINCT id)=0，r=d=0，唯一性条件形式成立但表无数据）
+  - _df 为日全量快照，历史版本对比需关注快照日期
+  - desc 字段为长文本描述，参与聚合/分组前需清洗
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 maxc meta describe 字段映射；primary_key=id、label_columns=name；唯一性实测 r=d=0（表当前空），保持 draft。'

@@ -1,0 +1,119 @@
+table_name: dws_10000251_selfhelp_new_remain_df_extend_temp
+engine: maxcompute
+table_comment: 自助渠道新增用户留存扩展日快照表
+description: 粒度：日全量快照（_df），按 user_id 明细，每行一个新增用户及其留存数组。主题：用户（账户/设备/角色，按 user_type=1/2/3 区分）。自助渠道新增用户留存扩展快照表，记录每个新增用户在首次行为日期（act_ymd_fst）后的日/周/月留存标记数组，并扩展买量活动、媒体、区服、渠道等归因维度。表当前为空（MAX(ds) NULL）。
+domains:
+  - 用户生命周期
+granularity: 日全量快照（_df），按 user_id 明细，含日/周/月留存数组
+columns:
+  - name: date_flag
+    type: string
+    comment: 时间维度:day_month/week_0/week_1..
+    role: dimension
+  - name: user_type
+    type: bigint
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: os_id
+    type: bigint
+    comment: 平台id
+    role: dimension
+  - name: ch_type
+    type: string
+    comment: 渠道分类
+    role: dimension
+  - name: ch_id
+    type: string
+    comment: 渠道id
+    role: dimension
+  - name: region_id
+    type: string
+    comment: 地区
+    role: dimension
+  - name: attr_ad_id
+    type: string
+    comment: 买量活动id
+    role: dimension
+  - name: act_server_id_fst
+    type: string
+    comment: 首次活跃区服id
+    role: dimension
+  - name: internal_user
+    type: string
+    comment: internal_user
+    role: dimension
+  - name: attr_media_name
+    type: string
+    comment: attr_media_name
+    role: dimension
+  - name: biz_name
+    type: string
+    comment: biz_name
+    role: dimension
+  - name: act_month_fst
+    type: string
+    comment: 月份
+    role: dimension
+  - name: act_week_fst
+    type: string
+    comment: 星期
+    role: dimension
+  - name: act_ymd_fst
+    type: string
+    comment: 首次行为日期，即新增日期，格式：yyyymmdd
+    role: dimension
+  - name: retain_num
+    type: array<string>
+    comment: 留存天数
+    role: attribute
+  - name: retain_month_num
+    type: array<string>
+    comment: 留存月数
+    role: attribute
+  - name: retain_week_num
+    type: array<string>
+    comment: 留存周数
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  new_user_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 新增用户数（账户维度全量快照 UV）
+  external_new_user_uv:
+    expression: SUM(IF(internal_user = 'N', 1, 0))
+    description: 外部新增用户数（排除内部账号）
+  internal_new_user_uv:
+    expression: SUM(IF(internal_user = 'Y', 1, 0))
+    description: 内部新增用户数
+coverage:
+  scenarios:
+    - 自助渠道新增用户规模与内外部构成（new_user_uv / external_new_user_uv / internal_new_user_uv）
+    - 按日/周/月维度（date_flag）切分新增与留存趋势
+    - 按渠道（ch_type/ch_id）、平台（os_id）、区服（act_server_id_fst）、买量活动（attr_ad_id）归因新增用户
+  limitations:
+    - 表为空/无数据（MAX(ds) NULL），无法做实测值验证，指标为结构性定义
+    - retain_num/retain_week_num/retain_month_num 为 array<string>，无法直接 SUM/AVG，需用 SIZE 或 EXPLODE 展开后再聚合
+    - 仅抽样验证（空表），未做全量 maxc 实测复核
+    - user_type 含设备/账号/角色三类，跨类型比较需先按 user_type 过滤
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 表为空（MAX(ds) NULL），无法实测验证指标值，仅做结构性定义，标记 draft。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: act_server_id_fst
+        dim_column: server_id
+    derivation: DWS column act_server_id_fst (comment 首次活跃区服id) holds a server/区服 identifier that semantically matches dim_10000251_server_info's primary key server_id (区服维度配置表), enabling server name/open-date lookup.
+pref_label: 渠道留存扩展表
+alt_labels:
+  - 渠道
+  - 扩展

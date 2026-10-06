@@ -1,0 +1,102 @@
+name: game.role.levelup
+event_filter: event = 'game.role.levelup'
+description: 玩家角色升级事件：记录角色在游戏服内完成等级提升的时刻，参数包含角色等级(roleLevel)、经验(exp)、角色战力(roleForce)、vip等级(vipLevel)、看板娘(image)及多种货币(coinList下的gold/sendgold/freegold/diamond/expCoin/energy)等22个字段。主体粒度为 role_id(角色)，单条记录对应一次角色升级行为，可统计升级次数与覆盖的角色/账号/服务器规模。
+domains:
+  - 用户生命周期
+domain: account
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 实测 cnt=13152 role_uv=2687 acc_uv=2520 server_uv=179，单日 scout 数据合理
+  coverage_status: analyst_confirmed
+metrics:
+  game_role_levelup_cnt:
+    expression: COUNT(*)
+    description: 角色升级事件总次数
+  game_role_levelup_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发升级的独立角色数
+  game_role_levelup_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发升级的独立账号数
+  game_role_levelup_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发升级的服务器数
+coverage:
+  scenarios:
+    - 通过升级次数(cnt)与角色UV评估角色成长活跃度
+    - 通过角色UV/账号UV/服务器UV衡量升级行为覆盖广度
+    - 主体粒度为 role_id，可下钻按服务器/账号分析升级分布
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认主体为 role_id，跨角色聚合时需注意去重
+    - 未对 roleLevel/exp 等参数字段做值域校验
+external_refs: []

@@ -1,0 +1,154 @@
+name: game.gve2.onekeyachievereward
+event_filter: event = 'game.gve2.onekeyachievereward'
+description: gve2 一键领取成就奖励事件：记录玩家在 GVE2 玩法中一键领取成就奖励的行为，包含角色基础信息（等级、战力、VIP）、货币列表（钻石、紫金、体力等）与成就 ID 列表。分析主体为 role_id（角色级事件）。实测 ds=20260729 单日 cnt=1253、role_uv=932、acc_uv=903、server_uv=87。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  type:
+    type: int
+    description: type
+  achieveIds:
+    type: array
+    description: achieveIds
+metrics:
+  gve2_onekeyachievereward_cnt:
+    expression: COUNT(*)
+    description: gve2 一键成就奖励事件总次数（行数），衡量成就奖励领取的总频次
+  gve2_onekeyachievereward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: gve2 一键成就奖励领取的角色去重数，分析主体为 role_id
+  gve2_onekeyachievereward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: gve2 一键成就奖励领取的账号去重数
+  gve2_onekeyachievereward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: gve2 一键成就奖励领取的游戏服去重数
+  gve2_onekeyachievereward_type_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.type'))
+    description: gve2 一键成就奖励领取的成就类型去重数（type 字段）
+coverage:
+  scenarios:
+    - 通过事件次数与角色去重数，量化 gve2 一键领取成就奖励的活跃度与渗透率
+    - 通过游戏服去重数观察成就奖励领取在全服的分布广度
+    - 通过成就类型去重数分析玩家领取的成就类型多样性
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认为 role_id（角色级事件）
+    - type 字段语义未明确，仅作去重计数参考
+    - achieveIds 为数组字段，未做明细展开统计
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "实测 ds=20260729: cnt=1253, role_uv=932, acc_uv=903, server_uv=87"
+coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_trans_gacha_mission_group_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_gacha_mission_group_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df_arch 主键精确同名
+    origin: deterministic

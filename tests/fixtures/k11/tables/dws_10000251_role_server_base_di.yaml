@@ -1,0 +1,183 @@
+table_name: dws_10000251_role_server_base_di
+engine: maxcompute
+table_comment: 角色-区服日增量基础明细（DWS层，主体=角色，user_type=3 推断，表内无 user_type 列）
+description: 粒度：日增量(_di)，每行=某角色(role_id)在某区服(server_id)当日的活跃/付费累计快照。分析主体=角色（user_type=3，依表名推断；表内无 user_type 列未做实测核验）。覆盖角色活跃、留存、付费行为；可按区服/平台/渠道/地域/包名等维度分组。主要字段：role_id, server_id, os_id, pay_amt_std, act_dur_std, act_pv_std, pay_pv_std, ip_country 等33列。
+domains:
+  - 用户生命周期
+  - 付费经济
+granularity: 日增量(_di)；分析主体=角色(role_id)，粒度=角色×区服×日。累计字段(pay_amt_std/act_dur_std 等)为角色截至当日的历史累计值。
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: os_id
+    type: bigint
+    comment: 平台id
+    role: dimension
+  - name: ip
+    type: string
+    comment: ip
+    role: dimension
+  - name: ip_country
+    type: string
+    comment: ip国家
+    role: attribute
+  - name: ip_province
+    type: string
+    comment: ip省份
+    role: dimension
+  - name: ip_city
+    type: string
+    comment: ip城市
+    role: dimension
+  - name: pkg_name
+    type: string
+    comment: 包名
+    role: dimension
+  - name: ch_type
+    type: string
+    comment: 渠道，又叫1渠
+    role: dimension
+  - name: ch_id
+    type: string
+    comment: 渠道id，又叫2渠
+    role: dimension
+  - name: app_ver
+    type: string
+    comment: 端版本
+    role: dimension
+  - name: role_name_fst
+    type: string
+    comment: 首次角色名
+    role: dimension
+  - name: role_name_lst
+    type: string
+    comment: 最近角色名
+    role: dimension
+  - name: born_server_id_fst
+    type: string
+    comment: 首次出生区服id
+    role: dimension
+  - name: born_server_id_lst
+    type: string
+    comment: 最近出生区服id
+    role: dimension
+  - name: act_tm_fst
+    type: datetime
+    comment: 首次活跃时间
+    role: dimension
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近活跃时间
+    role: dimension
+  - name: act_utdid_fst
+    type: string
+    comment: 首次活跃utdid
+    role: dimension
+  - name: act_utdid_lst
+    type: string
+    comment: 最近活跃utdid
+    role: dimension
+  - name: act_account_id_fst
+    type: string
+    comment: 首次活跃账号id
+    role: attribute
+  - name: act_account_id_lst
+    type: string
+    comment: 最近活跃账号id
+    role: attribute
+  - name: pay_tm_fst
+    type: datetime
+    comment: 首次付费时间
+    role: dimension
+  - name: pay_amt_fst
+    type: double
+    comment: 首次付费金额，单位：元
+    role: measure
+  - name: pay_tm_lst
+    type: datetime
+    comment: 最近付费时间
+    role: dimension
+  - name: pay_amt_lst
+    type: double
+    comment: 最近付费金额，单位：元
+    role: measure
+  - name: act_pv_std
+    type: bigint
+    comment: 累计活跃次数
+    role: measure
+  - name: act_dur_std
+    type: bigint
+    comment: 累计活跃时长，单位：秒
+    role: measure
+  - name: pay_pv_std
+    type: bigint
+    comment: 累计付费次数
+    role: measure
+  - name: pay_amt_std
+    type: double
+    comment: 累计付费金额，单位：元
+    role: measure
+  - name: pay_amt_max
+    type: double
+    comment: 最大单笔付费金额，单位：元
+    role: measure
+  - name: pay_amt_min
+    type: double
+    comment: 最小单笔付费金额，单位：元
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: dimension
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日活跃角色数（role_id 去重）
+  paid_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN role_id END)
+    description: 当日累计付费角色数（pay_amt_std>0）
+  pay_amt_total:
+    expression: SUM(pay_amt_std)
+    description: 当日累计付费金额总和（元）
+  pay_arpu:
+    expression: SUM(pay_amt_std) / NULLIF(COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN role_id END), 0)
+    description: 当日付费角色 ARPU（付费金额/付费角色数，元/人）
+  act_dur_total:
+    expression: SUM(act_dur_std)
+    description: 当日累计活跃时长总和（秒）
+coverage:
+  scenarios:
+    - 角色活跃规模（role_uv）
+    - 付费角色规模与付费金额（paid_role_uv / pay_amt_total）
+    - 付费角色 ARPU（pay_arpu）
+    - 累计活跃时长规模（act_dur_total）
+  limitations:
+    - _di 为日增量，每行=角色×区服当日累计快照；累计字段（pay_amt_std/act_dur_std 等）为角色截至当日的历史累计值，跨日 SUM 会重复累加累计量，需按 ds 切分或仅取最新快照做全量统计。
+    - 表无 user_type 列，分析主体由 role_id 推断为角色（user_type=3），未实测验证。
+    - 仅抽样验证最新 ds（20260730）单日聚合值，未做全量多日 maxc 实测复核。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 最新 ds=20260730 抽样验证 role_uv=4699, paid_role_uv=394, pay_amt_total=34707, pay_arpu≈88.08, act_dur_total=20403737，值合理；累计字段语义与跨日聚合风险见 limitations。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+      - dws_column: born_server_id_fst
+        dim_column: server_id
+      - dws_column: born_server_id_lst
+        dim_column: server_id
+    derivation: DWS columns server_id (区服id), born_server_id_fst (首次出生区服id) and born_server_id_lst (最近出生区服id) are all server identifiers matching primary key server_id of dim_10000251_server_info (服务器区服维度配置表, purpose-built for fact-table server_id JOIN).
+pref_label: 角色区服基础日表

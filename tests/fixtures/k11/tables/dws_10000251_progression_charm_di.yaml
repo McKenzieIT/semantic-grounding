@@ -1,0 +1,91 @@
+table_name: dws_10000251_progression_charm_di
+engine: maxcompute
+table_comment: 灵器培养详情日增量表（角色粒度）
+description: |-
+  灵器培养详情日增量表，记录每日角色对灵器（charm）的培养行为明细。
+  粒度：日增量(_di)，每行=单个角色当日对某灵器的一次培养记录。
+  主题：角色成长 / 装备道具，主体为游戏角色（role）。
+  主要字段：role_id(角色id), server_id(服务器id), charm_id(灵器ID), charm_star(灵器星级), act_tm_fst(首次培养时间), act_tm_lst(最近培养时间), ds(分区)。
+domains:
+  - 角色成长
+  - 装备道具
+granularity: 日增量(_di)，角色粒度（role_id 为主键，每日增量）
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 服务器id
+    role: dimension
+  - name: charm_id
+    type: bigint
+    comment: 灵器ID
+    role: dimension
+  - name: charm_star
+    type: bigint
+    comment: 灵器星级
+    role: measure
+  - name: act_tm_fst
+    type: datetime
+    comment: 首次培养时间
+    role: dimension
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近一次培养时间
+    role: dimension
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  daily_cultivate_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日有灵器培养行为的角色数（去重UV）
+  daily_cultivate_records:
+    expression: COUNT(*)
+    description: 当日灵器培养明细记录数（_di 增量）
+  daily_distinct_charm:
+    expression: COUNT(DISTINCT charm_id)
+    description: 当日被培养的不同灵器ID种类数
+  avg_charm_star:
+    expression: AVG(charm_star)
+    description: 当日培养记录的平均灵器星级
+  distinct_server:
+    expression: COUNT(DISTINCT server_id)
+    description: 当日涉及的服务器数量
+coverage:
+  scenarios:
+    - 每日灵器培养参与角色规模与活跃度（daily_cultivate_role_uv）
+    - 培养明细量级与灵器分布（daily_cultivate_records、daily_distinct_charm）
+    - 培养强度评估（avg_charm_star）
+    - 培养覆盖服务器范围（distinct_server）
+  limitations:
+    - 仅 scout 抽样验证，未做全量 maxc 实测复核
+    - _di 为日增量，跨日累计需上层聚合，本表不含全量快照
+    - 缺少培养次数/资源消耗维度（act_tm_fst/lst 仅时间戳，无培养量字段）
+    - 主体为角色(role)，无 user_type 列无法交叉验证账号/设备维度
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已对 latest ds=20260730 抽样验证 daily_cultivate_role_uv/avg_charm_star/distinct_server，数值合理
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (服务器id) is the server FK; dim_10000251_server_info (PK server_id) provides 区服名称/开服时间 dimension attributes.
+    origin: deterministic
+  - dim_table: dim_10000251_charm_info
+    join_keys:
+      - dws_column: charm_id
+        dim_column: charm_id
+    derivation: DWS charm_id (灵器ID) exactly matches dim_10000251_charm_info PK charm_id (灵器配置维度表).
+    origin: deterministic
+pref_label: 灵器培养日表
+alt_labels:
+  - 灵器
+  - 培养
+  - 养成

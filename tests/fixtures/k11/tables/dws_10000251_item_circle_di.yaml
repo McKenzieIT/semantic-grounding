@@ -1,0 +1,121 @@
+table_name: dws_10000251_item_circle_di
+engine: maxcompute
+table_comment: 资源产销-物品流水-日增量表
+description: |
+  DWS 物品流水日增量表，粒度按 角色id(role) × 区服(server_id) × 物品类型(item_type) × 物品id × 变更原因(reason1/2/3) × 业务日期 汇总。
+  记录每日每个角色对每个物品的获得数量(get_amt)/获得次数(get_pv)、使用数量(use_amt)/使用次数(use_pv)、以及净库存剩余(net_amt)。
+  主体：物品流水（按角色粒度），用于资源产销、装备道具流通与库存净额监控。
+  日期分区：ds（业务日期，YYYYMMDD）。粒度：日增量(_di)。
+domains:
+  - 资源产销
+  - 装备道具
+granularity: 角色物品流水-日增量(_di)
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: item_type
+    type: string
+    comment: 物品类型
+    role: dimension
+  - name: item_id
+    type: string
+    comment: 物品id，缺省值0
+    role: dimension
+  - name: get_amt
+    type: bigint
+    comment: 获得数量，缺省值0
+    role: measure
+  - name: get_pv
+    type: bigint
+    comment: 获得次数，缺省值0
+    role: measure
+  - name: use_amt
+    type: bigint
+    comment: 使用数量，缺省值0
+    role: measure
+  - name: use_pv
+    type: bigint
+    comment: 使用次数，缺省值0
+    role: measure
+  - name: net_amt
+    type: bigint
+    comment: 剩余数量，缺省值0
+    role: measure
+  - name: reason1
+    type: string
+    comment: 变更一级原因，缺省值空字符串
+    role: dimension
+  - name: reason2
+    type: string
+    comment: 变更二级原因，缺省值空字符串
+    role: dimension
+  - name: reason3
+    type: string
+    comment: 变更三级原因，缺省值空字符串
+    role: dimension
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  get_amt_total:
+    expression: SUM(get_amt)
+    description: 当日物品获得总数量（按角色×物品×原因汇总）
+  use_amt_total:
+    expression: SUM(use_amt)
+    description: 当日物品使用消耗总数量
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日发生物品流水的角色去重数(UV)
+  item_flow_pv:
+    expression: SUM(get_pv) + SUM(use_pv)
+    description: 当日物品获得+使用行为总次数
+  net_amt_per_role:
+    expression: SUM(net_amt) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均净库存剩余数量（剩余总量/参与角色数）
+coverage:
+  scenarios:
+    - 资源产销：日级物品获得/使用总量与净库存监控，衡量游戏内资源产出与消耗规模
+    - 装备道具流通：按 item_type/item_id 维度分析道具产出与消耗结构
+    - 角色活跃参与：通过 role_uv 衡量当日参与物品流水的角色规模
+    - 库存健康度：人均净库存剩余(net_amt_per_role) 监控角色资源囤积水位
+  limitations:
+    - 仅 maxc 抽样验证 1 个聚合查询（ds=20260730，ga≈4.36e10、ua≈1.56e10、uv≈4697、iv≈2660），未做全量逐指标 maxc 复核
+    - 缺失账号维度的 user_type 字段，无法直接拆分账号级 UV；如需账号粒度需 JOIN dim 账号表
+    - _di 为日增量，不保证跨日全量快照；跨日累计需按 ds 聚合而非取最新
+    - net_amt 为剩余数量，跨 ds 不可直接相加（库存性质，非增量）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已在最新 ds=20260730 抽样验证 SUM(get_amt)/SUM(use_amt)/COUNT(DISTINCT role_id) 指标值合理，表非空，故置 analyst_confirmed；指标定义经 maxc meta describe 列核对一致。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS 列 server_id (comment 区服id) 与 dim server_info 主键 server_id 完全一致；该 dim 为区服维度配置表。
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df
+    join_keys:
+      - dws_column: item_type
+        dim_column: type
+      - dws_column: item_id
+        dim_column: id
+    derivation: DWS 列 item_type (物品类型) + item_id (物品id) 语义对应 dim trans_resource_item_df 复合主键 (type, id)；该 dim 为资源/物品维度表，明确供事实表通过 type+id JOIN 查物品名/类型。
+  - dim_table: dim_10000251_trans_reason1_df
+    join_keys:
+      - dws_column: reason1
+        dim_column: reason1
+    derivation: DWS 列 reason1 (comment 变更一级原因) 与 dim trans_reason1_df 主键 reason1 完全一致；该 dim 为一级原因映射表，专为流水表 JOIN 翻译变更原因编码。
+    origin: deterministic
+pref_label: 物品流水日增量表
+alt_labels:
+  - 产出
+  - 消耗

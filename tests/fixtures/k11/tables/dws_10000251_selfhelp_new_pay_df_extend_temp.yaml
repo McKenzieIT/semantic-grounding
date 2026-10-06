@@ -1,0 +1,118 @@
+table_name: dws_10000251_selfhelp_new_pay_df_extend_temp
+engine: maxcompute
+table_comment: 自助新增付费用户日全量扩展快照（按user_type区分设备/账号/角色）
+description: 粒度：用户(user_id) x 行为日期(act_ymd) 明细，按 user_type 区分设备(1)/账号(2)/角色(3) 三种主体。dws_10000251_selfhelp_new_pay_df_extend_temp 为新增付费用户日全量(_df)扩展临时表，记录每个新增付费用户的首访日期(act_ymd_fst)、行为日期(act_ymd)、生命周期天数(lt=act_ymd-act_ymd_fst+1)、当日付费金额(pay_amt)，以及渠道/地区/买量/区服等归因维度。
+domains:
+  - 付费经济
+  - 用户生命周期
+granularity: 用户(user_id) x 行为日期(act_ymd)，按 user_type 区分主体
+columns:
+  - name: user_type
+    type: bigint
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: os_id
+    type: bigint
+    comment: 平台id
+    role: dimension
+  - name: ch_type
+    type: string
+    comment: 渠道分类
+    role: dimension
+  - name: ch_id
+    type: string
+    comment: 渠道id
+    role: dimension
+  - name: region_id
+    type: string
+    comment: 地区
+    role: dimension
+  - name: attr_ad_id
+    type: string
+    comment: 买量活动id
+    role: dimension
+  - name: act_server_id_fst
+    type: string
+    comment: 首次活跃区服id
+    role: dimension
+  - name: internal_user
+    type: string
+    comment: internal_user
+    role: dimension
+  - name: attr_media_name
+    type: string
+    comment: attr_media_name
+    role: dimension
+  - name: biz_name
+    type: string
+    comment: biz_name
+    role: dimension
+  - name: act_ymd_fst
+    type: string
+    comment: 首次行为日期，即新增日期，格式：yyyymmdd
+    role: dimension
+  - name: act_ymd
+    type: string
+    comment: 行为日期，格式：yyyymmdd
+    role: dimension
+  - name: lt
+    type: bigint
+    comment: 生命周期，行为日期-首次行为日期+1，从1开始
+    role: dimension
+  - name: pay_amt
+    type: double
+    comment: 付费金额，行为日期的付费金额，单位：元
+    role: measure
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  new_pay_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 新增付费用户数（去重user_id），_df 日全量快照；按 user_type 区分设备(1)/账号(2)/角色(3) 三种主体。
+  total_pay_amt:
+    expression: SUM(pay_amt)
+    description: 新增付费用户当日付费总金额（元），_df 日全量快照累加。
+  avg_pay_amt_per_user:
+    expression: SUM(pay_amt) / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 新增付费用户客单价（元/人），总额除以去重用户数，NULLIF 防除零。
+  new_pay_lt1_uv:
+    expression: COUNT(DISTINCT CASE WHEN lt = 1 THEN user_id END)
+    description: 当日新增且当日付费用户数（lt=1 即 act_ymd=act_ymd_fst 的新增当日付费用户），_df 快照去重。
+  max_lt:
+    expression: MAX(lt)
+    description: 快照内最大生命周期天数（lt），反映留存付费用户的最长留存跨度。
+coverage:
+  scenarios:
+    - 新增付费用户规模与付费金额概览（new_pay_uv / total_pay_amt），支撑新付费用户大盘与流水归因。
+    - 新增付费用户客单价分析（avg_pay_amt_per_user），评估新增用户付费质量与渠道价值。
+    - 当日新增当日付费转化（new_pay_lt1_uv），衡量首日付费冲动与买量投放即时回报。
+    - 留存付费用户最长生命周期（max_lt），辅助老付费用户留存与生命周期分析。
+    - 可按 user_type/os_id/ch_id/region_id/attr_ad_id/act_server_id_fst 等归因维度下钻切分。
+  limitations:
+    - 表为空/无数据（MAX(ds) 返回 NULL，截至 2026-07-31 无业务数据），上述指标均为结构性定义，未做 maxc 实测复核。
+    - 主体多态：同一 user_id 在不同 user_type(设备/账号/角色) 下语义不同，跨主体聚合需显式按 user_type 分组，不可混算。
+    - _df 为日全量快照，非增量（_di）；跨 ds 聚合会重复计入同一用户多日快照，UV 类指标需限定单 ds 或按 act_ymd 分日计算。
+    - lt/pay_amt 等数值列在空表下未抽样验证非空性，待数据回流后需复核。
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 表为空（MAX(ds) NULL），仅依据 meta describe 列定义做结构性丰富，未做 metric 实测复核；待数据回流后升级为 analyst_confirmed。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: act_server_id_fst
+        dim_column: server_id
+    derivation: DWS column act_server_id_fst (comment 首次活跃区服id) holds a server/区服 identifier that semantically matches dim_10000251_server_info's primary key server_id (区服维度配置表), enabling server name/open-date lookup.
+pref_label: 新付费扩展表
+alt_labels:
+  - 新付费
+  - 首付
+  - 渠道
+  - 扩展

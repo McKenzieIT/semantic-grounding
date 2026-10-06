@@ -1,0 +1,365 @@
+table_name: dws_10000251_univ_acc_tag_df
+engine: maxcompute
+table_comment: 用户整体事件表
+description: |
+  用户生命周期全量标签宽表(日全量快照 _df,按 ds 分区),每账号每天一行,记录每个账号在游戏全生命周期内的核心标签。
+  按【主体类型判定规则】本表固定为【账号表】:表名含 acc,故分析主体=账号,标识字段=user_id(存账号ID);本表 user_type 固定为 2(账号),DISTINCT user_type 仅返回单一值 2(建议用 SELECT DISTINCT user_type 复核),不存在按 user_type 切换/过滤不同层级的分支语义。
+  涵盖:首末活跃与付费时间、累计活跃天数/时长、多时间窗口付费金额(新增首N日 pay_amt_fNd / 最近N日 pay_amt_lNd / 累计 pay_amt_std)、设备与渠道归因链路(attr_ad_id 买量标识、attr_media_name 买量媒体、ch_id/ch_type 渠道)、区服与角色养成进度(role_level 等级/role_force 战力/role_career 职业)、首次与最近关联的设备/账号/角色关系链路、IP 与地理位置、内部用户/预下载/测试期等标记。
+  能回答的业务问题:用户画像分群(渠道/平台/地区/设备品牌)、留存与流失预警(最近活跃间隔 act_ymd_diff、首末活跃时间)、付费转化漏斗(首付 pay_amt_p1d、新增首N日付费)、渠道 ROI 归因(买量标识与媒体)、用户价值分层与 LTV 评估(累计付费、多窗口付费金额)、角色养成进度分析(账号关联角色的等级/战力/职业分布)。
+  注意事项:1) _df 为日全量快照,跨天聚合时需注意去重(按 user_id 取最新分区或按 ds 过滤);2) 付费窗口口径区分"新增首N日"(从新增日起算)与"最近N日"(从当前分区日起回溯),二者不可混用;3) event_pay_info 为大事件累计付费的 JSON 文本串,不可直接 SUM 聚合,需解析;4) role_level/role_force/role_career/form_role_id 为账号关联角色的养成快照(取自 form_role_id 对应角色),在账号粒度上为该账号最近关联角色的养成值,跨账号聚合前需理解其为"账号关联角色"口径而非账号自身数值;5) 累计类字段(std 后缀)为历史全量累计,非当日增量;6) 本表为快照宽表,留存/付费率等指标基于快照字段近似计算(如 act_ymd_diff 反映最近两次活跃间隔而非严格同队列留存),实时或事件级明细分析需回事件明细表。
+domains:
+  - 用户生命周期
+  - 付费经济
+granularity: 每账号每天一行(日全量快照 _df,按 ds 分区);本表固定为【账号表】user_type=2,分析主体=账号,标识字段=user_id(存账号ID);DISTINCT user_type 仅返回单一值 2(建议用 SELECT DISTINCT user_type 复核),不存在按 user_type 切换层级的分支
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，1-设备、2-账号、3-角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: os_id
+    type: int
+    comment: 平台
+    role: dimension
+  - name: ch_type
+    type: string
+    comment: 渠道
+    role: dimension
+  - name: pkg_name
+    type: string
+    comment: 包
+    role: dimension
+  - name: act_tm_fst
+    type: datetime
+    comment: 首次活跃时间
+    role: attribute
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近活跃时间
+    role: attribute
+  - name: pay_tm_fst
+    type: datetime
+    comment: 首次付费时间
+    role: attribute
+  - name: pay_tm_lst
+    type: datetime
+    comment: 最近付费时间
+    role: attribute
+  - name: act_days_std
+    type: int
+    comment: 累计活跃天数
+    role: measure
+  - name: act_dur_std
+    type: int
+    comment: 累计活跃时长
+    role: measure
+  - name: pay_amt_std
+    type: decimal
+    comment: 累计付费金额，单位：元
+    role: measure
+  - name: act_ymd_prev
+    type: string
+    comment: 上一个活跃日期
+    role: attribute
+  - name: act_ymd_diff
+    type: int
+    comment: 最近2个活跃日期间隔
+    role: measure
+  - name: attr_ad_id
+    type: string
+    comment: 买量标识
+    role: dimension
+  - name: rel_dev_id_fst
+    type: string
+    comment: 首次关联设备id
+    role: dimension
+  - name: rel_dev_tm_fst
+    type: datetime
+    comment: 首次关联设备时间
+    role: attribute
+  - name: rel_dev_id_lst
+    type: string
+    comment: 最近关联设备id
+    role: dimension
+  - name: rel_dev_tm_lst
+    type: datetime
+    comment: 最近关联设备时间
+    role: attribute
+  - name: rel_acc_id_fst
+    type: string
+    comment: 首次关联账号id
+    role: dimension
+  - name: rel_acc_tm_fst
+    type: datetime
+    comment: 首次关联账号时间
+    role: attribute
+  - name: rel_acc_id_lst
+    type: string
+    comment: 最近关联账号id
+    role: dimension
+  - name: rel_acc_tm_lst
+    type: datetime
+    comment: 最近关联账号时间
+    role: attribute
+  - name: rel_role_id_fst
+    type: string
+    comment: 首次关联角色id
+    role: dimension
+  - name: rel_role_tm_fst
+    type: datetime
+    comment: 首次关联角色时间
+    role: attribute
+  - name: rel_role_id_lst
+    type: string
+    comment: 最近关联角色id
+    role: dimension
+  - name: rel_role_tm_lst
+    type: datetime
+    comment: 最近关联角色时间
+    role: attribute
+  - name: act_ip_fst
+    type: string
+    comment: 首次活跃ip
+    role: dimension
+  - name: act_location_fst
+    type: string
+    comment: 首次活跃地理位置
+    role: dimension
+  - name: act_ip_lst
+    type: string
+    comment: 最近活跃ip
+    role: dimension
+  - name: act_location_lst
+    type: string
+    comment: 最近活跃地理位置
+    role: dimension
+  - name: region_id
+    type: string
+    comment: 地区
+    role: dimension
+  - name: rel_role_srv_fst
+    type: string
+    comment: 首次关联角色区服
+    role: dimension
+  - name: rel_role_srv_lst
+    type: string
+    comment: 最近关联角色区服
+    role: dimension
+  - name: fellow_flag
+    type: int
+    comment: 内部用户标记，1-内部用户、0-非内部用户
+    role: dimension
+  - name: pay_amt_f1d
+    type: decimal
+    comment: 新增当日付费金额，单位：元
+    role: measure
+  - name: pay_amt_p1d
+    type: decimal
+    comment: 首付当日付费金额，单位：元
+    role: measure
+  - name: dev_brand_fst
+    type: string
+    comment: 首次活跃设备品牌
+    role: dimension
+  - name: dev_model_fst
+    type: string
+    comment: 首次活跃设备型号
+    role: dimension
+  - name: dev_brand_lst
+    type: string
+    comment: 最近活跃设备品牌
+    role: dimension
+  - name: dev_model_lst
+    type: string
+    comment: 最近活跃设备型号
+    role: dimension
+  - name: predown_tag
+    type: int
+    comment: 预下载用户标记，1-是、0-否
+    role: dimension
+  - name: test_tag
+    type: int
+    comment: 测试期用户标记，1-是、0-否
+    role: dimension
+  - name: ch_id
+    type: string
+    comment: 渠道id
+    role: dimension
+  - name: test_event_name
+    type: string
+    comment: 测试期大事件名
+    role: dimension
+  - name: pay_amt_l7d
+    type: decimal
+    comment: 最近7日付费金额，单位：元
+    role: measure
+  - name: pay_amt_l30d
+    type: decimal
+    comment: 最近30日付费金额，单位：元
+    role: measure
+  - name: pay_amt_l90d
+    type: decimal
+    comment: 最近90日付费金额，单位：元
+    role: measure
+  - name: pay_amt_l180d
+    type: decimal
+    comment: 最近180日付费金额，单位：元
+    role: measure
+  - name: pay_amt_l360d
+    type: decimal
+    comment: 最近360日付费金额，单位：元
+    role: measure
+  - name: pay_amt_f2d
+    type: decimal
+    comment: 新增首2日付费金额，单位：元
+    role: measure
+  - name: pay_amt_f3d
+    type: decimal
+    comment: 新增首3日付费金额，单位：元
+    role: measure
+  - name: pay_amt_f7d
+    type: decimal
+    comment: 新增首7日付费金额，单位：元
+    role: measure
+  - name: pay_amt_f30d
+    type: decimal
+    comment: 新增首30日付费金额，单位：元
+    role: measure
+  - name: os_id_lst
+    type: int
+    comment: 最近平台
+    role: dimension
+  - name: ch_type_lst
+    type: string
+    comment: 最近渠道
+    role: dimension
+  - name: ch_id_lst
+    type: string
+    comment: 最近渠道id
+    role: dimension
+  - name: pkg_name_lst
+    type: string
+    comment: 最近包
+    role: dimension
+  - name: web_pay_amt_std
+    type: decimal
+    comment: 累计web付费金额，单位：元
+    role: measure
+  - name: role_level
+    type: int
+    comment: 角色等级
+    role: measure
+  - name: event_pay_info
+    type: string
+    comment: 大事件累计付费金额
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: dimension
+metrics:
+  d1_retention_rate:
+    expression: AVG(CASE WHEN act_ymd_diff<=1 THEN 1 ELSE 0 END)
+    description: 近1日连续活跃率(最近活跃间隔<=1天的账号占比,基于快照口径近似,非严格同队列次日留存)
+  d3_retention_rate:
+    expression: AVG(CASE WHEN act_ymd_diff<=3 THEN 1 ELSE 0 END)
+    description: 近3日连续活跃率(最近活跃间隔<=3天的账号占比,基于快照口径近似)
+  d7_retention_rate:
+    expression: AVG(CASE WHEN act_ymd_diff<=7 THEN 1 ELSE 0 END)
+    description: 近7日连续活跃率(最近活跃间隔<=7天的账号占比,基于快照口径近似,非严格同队列7日留存)
+  d30_retention_rate:
+    expression: AVG(CASE WHEN act_ymd_diff<=30 THEN 1 ELSE 0 END)
+    description: 近30日连续活跃率(最近活跃间隔<=30天的账号占比,基于快照口径近似)
+  churn_risk_rate:
+    expression: AVG(CASE WHEN act_ymd_diff>=30 THEN 1 ELSE 0 END)
+    description: 流失风险率(最近活跃间隔>=30天的账号占比,基于最近活跃间隔口径,用于流失预警)
+  deep_churn_rate:
+    expression: AVG(CASE WHEN act_ymd_diff>=90 THEN 1 ELSE 0 END)
+    description: 深度流失率(最近活跃间隔>=90天的账号占比,用于长期流失预警)
+  pay_rate_l7d:
+    expression: AVG(CASE WHEN pay_amt_l7d>0 THEN 1 ELSE 0 END)
+    description: 最近7日付费率(最近7日有付费的账号占比)
+  pay_rate_std:
+    expression: AVG(CASE WHEN CAST(pay_amt_std AS double)>0 THEN 1 ELSE 0 END)
+    description: 累计付费率(历史累计有付费的账号占比)
+  ltv_f1d:
+    expression: SUM(pay_amt_f1d)*1.0/NULLIF(COUNT(DISTINCT user_id),0)
+    description: 新增首日 LTV(新增当日人均付费金额,元;需配合 WHERE 过滤到对应新增队列)
+  ltv_f3d:
+    expression: SUM(pay_amt_f3d)*1.0/NULLIF(COUNT(DISTINCT user_id),0)
+    description: 新增首3日 LTV(新增前3日人均累计付费金额,元;需配合 WHERE 过滤到对应新增队列)
+  ltv_f7d:
+    expression: SUM(pay_amt_f7d)*1.0/NULLIF(COUNT(DISTINCT user_id),0)
+    description: 新增首7日 LTV(次周人均累计付费金额,元;需配合 WHERE 过滤到对应新增队列)
+  ltv_f30d:
+    expression: SUM(pay_amt_f30d)*1.0/NULLIF(COUNT(DISTINCT user_id),0)
+    description: 新增首30日 LTV(首月人均累计付费金额,元;需配合 WHERE 过滤到对应新增队列)
+  arpu_l7d:
+    expression: SUM(pay_amt_l7d)*1.0/NULLIF(COUNT(DISTINCT user_id),0)
+    description: 最近7日 ARPU(最近7日人均付费金额,元)
+  arpu_l30d:
+    expression: SUM(pay_amt_l30d)*1.0/NULLIF(COUNT(DISTINCT user_id),0)
+    description: 最近30日 ARPU(最近30日人均付费金额,元)
+  arpu_std:
+    expression: SUM(CAST(pay_amt_std AS double))*1.0/NULLIF(COUNT(DISTINCT user_id),0)
+    description: 累计 ARPU(累计人均付费金额,元)
+  arppu_std:
+    expression: SUM(CAST(pay_amt_std AS double))*1.0/NULLIF(COUNT(DISTINCT CASE WHEN CAST(pay_amt_std AS double)>0 THEN user_id END),0)
+    description: 累计 ARPPU(付费用户人均付费金额,元)
+  avg_act_days_std:
+    expression: AVG(act_days_std)
+    description: 人均累计活跃天数(天)
+  avg_act_dur_std:
+    expression: AVG(act_dur_std)
+    description: 人均累计活跃时长(秒)
+  avg_role_level:
+    expression: AVG(role_level)
+    description: 账号关联角色平均等级(取自 form_role_id 对应角色养成快照)
+coverage:
+  scenarios:
+    - 新增账号规模与画像分群(按 ds 取当日新增 user_id,按渠道/平台/地区/设备品牌交叉分组)
+    - 留存与流失预警(基于 act_ymd_diff 计算近1/3/7/30日连续活跃率与流失/深度流失率,按新增日或渠道分群)
+    - 新增 LTV 评估(新增首1/3/7/30/180日 LTV,按渠道/媒体/平台分层)
+    - 最近N日付费回滚与 ROI 归因(按 pay_amt_l7d/l30d/l90d 回溯付费,配合 attr_ad_id/attr_media_name 做买量 ROI,arpu_l7d/l30d 看人均付费)
+    - 渠道与买量媒体归因(ch_id/ch_type/attr_media_name 分组,看各渠道新增与付费贡献)
+    - 设备与地区分群(dev_brand/dev_model/region_id/act_location 分组,看设备与地域分布)
+    - 账号关联角色养成进度分析(按 role_level/role_force/role_career/form_role_id 看账号关联角色的养成分布)
+    - 内部/测试账号剔除(fellow_flag/test_tag/predown_tag 过滤脏数据)
+    - 多端与区服分布(os_id/os_id_lst/rel_role_srv_fst/rel_role_srv_lst 看多端切换与区服分布)
+  limitations:
+    - _df 为日全量快照,跨天聚合需按 user_id 取最新分区或按 ds 过滤去重,直接跨天 SUM 会重复计算
+    - 付费窗口口径区分"新增首N日"(pay_amt_fNd,从新增日起算)与"最近N日"(pay_amt_lNd,从当前分区日回溯),二者不可混用
+    - event_pay_info 为 JSON 文本串,不可直接 SUM 聚合,需先 JSON 解析提取各事件付费金额
+    - role_level/role_force/role_career/form_role_id 为账号关联角色(form_role_id)的养成快照,在账号粒度上为该账号最近关联角色的养成值,跨账号聚合反映"关联角色"口径而非账号自身数值
+    - 累计类字段(std 后缀)为历史全量累计,非当日增量,不可当作当日量使用
+    - pay_amt_std 类型为 string,聚合前必须 CAST 为 double/decimal,否则数值计算异常
+    - 本表为 T+1 快照,无当日实时数据,实时/事件级明细分析需回事件明细表
+    - 买量归因(attr_ad_id/attr_media_name)依赖上游归因埋点质量,缺失或错配时 ROI 分析不准确
+    - 留存指标基于 act_ymd_diff(最近两次活跃间隔)近似计算连续活跃率,非严格同队列逐日留存队列,精细留存分析需结合事件流
+    - 本表固定 user_type=2(账号),不可用于直接产出设备级/角色级独立粒度分析,设备/角色明细需回对应设备表或角色表
+  coverage_status: draft
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: data-verification-agent
+  confirmed_at: "2026-07-30"
+  note: Round 5 真实数据验证(ds=20260729,1206871 账号):已确认 user_type DISTINCT 仅返回单一值 {2} 符合账号表声明;meta describe 校验 62 列全部存在,metrics 引用的 act_ymd_diff/pay_amt_std/pay_amt_l7d/pay_amt_f1d/f3d/f7d/f30d/pay_amt_l30d/act_days_std/act_dur_std/role_level/user_id 均为真实列;粒度校验 rows=1206871 = DISTINCT user_id=1206871(每账号每天一行);核心指标实测合理 d1_retention_rate≈0.826/churn_risk_rate≈0.039/pay_rate_std≈0.231/avg_act_days_std≈8.68/avg_act_dur_std≈44094秒(非 Unix 时间戳 bug)/arpu_std≈88.9/arppu_std≈384/ltv_f1d≈11.2/arpu_l7d≈0.36;act_dur_std 为时长秒数非 last-online 时间戳,无 1.7e9 异常;act_ymd_diff 口径近似留存已如实写入 metrics.description 与 limitations。
+dimension_refs:
+  - dim_table: dim_10000251_user_tag_before_ob_info
+    join_keys:
+      - dws_column: user_id
+        dim_column: user_id
+    derivation: "DWS column user_id (comment: 用户id) is the account identifier, same namespace as the PK user_id of dim_10000251_user_tag_before_ob_info, which is explicitly meant for joining fact tables via user_id to enrich tag dimensions."
+    origin: deterministic
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: rel_role_srv_fst
+        dim_column: server_id
+      - dws_column: rel_role_srv_lst
+        dim_column: server_id
+    derivation: "DWS columns rel_role_srv_fst/rel_role_srv_lst (comment: 首次/最近关联角色区服) are 区服(server) identifiers, semantically equal to the PK server_id of dim_10000251_server_info, the canonical 区服 dimension for joining fact tables by server_id."
+pref_label: 账号事件标签表
+alt_labels:
+  - 事件

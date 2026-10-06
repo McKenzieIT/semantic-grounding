@@ -1,0 +1,64 @@
+table_name: dim_10000251_trans_rogue_buff_group_df_arch
+engine: maxcompute
+kind: dim
+table_comment: '肉鸽套装增益组配置归档维度表（每日全量归档），记录套装id、套装名及三档激活阈值（2/4/6件套）与对应增益描述。'
+description: '肉鸽（rogue）模式套装增益组配置维度表，每日全量归档（df_arch）。每行描述一个套装（buff group）：套装id为主键、套装名为标签，并给出三档激活阈值 suit_num1/2/3（如2/4/6件）及对应激活描述 suit_desc1/2/3。同一id在不同ds分区下重复（快照归档），故id全局不唯一。'
+primary_key: [id]
+primary_key_unique: false
+label_columns: [name]
+domains:
+- 战斗关卡
+granularity: '每 套装×ds快照 一行的配置维度表'
+columns:
+- name: id
+  type: string
+  comment: 套装id
+  role: dimension
+- name: name
+  type: string
+  comment: 套装名
+  role: dimension
+- name: suit_num1
+  type: string
+  comment: 激活数1
+  role: dimension
+- name: suit_desc1
+  type: string
+  comment: 激活描述1
+  role: dimension
+- name: suit_num2
+  type: string
+  comment: 激活数2
+  role: dimension
+- name: suit_desc2
+  type: string
+  comment: 激活描述2
+  role: dimension
+- name: suit_num3
+  type: string
+  comment: 激活数3
+  role: dimension
+- name: suit_desc3
+  type: string
+  comment: 激活描述3
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含ds快照归档）
+coverage:
+  scenarios:
+  - '通过 JOIN dim_10000251_trans_rogue_buff_group_df_arch ON 套装id，为肉鸽/战斗事件表提供套装名(name)及三档激活阈值/描述(suit_num1-3/suit_desc1-3)的维度回填；支持按套装、激活档位筛选与分组分析。'
+  limitations:
+  - '配置类维度表，无值度量（suit_num1-3为阈值属性串，非度量）'
+  - '同一id跨ds快照重复，id全局不唯一（实测 r=2625, d=5），未做 (id,ds) 复合唯一性实测'
+  - 'suit_desc为富文本增益描述，无结构化数值字段'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'dim 配置维度建模，主键 id（套装id），标签 name（套装名）；id 全局不唯一故 primary_key_unique=false 保持 draft。'

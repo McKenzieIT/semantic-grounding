@@ -1,0 +1,153 @@
+name: game.coin.change
+event_filter: event = 'game.coin.change'
+description: 货币资源变化事件：角色在游戏中获得/消耗虚拟货币(钻石/紫金/经验卷轴/体力等)。记录货币类型 coinType/coinId、变化前后数量 beforeAmount/afterAmount、变化量 amount、动作 action(1获得2消耗)、原因 reason1-4 及角色/账号/游戏服上下文。分析主体为 role_id(角色粒度)，可按 server_id/account_id 下钻。实测 ds=20260729：cnt=2419141、role_uv=4748、acc_uv=4418、server_uv=483、amount_sum=63478388364。
+domains:
+  - 付费经济
+domain: payment
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  action:
+    type: int
+    description: 1获得2消耗
+  coinType:
+    type: int
+    description: 货币类型
+  coinId:
+    type: int
+    description: 货币id
+  beforeAmount:
+    type: int
+    description: 旧数量
+  afterAmount:
+    type: int
+    description: 新数量
+  amount:
+    type: int
+    description: 改变的数量
+  reason1:
+    type: int
+    description: reason1
+  reason2:
+    type: int
+    description: reason2
+  reason3:
+    type: int
+    description: reason3
+  reason4:
+    type: int
+    description: reason4
+metrics:
+  game_coin_change_cnt:
+    expression: COUNT(*)
+    description: 货币变化事件总次数(获得+消耗)
+  game_coin_change_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发货币变化的去重角色数
+  game_coin_change_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发货币变化的去重账号数
+  game_coin_change_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发货币变化的去重游戏服数
+  game_coin_change_amount_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.amount') AS BIGINT))
+    description: 货币变化总量(amount 累加，获得+消耗合计绝对流量)
+  game_coin_change_gain_sum:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action')='1' THEN CAST(GET_JSON_OBJECT(params,'$.amount') AS BIGINT) ELSE 0 END)
+    description: 货币获得总量(action=1 的 amount 累加)
+  game_coin_change_consume_sum:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action')='2' THEN CAST(GET_JSON_OBJECT(params,'$.amount') AS BIGINT) ELSE 0 END)
+    description: 货币消耗总量(action=2 的 amount 累加)
+  game_coin_change_avg_amount:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.amount') AS BIGINT)) / NULLIF(COUNT(*), 0)
+    description: 单次货币变化平均变化量
+coverage:
+  scenarios:
+    - 货币产出/消耗规模与流向(总量、获得 vs 消耗对比)
+    - 单服/单角色货币变动活跃度(UV/次数)
+    - 货币经济系统健康度(产出消耗比、人均变化量)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id(角色粒度)，未独立验证 account 粒度
+    - amount 为变化量绝对值，获得与消耗方向需结合 action 区分；跨日波动可能较大
+    - 高频事件(单日 240 万+)，聚合需按 server_id/coinType 分桶控制扫描量
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "实测 ds=20260729: cnt=2419141, role_uv=4748, acc_uv=4418, server_uv=483, amount_sum=63478388364, gain_sum=47143482590, consume_sum=16334905774"
+external_refs:
+  - dim_table: dim_10000251_trans_reason1_df
+    join_keys:
+      - dws_column: reason1
+        dim_column: reason1
+    derivation: 确定性：事件字段 reason1 与 dim_10000251_trans_reason1_df 主键精确同名
+    origin: deterministic
+alt_labels:
+  - 货币变动

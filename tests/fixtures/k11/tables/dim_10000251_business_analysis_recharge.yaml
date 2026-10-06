@@ -1,0 +1,68 @@
+table_name: dim_10000251_business_analysis_recharge
+engine: maxcompute
+kind: dim
+table_comment: 经分商品维表
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+description: '经分商品充值维表（dim_10000251_business_analysis_recharge）：游戏 10000251 充值经分体系的商品配置维度表，每行一个经分商品。主键 id（商品ID），展示标签 name（商品名称）。包含商品一级/二级分类（recharge_type/recharge_type_sec）、主题一级/二级分类（recharge_topic/recharge_topic_sec）、商品内容（recharge_detail）、活动ID（activity_id）、付费金额（payment，人民币）等分类与属性维度字段，供事实表通过商品ID关联查询商品分类、主题、定价等维度信息。'
+domains:
+- 付费经济
+granularity: 每经分商品一行的配置/维度表
+columns:
+- name: id
+  type: string
+  comment: 商品ID,ID
+  role: dimension
+- name: name
+  type: string
+  comment: 商品名称,显示名称
+  role: dimension
+- name: recharge_type
+  type: string
+  comment: 商品一级分类,属性
+  role: dimension
+- name: recharge_type_sec
+  type: string
+  comment: 商品二级分类,属性
+  role: dimension
+- name: recharge_topic
+  type: string
+  comment: 主题一级分类,属性
+  role: dimension
+- name: recharge_topic_sec
+  type: string
+  comment: 主题二级分类,属性
+  role: dimension
+- name: recharge_detail
+  type: string
+  comment: 商品内容,属性
+  role: dimension
+- name: activity_id
+  type: string
+  comment: 活动ID,属性
+  role: dimension
+- name: payment
+  type: string
+  comment: 付费金额（人民币）,属性
+  role: dimension
+coverage:
+  scenarios:
+  - 通过商品ID（id）关联充值/付费事实表，查询商品的一级/二级分类（recharge_type/recharge_type_sec）及主题分类（recharge_topic/recharge_topic_sec）等归类维度。
+  - 通过商品ID关联查询商品的付费金额（payment）、商品内容（recharge_detail）、活动归属（activity_id）等属性，用于经分口径下的商品分组与定价分析。
+  - 在付费经济域下，作为经分商品的统一维度出口，支撑商品维度下的收入、销量等指标的下钻与切片。
+  limitations:
+  - 配置类维度表，无值度量（payment 为字符串型属性，非聚合度量），数值统计需在事实表侧完成。
+  - recharge_topic_sec 等分类字段含业务编码/命名（如"三山璧"），存在复合编码串需二次解码或业务字典映射的场景。
+  - activity_id 在样本数据中可为空，关联活动维度时需注意 NULL 处理。
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 maxc meta describe 验证 9 列均为 STRING 类型；primary_key=id 并经 SELECT COUNT(*)=COUNT(DISTINCT id)=2343 实测唯一；label=name；域归为 付费经济；保持 draft，未做业务方确认。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（经分商品数）

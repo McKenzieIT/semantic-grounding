@@ -1,0 +1,121 @@
+name: game.tactic.wear
+event_filter: event = 'game.tactic.wear'
+description: 战法穿戴事件：角色（role_id 为分析主体）将战法穿戴到武将上时触发。记录被穿戴的战法id（tacticId）、目标武将id（knightId）、来源武将id（srcKnightId）及穿戴动作发生时的角色上下文（角色等级、vip、战力、货币等）。用于度量战法穿戴频次、参与角色规模、覆盖武将/战法多样性。ds=20260729 scout 实测：cnt=6247, role_uv=1478, acc_uv=1434, server_uv=231, distinct tacticId=56, distinct knightId=60。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightId:
+    type: int
+    description: 武将id
+  srcKnightId:
+    type: int
+    description: 来源武将id
+  tacticId:
+    type: int
+    description: 战法id
+metrics:
+  tactic_wear_cnt:
+    expression: COUNT(*)
+    description: 战法穿戴总次数（事件条数）
+  tactic_wear_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发战法穿戴的去重角色数
+  tactic_wear_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发战法穿戴的去重账号数
+  tactic_wear_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发战法穿戴的去重游戏服数
+  tactic_wear_tactic_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.tacticId'))
+    description: 被穿戴的去重战法种类数
+  tactic_wear_knight_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.knightId'))
+    description: 穿戴目标武将的去重种类数
+  tactic_wear_avg_per_role:
+    expression: ROUND(CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0), 2)
+    description: 角色平均战法穿戴次数（总次数/去重角色数，分母为0返回NULL）
+coverage:
+  scenarios:
+    - 战法穿戴的总体规模与角色参与度（总次数、角色UV、账号UV、游戏服UV）
+    - 战法/武将覆盖广度：被穿戴战法种类数、目标武将种类数，反映战法使用多样性
+    - 角色平均穿戴次数：识别重穿戴行为与典型穿戴量级
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（事件为角色级穿戴动作）；账号级聚合通过 account_id 二次聚合
+    - 战法穿戴动作粒度按事件条数计；同一角色对同一武将的多次穿戴未去重
+    - 未捕获穿戴前后战法/武将状态变化（仅记录穿戴瞬时事件），无法直接度量战法收益
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: ds=20260729 scout 实测：cnt=6247, role_uv=1478, acc_uv=1434, server_uv=231, distinct tacticId=56, distinct knightId=60；数值合理，事件在线且高频触发
+coverage_status: analyst_confirmed
+external_refs: []

@@ -1,0 +1,130 @@
+table_name: dws_10000251_lineup_pvp_act_di
+engine: maxcompute
+table_comment: PVP阵容使用表
+description: |-
+  PVP阵容参与使用明细表，记录角色在各PVP玩法及子玩法下不同阵容的参与/胜利次数（含同级、越级）、携带超绝次数及越级战力差/比。
+  粒度：日增量(_di)，主体：角色(role)。
+domains:
+  - 战斗关卡
+granularity: 日增量(_di)
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id，key
+    role: dimension
+  - name: play_id
+    type: string
+    comment: 玩法id，key，缺省值0
+    role: dimension
+  - name: sub_play_id
+    type: string
+    comment: 子玩法id，key，缺省值0
+    role: dimension
+  - name: lineup
+    type: string
+    comment: 阵容，key
+    role: dimension
+  - name: lineup_tag
+    type: string
+    comment: 阵容标签
+    role: attribute
+  - name: part_pv
+    type: bigint
+    comment: 参与次数，0表示未参与
+    role: measure
+  - name: part_pv2
+    type: bigint
+    comment: 同级参与次数
+    role: measure
+  - name: part_pv3
+    type: bigint
+    comment: 越级参与次数
+    role: measure
+  - name: win_pv
+    type: bigint
+    comment: 胜利次数
+    role: measure
+  - name: win_pv2
+    type: bigint
+    comment: 同级胜利次数
+    role: measure
+  - name: win_pv3
+    type: bigint
+    comment: 越级胜利次数
+    role: measure
+  - name: force_diff31
+    type: string
+    comment: 越级最大战力差，我方战力-对方战力-战力差
+    role: attribute
+  - name: force_diff32
+    type: string
+    comment: 越级最大战力比，我方战力-对方战力-战力比
+    role: attribute
+  - name: unique_skill_pv
+    type: bigint
+    comment: 携带超绝次数
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  pvp_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: PVP参与角色数(UV)
+  part_pv_total:
+    expression: SUM(part_pv)
+    description: 总参与场次
+  win_rate:
+    expression: SUM(win_pv) / NULLIF(SUM(part_pv), 0)
+    description: 整体胜率(胜利/参与)
+  cross_lvl_win_rate:
+    expression: SUM(win_pv3) / NULLIF(SUM(part_pv3), 0)
+    description: 越级胜率(越级胜利/越级参与)
+  unique_skill_pv_total:
+    expression: SUM(unique_skill_pv)
+    description: 携带超绝总次数
+coverage:
+  scenarios:
+    - PVP阵容参与角色规模与各阵容参与/胜利场次
+    - 整体与越级胜率对比分析
+    - 超绝技能携带热度
+  limitations:
+    - 表为空/无数据(MAX(ds) NULL)，仅结构化丰富，未做抽样验证
+    - force_diff31/force_diff32 为字符串型战力差/比，聚合前需类型转换
+    - _di 日增量粒度，跨日累计需按 ds 求和
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表为空(MAX(ds) NULL)，无法在最新分区抽样验证指标，仅结构化丰富
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS 列 server_id (comment 区服id) 与 dim server_info 主键 server_id 完全一致；该 dim 为区服维度配置表。
+    origin: deterministic
+  - dim_table: dim_10000251_trans_play_df
+    join_keys:
+      - dws_column: play_id
+        dim_column: id
+    derivation: DWS 列 play_id (comment 玩法id) 语义对应 dim trans_play_df 主键 id；该 dim 为玩法配置维度表，其主键 id 即 玩法id。
+  - dim_table: dim_10000251_trans_sub_play_od
+    join_keys:
+      - dws_column: sub_play_id
+        dim_column: sub_play_id
+    derivation: DWS 列 sub_play_id (comment 子玩法id) 与 dim trans_sub_play_od 主键 sub_play_id 完全一致；该 dim 为子玩法配置维度表。
+    origin: deterministic
+pref_label: PVP阵容活跃表
+alt_labels:
+  - 阵容
+  - 编队

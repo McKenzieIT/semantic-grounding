@@ -1,0 +1,132 @@
+table_name: dws_10000251_play_explore_di
+engine: maxcompute
+table_comment: 玩法探索角色日增量表(_di)
+description: |-
+  玩法探索角色日增量表，按角色(role_id)+城池(city_id)记录每日探索行为增量。
+  主题：探索收集。
+  粒度：日增量(_di)，每角色每城池每业务日一行。
+  主要字段：role_id, server_id, city_id, city_name, explore_pv, p0601_part_pv, p0601_pass_pv, p0602_part_pv, p0602_pass_pv, vit_net_amt, explore_exp_level 等19列。
+domains:
+  - 探索收集
+  - 角色成长
+granularity: 日增量(_di)，角色(role_id)+城池(city_id)粒度，按业务日(ds)分区
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id
+    role: dimension
+  - name: city_id
+    type: string
+    comment: 城池id
+    role: dimension
+  - name: city_name
+    type: string
+    comment: 城池名
+    role: attribute
+  - name: explore_pv
+    type: bigint
+    comment: 探索次数
+    role: measure
+  - name: p0601_part_pv
+    type: bigint
+    comment: 轶事参与次数，不区分城池
+    role: measure
+  - name: p0601_pass_pv
+    type: bigint
+    comment: 轶事通关次数，不区分城池
+    role: measure
+  - name: p0602_part_pv
+    type: bigint
+    comment: 据点参与次数，不区分城池
+    role: measure
+  - name: p0602_pass_pv
+    type: bigint
+    comment: 据点通关次数，不区分城池
+    role: measure
+  - name: explore_proc
+    type: string
+    comment: 总探索进度
+    role: attribute
+  - name: event_proc
+    type: string
+    comment: 事件进度
+    role: attribute
+  - name: item_proc
+    type: string
+    comment: 藏品进度
+    role: attribute
+  - name: vit_net_amt
+    type: bigint
+    comment: 游历剩余次数
+    role: measure
+  - name: explore_skill1
+    type: string
+    comment: 携带见闻技能1，-1 未解锁 0-解锁未携带
+    role: attribute
+  - name: explore_skill2
+    type: string
+    comment: 携带见闻技能2，-1 未解锁 0-解锁未携带
+    role: attribute
+  - name: explore_exp_level
+    type: string
+    comment: 探索等级
+    role: attribute
+  - name: explore_coll_level
+    type: bigint
+    comment: 藏品等级
+    role: dimension
+  - name: ext_info
+    type: string
+    comment: 扩展信息
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  explore_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 探索角色数（去重role_id），衡量参与探索的角色规模
+  explore_pv_sum:
+    expression: SUM(explore_pv)
+    description: 探索次数总和，反映探索行为的总活跃度
+  p0601_pass_rate:
+    expression: SUM(p0601_pass_pv) / NULLIF(SUM(p0601_part_pv), 0)
+    description: 轶事通关率，轶事通关次数/轶事参与次数
+  p0602_pass_rate:
+    expression: SUM(p0602_pass_pv) / NULLIF(SUM(p0602_part_pv), 0)
+    description: 据点通关率，据点通关次数/据点参与次数
+  vit_net_sum:
+    expression: SUM(vit_net_amt)
+    description: 游历剩余次数总和，反映角色游历体力结余
+coverage:
+  scenarios:
+    - 探索玩法活跃度与通关效果分析：探索UV/PV衡量参与规模
+    - 轶事(p0601)、据点(p0602)参与与通关率衡量各子玩法推进效率
+    - 游历剩余次数衡量角色体力结余，可按城池、区服、探索等级分维度切片
+  limitations:
+    - 表为空/无数据(MAX(ds) NULL，meta describe row_count=null、sample_preview=[])，无法对最新 ds 做指标 spot-verify，所有指标为结构化草拟
+    - _di 为日增量，跨日聚合需注意重复计数
+    - explore_proc/event_proc/item_proc 为字符串进度，需业务方确认其聚合语义
+    - p0601/p0602 系列字段不区分城池，跨城池 SUM 后参与/通关次数可能放大，分母需按角色去重
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 表为空(MAX(ds) NULL)，未做指标实测复核，仅结构化草拟；待有数据后补做 spot-verify。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (区服id) exactly matches dim_10000251_server_info primary key server_id (区服维度配置表)，用于按区服切片探索行为增量分析。
+    origin: deterministic
+pref_label: 玩法探索日增量表
+alt_labels:
+  - 探索
+  - 城池
+  - 轶事

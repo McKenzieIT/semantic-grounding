@@ -1,0 +1,39 @@
+table_name: dim_10000251_sync_platform_reward_item_catalogue_df
+engine: maxcompute
+table_comment: 平台奖励物品类别目录(dim 配置表)，记录奖励物品的类别ID与显示名称，供事实表 JOIN 解析类别维度。
+description: 平台奖励物品类别目录维度/配置表。每行记录一个奖励物品类别（如 货币、武将），包含类别ID(id)与类别显示名称(name)，用于事实表中奖励物品类别的维度解析与展示。粒度为日全量快照(_df)。
+kind: dim
+primary_key:
+- id
+primary_key_unique: false
+label_columns:
+- name
+domains:
+- 装备道具
+granularity: 每个奖励物品类别一行的配置/维度表(日全量快照 _df)
+columns:
+- name: name
+  type: string
+  comment: 类别的显示名称
+  role: dimension
+- name: id
+  type: string
+  comment: 类别ID
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 事实表按奖励物品类别ID JOIN 本表，解析类别显示名称(name)用于报表分组与展示。
+  - 作为奖励物品类别字典，支撑奖励发放、物品归因等分析的类别维度下钻。
+  limitations:
+  - 配置类维度表，无值度量，仅提供类别ID与名称的映射。
+  - primary_key_unique=false：实测 39 行中 id 去重后为 38(存在1条重复类别ID)，未达唯一性，故未做 analyst_confirmed，保持 draft。
+  - 仅含类别级元数据，不包含具体物品/数量等明细，如需物品级分析需关联物品明细表。
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 自动 dim 建模；id 实测非唯一(r=39,d=38)，保持 draft 待业务确认。

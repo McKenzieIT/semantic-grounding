@@ -1,0 +1,117 @@
+name: game.anniversary.dungeonReset
+event_filter: event = 'game.anniversary.dungeonReset'
+description: |-
+  周年庆-关卡重置：周年庆活动期间玩家重置关卡/副本进度时触发的埋点事件，每条日志记录一次关卡重置请求，携带 dungeonId(关卡id)、roundId(轮次id)、coinList 系列货币快照等字段，用于追踪周年庆关卡重置玩法的参与规模与货币消耗。主体粒度为 role_id。
+  真实实测(ds=20260729 与 ds=20260728)：日志零命中(cnt=0/role_uv=0/acc_uv=0/server_uv=0)，事件疑似下线或当期未触发，故维持 draft。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等24个
+domains:
+  - 付费经济
+domain: payment
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  roundId:
+    type: int
+    description: roundId
+  dungeonId:
+    type: int
+    description: dungeonId
+metrics:
+  dungeonreset_cnt:
+    expression: COUNT(*)
+    description: 周年庆关卡重置事件触发次数(每条日志=一次关卡重置请求)
+  dungeonreset_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发周年庆关卡重置的去重角色数(去重基础视图 role_id,即 params.roleId)
+  dungeonreset_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发周年庆关卡重置的去重账号数(去重基础视图 account_id,即 params.accountId)
+  dungeonreset_server_dn:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发周年庆关卡重置的去重游戏服数
+  dungeonreset_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 周年庆关卡重置事件携带的充值钻石余额快照总量(coinList.gold 求和,反映参与角色的充值钻石余额规模,非关卡重置交易金额)
+  dungeonreset_gold_per_role:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 触发角色的平均充值钻石余额(总充值钻石余额快照/去重角色数,分母用 NULLIF 防除零)
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测零命中：ds=20260729 cnt=0/role_uv=0/acc_uv=0/server_uv=0；ds=20260728 同样 cnt=0。事件疑似下线或当期未触发，维持 draft。
+coverage:
+  scenarios:
+    - 周年庆关卡重置的事件规模与触达角色/账号数(dungeonreset_cnt/role_uv/account_uv)
+    - 参与角色的充值钻石余额规模(dungeonreset_gold_sum)与单角色平均余额(dungeonreset_gold_per_role),衡量周年庆关卡重置玩法参与度与付费用户画像
+    - 触发周年庆关卡重置的游戏服覆盖数(dungeonreset_server_dn)
+  limitations:
+    - 日志中零命中(ds=20260729 cnt=0/role_uv=0/acc_uv=0/server_uv=0；ds=20260728 同样 cnt=0)，事件疑似下线或当期未触发，故维持 draft；待事件重新触发后再做全量复核
+    - coinList.gold 为参与角色的充值钻石余额快照(非交易金额)，dungeonreset_gold_sum 反映余额规模而非关卡重置收入
+    - subject 粒度默认 role_id 未逐事件实测,但 params.roleId/roleName/accountId 均存在且与基础视图 role_id/account_id 同族口径一致
+  coverage_status: draft
+external_refs: []

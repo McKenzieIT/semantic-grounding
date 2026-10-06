@@ -1,0 +1,41 @@
+table_name: dim_10000251_trans_dim_play_od
+engine: maxcompute
+kind: dim
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+table_comment: 玩法维表
+description: '玩法维表：玩法（主线/无尽塔等）配置维度表，每行一个玩法。
+
+  主键：id（玩法编码，唯一）。
+
+  标签列：name（玩法显示名称）。
+
+  用于通过 id JOIN 将事实表中的玩法编码映射为可读名称。'
+domains:
+- 系统监控
+granularity: 每行一个玩法的配置维度表
+columns:
+- name: id
+  type: string
+  comment: ID,ID
+  role: dimension
+- name: name
+  type: string
+  comment: 名称,显示名称
+  role: dimension
+coverage:
+  scenarios:
+  - 通过 id JOIN 事实表，将玩法编码映射为可读玩法名称（如主线、无尽塔等）
+  - 作为玩法维度的筛选与分组键，支持按玩法聚合度量
+  limitations:
+  - 配置类维度表，无值度量
+  - 仅 8 行玩法编码，覆盖游戏内玩法枚举全集
+  - 玩法 id 为字符串编码，需与事实表同名字段对齐
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '依据 meta describe 确认列结构与注释；PRIMARY KEY=id（8 行均唯一，实测 r=d=8）；label=name。配置类维度表，无度量。'

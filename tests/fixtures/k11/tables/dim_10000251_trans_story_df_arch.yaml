@@ -1,0 +1,49 @@
+table_name: dim_10000251_trans_story_df_arch
+engine: maxcompute
+kind: dim
+table_comment: 剧情流对话归档维表（按 ds 分区快照，每行一条对话文案）
+description: '游戏 10000251 的剧情流（story/df）对话内容归档维表。每行存储某剧情流 id 下某对话序号 order 对应的对话文案 content，并按 ds 分区保留多日快照。用于通过 (id, order) 关联事实表并取出对话文本/排序，支撑剧情对话内容检索与排查。
+
+  粒度：每 (id, order, ds) 一行的对话归档维表；逻辑键为 (id, order)（同一对话在多 ds 快照中重复出现，故非全局唯一）。
+
+  主要字段：id（剧情流id）、order（对话序号）、content（对话内容）、ds（分区）。'
+domains:
+- 系统监控
+granularity: 每 (id, order, ds) 一行的剧情流对话归档维表
+columns:
+- name: id
+  type: string
+  comment: 剧情流id
+  role: dimension
+- name: order
+  type: string
+  comment: 对话序号
+  role: dimension
+- name: content
+  type: string
+  comment: 对话内容
+  role: dimension
+- name: ds
+  type: string
+  comment: 分区字段（日期快照，YYYYMMDD）
+  role: partition
+primary_key: [id, order]
+primary_key_unique: false
+label_columns: [content]
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含多 ds 快照）
+coverage:
+  scenarios:
+  - 通过 (id, order) 关联剧情流相关事实表，取出对话文案 content 与对话顺序，用于剧情对白内容检索/核对
+  - 维度下钻查看某剧情流 id 下的全部对话序号与文案
+  limitations:
+  - 配置类维度表，无值度量（content 为文本，不宜聚合）
+  - 同一 (id, order) 在多个 ds 快照中重复，主键非全局唯一；如需去重请按 ds 取最新分区或在查询中 DISTINCT
+  - primary_key_unique 经实测为 false（r=22869311, d(id,order)=45220）
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 剧情流对话归档维表；复合逻辑键 (id, order) 非全局唯一（受 ds 快照影响），未做唯一性保证，故维持 draft。

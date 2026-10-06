@@ -1,0 +1,179 @@
+name: game.resort.accept
+event_filter: event = 'game.resort.accept'
+description: 代打（代练）系统-接受代打请求事件：玩家接受他人发起的代打请求时上报，记录接受行为本身、接受方角色画像（等级/VIP/战力）及请求方玩家id（resortUid）与接受时货币快照（coinList）。事件名 game.resort.accept，分析主体粒度为 role_id（执行代打的接受方角色），请求方粒度为 resortUid。scout 实测 ds=20260729：单日 cnt=315 / 接受方 role_uv=189 / acc_uv=185 / 请求方 resortUid_uv=86 / 覆盖 15 个游戏服。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  requestId:
+    type: string
+    description: 请求id
+  resortUid:
+    type: int
+    description: 请求方的玩家id
+  type:
+    type: int
+    description: 类型
+  value1:
+    type: int
+    description: 值1
+  value2:
+    type: int
+    description: 值2
+metrics:
+  resort_accept_cnt:
+    expression: COUNT(*)
+    description: 代打接受事件总次数（每次接受代打请求计一次）
+  resort_accept_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 去重接受方角色数（执行代打的代打方角色）
+  resort_accept_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 去重接受方账号数
+  resort_accept_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 覆盖的去重游戏服数
+  resort_accept_resort_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.resortUid'))
+    description: 去重请求方玩家数（被接受的代打请求发起方 resortUid）
+  resort_accept_accepts_per_role:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 每个接受方角色的平均接受次数（>1 表示同一代打方当日多次接受代打）
+  resort_accept_accepts_per_request:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT GET_JSON_OBJECT(params, '$.resortUid')), 0)
+    description: 每个请求方（resortUid）的平均被接受次数（>1 表示同请求被多个代打方接受）
+  resort_accept_vip_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.vipLevel') AS BIGINT))
+    description: 接受方角色的平均 VIP 等级
+  resort_accept_role_level_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS BIGINT))
+    description: 接受方角色的平均角色等级
+  resort_accept_role_force_avg:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleForce') AS BIGINT))
+    description: 接受方角色的平均战力
+coverage:
+  granularity: 单次代打接受事件（role_id 为接受方默认主体粒度，resortUid 为请求方粒度）
+  scenarios:
+    - 代打系统单日参与规模（接受次数 / 接受方 role_uv / 请求方 resort_uv / 覆盖游戏服数）
+    - 不同 VIP / 等级 / 战力玩家接受代打请求的画像分布
+    - 单角色重复接受（accepts_per_role>1）与同请求被多代打方接受（accepts_per_request>1）的供需热度识别
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认主体粒度为 role_id（接受方），未逐事件实测 role_id 是否为最细主体
+    - value1/value2/type 等泛型参数语义未由客户端说明，未纳入指标
+    - coinList 为接受时货币快照（余额态），非代打报酬金额，未做 SUM 收入统计
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=315 / role_uv=189 / acc_uv=185 / server_uv=15；resortUid 全非空(315/315)、去重 86；vipLevel/roleLevel/roleForce/type 全非空(315/315)
+coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_trans_gacha_mission_group_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_gacha_mission_group_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_item_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df_arch
+    join_keys:
+      - dws_column: type
+        dim_column: type
+    derivation: 确定性：事件字段 type 与 dim_10000251_trans_resource_item_df_arch 主键精确同名
+    origin: deterministic

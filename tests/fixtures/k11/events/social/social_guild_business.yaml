@@ -1,0 +1,169 @@
+name: game.social.guild.business
+event_filter: event = 'game.social.guild.business'
+description: |-
+  公会封地经营：公会成员在公会封地进行经营操作（派遣武将到建筑物、领取事件奖励、领取经营奖励）的事件日志，分析主体为角色(role_id)。
+  实测 ds=20260729 单日：事件 cnt=10243，角色 UV=3321，账号 UV=3169，覆盖游戏服 433 个；按经营操作 action 分布：派遣(action=1) 3281 条/3227 角色，领取事件奖励(action=2) 3916 条/1432 角色，领取经营奖励(action=3) 3046 条/2504 角色。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等32个
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  action:
+    type: int
+    description: 经营操作  1：派遣  2：领取事件奖励  3：领取经营奖励
+  rewardId:
+    type: int
+    description: 领取奖励id
+  buildId:
+    type: int
+    description: 经营建筑物id
+  buildName:
+    type: string
+    description: 建筑物名称
+  cardList:
+    type: array
+    description: 派遣武将列表
+  cardList.id:
+    type: int
+    description: 武将id
+  cardList.name:
+    type: string
+    description: 武将名
+  expScore:
+    type: int
+    description: 经营值
+  guildScore:
+    type: int
+    description: 操作完工会的经营值
+  cycleRewardId:
+    type: int
+    description: 经营循环奖励
+metrics:
+  game_social_guild_business_cnt:
+    description: 公会封地经营事件总条数
+    expression: COUNT(*)
+  game_social_guild_business_role_uv:
+    description: 参与公会封地经营的角色数（去重 role_id）
+    expression: COUNT(DISTINCT role_id)
+  game_social_guild_business_account_uv:
+    description: 参与公会封地经营的账号数（去重 account_id）
+    expression: COUNT(DISTINCT account_id)
+  game_social_guild_business_server_uv:
+    description: 发生公会封地经营的游戏服数（去重 server_id）
+    expression: COUNT(DISTINCT server_id)
+  game_social_guild_business_dispatch_cnt:
+    description: 派遣操作事件数（action=1，派遣武将到经营建筑物）
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action')='1' THEN 1 ELSE 0 END)
+  game_social_guild_business_dispatch_role_uv:
+    description: 执行派遣操作的字符去重数（action=1）
+    expression: COUNT(DISTINCT CASE WHEN GET_JSON_OBJECT(params,'$.action')='1' THEN role_id END)
+  game_social_guild_business_claim_event_cnt:
+    description: 领取事件奖励操作事件数（action=2）
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action')='2' THEN 1 ELSE 0 END)
+  game_social_guild_business_claim_event_role_uv:
+    description: 领取事件奖励的角色去重数（action=2）
+    expression: COUNT(DISTINCT CASE WHEN GET_JSON_OBJECT(params,'$.action')='2' THEN role_id END)
+  game_social_guild_business_claim_reward_cnt:
+    description: 领取经营奖励操作事件数（action=3）
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action')='3' THEN 1 ELSE 0 END)
+  game_social_guild_business_claim_reward_role_uv:
+    description: 领取经营奖励的角色去重数（action=3）
+    expression: COUNT(DISTINCT CASE WHEN GET_JSON_OBJECT(params,'$.action')='3' THEN role_id END)
+  game_social_guild_business_exp_score_sum:
+    description: 派遣带来的经营值(expScore)总和
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.expScore') AS BIGINT))
+  game_social_guild_business_guild_score_sum:
+    description: 派遣完工后增加的公会经营值(guildScore)总和
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.guildScore') AS BIGINT))
+  game_social_guild_business_build_uv:
+    description: 涉及的经营建筑物去重数（去重 buildId）
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.buildId'))
+  game_social_guild_business_dispatch_per_role_ratio:
+    description: 派遣参与率=派遣角色UV/经营角色总UV，衡量成员派遣经营参与度
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params,'$.action')='1' THEN 1 ELSE 0 END) / NULLIF(COUNT(DISTINCT CASE WHEN GET_JSON_OBJECT(params,'$.action')='1' THEN role_id END), 0)
+coverage:
+  scenarios:
+    - 公会封地经营整体活跃度：事件总数、角色/账号/游戏服 UV 反映公会封地经营玩法的覆盖面。
+    - 经营操作结构分析：派遣、领取事件奖励、领取经营奖励三类 action 的占比，定位核心经营动作。
+    - 派遣产出量化：expScore(经营值)与 guildScore(公会经营值)总和衡量派遣对公会经营的贡献。
+    - 建筑物利用率：build_uv 与各 action 的 build_uv 对比，识别热门经营建筑物。
+    - 成员参与深度：派遣参与率等比率衡量公会成员经营参与度（分析主体 role_id）。
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量/多日复核；多日趋势与周期性需后续覆盖。
+    - 分析主体默认为角色(role_id)；账号级(account_id)口径仅作补充参考。
+    - action 取值依赖客户端上报，action=2/3 的 expScore、guildScore 实测均为 0（仅 action=1 派遣产生经营值），符合业务预期但未跨日校验。
+    - coinList(cardList 为数组)未在标量指标中展开；货币/武将明细需后续单独建组统计。
+    - 派遣参与率为粗略比率，未对角色多日重复行为做去重归并。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：event=game.social.guild.business 命中 cnt=10243，role_uv=3321，acc_uv=3169，server_uv=433；action 分布 1/2/3 = 3281/3916/3046 条；expScore 总和 5359800、guildScore 总和 91916615（仅 action=1 产生）。数字合理，确认为真实事件。
+coverage_status: analyst_confirmed
+external_refs: []

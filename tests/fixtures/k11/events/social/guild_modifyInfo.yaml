@@ -1,0 +1,123 @@
+name: game.guild.modifyInfo
+event_filter: event = 'game.guild.modifyInfo'
+description: 公会信息修改事件，记录公会成员（发起者，分析主体 role_id）修改公会信息（宣言 manifesto、图标 icon、加入条件 joinValue/joinType、审核方式 audit、标签 tag 等）的行为。ds=20260729 scout 实测：cnt=7, role_uv=6, account_uv=6, server_uv=6。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  tag:
+    type: int
+    description: 标签
+  icon:
+    type: array
+    description: 图标
+  manifesto:
+    type: string
+    description: 宣言
+  audit:
+    type: int
+    description: 审核方式
+  joinValue:
+    type: int
+    description: 申请条件
+  joinType:
+    type: int
+    description: 申请类型
+metrics:
+  game_guild_modifyInfo_cnt:
+    expression: COUNT(*)
+    description: 公会信息修改事件总次数
+  game_guild_modifyInfo_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 发起公会信息修改的去重角色数
+  game_guild_modifyInfo_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 发起公会信息修改的去重账号数
+  game_guild_modifyInfo_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及公会信息修改的去重游戏服数
+  game_guild_modifyInfo_per_role_modify_cnt:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均公会信息修改次数（按角色去重），用于识别高频修改者
+coverage:
+  scenarios:
+    - 公会信息修改的活跃度与覆盖面（次数/角色UV/账号UV/游戏服UV）
+    - 识别高频修改公会信息的角色（人均修改次数）
+    - 公会运营活跃度评估（结合 server_id 维度）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度），未单独验证 account_id 维度一致性
+    - 未对 params 中具体修改字段（manifesto/icon/tag 等）做字段级分布统计
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=7, role_uv=6, account_uv=6, server_uv=6；事件真实命中且数字合理
+coverage_status: analyst_confirmed
+external_refs: []

@@ -1,0 +1,198 @@
+name: game.rogue.choosesoul
+event_filter: event = 'game.rogue.choosesoul'
+description: 古战场（rogue）副本中触发将魂（soul）选择时上报的事件，记录玩家在某个章节/难度/阶段的将魂候选项及最终选择。分析主体为 role_id（角色粒度），account_id 用于账号去重。参数含游戏服、账号/角色、等级战力、coinList 货币、choice 选项列表（含 id/name/quality/suit/choose 是否被选）、buff 祝福、soul 将魂列表（id/suitId/suitNum）、treasure 奇珍、rogueStage 阶段、chapter/difficulty/step 等。ds=20260729 单日 scout 实测：cnt=1100，role_uv=119，acc_uv=118，server_uv=47。
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  playId:
+    type: string
+    description: 唯一标识一次古战场副本挑战
+  chapter:
+    type: int
+    description: 章节
+  difficulty:
+    type: int
+    description: 难度
+  step:
+    type: int
+    description: 步数
+  choice:
+    type: array
+    description: 选项列表
+  choice.id:
+    type: int
+    description: id
+  choice.name:
+    type: string
+    description: 名称
+  choice.quality:
+    type: int
+    description: 品质
+  choice.suit:
+    type: int
+    description: 套装id
+  choice.choose:
+    type: int
+    description: 是否被选择1：是 0：否
+  buff:
+    type: array
+    description: buff列表（祝福）
+  buff.id:
+    type: int
+    description: buff的id
+  buff.name:
+    type: string
+    description: buff名称
+  buff.level:
+    type: int
+    description: 强化等级
+  buff.quality:
+    type: int
+    description: buff品质
+  buff.suitId:
+    type: int
+    description: 套装id
+  soul:
+    type: array
+    description: 将魂列表
+  soul.id:
+    type: int
+    description: 将魂id
+  soul.suitId:
+    type: int
+    description: 套装id
+  soul.suitNum:
+    type: int
+    description: 套装下将魂数量
+  treasure:
+    type: array
+    description: 奇珍列表
+  treasure.id:
+    type: int
+    description: 奇珍id
+  treasure.name:
+    type: string
+    description: 奇珍名
+  treasure.quality:
+    type: int
+    description: 奇珍品质
+  rogueStage:
+    type: int
+    description: 阶段
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: ds=20260729 scout 实测 cnt=1100, role_uv=119, acc_uv=118, server_uv=47；数字合理（多服多角色，单角色平均约 9.2 次将魂选择）。
+metrics:
+  game_rogue_choosesoul_cnt:
+    expression: COUNT(*)
+    description: 将魂选择事件总次数（古战场副本中将魂选择节点的触发量）
+  game_rogue_choosesoul_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发将魂选择的角色数（去重）
+  game_rogue_choosesoul_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发将魂选择的账号数（去重）
+  game_rogue_choosesoul_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发将魂选择的游戏服数（去重）
+  game_rogue_choosesoul_choices_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 角色平均将魂选择次数（人均深度，反映古战场将魂选择节点的触发频度）
+  game_rogue_choosesoul_chapter_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.chapter'))
+    description: 覆盖的章节去重数（GET_JSON_OBJECT 取 chapter）
+  game_rogue_choosesoul_roguestage_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.rogueStage'))
+    description: 覆盖的古战场阶段去重数（GET_JSON_OBJECT 取 rogueStage）
+coverage:
+  scenarios:
+    - 古战场将魂选择节点的总触发量与参与角色/账号/服务器规模
+    - 角色人均将魂选择次数，评估玩家在将魂选择节点的交互深度
+    - 将魂选择覆盖的章节与古战场阶段广度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核；多日趋势需扩 ds 范围后复算
+    - 分析主体默认 role_id（角色粒度），账号粒度仅用于去重辅助
+    - choice/soul/treasure 为数组类型，本事件 metrics 暂未展开数组元素级聚合（如各品质将魂被选次数），如需可后续补充 LATERAL VIEW 数组展开
+coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_trans_rogue_df
+    join_keys:
+      - dws_column: difficulty
+        dim_column: difficulty
+    derivation: 确定性：事件字段 difficulty 与 dim_10000251_trans_rogue_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_rogue_df_arch
+    join_keys:
+      - dws_column: difficulty
+        dim_column: difficulty
+    derivation: 确定性：事件字段 difficulty 与 dim_10000251_trans_rogue_df_arch 主键精确同名
+    origin: deterministic

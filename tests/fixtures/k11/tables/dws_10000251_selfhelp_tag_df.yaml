@@ -1,0 +1,68 @@
+table_name: dws_10000251_selfhelp_tag_df
+engine: maxcompute
+table_comment: 自助归因用户标签日全量快照，覆盖设备/账号/角色三类主体，存储 udd(json) 与 udd_kv 用户的归因标签
+description: 粒度：日全量快照(_df)，按 ds 分区，每分区存储当日全量用户标签。主体类型：设备(user_type=1)/账号(user_type=2)/角色(user_type=3)，三类主体共存于同一表。主键 user_id。标签字段 udd(json) 与 udd_kv(kv, 以``分隔) 包含归因属性如 attr_media_name(媒体来源)、internal_user(是否内部用户)、biz_name(业务名称)。用于自助归因的用户标签查询与分群。
+domains:
+  - 用户生命周期
+  - 系统监控
+granularity: 日全量快照(_df)，主体=设备/账号/角色(user_type 1/2/3)，分区键 ds(业务日期)
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: udd
+    type: string
+    comment: 用户标签，json格式
+    role: attribute
+  - name: udd_kv
+    type: string
+    comment: 用户标签，kv格式
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  user_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 当日快照用户数(UV)，需配合 user_type 过滤区分主体(1设备/2账号/3角色)
+  account_uv:
+    expression: COUNT(DISTINCT CASE WHEN user_type=2 THEN user_id END)
+    description: 当日账号 UV(user_type=2)，账号主体去重用户数
+  internal_user_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(udd,'$.internal_user')='是' THEN 1 ELSE 0 END)
+    description: 当日内部用户数(internal_user=是)
+  natural_traffic_uv:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(udd,'$.attr_media_name')='自然量' THEN 1 ELSE 0 END)
+    description: 当日自然量用户数(attr_media_name=自然量)，未付费媒体自然流量
+  internal_user_ratio:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(udd,'$.internal_user')='是' THEN 1 ELSE 0 END) / NULLIF(COUNT(DISTINCT user_id),0)
+    description: 内部用户占比(内部用户数/总UV)
+coverage:
+  scenarios:
+    - 按主体类型(user_type)统计当日标签覆盖的用户规模(UV)
+    - 分析归因媒体来源分布(attr_media_name)与自然量占比
+    - 识别内部用户占比(internal_user_ratio)，支持反作弊与渠道质量监控
+    - 自助标签查询与用户分群(基于 udd_kv 属性)
+  limitations:
+    - _df 日全量快照，每分区为当日全量标签，跨日对比需注意重复与主体映射
+    - 仅抽样验证(账号UV/内部用户/自然量在 ds=20260529 合理)，未做全量 maxc 实测复核
+    - 标签字段 udd/udd_kv 为字符串，跨主体 user_id 可能存在跨类型重复，UV 计算建议按 user_type 分组
+    - 缺少媒体来源、业务名称等维度列的展平，需 GET_JSON_OBJECT 解析
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 在 latest ds=20260529 实测验证 account_uv=1181554、internal_cnt=783、natural_cnt=450358，数值合理；三类主体均存在(设备1.96M/账号1.18M/角色1.63M)
+dimension_refs: []
+pref_label: 归因标签表
+alt_labels:
+  - 归因
+  - 渠道
+  - 来源
+  - 用户画像

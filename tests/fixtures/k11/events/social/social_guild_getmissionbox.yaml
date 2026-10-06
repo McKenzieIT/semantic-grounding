@@ -1,0 +1,141 @@
+name: game.social.guild.getmissionbox
+event_filter: event = 'game.social.guild.getmissionbox'
+description: "公会任务宝箱奖励领取事件：玩家达成公会任务活跃度门槛(activeNeed)后领取对应宝箱奖励时上报，记录奖励id(rewardId)、所属公会(guildId/guildLv/guildName)及领取相关货币(coinList: gold/sendgold/freegold/expCoin/energy 等)。分析主体为 role_id（角色粒度领取行为），可统计领取次数、领取角色/账号数、覆盖公会数及各货币累计量。scout 实测 ds=20260729：cnt=2084、role_uv=1949、acc_uv=1883、server_uv=274、reward_id_uv=5、guild_id_uv=219。"
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  boxId:
+    type: int
+    description: 奖励id
+  activeNeed:
+    type: int
+    description: 需要的活跃度
+metrics:
+  game_social_guild_getmissionbox_cnt:
+    expression: COUNT(*)
+    description: 公会任务宝箱领取事件总次数（每条=一次角色领取公会任务宝箱奖励行为）
+  game_social_guild_getmissionbox_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取宝箱的去重角色数（主体粒度 role_id）
+  game_social_guild_getmissionbox_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取宝箱的去重账号数
+  game_social_guild_getmissionbox_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 有领取行为发生的去重游戏服数
+  game_social_guild_getmissionbox_reward_id_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.rewardId'))
+    description: 涉及的宝箱奖励类型数（去重 rewardId；实测 rewardId 100%非空、ds=20260729 共5档；注：埋点声明为 boxId 但日志实际为 rewardId）
+  game_social_guild_getmissionbox_guild_id_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.guildId'))
+    description: 涉及的去重公会数（实测 guildId 100%非空、ds=20260729 共219个公会）
+  game_social_guild_getmissionbox_active_need_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.activeNeed'))
+    description: 领取所需的活跃度档位数（去重 activeNeed；ds=20260729 实测5档）
+  game_social_guild_getmissionbox_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 充值钻石累计量（gold 实测非空）
+  game_social_guild_getmissionbox_sendgold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.sendgold') AS BIGINT))
+    description: 充值赠送钻石累计量
+  game_social_guild_getmissionbox_freegold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.freegold') AS BIGINT))
+    description: 免费钻石累计量
+  game_social_guild_getmissionbox_expcoin_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.expCoin') AS BIGINT))
+    description: 经验卷轴累计量
+  game_social_guild_getmissionbox_energy_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.energy') AS BIGINT))
+    description: 体力累计量
+  game_social_guild_getmissionbox_avg_cnt_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均领取次数（cnt / role_uv，NULLIF 防零除）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 单日：cnt=2084、role_uv=1949、acc_uv=1883、server_uv=274、reward_id_uv=5(rewardId 100%非空)、guild_id_uv=219、active_need_uv=5、gold_sum=35547、sendgold_sum=8375、freegold_sum=41665525、expCoin_sum=396451135490、energy_sum=641689、coin2_sum=82162983067(coin2未在params_fields声明)；diamond 全为 NULL（coinList 无 diamond 键）。数据合理（公会任务宝箱正常领取），分析主体粒度 role_id
+coverage:
+  scenarios:
+    - 公会任务宝箱领取规模（cnt / role_uv / account_uv）
+    - 领取覆盖面（server_uv 游戏服数、reward_id_uv 奖励类型数、guild_id_uv 公会数）
+    - 活跃度门槛分布（active_need_uv 档位数）
+    - 各货币累计量（gold/sendgold/freegold/expCoin/energy _sum，衡量宝箱奖励经济产出）
+    - 单角色领取强度（avg_cnt_per_role 人均领取次数）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量多日复核，建议接入生产流量前抽查
+    - 分析主体粒度默认 role_id，未独立核对 account_id 维度去重差异
+    - 埋点声明字段 boxId 在日志中实测全为 NULL，实际奖励id字段为 rewardId（schema/日志不一致，建议修正 params_fields）；boxId 指标未纳入
+    - coinList.diamond（紫金）实测全为 NULL（本事件 coinList 无 diamond 键），diamond 指标未纳入
+    - coinList.coin2/coin3 实测非空（coin2 100%非空、sum 巨大）但未在 params_fields 声明，本次未纳入指标，需补声明后单独核算
+    - coinList.* 语义为领取时货币余额快照还是本次发放增量未独立核对，_sum 指标按累计量参考
+    - 本游戏无 MaxCompute 事件分布查询，无 daily_count/total_count/active_days
+  coverage_status: analyst_confirmed
+external_refs: []

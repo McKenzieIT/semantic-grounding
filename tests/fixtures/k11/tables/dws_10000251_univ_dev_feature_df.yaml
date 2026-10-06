@@ -1,0 +1,72 @@
+table_name: dws_10000251_univ_dev_feature_df
+engine: maxcompute
+table_comment: 通用设备画像表
+description: |-
+  通用设备画像表。
+  粒度：日全量快照(_df)。分析主体=设备（user_type=1）。
+  主要字段：user_type, user_id, roll_flag, risk_level, max_role_level, ds。
+domains:
+  - 用户生命周期
+  - 系统监控
+granularity: 日全量快照(_df)，分析主体=设备(user_type=1)，每设备一行
+columns:
+  - name: user_type
+    type: bigint
+    comment: 用户类型，1-设备、2-账号、3-角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 设备id(user_type=1)
+    role: dimension
+  - name: roll_flag
+    type: bigint
+    comment: 滚服标识 1-滚服 0-非滚服
+    role: dimension
+  - name: risk_level
+    type: bigint
+    comment: 风险等级
+    role: dimension
+  - name: max_role_level
+    type: bigint
+    comment: 最大角色等级
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  dev_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 设备UV（去重设备数，user_type=1）
+  roll_dev_cnt:
+    expression: SUM(CASE WHEN roll_flag=1 THEN 1 ELSE 0 END)
+    description: 滚服设备数（roll_flag=1）
+  risk_dev_cnt:
+    expression: SUM(CASE WHEN risk_level>0 THEN 1 ELSE 0 END)
+    description: 风险设备数（risk_level>0）
+  risk_dev_ratio:
+    expression: SUM(CASE WHEN risk_level>0 THEN 1 ELSE 0 END) / NULLIF(COUNT(DISTINCT user_id),0)
+    description: 风险设备占比（risk_level>0 设备 / 全量设备）
+  avg_max_role_level:
+    expression: AVG(max_role_level)
+    description: 平均最大角色等级
+coverage:
+  scenarios:
+    - 设备规模与活跃度盘点（dev_uv 用于设备口径日活/存量基线）
+    - 滚服设备识别与规模度量（roll_dev_cnt 反映跨服迁移设备量）
+    - 风险/异常设备识别与占比监控（risk_dev_cnt、risk_dev_ratio 用于风控与系统监控）
+    - 设备养成进度评估（avg_max_role_level 反映全量设备角色等级均值）
+  limitations:
+    - 仅抽样验证最新分区 ds=20260730 的聚合指标（dev_uv=2016807、roll_dev_cnt=24052、risk_dev_cnt=523267、avg_max_role_level=38.04），未做全量 maxc 多分区复核
+    - _df 日全量快照语义，跨分区相加会重复计设备；时序对比需以快照口径取每个分区独立 UV/占比
+    - 风险等级 risk_level 阈值口径依赖上游数仓标注，本层不做二次校验
+    - 缺少设备业务标签维度（如渠道/区服），仅 roll_flag/risk_level 可作为分组键
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 最新分区 ds=20260730 抽样实测 dev_uv/risk_dev_cnt/avg_max_role_level 数值合理，user_type=1 与设备主体推断一致，标记 analyst_confirmed。
+dimension_refs: []
+pref_label: 设备画像表
+alt_labels:
+  - 设备

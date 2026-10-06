@@ -1,0 +1,77 @@
+table_name: dws_10000251_algo_role_act_pay_df
+engine: maxcompute
+table_comment: 角色活跃与付费日全量快照表（DWS层）。每行一个 role_id 日快照，记录账号、服务器、活动日期与角色信息汇总。
+description: |-
+  粒度：日全量快照(_df)，分析主体=角色（role_id；表名 role，推断 user_type=3，本表无 user_type 列）。
+  每个分区 ds 为一次全量快照，每行对应一个 role_id，关联 acc_id、server_id、act_ds（活动日）与 role_info（角色日级明细聚合串，以 ` 分隔多条，逗号分隔字段：日期,?,?）。
+  主要字段：role_id(主键), acc_id, server_ds, server_id, act_ds, role_info, ds(分区)。
+domains:
+  - 付费经济
+  - 用户生命周期
+granularity: 日全量快照(_df)，主体=角色(role_id)，每分区一行/角色
+columns:
+  - name: role_id
+    type: string
+    comment: ""
+    role: dimension
+  - name: acc_id
+    type: string
+    comment: ""
+    role: dimension
+  - name: server_ds
+    type: string
+    comment: ""
+    role: dimension
+  - name: server_id
+    type: string
+    comment: ""
+    role: dimension
+  - name: act_ds
+    type: string
+    comment: ""
+    role: dimension
+  - name: role_info
+    type: string
+    comment: 角色日级明细聚合串（` 分隔多条；逗号分隔字段：日期,?,?），文本属性
+    role: attribute
+  - name: ds
+    type: string
+    comment: 分区键，日全量快照日期 yyyymmdd
+    role: partition
+columns_meta: {}
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日活跃角色数（DISTINCT role_id）
+  acc_uv:
+    expression: COUNT(DISTINCT acc_id)
+    description: 当日活跃账号数（DISTINCT acc_id）
+  server_cnt:
+    expression: COUNT(DISTINCT server_id)
+    description: 当日覆盖服务器数（DISTINCT server_id）
+  role_row_cnt:
+    expression: COUNT(*)
+    description: 当日快照总行数（每行一角色）
+coverage:
+  scenarios:
+    - 角色活跃规模与付费经济：role_uv/acc_uv 监控日活角色与账号，server_cnt 反映活跃服务器覆盖范围，role_row_cnt 校验快照完整性。
+  limitations:
+    - 本表无 user_type 列，主体=角色由表名 role 推断，未直接验证。
+    - role_info 为聚合文本串，未在指标中解析；如需明细需在 ETL 拆分或使用 GET_JSON_OBJECT/正则。
+    - _df 为日全量快照，非增量；跨日趋势需对多分区聚合，注意重复角色仅在各分区出现一次。
+    - 仅 scout 抽样验证（latest ds=20260730 实测 4 项计数指标合理），未做全量 maxc 实测复核。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已对 latest ds=20260730 实测 4 项计数指标（role_uv/acc_uv/server_cnt/role_row_cnt），数值合理（1.67M 角色/1.15M 账号/608 服务器），故 analyst_confirmed；user_type 列不存在故仅依据表名推断主体=角色。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (server context of the role, referenced in the table description) is an exact-name match to dim_10000251_server_info's primary key server_id, used to look up server name and open-time attributes.
+    origin: deterministic
+pref_label: 角色活跃付费快照表
+alt_labels:
+  - 算法

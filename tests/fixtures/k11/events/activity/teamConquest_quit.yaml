@@ -1,0 +1,108 @@
+name: game.teamConquest.quit
+event_filter: event = 'game.teamConquest.quit'
+description: 退出组队讨伐（teamConquest）玩法事件，记录玩家退出/离开组队讨伐的瞬间快照。分析主体为角色（role_id），同时携带账号、游戏服、角色等级、vip等级、角色战力及多种货币余额等23个参数。scout实测 ds=20260729：cnt=7，role_uv=7，acc_uv=7，server_uv=5。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  battleId:
+    type: string
+    description: 战斗id
+metrics:
+  team_conquest_quit_cnt:
+    expression: COUNT(*)
+    description: 组队讨伐退出事件总次数（角色粒度）
+  team_conquest_quit_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 退出组队讨伐的去重角色数（分析主体默认 role_id）
+  team_conquest_quit_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 退出组队讨伐的去重账号数
+  team_conquest_quit_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 退出组队讨伐涉及的去重游戏服数
+  team_conquest_quit_cnt_per_role:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均退出组队讨伐次数（总次数/去重角色数）
+coverage:
+  scenarios:
+    - 分析组队讨伐玩法的退出规模与角色覆盖（team_conquest_quit_cnt / _role_uv / _account_uv）
+    - 评估各游戏服组队讨伐退出热度分布（team_conquest_quit_server_uv）
+    - 衡量人均退出次数判断重复退出行为（team_conquest_quit_cnt_per_role）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（事件携带 role_id 与 account_id，角色粒度）
+    - coinList 字段为货币余额快照而非流水金额，未计入营收口径
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout实测 ds=20260729: cnt=7, role_uv=7, acc_uv=7, server_uv=5"
+external_refs: []

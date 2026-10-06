@@ -1,0 +1,232 @@
+table_name: dws_10000251_progression_card_df
+engine: maxcompute
+table_comment: 卡牌培养状态总表(角色维度日全量快照)
+description: 卡牌培养状态总表（日全量快照 _df）。粒度：每个角色(role_id)下持有的每张卡牌(role_id+card_id)逐日全量快照，主体为角色(role,user_type=3推断)维度下的卡牌培养进度。记录卡牌星级/等级/战力、魂石余量、无双等级、潜能点、觉醒列表、风物(tactic)、装备(武器/头盔/铠甲/饰品)、典藏、天命方案、武将战力排名等培养状态。跨日为全量快照，UV/求和类指标须按 ds 切片，不可跨日直接累加。
+domains:
+  - 角色成长
+  - 装备道具
+granularity: 日全量快照(_df)，主体=角色(role_id,user_type=3)，粒度=role_id+card_id
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: card_id
+    type: bigint
+    comment: 卡牌ID
+    role: dimension
+  - name: card_job
+    type: int
+    comment: 卡牌职业
+    role: measure
+  - name: card_star
+    type: int
+    comment: 卡牌星级
+    role: measure
+  - name: card_level
+    type: bigint
+    comment: 卡牌等级
+    role: measure
+  - name: card_force
+    type: int
+    comment: 卡牌战力
+    role: measure
+  - name: card_piece
+    type: int
+    comment: 魂石余量
+    role: measure
+  - name: unrival_level
+    type: bigint
+    comment: 无双等级
+    role: measure
+  - name: is_key
+    type: string
+    comment: 是否主力卡牌 true-是 false-否
+    role: dimension
+  - name: ability
+    type: string
+    comment: 潜力加点
+    role: dimension
+  - name: ability_points
+    type: int
+    comment: 潜能点总数
+    role: measure
+  - name: awake_list
+    type: string
+    comment: 觉醒列表
+    role: dimension
+  - name: tactic_id
+    type: int
+    comment: 风物ID
+    role: dimension
+  - name: tactic_name
+    type: string
+    comment: 风物名称
+    role: dimension
+  - name: tactic_star
+    type: int
+    comment: 风物星级
+    role: dimension
+  - name: equip
+    type: string
+    comment: 装备
+    role: dimension
+  - name: weapon_id
+    type: int
+    comment: 武器ID
+    role: measure
+  - name: weapon_level
+    type: bigint
+    comment: 武器等级
+    role: measure
+  - name: helmet_id
+    type: int
+    comment: 头盔ID
+    role: measure
+  - name: helmet_level
+    type: bigint
+    comment: 头盔等级
+    role: measure
+  - name: armor_id
+    type: int
+    comment: 铠甲ID
+    role: measure
+  - name: armor_level
+    type: bigint
+    comment: 铠甲等级
+    role: measure
+  - name: jewelry_id
+    type: int
+    comment: 饰品ID
+    role: measure
+  - name: jewelry_level
+    type: bigint
+    comment: 饰品等级
+    role: measure
+  - name: card_archive
+    type: int
+    comment: 典藏ID
+    role: measure
+  - name: natalcharts
+    type: string
+    comment: 天命方案
+    role: dimension
+  - name: natalchart_id1
+    type: int
+    comment: 当前使用天命ID1
+    role: measure
+  - name: natalchart_id2
+    type: int
+    comment: 当前使用天命ID2
+    role: measure
+  - name: natalchart_id3
+    type: int
+    comment: 当前使用天命ID3
+    role: measure
+  - name: act_tm_fst
+    type: datetime
+    comment: 获取时间
+    role: dimension
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近培养时间
+    role: dimension
+  - name: force_rn
+    type: int
+    comment: 武将战力排名
+    role: measure
+  - name: equip_suit_index
+    type: bigint
+    comment: 装备套装索引
+    role: dimension
+  - name: equip_suit_id
+    type: bigint
+    comment: 装备套装ID
+    role: dimension
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  card_uv_role:
+    expression: COUNT(DISTINCT role_id)
+    description: 持有卡牌的角色UV(日全量快照，按ds切片)
+  card_total_rows:
+    expression: COUNT(*)
+    description: 卡牌快照总记录数(role_id+card_id行数，日全量)
+  card_force_sum:
+    expression: SUM(card_force)
+    description: 全服卡牌战力总和(按ds切片，不可跨日累加)
+  key_card_cnt:
+    expression: SUM(CASE WHEN is_key = 'true' THEN 1 ELSE 0 END)
+    description: 主力卡牌数量(is_key=true)
+  avg_card_level:
+    expression: AVG(card_level)
+    description: 卡牌平均等级
+coverage:
+  scenarios:
+    - 分析全服卡牌培养深度(战力总和、平均等级、主力卡占比)。
+    - 角色维度卡牌持有规模与培养进度日级监控(_df全量快照)。
+  limitations:
+    - 仅对 ds=20260730 抽样验证 5 项核心指标，未做全量跨日复核。
+    - _df 为日全量快照，跨日存在重复角色记录，UV/求和类指标须按 ds 分区切片，不可跨日直接累加。
+    - 装备/风物/天命等为文本/ID字段，未做维度表关联(无JOIN)。
+    - 未覆盖卡牌获取来源与培养增量(无 _di 增量表联动)。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已在最新 ds=20260730 抽样验证 5 项核心指标(role_uv=1668721, card_rows=31046802, force_sum=1387569077064, key_card=8103506, avg_lvl=26.85)，值合理。
+dimension_refs:
+  - dim_table: dim_10000251_trans_card_df
+    join_keys:
+      - dws_column: card_id
+        dim_column: id
+    derivation: DWS card_id (卡牌ID) identifies the card/武将; dim_10000251_trans_card_df is the 武将(角色)配置维度表 with PK id (武将id), so card_id joins id.
+  - dim_table: dim_10000251_tactic_info
+    join_keys:
+      - dws_column: tactic_id
+        dim_column: tactic_id
+    derivation: DWS tactic_id (风物ID) exactly matches dim_10000251_tactic_info PK tactic_id (风物配置维度表).
+    origin: deterministic
+  - dim_table: dim_10000251_trans_equipment_df
+    join_keys:
+      - dws_column: weapon_id
+        dim_column: id
+      - dws_column: helmet_id
+        dim_column: id
+      - dws_column: armor_id
+        dim_column: id
+      - dws_column: jewelry_id
+        dim_column: id
+    derivation: DWS weapon_id/helmet_id/armor_id/jewelry_id (武器/头盔/铠甲/饰品ID) are equipped-equipment FKs; dim_10000251_trans_equipment_df (装备配置维度表, PK id=装备id) is the equipment dimension, so each joins id.
+  - dim_table: dim_10000251_trans_natalchart_info
+    join_keys:
+      - dws_column: natalchart_id1
+        dim_column: id
+      - dws_column: natalchart_id2
+        dim_column: id
+      - dws_column: natalchart_id3
+        dim_column: id
+    derivation: DWS natalchart_id1/2/3 (当前使用天命ID) name-aligns with dim_10000251_trans_natalchart_info (命盘/星盘词条配置维度表, PK id), so each natalchart_id joins id.
+  - dim_table: dim_10000251_equipment_suit_detail_info
+    join_keys:
+      - dws_column: equip_suit_index
+        dim_column: equip_suit_index
+    derivation: DWS equip_suit_index (装备套装索引) exactly matches dim_10000251_equipment_suit_detail_info PK equip_suit_index (装备套装明细).
+    origin: deterministic
+  - dim_table: dim_10000251_trans_equipment_suit_info
+    join_keys:
+      - dws_column: equip_suit_id
+        dim_column: suit_id
+    derivation: DWS equip_suit_id (装备套装ID) is the equipment-suit FK; dim_10000251_trans_equipment_suit_info (装备套装信息, PK suit_id) is the equipment-suit dimension, so equip_suit_id joins suit_id.
+pref_label: 卡牌升级表
+alt_labels:
+  - 卡牌
+  - 卡片
+  - 升级
+  - 满级
+  - 培养
+  - 武将养成
+  - 星级
+  - 觉醒

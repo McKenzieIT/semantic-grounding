@@ -1,0 +1,52 @@
+table_name: dim_10000251_trans_task_df_arch
+engine: maxcompute
+table_comment: '任务传输配置维度归档表（按 ds 分区的全量快照存档），存储游戏内各类任务（主线/支线/活动/公会等）的配置维度信息。'
+kind: dim
+primary_key:
+- id
+primary_key_unique: false
+label_columns:
+- name
+description: '任务传输配置维度归档表（dim_10000251_trans_task_df_arch）：以 id 为任务唯一标识、name 为任务描述标签的配置类维度表。
+  按 ds 分区存储全量快照，每 ds 分区为该日任务配置的完整副本，跨分区累计 88122 行、211 个不同任务 id。
+  主要字段：id（任务id），name（任务描述），func_id（解锁任务的功能id），type（任务类型），ds（快照日期分区）。'
+domains:
+- 系统监控
+granularity: 每个任务（id）对应一行（同 id 在不同 ds 快照分区中重复出现，跨分区累计存档）。
+columns:
+- name: id
+  type: string
+  comment: 任务id
+  role: dimension
+- name: name
+  type: string
+  comment: 任务描述
+  role: dimension
+- name: func_id
+  type: string
+  comment: 解锁任务的功能id
+  role: dimension
+- name: type
+  type: string
+  comment: 任务类型
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+coverage:
+  scenarios:
+  - 通过 id 关联事实表，按任务维度聚合分析各任务的触发/完成情况
+  - 按 type（任务类型）分组统计各类任务数量及配置分布
+  - 通过 func_id 关联功能配置表，追溯任务解锁的功能入口
+  - 按 ds 快照维度对比任务配置随时间的变更情况（新增/下线/调整）
+  limitations:
+  - 配置类维度表，无值度量（无金额/数量等可加指标）
+  - 跨 ds 全量快照累计存档，同 id 在不同分区重复，primary_key_unique=false（实测 r=88122 / d=211）
+  - id 仅在单 ds 分区内唯一，跨分区关联事实表时需带上 ds 作为复合键以避免笛卡尔放大
+  - name 为中文任务描述，可能存在长度/编码差异，关联前建议 trim
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '配置类维度归档表，按 ds 全量快照存档；id 作为单分区唯一主键候选，跨分区非唯一（实测未通过），故 primary_key_unique=false 保持 draft；label=name（任务描述）。'

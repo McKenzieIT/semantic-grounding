@@ -1,0 +1,126 @@
+name: game.battlepassDungeon.onekeyReward
+event_filter: event = 'game.battlepassDungeon.onekeyReward'
+description: |-
+  战令地下城一键领奖：角色在战令(battlepass)地下城一键领取多档奖励时触发的埋点事件，记录一键领奖行为、战令id(battlepassId)、普通版/豪华版/超级豪华版 order 数组(normalOrders/vipOrders/vip2Orders)以及发放的关键货币(充值钻石/赠送钻石/免费钻石/紫金/经验卷轴/体力)等。分析粒度以 role_id 为主(单角色一键领奖)，account_id 可作为账号级聚合。ds=20260729 单日实测：一键领奖 12766 次、角色 UV 3348、账号 UV 3141、覆盖 406 个游戏服、battlepassId 去重 19 个、coinList.gold 求和 62283。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  battlepassId:
+    type: int
+    description: 战令id
+  normalOrders:
+    type: array
+    description: 普通版order数组
+  vipOrders:
+    type: array
+    description: 豪华版order数组
+  vip2Orders:
+    type: array
+    description: 超级豪华版order数组
+metrics:
+  battlepass_dungeon_onekey_reward_cnt:
+    expression: COUNT(*)
+    description: 战令地下城一键领奖总次数
+  battlepass_dungeon_onekey_reward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 一键领奖独立角色数(主分析粒度，去重 role_id)
+  battlepass_dungeon_onekey_reward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 一键领奖独立账号数(去重 account_id)
+  battlepass_dungeon_onekey_reward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 一键领奖覆盖的游戏服数(去重 server_id)
+  battlepass_dungeon_onekey_reward_battlepass_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.battlepassId'))
+    description: 命中的战令id种类数(去重 battlepassId，反映一键领取跨越的战令档位范围)
+  battlepass_dungeon_onekey_reward_gold_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.coinList.gold') AS BIGINT))
+    description: 发放充值钻石总量(coinList.gold 求和)
+  battlepass_dungeon_onekey_reward_avg_cnt_per_role:
+    expression: ROUND(CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0), 2)
+    description: 人均一键领奖次数(总次数/独立角色，NULLIF 防零除)
+coverage:
+  scenarios:
+    - 战令地下城一键领奖活跃度与角色/账号/区服覆盖(battlepass_dungeon_onekey_reward_cnt / _role_uv / _account_uv / _server_uv)
+    - 一键领取跨越的战令档位范围(_battlepass_uv)与货币发放规模及人均领奖频次(_gold_sum / _avg_cnt_per_role)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量多日复核，建议接入生产流量前抽查
+    - 分析粒度默认 role_id(单角色一键领奖)，account_id 仅作账号级聚合参考，未逐事件实测角色归属
+    - normalOrders/vipOrders/vip2Orders 为数组参数，未拆解逐条 order 计数，仅以 battlepassId 去重反映档位覆盖
+    - 仅 coinList.gold 路径单日实测非空(62283)；coinList.freegold/diamond 等其它货币路径同构但未单独求和复核
+    - 本游戏无 MaxCompute 事件分布查询，无 daily_count/total_count/active_days
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: 实测 ds=20260729：一键领奖 cnt=12766、role_uv=3348、acc_uv=3141、server_uv=406；battlepassId 去重=19；coinList.gold 求和=62283、coinList.diamond 求和=NULL(当日无紫金发放)。数字合理，确认在线
+coverage_status: analyst_confirmed
+external_refs: []

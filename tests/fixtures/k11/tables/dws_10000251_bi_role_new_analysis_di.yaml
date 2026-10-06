@@ -1,0 +1,247 @@
+table_name: dws_10000251_bi_role_new_analysis_di
+engine: maxcompute
+table_comment: 经分用数-新增角色长线数据统计
+description: |-
+  经分用数-新增角色长线数据统计：按 reg_ds(新增日期) 分区的角色级 cohort 长线分析表，逐角色记录新增后 f1d~f360d 的累计付费金额与逐日是否活跃标记，用于新增角色留存与付费 LTV 曲线分析。
+  粒度：日增量(_di)，按 reg_ds(新增日期) 分区；分析主体=角色(user_type=3)，主键 user_id。
+domains:
+  - 用户生命周期
+  - 付费经济
+granularity: 日增量(_di)，按 reg_ds(新增日期) 分区；分析主体=角色(user_type=3)
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，1-设备、2-账号、3-角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: rel_acc_id_lst
+    type: string
+    comment: 最近关联账号ID
+    role: dimension
+  - name: rel_role_srv_lst
+    type: string
+    comment: 最近关联服务器ID
+    role: dimension
+  - name: pay_amt_f1d
+    type: decimal
+    comment: 首日累计付费金额
+    role: measure
+  - name: pay_amt_std_f2d
+    type: decimal
+    comment: 新增首2日累计付费金额
+    role: measure
+  - name: pay_amt_std_f3d
+    type: decimal
+    comment: 新增首3日累计付费金额
+    role: measure
+  - name: pay_amt_std_f4d
+    type: decimal
+    comment: 新增首4日累计付费金额
+    role: measure
+  - name: pay_amt_std_f5d
+    type: decimal
+    comment: 新增首5日累计付费金额
+    role: measure
+  - name: pay_amt_std_f6d
+    type: decimal
+    comment: 新增首6日累计付费金额
+    role: measure
+  - name: pay_amt_std_f7d
+    type: decimal
+    comment: 新增首7日累计付费金额
+    role: measure
+  - name: pay_amt_std_f8d
+    type: decimal
+    comment: 新增首8日累计付费金额
+    role: measure
+  - name: pay_amt_std_f9d
+    type: decimal
+    comment: 新增首9日累计付费金额
+    role: measure
+  - name: pay_amt_std_f10d
+    type: decimal
+    comment: 新增首10日累计付费金额
+    role: measure
+  - name: pay_amt_std_f11d
+    type: decimal
+    comment: 新增首11日累计付费金额
+    role: measure
+  - name: pay_amt_std_f12d
+    type: decimal
+    comment: 新增首12日累计付费金额
+    role: measure
+  - name: pay_amt_std_f13d
+    type: decimal
+    comment: 新增首13日累计付费金额
+    role: measure
+  - name: pay_amt_std_f14d
+    type: decimal
+    comment: 新增首14日累计付费金额
+    role: measure
+  - name: pay_amt_std_f30d
+    type: decimal
+    comment: 新增首30日累计付费金额
+    role: measure
+  - name: pay_amt_std_f60d
+    type: decimal
+    comment: 新增首60日累计付费金额
+    role: measure
+  - name: pay_amt_std_f90d
+    type: decimal
+    comment: 新增首90日累计付费金额
+    role: measure
+  - name: pay_amt_std_f180d
+    type: decimal
+    comment: 新增首180日累计付费金额
+    role: measure
+  - name: pay_amt_std_f360d
+    type: decimal
+    comment: 新增首360日累计付费金额
+    role: measure
+  - name: is_act_f2d
+    type: int
+    comment: 新增第2日是否活跃 1-活跃 0-流失
+    role: dimension
+  - name: is_act_f3d
+    type: int
+    comment: 新增第3日是否活跃 1-活跃 0-流失
+    role: dimension
+  - name: is_act_f4d
+    type: int
+    comment: 新增第4日是否活跃 1-活跃 0-流失
+    role: dimension
+  - name: is_act_f5d
+    type: int
+    comment: 新增第5日是否活跃 1-活跃 0-流失
+    role: dimension
+  - name: is_act_f6d
+    type: int
+    comment: 新增第6日是否活跃 1-活跃 0-流失
+    role: dimension
+  - name: is_act_f7d
+    type: int
+    comment: 新增第7日是否活跃 1-活跃 0-流失
+    role: dimension
+  - name: is_act_f8d
+    type: int
+    comment: 新增第8日是否活跃 1-活跃 0-流失
+    role: dimension
+  - name: is_act_f9d
+    type: int
+    comment: 新增第9日是否活跃 1-活跃 0-流失
+    role: dimension
+  - name: is_act_f10d
+    type: int
+    comment: 新增第10日是否活跃 1-活跃 0-流失
+    role: dimension
+  - name: is_act_f11d
+    type: int
+    comment: 新增第11日是否活跃 1-活跃 0-流失
+    role: dimension
+  - name: is_act_f12d
+    type: int
+    comment: 新增第12日是否活跃 1-活跃 0-流失
+    role: dimension
+  - name: is_act_f13d
+    type: int
+    comment: 新增第13日是否活跃 1-活跃 0-流失
+    role: dimension
+  - name: is_act_f14d
+    type: int
+    comment: 新增第14日是否活跃 1-活跃 0-流失
+    role: dimension
+  - name: is_act_f30d
+    type: int
+    comment: 新增第30日是否活跃 1-活跃 0-流失
+    role: dimension
+  - name: is_act_f60d
+    type: int
+    comment: 新增第60日是否活跃 1-活跃 0-流失
+    role: dimension
+  - name: is_act_f90d
+    type: int
+    comment: 新增第90日是否活跃 1-活跃 0-流失
+    role: dimension
+  - name: is_act_f180d
+    type: int
+    comment: 新增第180日是否活跃 1-活跃 0-流失
+    role: dimension
+  - name: is_act_f360d
+    type: int
+    comment: 新增第360日是否活跃 1-活跃 0-流失
+    role: dimension
+  - name: pay_amt_std
+    type: decimal
+    comment: 累计付费金额
+    role: measure
+  - name: act_days_std
+    type: int
+    comment: 累计活跃天数
+    role: measure
+  - name: act_dur_std
+    type: int
+    comment: 累计活跃时长
+    role: measure
+  - name: act_pv_std
+    type: int
+    comment: 累计有角色登录次数
+    role: measure
+  - name: role_level
+    type: int
+    comment: 最大角色等级
+    role: dimension
+  - name: update_tm
+    type: string
+    comment: 更新时间
+    role: dimension
+  - name: reg_ds
+    type: string
+    comment: 新增日期
+    role: dimension
+metrics:
+  new_role_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 新增角色数（cohort 规模，分析主体=角色 user_type=3）
+  pay_amt_f1d_total:
+    expression: SUM(pay_amt_f1d)
+    description: 新增首日累计付费总额
+  pay_amt_std_f7d_total:
+    expression: SUM(pay_amt_std_f7d)
+    description: 新增首7日累计付费总额（7日 LTV 分子）
+  f7_retention_rate:
+    expression: SUM(CASE WHEN is_act_f7d = 1 THEN 1 ELSE 0 END) / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 新增首7日角色留存率
+  avg_pay_amt_std_f30d:
+    expression: SUM(pay_amt_std_f30d) / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 人均30日累计付费金额（人均 LTV）
+coverage:
+  scenarios:
+    - 按新增日期(reg_ds)分批统计每日新增角色规模(new_role_uv)与首日付费总额(pay_amt_f1d_total)，量化拉新质量。
+    - 计算 f7 留存率(f7_retention_rate)与人均30日 LTV(avg_pay_amt_std_f30d)，刻画新增角色留存与付费长线曲线。
+  limitations:
+    - 日增量按 reg_ds(新增日期) 分区组织，非业务数据日期；最新分区 20260730 上 is_act_f7d 等长线标记因 cohort 过新多为 NULL，长线指标需在 cohort 成熟后复算。
+    - 含 reg_ds='19700101' 哨兵分区（历史 NULL 充填），统计时需 WHERE reg_ds <> '19700101' 排除。
+    - 仅对 20260730 分区抽样验证 new_role_uv/pay_amt_f1d_total/f7_retention_rate 三项，未做全量 maxc 实测复核；历史分区上留存/付费字段可能为 NULL。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 已在最新分区 reg_ds=20260730 抽样验证 new_role_uv=619、pay_amt_f1d_total=6638.0、f7_retention_rate=0.0(cohort 未到7日，符合预期)；user_type=3 角色主体已确认。
+partitions:
+  - name: reg_ds
+    type: string
+dimension_refs:
+  - dim_table: dim_10000251_user_tag_before_ob_info
+    join_keys:
+      - dws_column: user_id
+        dim_column: user_id
+    derivation: "DWS column user_id (comment: 角色ID, user_type=3) is an exact match to PK user_id of dim_10000251_user_tag_before_ob_info (用户标签维度表, user_id tested unique), which is explicitly designed for fact tables to JOIN via user_id for pre-OB tag/batch dimension lookup."
+    origin: deterministic
+pref_label: 新增角色长线统计表
+alt_labels:
+  - 长线
+  - 经分
+  - 分析

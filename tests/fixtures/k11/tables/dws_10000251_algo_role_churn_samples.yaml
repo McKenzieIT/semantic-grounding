@@ -1,0 +1,83 @@
+table_name: dws_10000251_algo_role_churn_samples
+engine: maxcompute
+table_comment: 角色流失预测样本表（DWS，按 ds 分区，ds 格式=<日期>_<预测窗口>_<版本>，每行=一个角色训练样本，sample_info 内含 label/特征）
+description: 粒度：明细表（样本级，每行=一个角色-样本）。分析主体=角色（user_type=3，由表名 role 推断，本表无 user_type 列）。 用途：流失预测模型训练/评估样本；按 ds 分区，ds 格式 `<日期>_<预测窗口>_<版本>`（如 20260730_7_0 表示 2026-07-30、7 天窗口、版本 0）。 主要字段：role_id(角色ID/PK), acc_id(账号ID), server_id(服务器ID), server_ds(入服日期), act_ds(活跃日期), role_info(角色信息串), sample_info(样本特征JSON, 含 label/sample_type/pay_last_*/login_last_*/act_last_*/buy_last_* 等), ds(分区)。 注：role_info/sample_info 为字符串/JSON 特征列，非聚合数值；metrics 基于 role_id/acc_id/server_id/label 提取。
+domains:
+  - 用户生命周期
+  - 系统监控
+granularity: 明细表（样本级，主体=角色，分区 ds=<日期>_<窗口>_<版本>）
+columns:
+  - name: role_id
+    type: string
+    comment: 角色ID（主键，分析主体）
+    role: dimension
+  - name: acc_id
+    type: string
+    comment: 账号ID
+    role: dimension
+  - name: server_ds
+    type: string
+    comment: 入服日期串（YYYYMMDD）
+    role: attribute
+  - name: server_id
+    type: string
+    comment: 服务器ID
+    role: dimension
+  - name: act_ds
+    type: string
+    comment: 活跃日期串（YYYYMMDD）
+    role: attribute
+  - name: role_info
+    type: string
+    comment: 角色信息串（如 "日期,标志,进度"，非聚合属性）
+    role: attribute
+  - name: sample_info
+    type: string
+    comment: 样本特征JSON（含 label/sample_type/pay_last_*/login_last_*/act_last_*/buy_last_*/sum_pay 等，metrics 经 GET_JSON_OBJECT 提取）
+    role: attribute
+  - name: ds
+    type: string
+    comment: 分区键，格式 <日期>_<预测窗口>_<版本>（如 20260730_7_0）
+    role: partition
+metrics:
+  sample_total_count:
+    expression: COUNT(*)
+    description: 样本总数（按分区 ds 统计的角色-样本行数）
+  sample_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 去重角色样本UV（同角色在不同预测窗口/版本下多次出现）
+  sample_acc_uv:
+    expression: COUNT(DISTINCT acc_id)
+    description: 去重账号样本UV
+  server_count:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及服务器数
+  positive_label_count:
+    expression: SUM(CAST(GET_JSON_OBJECT(sample_info, '$.label') AS BIGINT))
+    description: 流失正样本数（label=1）；正样本率 = positive_label_count / sample_total_count，建议 NULLIF(sample_total_count,0) 防除零
+coverage:
+  scenarios:
+    - 按 ds 评估流失预测样本规模与正负样本分布（sample_total_count / positive_label_count）
+    - 跨服务器样本覆盖度（server_count、sample_role_uv/sample_acc_uv）
+    - 对比不同预测窗口/版本 ds 下角色流失样本量与正样本占比变化
+  limitations:
+    - 主体=角色（user_type=3）由表名推断；本表无 user_type 列，未做 maxc 实测复核
+    - ds 分区格式 <日期>_<窗口>_<版本>，非纯日期；MAX(ds) 按字符串序取最新分区，多版本同日时取字典序最大者
+    - role_info/sample_info 为字符串/JSON 特征列，metrics 仅经 GET_JSON_OBJECT 提取 label；其余特征未逐一实测
+    - 仅抽样验证最新 ds=20260730_7_0 的 5 个 metrics 取值合理，未做全量跨分区一致性复核
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 已对 latest ds=20260730_7_0 spot-verify 5 个 metrics（total=11636496, role_uv=1668716, acc_uv=1154113, srv_cnt=608, pos_label=183446，正样本率≈1.58% 合理）；role_info/sample_info JSON 结构来自 meta describe sample_preview，未全量复核
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (comment 服务器ID) is an exact-name match to dim_10000251_server_info's primary key server_id, used to look up server name and open-time attributes.
+    origin: deterministic
+pref_label: 流失预测样本表
+alt_labels:
+  - 样本
+  - 训练

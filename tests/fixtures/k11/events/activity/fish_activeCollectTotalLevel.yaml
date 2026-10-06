@@ -1,0 +1,104 @@
+name: game.fish.activeCollectTotalLevel
+event_filter: event = 'game.fish.activeCollectTotalLevel'
+description: 钓鱼活动一键领取图鉴总等级奖励事件：玩家点击一键领取按钮，根据钓鱼图鉴总等级档位获得对应奖励。主体粒度 role_id，scout 实测 ds=20260729 零命中(疑似下线/未触发)。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  newRewardLevels:
+    type: array
+    description: newRewardLevels
+metrics:
+  game_fish_activeCollectTotalLevel_cnt:
+    expression: COUNT(*)
+    description: 钓鱼一键领取图鉴总等级奖励事件触发总次数
+  game_fish_activeCollectTotalLevel_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与一键领取图鉴总等级奖励的去重角色数(主体粒度)
+  game_fish_activeCollectTotalLevel_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与一键领取图鉴总等级奖励的去重账号数
+  game_fish_activeCollectTotalLevel_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发一键领取图鉴总等级奖励的去重游戏服数
+coverage:
+  scenarios:
+    - 分析钓鱼活动一键领取图鉴总等级奖励的参与规模与角色/账号/服务器分布
+    - 评估钓鱼图鉴总等级奖励发放频次与活动活跃度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 日志中零命中(ds=20260729/20260728)，疑似下线/未触发
+    - 默认主体粒度为 role_id，账号粒度作为补充
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 scout 实测 cnt=0/role_uv=0/acc_uv=0/server_uv=0，ds=20260728 重试仍为零命中，疑似事件下线或当日未触发
+  coverage_status: draft
+external_refs: []

@@ -1,0 +1,54 @@
+table_name: dim_10000251_trans_main_task_df
+engine: maxcompute
+table_comment: '游戏 10000251 主线任务配置维度表（_df 日全量快照）。'
+kind: dim
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- chapter_name
+- desc
+description: '主线任务配置维度表：每行一个主线任务（id），记录其所属章节（chapter/chapter_name）、
+  显示顺序（order）、任务内容（desc）及任务内容类型（type_desc）。用于按章节/任务类型维度关联分析任务完成情况。'
+domains:
+- 系统监控
+granularity: '每条主线任务（id）一行，日全量快照（_df）。'
+columns:
+- name: id
+  type: string
+  comment: 任务id
+  role: dimension
+- name: chapter
+  type: string
+  comment: 任务章节
+  role: dimension
+- name: order
+  type: string
+  comment: 任务显示顺序
+  role: dimension
+- name: chapter_name
+  type: string
+  comment: 章节名
+  role: dimension
+- name: desc
+  type: string
+  comment: 任务内容
+  role: dimension
+- name: type_desc
+  type: string
+  comment: 任务内容类型
+  role: dimension
+coverage:
+  scenarios:
+  - 'JOIN 事实表 on id，按章节（chapter_name）聚合分析各章节任务数量与完成进度。'
+  - '按任务内容类型（type_desc）分组统计任务构成。'
+  - '通过 order 维度排序还原任务在章节内的展示顺序。'
+  limitations:
+  - '配置类维度表，无值度量（无度量列）；仅用于维度关联。'
+  - 'desc 为任务描述文本，非结构化编码串，无需二次解码。'
+  - '88 行小型配置表，primary_key_unique 已实测通过（r=d=88）。'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '自动 dim 建模：id 唯一性已实测（88=88）；label 取 chapter_name+desc；domain=系统监控（配置类维度）。未业务确认。'

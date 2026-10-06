@@ -1,0 +1,160 @@
+table_name: dws_10000251_role_rank_df
+engine: maxcompute
+table_comment: 角色排行榜
+description: |-
+  角色排行榜日全量快照。记录每个角色（分析主体=角色，user_type=3）在等级、战力、主线、无尽塔、阵营塔(魏蜀吴群)、星数、异步PVP(演武场)、同步PVP(竞技场)等各玩法维度的得分与排名。
+  粒度：日全量快照(_df)，按角色(role_id)+区服(server_id)逐角色一行。-1表示缺省值，聚合时需以NULLIF(col,-1)过滤。
+domains:
+  - 角色成长
+  - 战斗关卡
+granularity: 日全量快照(_df)
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id，key
+    role: dimension
+  - name: role_level
+    type: BIGINT
+    comment: 角色等级，-1表示缺省值
+    role: dimension
+  - name: role_level_rank
+    type: BIGINT
+    comment: 角色等级排名，-1表示缺省值
+    role: measure
+  - name: role_force
+    type: BIGINT
+    comment: 角色战力，-1表示缺省值
+    role: measure
+  - name: role_force_rank
+    type: BIGINT
+    comment: 角色战力排名，-1表示缺省值
+    role: measure
+  - name: play1_score
+    type: BIGINT
+    comment: 主线得分，-1表示缺省值
+    role: measure
+  - name: play1_rank
+    type: BIGINT
+    comment: 主线排名，-1表示缺省值
+    role: measure
+  - name: play4_score
+    type: BIGINT
+    comment: 无尽塔得分，-1表示缺省值
+    role: measure
+  - name: play4_rank
+    type: BIGINT
+    comment: 无尽塔排名，-1表示缺省值
+    role: measure
+  - name: play7101_score
+    type: BIGINT
+    comment: 阵营塔-魏得分，-1表示缺省值
+    role: measure
+  - name: play7101_rank
+    type: BIGINT
+    comment: 阵营塔-魏排名，-1表示缺省值
+    role: measure
+  - name: play7102_score
+    type: BIGINT
+    comment: 阵营塔-蜀得分，-1表示缺省值
+    role: measure
+  - name: play7102_rank
+    type: BIGINT
+    comment: 阵营塔-蜀排名，-1表示缺省值
+    role: measure
+  - name: play7103_score
+    type: BIGINT
+    comment: 阵营塔-吴得分，-1表示缺省值
+    role: measure
+  - name: play7103_rank
+    type: BIGINT
+    comment: 阵营塔-吴排名，-1表示缺省值
+    role: measure
+  - name: play7104_score
+    type: BIGINT
+    comment: 阵营塔-群得分，-1表示缺省值
+    role: measure
+  - name: play7104_rank
+    type: BIGINT
+    comment: 阵营塔-群排名，-1表示缺省值
+    role: measure
+  - name: play6_score
+    type: BIGINT
+    comment: 星数得分，-1表示缺省值
+    role: measure
+  - name: play6_rank
+    type: BIGINT
+    comment: 星数排名，-1表示缺省值
+    role: measure
+  - name: apvp_score
+    type: BIGINT
+    comment: 异步PVP得分，演武场，-1表示缺省值
+    role: measure
+  - name: apvp_rank
+    type: BIGINT
+    comment: 异步PVP排名，演武场，-1表示缺省值
+    role: measure
+  - name: spvp_score
+    type: BIGINT
+    comment: 同步PVP得分，竞技场，-1表示缺省值
+    role: measure
+  - name: spvp_rank
+    type: BIGINT
+    comment: 同步PVP排名，竞技场，-1表示缺省值
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 角色去重数（快照UV），统计日全量快照中角色总数
+  role_force_sum:
+    expression: SUM(NULLIF(role_force, -1))
+    description: 角色总战力（剔除-1缺省值）
+  role_level_avg:
+    expression: AVG(NULLIF(role_level, -1))
+    description: 角色平均等级（剔除-1缺省值）
+  spvp_top100_cnt:
+    expression: SUM(CASE WHEN spvp_rank > 0 AND spvp_rank <= 100 THEN 1 ELSE 0 END)
+    description: 竞技场(同步PVP)Top100角色数
+  apvp_top100_cnt:
+    expression: SUM(CASE WHEN apvp_rank > 0 AND apvp_rank <= 100 THEN 1 ELSE 0 END)
+    description: 演武场(异步PVP)Top100角色数
+coverage:
+  scenarios:
+    - 各玩法榜单Top-N角色分布与战力/等级对比
+    - 竞技场/演武场Top100角色数趋势与区服竞争度
+    - 角色等级与战力整体水位（总和/均值）
+  limitations:
+    - 表为空/无数据(MAX(ds) NULL)，无法做全量实测复核；指标为结构性定义，待有数据后验证
+    - 仅scout抽样验证(meta describe)，未做maxc指标实测
+    - 各玩法score/rank均以-1表示缺省值，聚合时需NULLIF过滤
+    - _df日全量快照语义，非增量；跨日对比需注意快照覆盖范围
+    - 缺少阵营/职业等业务维度列，仅server_id可作分组
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表空(MAX(ds) NULL)，仅meta describe结构验证，未做指标实测；status=draft
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS column server_id (comment 区服id) is an exact name match to the primary key server_id of dim_10000251_server_info, the 服务器(区服)维度配置表 described as purpose-built for fact-table server_id JOIN.
+    origin: deterministic
+pref_label: 角色排行榜
+alt_labels:
+  - 排行
+  - 排名
+  - 榜单
+  - 竞争

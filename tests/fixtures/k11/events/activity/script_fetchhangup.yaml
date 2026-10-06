@@ -1,0 +1,124 @@
+name: game.script.fetchhangup
+event_filter: event = 'game.script.fetchhangup'
+description: "玩家在剧本玩法中领取挂机奖励时触发的埋点。记录玩家挂机剧本(scriptId)结束后领取的资源收益，包含等级变化(oldLevel→newLevel)、获得资源(expDelta)及关键货币(coinList: gold/sendgold/freegold/diamond/expCoin/energy)。分析主体为角色(role_id)，单条日志代表一次角色级别的领取行为。真实实测 ds=20260729：日领取4110次，覆盖1262名角色、1238个账号、286个游戏服，当日 expDelta 合计约3.38亿。"
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  scriptId:
+    type: int
+    description: 剧本id
+  oldLevel:
+    type: int
+    description: 旧等级
+  newLevel:
+    type: int
+    description: 新等级
+  expDelta:
+    type: int
+    description: 获得的资源
+metrics:
+  script_fetchhangup_cnt:
+    expression: COUNT(*)
+    description: 剧本领取挂机奖励事件总次数
+  script_fetchhangup_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取挂机奖励的去重角色数（分析主体）
+  script_fetchhangup_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取挂机奖励的去重账号数
+  script_fetchhangup_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取挂机奖励的去重游戏服数
+  script_fetchhangup_script_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.scriptId'))
+    description: 领取挂机奖励的去重剧本(scriptId)数
+  script_fetchhangup_expdelta_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.expDelta') AS BIGINT))
+    description: 领取挂机奖励获得的资源(expDelta)累计值
+  script_fetchhangup_avg_expdelta:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.expDelta') AS BIGINT)) / NULLIF(COUNT(*),0)
+    description: 单次领取挂机奖励的平均获得资源量（事件级加权平均）
+coverage:
+  scenarios:
+    - 评估剧本挂机奖励的总体领取规模与角色覆盖度
+    - 跨剧本(scriptId)、跨服(server_id)的挂机参与热度对比
+    - 通过 expDelta 分布了解挂机收益与角色活跃/留存
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体为角色(role_id)粒度，账号(account_id)仅作去重辅助
+    - coinList 货币明细字段(gold/sendgold/freegold/diamond/expCoin/energy)为 JSON 嵌套结构，本事件未逐项展开统计
+    - oldLevel/newLevel 用于级别变化分析，本事件未单独聚合
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "实测 ds=20260729: cnt=4110, role_uv=1262, acc_uv=1238, server_uv=286；expDelta 累计 337686706(约3.38亿)；scriptId/oldLevel/newLevel/expDelta 字段可经 GET_JSON_OBJECT 正常提取"
+coverage_status: analyst_confirmed
+external_refs: []

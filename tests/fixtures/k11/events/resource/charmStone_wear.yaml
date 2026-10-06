@@ -1,0 +1,134 @@
+name: game.charmStone.wear
+event_filter: event = 'game.charmStone.wear'
+description: 灵石-穿戴事件：玩家执行 charmStone.wear 操作为角色穿戴某件灵石时上报。记录本次穿戴灵石的 uid（params.uid）与穿戴后的最终方案 scheme（含 scheme.id 与 schemes 数组中各灵石头的 uid/posx/posy 槽位布局），同时携带 coinList 关键货币与角色基础信息（role_id/role_name/level/vip/force 等）。分析主体粒度为 role_id（角色级），账号粒度 account_id 用于关联同账号多角色。scout 实测 ds=20260729 单日 cnt=13486、role_uv=969、acc_uv=952、server_uv=209，量级合理（活跃角色多次更换灵石搭配）。
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  uid:
+    type: int
+    description: 此次穿戴的灵石uid
+  scheme:
+    type: json
+    description: 最终方案
+  scheme.id:
+    type: int
+    description: scheme.id
+  scheme.schemes:
+    type: array
+    description: 一个灵石方案
+  scheme.schemes.uid:
+    type: int
+    description: 灵石头uid
+  scheme.schemes.posx:
+    type: int
+    description: scheme.schemes.posx
+  scheme.schemes.posy:
+    type: int
+    description: scheme.schemes.posy
+metrics:
+  charm_stone_wear_cnt:
+    expression: COUNT(*)
+    description: 灵石穿戴操作总次数（每次 wear 上报 1 条）
+  charm_stone_wear_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发灵石穿戴的去重角色数（分析主体粒度）
+  charm_stone_wear_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发灵石穿戴的去重账号数
+  charm_stone_wear_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及灵石穿戴的去重游戏服数
+  charm_stone_wear_per_role_avg:
+    expression: ROUND(CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0), 3)
+    description: 人均穿戴次数（总次数 / 去重角色数，NULLIF 防零除）
+  charm_stone_wear_distinct_uid_cnt:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.uid'))
+    description: 当日被穿戴的去重灵石 uid 数（params.uid，反映灵石流转活跃度）
+  charm_stone_wear_distinct_scheme_cnt:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.scheme.id'))
+    description: 当日去重 scheme.id 数（穿戴后最终方案种类，反映搭配多样性）
+coverage:
+  scenarios:
+    - 灵石穿戴玩法日常活跃度量：单日穿戴次数/参与角色数/涉及服数，判断玩法渗透与频次
+    - 人均穿戴次数 per_role_avg 反映核心玩家灵石搭配调整强度，配合 distinct_uid_cnt 观察灵石流转广度
+    - distinct_scheme_cnt 反映穿戴后方案搭配多样性，辅助识别主流搭配与长尾分布
+    - 跨服分布 server_uv 与角色/账号 UV 对比，定位玩法热度集中的服务器
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核（多日趋势/周环比未验证）
+    - 分析主体默认 role_id（角色级），account_id 仅用于关联同账号多角色，未单独验证账号粒度业务口径
+    - uid 取自 GET_JSON_OBJECT(params,'$.uid')，依赖上报端 params 完整性；若个别上报缺字段会落入 NULL，distinct 计数偏低
+    - scheme.id 取自 GET_JSON_OBJECT(params,'$.scheme.id')，假设 scheme 为对象且含 id 字段；若上报为空 scheme 或 id 缺失会落入 NULL
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=13486, role_uv=969, acc_uv=952, server_uv=209，量级合理（活跃角色多次更换灵石搭配）。
+coverage_status: analyst_confirmed
+external_refs: []

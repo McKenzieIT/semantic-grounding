@@ -1,0 +1,134 @@
+table_name: dws_10000251_lineup_pvp_di
+engine: maxcompute
+table_comment: PVP阵容使用表（角色粒度，日增量）
+description: |-
+  PVP阵容使用表，记录每个角色在 PVP 各玩法/子玩法下不同阵容的参与、胜负与超绝使用情况。
+  主体：角色（role_id）。
+  粒度：日增量(_di)，按角色×区服×玩法×子玩法×阵容 维度记录当日 PVP 战斗明细行。
+  主要字段：role_id, server_id, play_id, sub_play_id, lineup, lineup_tag, part_pv, part_pv2, part_pv3, win_pv, win_pv2, win_pv3, force_diff31, force_diff32, unique_skill_pv, ext_info, ds 等17列。
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 日增量(_di)，角色×区服×玩法×子玩法×阵容 粒度
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id，key
+    role: dimension
+  - name: play_id
+    type: string
+    comment: 玩法id，key，缺省值0
+    role: dimension
+  - name: sub_play_id
+    type: string
+    comment: 子玩法id，key，缺省值0
+    role: dimension
+  - name: lineup
+    type: string
+    comment: 阵容，key
+    role: dimension
+  - name: lineup_tag
+    type: string
+    comment: 阵容标签
+    role: attribute
+  - name: part_pv
+    type: bigint
+    comment: 参与次数，0表示未参与
+    role: measure
+  - name: part_pv2
+    type: bigint
+    comment: 同级参与次数
+    role: measure
+  - name: part_pv3
+    type: bigint
+    comment: 越级参与次数
+    role: measure
+  - name: win_pv
+    type: bigint
+    comment: 胜利次数
+    role: measure
+  - name: win_pv2
+    type: bigint
+    comment: 同级胜利次数
+    role: measure
+  - name: win_pv3
+    type: bigint
+    comment: 越级胜利次数
+    role: measure
+  - name: force_diff31
+    type: string
+    comment: 越级最大战力差，我方战力-对方战力-战力差
+    role: attribute
+  - name: force_diff32
+    type: string
+    comment: 越级最大战力比，我方战力-对方战力-战力比
+    role: attribute
+  - name: unique_skill_pv
+    type: bigint
+    comment: 携带超绝次数
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  lineup_pvp_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日参与 PVP 阵容战斗的去重角色数（UV），日增量口径。
+  lineup_pvp_part_total:
+    expression: SUM(part_pv)
+    description: 当日 PVP 阵容参与总次数（含同级/越级），日增量口径。
+  lineup_pvp_win_total:
+    expression: SUM(win_pv)
+    description: 当日 PVP 阵容胜利总次数（含同级/越级），日增量口径。
+  lineup_pvp_win_rate:
+    expression: SUM(win_pv) / NULLIF(SUM(part_pv), 0)
+    description: PVP 阵容整体胜率，=胜利次数/参与次数，NULLIF 防除零。
+  lineup_unique_skill_use:
+    expression: SUM(unique_skill_pv)
+    description: 当日携带超绝使用总次数，日增量口径。
+coverage:
+  scenarios:
+    - 分析 PVP 各玩法/子玩法的阵容使用热度（参与 UV、参与次数）
+    - 评估阵容胜率表现，对比同级/越级胜率差异
+    - 监控越级战斗战力差/比分布与超绝携带情况
+  limitations:
+    - 表为空/无数据（MAX(ds) NULL），指标口径为结构性定义，尚未有数据落地与实测复核
+    - 仅依据 meta describe 列结构推断，未做 maxc 实测抽样验证
+    - _di 为日增量，跨日去重 UV 需聚合多日；当日明细行按角色×区服×玩法×子玩法×阵容展开
+    - 缺少阵营/卡牌维度与对手信息，无法做对手侧阵容对比
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表为空（MAX(ds) NULL），仅完成结构性指标定义与口径推断，未做实测抽样验证。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS 列 server_id (comment 区服id) 与 dim server_info 主键 server_id 完全一致；该 dim 为区服维度配置表。
+    origin: deterministic
+  - dim_table: dim_10000251_trans_play_df
+    join_keys:
+      - dws_column: play_id
+        dim_column: id
+    derivation: DWS 列 play_id (comment 玩法id) 语义对应 dim trans_play_df 主键 id；该 dim 为玩法配置维度表，其主键 id 即 玩法id。
+  - dim_table: dim_10000251_trans_sub_play_od
+    join_keys:
+      - dws_column: sub_play_id
+        dim_column: sub_play_id
+    derivation: DWS 列 sub_play_id (comment 子玩法id) 与 dim trans_sub_play_od 主键 sub_play_id 完全一致；该 dim 为子玩法配置维度表。
+    origin: deterministic
+pref_label: PVP阵容表
+alt_labels:
+  - 阵容
+  - 编队

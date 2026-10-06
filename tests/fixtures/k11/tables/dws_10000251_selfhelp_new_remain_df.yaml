@@ -1,0 +1,103 @@
+table_name: dws_10000251_selfhelp_new_remain_df
+engine: maxcompute
+table_comment: 自助新增留存日全量快照，账号/设备/角色三类主体的生命周期留存表
+description: 自助新增留存日全量快照(_df)。按user_type(1:设备/2:账号/3:角色)记录新增用户在生命周期各天(lt)的留存，lt=1为新增当天，lt=2为次日留存，lt=7为7日留存。单分区(ds)含全部历史cohort(act_ymd_fst)的生命周期记录，非增量。主口径为账号级(user_type=2)。粒度：账号级(主)/设备/角色 × 新增日期 × 生命周期天数，日全量快照。
+domains:
+  - 用户生命周期
+  - 系统监控
+granularity: 日全量快照(_df)，账号级(user_type=2)为主，含设备(1)/角色(3)维度，按新增日期(act_ymd_fst)+生命周期天数(lt)展开
+columns:
+  - name: user_type
+    type: int
+    comment: 用户类型，取值：1:设备/2:账号/3:角色
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id
+    role: dimension
+  - name: os_id
+    type: int
+    comment: 平台id
+    role: dimension
+  - name: ch_type
+    type: string
+    comment: 渠道分类
+    role: dimension
+  - name: ch_id
+    type: string
+    comment: 渠道id
+    role: dimension
+  - name: region_id
+    type: string
+    comment: 地区
+    role: dimension
+  - name: attr_ad_id
+    type: string
+    comment: 买量活动id
+    role: dimension
+  - name: act_server_id_fst
+    type: string
+    comment: 首次活跃区服id
+    role: dimension
+  - name: udd
+    type: string
+    comment: 用户标签，json格式，取值：{"标签名":"标签值","标签名":"标签值"}
+    role: attribute
+  - name: act_ymd_fst
+    type: string
+    comment: 首次行为日期，即新增日期，格式：yyyymmdd
+    role: dimension
+  - name: act_ymd
+    type: string
+    comment: 行为日期，格式：yyyymmdd
+    role: dimension
+  - name: lt
+    type: int
+    comment: 生命周期，行为日期-首次行为日期+1，从1开始
+    role: dimension
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  new_acc_uv:
+    expression: COUNT(DISTINCT CASE WHEN lt=1 AND user_type=2 THEN user_id END)
+    description: 新增账号数(lt=1且user_type=2)，自助新增当日账号
+  d1_retained_acc_uv:
+    expression: COUNT(DISTINCT CASE WHEN lt=2 AND user_type=2 THEN user_id END)
+    description: 次日(D1)留存账号数(user_type=2)
+  d1_retention_rate:
+    expression: COUNT(DISTINCT CASE WHEN lt=2 AND user_type=2 THEN user_id END) / NULLIF(COUNT(DISTINCT CASE WHEN lt=1 AND user_type=2 THEN user_id END), 0)
+    description: 次日留存率(D1留存账号/新增账号，user_type=2)
+  d7_retention_rate:
+    expression: COUNT(DISTINCT CASE WHEN lt=7 AND user_type=2 THEN user_id END) / NULLIF(COUNT(DISTINCT CASE WHEN lt=1 AND user_type=2 THEN user_id END), 0)
+    description: 7日留存率(D7留存账号/新增账号，user_type=2)
+  snapshot_acc_uv:
+    expression: COUNT(DISTINCT CASE WHEN user_type=2 THEN user_id END)
+    description: 快照内账号总数(user_type=2)，跨全部生命周期
+coverage:
+  scenarios:
+    - 评估自助新增账号的次日/7日留存表现与衰减趋势
+    - 监控新增账号规模(lt=1)及留存衰减
+    - 按渠道(ch_type/ch_id)/平台(os_id)/地区(region_id)/区服(act_server_id_fst)拆解留存
+  limitations:
+    - 仅 scout 抽样验证(最新ds=20260415账号级指标：新增1169025、D1 542270、D7 264145)，未做全量历史复核
+    - 留存率为快照内聚合口径(分子分母跨cohort)，精确cohort留存需按act_ymd_fst分组另算
+    - 表含user_type=1(设备)/2(账号)/3(角色)三类主体且ID空间不同，指标默认口径为账号(user_type=2)，跨类型不可直接相加
+    - _df日全量快照，单分区含全历史生命周期记录，非增量
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 已在最新ds=20260415实测账号级新增/D1/D7指标，数值合理(D1≈46.4%, D7≈22.6%)，标记analyst_confirmed
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: act_server_id_fst
+        dim_column: server_id
+    derivation: DWS column act_server_id_fst (comment 首次活跃区服id) holds a server/区服 identifier that semantically matches dim_10000251_server_info's primary key server_id (区服维度配置表), enabling server name/open-date lookup.
+pref_label: 新增用户留存表
+alt_labels:
+  - 留存率
+  - 生命周期
+  - 回访

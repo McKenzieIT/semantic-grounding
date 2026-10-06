@@ -1,0 +1,116 @@
+name: game.gacha.buyupitem
+event_filter: event = 'game.gacha.buyupitem'
+description: 招募系统-购买up道具事件：玩家在招募(抽卡)玩法中购买up池道具(数量count)，记录卡池gachaId/新手集市specialId与购买时角色/账号/区服/货币快照。属探索收集域，主语粒度角色(role_id)。
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  gachaId:
+    type: int
+    description: 卡池id
+  specialId:
+    type: int
+    description: 新手集市id
+  count:
+    type: int
+    description: 数量
+metrics:
+  gacha_buyupitem_cnt:
+    expression: COUNT(*)
+    description: 招募购买up道具事件总次数
+  gacha_buyupitem_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与购买up道具的去重角色数(主语粒度role_id)
+  gacha_buyupitem_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与购买up道具的去重账号数
+  gacha_buyupitem_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 发生购买up道具的去重区服数
+  gacha_buyupitem_count_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.count') AS BIGINT))
+    description: 购买up道具总数量(按params.count求和)
+  gacha_buyupitem_avg_cnt_per_role:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.count') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id),0)
+    description: 人均购买up道具数量(总数量除以去重角色数)
+coverage:
+  scenarios:
+    - up池道具购买热度(次数/人数)与区服分布
+    - 不同卡池gachaId/新手集市specialId的购买量对比
+    - 人均购买数量分级评估up池投放效果
+  limitations:
+    - 日志中零命中(实测 ds=20260729 与 ds=20260728 均为 cnt=0)，事件疑似下线/未触发
+    - 仅 scout 双日实测(20260729/20260728)，未做全量复核；事件恢复前无法验证真实数值
+    - subject粒度 default role_id 未逐事件实测(零命中无法验证)
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 双日实测零命中(ds=20260729 与 ds=20260728 均 cnt=0)，疑似下线/未触发，保持 draft 未确认
+external_refs: []

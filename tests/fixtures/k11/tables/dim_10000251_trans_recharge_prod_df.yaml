@@ -1,0 +1,66 @@
+table_name: dim_10000251_trans_recharge_prod_df
+engine: maxcompute
+kind: dim
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+table_comment: 付费商店商品配置维度表（日全量快照 _df）。
+description: '游戏 10000251 付费商店商品配置维度表（dim_）。日全量快照(_df)粒度，每行描述一个付费商店商品（如礼包、月卡等）。主键 id=付费商店商品id，标签列 name=付费商店商品名。包含周期(period)、所需凤翎数量(cost)、所属商店(shop_id)、二级/三级页签(2sc_tab/3rd_tab)、商品类型(prod_type)、角标气泡文本(commend)等配置属性。'
+domains:
+- 系统监控
+granularity: 每付费商店商品一行的配置维度表（日全量快照 _df）
+columns:
+- name: id
+  type: string
+  comment: 付费商店商品id
+  role: dimension
+- name: name
+  type: string
+  comment: 付费商店商品名
+  role: dimension
+- name: period
+  type: string
+  comment: 周期
+  role: dimension
+- name: cost
+  type: bigint
+  comment: 所需凤翎数量
+  role: dimension
+- name: shop_id
+  type: string
+  comment: 商店id
+  role: dimension
+- name: 2sc_tab
+  type: bigint
+  comment: 二级页签
+  role: dimension
+- name: 3rd_tab
+  type: bigint
+  comment: 三级页签
+  role: dimension
+- name: prod_type
+  type: bigint
+  comment: 商品类型
+  role: dimension
+- name: commend
+  type: string
+  comment: 显示角标气泡文本
+  role: dimension
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（当前 270 行，付费商店商品配置条数）
+coverage:
+  scenarios:
+  - 'JOIN 交易明细事实表(如充值流水) 于 id/prod_type 以补齐商品名(name)、商品类型(prod_type)、页签(2sc_tab/3rd_tab)、所属商店(shop_id)、所需凤翎数量(cost) 等维度属性；支持按商品类型/页签/商店分组聚合。'
+  limitations:
+  - '配置类维度表，无值度量（cost 为商品定价属性，非可度量）。'
+  - '2sc_tab/3rd_tab/prod_type 为编码，需参考相关码表二次解码业务含义。'
+  - '已实测唯一性 r=d=270，primary_key_unique=true。'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: 'dim 配置维度表建模：主键 id（实测唯一 r=d=270），标签 name。列类型经 meta describe 校对（int->bigint）。status=draft 待业务确认。'

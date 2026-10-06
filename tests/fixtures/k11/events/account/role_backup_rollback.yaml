@@ -1,0 +1,118 @@
+name: game.role.backup.rollback
+event_filter: event = 'game.role.backup.rollback'
+description: 玩家数据回退指定模块（rollback）：运营/工具侧通过 mgrName 指定的模块、按 tagId/tagUUID 回退点对单个角色的存档执行回退操作，time 为回退发生时间戳。事件粒度为角色（role_id 为分析主体，account_id 作为账号维度可下钻）。参数含游戏服/账号/角色基础信息、角色等级与战力、关键货币列表（coinList 数组）及回退模块标识。scout 实测 ds=20260729 与 ds=20260728 均零命中（cnt=0），事件疑似下线或近期未触发。
+domains:
+  - 用户生命周期
+domain: account
+metrics:
+  game_role_backup_rollback_cnt:
+    expression: COUNT(*)
+    description: 回退事件总发生次数
+  game_role_backup_rollback_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发回退的去重角色数（主体粒度）
+  game_role_backup_rollback_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发回退的去重账号数
+  game_role_backup_rollback_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及回退的去重游戏服数
+  game_role_backup_rollback_role_per_server:
+    expression: ROUND(CAST(COUNT(DISTINCT role_id) AS DOUBLE) / NULLIF(COUNT(DISTINCT server_id), 0), 2)
+    description: 单服平均回退角色数（NULLIF 防 0 除）
+coverage:
+  scenarios:
+    - 量化每日/全周期角色存档回退的发生规模与覆盖角色/账号/服务器范围
+    - 按 mgrName 拆分定位回退高频模块，评估回退对玩家存档稳定性的影响（用户生命周期）
+    - 按 server_id 下钻识别回退集中服，辅助排查运营操作或数据异常
+  limitations:
+    - 日志中零命中(ds=20260729 cnt=0；ds=20260728 cnt=0)，事件疑似下线/未触发，metrics 为定义态待数据回流后校准
+    - 仅 ds=20260729/20260728 双日 scout 实测，未做全量复核
+    - 主体粒度默认 role_id（未在数据中验证角色级唯一性，零命中无法实测）
+    - coinList 为数组类型，未对其元素做 SUM 聚合，如需货币回退量需后续展开
+coverage_status: draft
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  time:
+    type: int
+    description: 回退时间
+  tagId:
+    type: int
+    description: 回退的tagId
+  tagUUID:
+    type: string
+    description: 回退的tag的唯一id
+  mgrName:
+    type: string
+    description: 回退模块名称
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 与 ds=20260728 双日均为 cnt=0/role_uv=0/acc_uv=0/server_uv=0，日志零命中，事件疑似下线或近期未触发，保留 draft 待数据回流后复核
+external_refs: []

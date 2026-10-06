@@ -1,0 +1,142 @@
+table_name: dws_10000251_pve_card_statistics_di
+engine: maxcompute
+table_comment: PVE卡牌统计日表（按角色-卡牌-PVE关卡维度）
+description: |-
+  PVE卡牌统计日表。按角色(role_id)-卡牌(card_id)-PVE关卡(pve_type/stage_id)维度记录每日卡牌出战、胜负与战力统计。
+  粒度：日增量(_di)，每行=角色×卡牌×PVE关卡×出战详情。
+  主题：角色(role_id)级别。主要字段：pve_type, stage_id, chapter_id, role_id, card_id, card_star, card_level, card_pos, card_force, card_job, is_key, resonate_index, tactic_id, battle_times, win_times, lose_times, draw_times, force 等19列。
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 日增量(_di)，角色×卡牌×PVE关卡粒度
+columns:
+  - name: pve_type
+    type: bigint
+    comment: PVE玩法
+    role: dimension
+  - name: stage_id
+    type: bigint
+    comment: 关卡ID
+    role: dimension
+  - name: chapter_id
+    type: bigint
+    comment: 章节ID
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: card_id
+    type: bigint
+    comment: 卡牌ID
+    role: dimension
+  - name: card_star
+    type: bigint
+    comment: 卡牌星级
+    role: dimension
+  - name: card_level
+    type: bigint
+    comment: 卡牌等级
+    role: dimension
+  - name: card_pos
+    type: bigint
+    comment: 卡牌位置
+    role: dimension
+  - name: card_force
+    type: bigint
+    comment: 卡牌战力
+    role: measure
+  - name: card_job
+    type: bigint
+    comment: 卡牌职业
+    role: dimension
+  - name: is_key
+    type: string
+    comment: 是否主力卡牌 true-是 false-否
+    role: dimension
+  - name: resonate_index
+    type: bigint
+    comment: 共鸣位置
+    role: dimension
+  - name: tactic_id
+    type: bigint
+    comment: 风物ID
+    role: dimension
+  - name: battle_times
+    type: bigint
+    comment: 战斗次数
+    role: measure
+  - name: win_times
+    type: bigint
+    comment: 胜利次数
+    role: measure
+  - name: lose_times
+    type: bigint
+    comment: 失败次数
+    role: measure
+  - name: draw_times
+    type: bigint
+    comment: 平局次数
+    role: measure
+  - name: force
+    type: bigint
+    comment: 战力
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  pve_card_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 日参与PVE卡牌战斗的活跃角色数（去重role_id）
+  pve_battle_total:
+    expression: SUM(battle_times)
+    description: 日PVE卡牌战斗总场次（按角色×卡牌×关卡行求和）
+  pve_win_rate:
+    expression: SUM(win_times) / NULLIF(SUM(battle_times), 0)
+    description: 日PVE卡牌战斗胜率（胜利场次/总场次）
+  key_card_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN is_key = 'true' THEN role_id END)
+    description: 日使用主力卡牌(is_key=true)的活跃角色数
+  pve_card_force_avg:
+    expression: SUM(card_force) / NULLIF(COUNT(*), 0)
+    description: 日均PVE卡牌战力（总卡牌战力/记录行数）
+coverage:
+  scenarios:
+    - 每日PVE卡牌出战角色规模与战斗量趋势
+    - PVE卡牌战斗胜率分析（按pve_type/stage_id/chapter_id下钻）
+    - 主力卡牌(is_key)渗透与卡牌战力分布（按card_id/card_star/card_job）
+  limitations:
+    - 仅对 latest ds(20260730) 做了4指标抽样实测(role_uv=4182/battle_total=621159/win_rate≈0.91/key_uv=4142)，未做全量maxc复核
+    - 主题为角色(role_id)粒度，表内无user_type列，无法在表内核验user_type=3，按role_id推断角色主题
+    - _di为日增量，非全量快照；历史回填与多版本卡牌状态以当日记录为准
+    - pve_card_force_avg为行均(总战力/行数)近似，非精确角色级加权均值
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 已在latest ds(20260730)对4个核心指标抽样实测，结果合理(role_uv/battle_total/win_rate/key_uv)，故置analyst_confirmed；force_avg未单独抽样复核。
+dimension_refs:
+  - dim_table: dim_10000251_trans_conquest_df
+    join_keys:
+      - dws_column: chapter_id
+        dim_column: chapter_id
+      - dws_column: stage_id
+        dim_column: stage_id
+    derivation: DWS columns chapter_id (comment 章节ID) and stage_id (comment 关卡ID) form an exact composite-name foreign key to dim_10000251_trans_conquest_df primary key [chapter_id, stage_id], the 征服/推图关卡维度配置表.
+    origin: deterministic
+  - dim_table: dim_10000251_trans_card_df
+    join_keys:
+      - dws_column: card_id
+        dim_column: id
+    derivation: DWS column card_id (comment 卡牌ID; PVE卡牌统计 where the card carries 职业/星级/战力 = 武将) semantically matches dim_10000251_trans_card_df primary key id, described as the 武将(角色)配置维度表 keyed by 武将id.
+  - dim_table: dim_10000251_tactic_info
+    join_keys:
+      - dws_column: tactic_id
+        dim_column: tactic_id
+    derivation: DWS column tactic_id (comment 风物ID) is an exact-name foreign key to dim_10000251_tactic_info primary key tactic_id, the 风物配置维度表.
+    origin: deterministic
+pref_label: PVE卡牌统计日表
+alt_labels:
+  - 使用率

@@ -1,0 +1,130 @@
+name: game.scriptActivity.getPreheatGiftFreeReward
+event_filter: event = 'game.scriptActivity.getPreheatGiftFreeReward'
+description: 角色领取预热活动（themeId）免费奖励埋点。事件由角色领取预热礼包免费档位奖励时触发，记录领奖角色、所属服、活动主题ID、freeRewarded 标记及 rewards 奖励列表。分析主体为 role_id（角色粒度），account_id 为账号粒度补充。ds=20260729 实测：cnt=29、role_uv=29、acc_uv=29、server_uv=7、theme_uv=2。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  themeId:
+    type: int
+    description: 活动ID
+  freeRewarded:
+    type: bool
+    description: 领取过
+  rewards:
+    type: array
+    description: 奖励
+  rewards.type:
+    type: int
+    description: 类型
+  rewards.value:
+    type: int
+    description: 值
+  rewards.size:
+    type: int
+    description: 数量
+  rewards.uid:
+    type: int
+    description: 唯一id
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=29、role_uv=29、acc_uv=29、server_uv=7、theme_uv=2、freeRewarded 取值 1 种。数据量级合理，事件在线触发。
+metrics:
+  preheatgiftfreereward_cnt:
+    expression: COUNT(*)
+    description: 领取预热礼包免费奖励事件总条数
+  preheatgiftfreereward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取免费奖励的去重角色数（分析主体粒度）
+  preheatgiftfreereward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取免费奖励的去重账号数
+  preheatgiftfreereward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 覆盖的去重游戏服数
+  preheatgiftfreereward_theme_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.themeId'))
+    description: 触发免费领奖的去重活动主题数
+  preheatgiftfreereward_cnt_per_server:
+    expression: COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT server_id), 0)
+    description: 平均每服领奖事件条数
+coverage:
+  scenarios:
+    - 预热活动免费档位奖励的领取渗透（领奖角色数 / 触发活动数）
+    - 各活动主题（themeId）免费领奖的服务器覆盖与渗透
+    - 免费 vs 付费档位（结合付费领奖事件）的领奖角色对比
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认分析主体为 role_id（角色粒度）；账号粒度作为补充
+    - rewards 为数组字段，本事件未做 rewards.size/rewards.value 求和（需结合活动主题维度做阵列展开）
+    - freeRewarded 在 ds=20260729 仅有 1 种取值，未能覆盖多状态分布
+coverage_status: analyst_confirmed
+external_refs: []

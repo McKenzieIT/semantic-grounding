@@ -1,0 +1,156 @@
+table_name: dws_10000251_role_play_active_di_v3
+engine: maxcompute
+table_comment: 角色上手进循环(pbt3版)
+description: |-
+  角色上手进循环(pbt3版)。DWS 角色粒度日增量表(_di)，记录角色当日各玩法系统的积极度与循环进阶状态。
+  粒度：角色×日（明细行）。分析主体=角色（user_type=3，按表名 role 推断；表内无 user_type 列，未经实测确认）。
+  覆盖玩法：主线(zhuxian)、装备塔(equip)、无尽塔(wujinta)、虎牢线(hulaoguan)、奇策(qice)、演武(yanwu)、竞技场(jingji)、小队(social)、娱乐城(xiyu)、基础/进阶循环(loop)。积极度 STRING 字段为分档枚举，BIGINT 字段为可聚合数值。
+  注：MAX(ds) 为 NULL，当前表为空，下列指标为结构性定义，未经实测验证。
+domains:
+  - 角色成长
+  - 战斗关卡
+granularity: 角色×日增量(_di)；分析主体=角色(user_type=3，按表名推断)
+columns:
+  - name: account_id
+    type: string
+    comment: 关联账号id
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: role_name
+    type: string
+    comment: 角色名
+    role: attribute
+  - name: regdate
+    type: string
+    comment: 注册日期
+    role: dimension
+  - name: days
+    type: bigint
+    comment: 第几天
+    role: dimension
+  - name: lineup_avg_level
+    type: string
+    comment: 队伍平均等级
+    role: attribute
+  - name: zhuxian_active_normal
+    type: string
+    comment: 主线积极度（新版普通）
+    role: attribute
+  - name: zhuxian_active_hard
+    type: string
+    comment: 主线积极度（新版困难）
+    role: attribute
+  - name: zhuxian_active_normal2
+    type: string
+    comment: 主线积极度（新版普通2）
+    role: attribute
+  - name: zhuxian_active_hard2
+    type: string
+    comment: 主线积极度（新版困难2）
+    role: attribute
+  - name: equip_active
+    type: string
+    comment: 装备塔积极度
+    role: attribute
+  - name: wujinta_active
+    type: bigint
+    comment: 无尽塔积极度
+    role: measure
+  - name: hulaoguan_active
+    type: bigint
+    comment: 虎牢线积极度
+    role: measure
+  - name: qice_active
+    type: bigint
+    comment: 奇策积极度
+    role: measure
+  - name: yanwu_active
+    type: bigint
+    comment: 演武积极度日版
+    role: measure
+  - name: social_active
+    type: bigint
+    comment: 小队积极度
+    role: measure
+  - name: jingji_active
+    type: bigint
+    comment: 竞技场积极度日版
+    role: measure
+  - name: yanwu_active_week
+    type: bigint
+    comment: 演武积极度周版
+    role: measure
+  - name: jingji_active_week
+    type: bigint
+    comment: 竞技场积极度周版
+    role: measure
+  - name: loop_normal
+    type: string
+    comment: 基础循环1-1
+    role: attribute
+  - name: loop_normal_strict
+    type: string
+    comment: 基础循环1-2
+    role: attribute
+  - name: loop_hard
+    type: string
+    comment: 进阶循环2-1
+    role: attribute
+  - name: loop_hard_strict
+    type: string
+    comment: 进阶循环2-2
+    role: attribute
+  - name: xiyu1
+    type: string
+    comment: 娱乐城1(不包含困难)
+    role: attribute
+  - name: xiyu2
+    type: string
+    comment: 娱乐城2(包含困难)
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日活跃角色数（增量口径，按 role_id 去重）
+  account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 当日活跃账号数（增量口径，按 account_id 去重）
+  total_wujinta_active:
+    expression: SUM(wujinta_active)
+    description: 当日无尽塔积极度总分
+  total_yanwu_active:
+    expression: SUM(yanwu_active)
+    description: 当日演武积极度日版总分
+  avg_jingji_active:
+    expression: SUM(jingji_active) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 当日人均竞技场积极度（按活跃角色均摊）
+coverage:
+  scenarios:
+    - 当日各玩法系统（主线/装备塔/无尽塔/虎牢/奇策/演武/竞技场/小队/娱乐城/循环）的角色活跃分布与积极度统计
+    - 角色上手循环进阶情况（基础循环1-1/1-2、进阶循环2-1/2-2 达成分档占比）
+    - 账号 vs 角色层级当日活跃对比（account_uv / role_uv 比值）
+  limitations:
+    - 表为空/无数据（MAX(ds) 为 NULL），无法做任何实测验证；指标均为结构性定义，待数据入库后复核
+    - 仅抽样验证未执行（无数据可查）；user_type 列不存在，主体=角色(user_type=3)为按表名推断，未经实测确认
+    - _di 为日增量口径，跨日累加需注意；days/regdate 为角色生命周期维度，同一角色跨 ds 会重复出现
+    - 积极度 STRING 字段（zhuxian_active_*/equip_active/loop_*/xiyu*）为分档枚举，非可聚合数值，须配合 COUNT/GROUP BY 使用
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表为空(MAX(ds) NULL)，仅做结构性丰富，未做实测；status=draft。待数据入库后须 SELECT MAX(ds) 复核并升级。
+dimension_refs: []
+pref_label: 角色上手循环表v3
+alt_labels:
+  - 上手
+  - 循环
+  - 新手
+  - PBT3
+  - 漏斗

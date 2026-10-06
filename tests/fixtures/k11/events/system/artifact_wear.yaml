@@ -1,0 +1,156 @@
+name: game.artifact.wear
+event_filter: event = 'game.artifact.wear'
+description: 角色穿戴兵符（artifact）事件：玩家将某个兵符装备到指定部位（job），记录穿戴的兵符 uid/cfgId/星级及附加/随机属性。分析主体为 role_id（角色）。ds=20260729 scout 实测：事件量 1754，覆盖 1191 角色 / 1162 账号 / 115 服务器 / 92 种兵符配置 / 3 个穿戴部位。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  job:
+    type: int
+    description: 穿戴部位
+  artifact:
+    type: json
+    description: 穿戴兵符
+  artifact.uid:
+    type: int
+    description: artifact.uid
+  artifact.cfgId:
+    type: int
+    description: artifact.cfgId
+  artifact.star:
+    type: int
+    description: artifact.star
+  artifact.addAttrs:
+    type: array
+    description: artifact.addAttrs
+  artifact.addAttrs.attrId:
+    type: int
+    description: artifact.addAttrs.attrId
+  artifact.addAttrs.attrValue:
+    type: int
+    description: artifact.addAttrs.attrValue
+  artifact.randAttrs:
+    type: array
+    description: artifact.randAttrs
+  artifact.randAttrs.cellId:
+    type: int
+    description: artifact.randAttrs.cellId
+  artifact.randAttrs.attrId:
+    type: int
+    description: artifact.randAttrs.attrId
+  artifact.randAttrs.attrValue:
+    type: int
+    description: artifact.randAttrs.attrValue
+  artifact.randAttrs.cfgId:
+    type: int
+    description: artifact.randAttrs.cfgId
+  artifact.randAttrs.type:
+    type: int
+    description: artifact.randAttrs.type
+metrics:
+  game_artifact_wear_cnt:
+    expression: COUNT(*)
+    description: 兵符穿戴事件总次数
+  game_artifact_wear_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 穿戴兵符的去重角色数（分析主体）
+  game_artifact_wear_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 穿戴兵符的去重账号数
+  game_artifact_wear_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 穿戴兵符覆盖的去重服务器数
+  game_artifact_wear_cfgid_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.artifact.cfgId'))
+    description: 被穿戴兵符的去重配置id数（兵符种类）
+  game_artifact_wear_job_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.job'))
+    description: 穿戴部位（job）的去重数
+  game_artifact_wear_star_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.artifact.star') AS BIGINT))
+    description: 被穿戴兵符星级求和
+  game_artifact_wear_avg_star_per_event:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.artifact.star') AS BIGINT)) / NULLIF(COUNT(*), 0)
+    description: 单次穿戴平均兵符星级
+coverage:
+  scenarios:
+    - 多少角色/账号/服务器在穿戴兵符（穿戴行为覆盖度）
+    - 哪些兵符配置（cfgId）与穿戴部位（job）最常用
+    - 被穿戴兵符的星级分布与平均星级
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（穿戴为角色级行为）
+    - star_sum 仅统计含 artifact.star 字段的记录，缺失字段按 NULL 求和
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "measured ds=20260729: cnt=1754 / role_uv=1191 / acc_uv=1162 / server_uv=115; artifact.cfgId_uv=92, job_uv=3, star_sum=3076（scout 实测，单日）"
+external_refs: []

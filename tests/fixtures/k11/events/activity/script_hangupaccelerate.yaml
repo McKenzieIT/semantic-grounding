@@ -1,0 +1,117 @@
+name: game.script.hangupaccelerate
+event_filter: event = 'game.script.hangupaccelerate'
+description: 剧本-挂机加速事件：玩家在剧本挂机玩法中使用加速功能时触发，记录加速获得的经验(addExp)、剧本id(scriptId)及角色货币/等级/战力等上下文。分析主体粒度为 role_id（角色级事件，accountId 为账号维度辅助）。scout 实测 ds=20260729 单日命中 1688 条、1259 角色、1235 账号、285 服、加速经验合计约 2436 万。参数含 24 个字段：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验、看板娘、关键货币列表、会话id、logUUID、剧本id、加速获得的经验等
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  scriptId:
+    type: int
+    description: 剧本id
+  addExp:
+    type: int
+    description: 加速获得的经验
+metrics:
+  script_hangupaccelerate_cnt:
+    expression: COUNT(*)
+    description: 剧本挂机加速触发总次数
+  script_hangupaccelerate_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发挂机加速的去重角色数
+  script_hangupaccelerate_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发挂机加速的去重账号数
+  script_hangupaccelerate_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发挂机加速的去重游戏服数
+  script_hangupaccelerate_script_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.scriptId'))
+    description: 涉及的去重剧本id数
+  script_hangupaccelerate_addexp_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.addExp') AS BIGINT))
+    description: 加速获得的经验总和
+  script_hangupaccelerate_addexp_per_role:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.addExp') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均加速获得经验（加经验总和/去重角色数）
+coverage:
+  scenarios:
+    - 剧本挂机加速玩法的参与度（次数、角色、账号、服务器覆盖）
+    - 加速经验产出总量与人均产出，评估挂机加速对角色经验提升的贡献
+    - 不同剧本(scriptId)的加速使用分布
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体粒度默认 role_id（角色级事件），账号维度为辅助
+    - 加速经验字段 addExp 依赖客户端上报，可能存在小概率丢失或异常值
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=1688, role_uv=1259, acc_uv=1235, server_uv=285, addExp 合计 24359980, 涉及 3 个 scriptId；数据量与分布合理"
+coverage_status: analyst_confirmed
+external_refs: []

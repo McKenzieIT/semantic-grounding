@@ -1,0 +1,43 @@
+table_name: dim_10000251_sync_platform_reward_item_catalogue_df_arch
+engine: maxcompute
+kind: dim
+table_comment: '平台奖励物品类别目录维度表（按 ds 分区快照），记录奖励物品类别ID与显示名称'
+description: '平台奖励物品类别目录维度表。存放奖励物品（货币/武将/材料等）类别ID与显示名称的配置映射，供下游奖励流水按类别ID关联展示名称。粒度为每类别ID一行（按 ds 分区快照，存在重复 id 数据质量问题）。'
+domains:
+- 装备道具
+granularity: 每奖励物品类别ID一行（按 ds 分区快照）的配置维度表
+primary_key:
+- id
+label_columns:
+- name
+primary_key_unique: false
+coverage:
+  scenarios:
+  - 下游奖励流水按 reward_item 类别ID关联本表，获取类别显示名称（name）做分组展示
+  - 类别ID字典反查，用于奖励物品类别维度的枚举/分组分析
+  limitations:
+  - 配置类维度表，无值度量（无可聚合的 measure 字段）
+  - 实测发现 ds 最新分区中 id 列存在重复（"货币"重复2次），primary_key_unique=false，使用时需去重或限定单分区
+  - id 列内容为中文类别名称字符串（非数字编码），与 name 字段值相同，无独立编码体系
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'draft：实测 id 在最新 ds 分区内不唯一（货币重复2次），保持 draft；待业务方确认去重口径后升级'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含分区快照累计）
+columns:
+- name: name
+  type: string
+  comment: 类别的显示名称
+  role: dimension
+- name: id
+  type: string
+  comment: 类别ID
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition

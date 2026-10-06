@@ -1,0 +1,70 @@
+table_name: dim_10000251_com_recharge_info
+engine: maxcompute
+kind: dim
+primary_key: [recharge_id]
+primary_key_unique: false
+label_columns: [recharge_name]
+table_comment: 商业化-礼包信息维表（充值/礼包配置维度表，每礼包一行）
+description: '商业化-礼包信息维表。付费经济域的配置类维度表，记录每个充值礼包的名称、类型、主题、详情、价格与所属活动。用于事实表通过 recharge_id JOIN 查询礼包维度属性。
+
+  粒度：每个 recharge_id（礼包配置）一行。
+
+  主要字段：recharge_id（礼包ID，主键，非唯一-存在重复），recharge_name（礼包名称，标签），recharge_type/recharge_type_sec（类型/次级类型），recharge_topic/recharge_topic_sec（主题/次级主题），recharge_detail（详情），recharge_price（价格），activity_id（活动ID）。'
+domains:
+- 付费经济
+granularity: 每 recharge_id（礼包配置）一行的维度/配置表
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+coverage:
+  scenarios:
+  - 事实表通过 recharge_id JOIN 查询礼包名称/类型/主题/价格等维度属性
+  - 按 recharge_type、recharge_topic 维度对充值订单分组统计
+  - 关联 activity_id 串联活动维度
+  limitations:
+  - 配置类维度表，无值度量；recharge_price 为礼包标价属性而非交易金额度量
+  - recharge_id 实测非唯一（总行数2343，去重2334，存在9条重复），故 primary_key_unique=false，状态保持 draft
+  - recharge_detail/recharge_topic_sec 等字段为编码串可能需二次解码
+columns:
+- name: recharge_id
+  type: bigint
+  comment: 礼包ID
+  role: dimension
+- name: recharge_name
+  type: string
+  comment: 礼包名称
+  role: dimension
+- name: recharge_type
+  type: string
+  comment: 礼包类型
+  role: dimension
+- name: recharge_type_sec
+  type: string
+  comment: 礼包次级类型
+  role: dimension
+- name: recharge_topic
+  type: string
+  comment: 礼包主题
+  role: dimension
+- name: recharge_topic_sec
+  type: string
+  comment: 礼包次级主题
+  role: dimension
+- name: recharge_detail
+  type: string
+  comment: 礼包详情
+  role: dimension
+- name: recharge_price
+  type: double
+  comment: 礼包价格
+  role: dimension
+- name: activity_id
+  type: bigint
+  comment: 活动ID
+  role: dimension
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 maxc meta describe 真实列；recharge_id 作主键（自然唯一标识），recharge_name 作标签。实测 r=2343 d=2334 非唯一，primary_key_unique=false，状态 draft。recharge_id 角色由 measure 更正为 dimension。'

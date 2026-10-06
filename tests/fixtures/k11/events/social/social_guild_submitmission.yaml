@@ -1,0 +1,118 @@
+name: game.social.guild.submitmission
+event_filter: event = 'game.social.guild.submitmission'
+description: 公会成员提交公会任务（领取任务奖励）事件。玩家在公会玩法中完成/提交公会任务后上报，参数包含任务id(taskId)、任务名(tastName)、增加活跃度(activeAdd)及角色基础信息与货币快照(coinList)。分析主体粒度为 role_id（角色级），亦可用 account_id 聚合到账号级。scout 实测 ds=20260729 单日：事件 cnt=8059，role_uv=3200，account_uv=3059，server_uv=431，distinct taskId=3。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  taskId:
+    type: int
+    description: 任务id
+  tastName:
+    type: string
+    description: 任务名字
+  activeAdd:
+    type: int
+    description: 增加活跃度
+metrics:
+  game_social_guild_submitmission_cnt:
+    expression: COUNT(*)
+    description: 公会任务提交事件总次数（行数）。
+  game_social_guild_submitmission_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 提交公会任务的去重角色数（分析主体粒度 role_id）。
+  game_social_guild_submitmission_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 提交公会任务的去重账号数。
+  game_social_guild_submitmission_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的游戏服去重数。
+  game_social_guild_submitmission_task_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.taskId'))
+    description: 去重公会任务id数（取自 params.taskId）。
+  game_social_guild_submitmission_active_add_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.activeAdd') AS BIGINT))
+    description: 当日通过公会任务提交增加的活跃度总和（取自 params.activeAdd）。注意 scout 日 ds=20260729 该字段实测为 NULL/未填充。
+coverage:
+  scenarios:
+    - 公会任务参与度：通过 _cnt / _role_uv 衡量公会任务的日提交量与参与人数。
+    - 公会任务覆盖广度：_server_uv 反映玩法覆盖的服务器范围，_task_uv 反映当日被提交的去重任务数量。
+    - 公会活跃度贡献：_active_add_sum 用于估算公会任务对玩家/公会活跃度的拉动（需字段实际填充后生效）。
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核（多日趋势/周末波动未验证）。
+    - 分析主体粒度默认为 role_id；如需账号级聚合请改用 _account_uv。
+    - params.activeAdd 在 scout 日返回 NULL，疑似该字段未实际埋点/未上报；_active_add_sum 指标当前不可用，待字段恢复填充后再核算。
+    - params.taskId distinct=3，公会任务种类较少，需结合业务确认任务定义是否覆盖完整。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=8059, role_uv=3200, account_uv=3059, server_uv=431, task_uv=3, active_add_sum=NULL（字段未填充）。数据量合理，事件在线正常触发。
+coverage_status: analyst_confirmed
+external_refs: []

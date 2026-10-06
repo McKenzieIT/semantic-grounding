@@ -1,0 +1,126 @@
+name: game.train.handbook
+event_filter: event = 'game.train.handbook'
+description: 角色图鉴养成（train handbook）事件：记录角色在图鉴养成玩法中的触发行为，含角色等级、vip等级、角色战力、经验、当前总星数及各关键货币余额等23个参数。分析主体为 role_id（角色级事件）。scout 实测 ds=20260729 单日 cnt=12834，role_uv=2962，acc_uv=2800，server_uv=334。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  star:
+    type: int
+    description: 当前总星数
+metrics:
+  train_handbook_cnt:
+    expression: COUNT(*)
+    description: 图鉴养成事件总触发次数
+  train_handbook_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发图鉴养成的去重角色数（分析主体 role_id）
+  train_handbook_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发图鉴养成的去重账号数
+  train_handbook_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发图鉴养成的去重游戏服数
+  train_handbook_avg_star:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.star') AS BIGINT))
+    description: 触发时角色当前总星数平均值
+  train_handbook_avg_role_level:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.roleLevel') AS BIGINT))
+    description: 触发时角色等级平均值
+  train_handbook_avg_vip_level:
+    expression: AVG(CAST(GET_JSON_OBJECT(params, '$.vipLevel') AS BIGINT))
+    description: 触发时 vip 等级平均值
+coverage:
+  scenarios:
+    - 图鉴养成玩法的日活/周活参与度（role_uv/account_uv）
+    - 图鉴养成事件在全服的渗透（server_uv）
+    - 触发图鉴养成时角色的等级/星数/vip 分布（avg 系列指标）
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色级事件，未做账号级二次核对）
+    - avg 指标基于 params 内 star/roleLevel/vipLevel 字段，缺失值为 NULL 被 AVG 忽略
+coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=12834, role_uv=2962, acc_uv=2800, server_uv=334，数据合理，事件活跃在线
+external_refs:
+  - dim_table: dim_10000251_knight_starup_info
+    join_keys:
+      - dws_column: star
+        dim_column: star
+    derivation: 确定性：事件字段 star 与 dim_10000251_knight_starup_info 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_knight_starup_info_arch
+    join_keys:
+      - dws_column: star
+        dim_column: star
+    derivation: 确定性：事件字段 star 与 dim_10000251_knight_starup_info_arch 主键精确同名
+    origin: deterministic

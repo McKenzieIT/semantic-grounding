@@ -1,0 +1,56 @@
+table_name: dim_10000251_trans_play_df_arch
+engine: maxcompute
+kind: dim
+table_comment: '玩法配置维度表（按日快照归档）：每个玩法 id 在每个 ds 分区下一行的配置快照，提供玩法名/解锁条件等维度属性。'
+description: '游戏 10000251 的玩法配置维度表（每日快照归档，dim_10000251_trans_play_df_arch）。
+  每行描述一个玩法（id）在某个日期分区（ds）下的配置快照，包含玩法名（name）、玩法别名（name2）、解锁条件（unlock）等维度属性。
+  主键：[id, ds]；标签列：name（玩法名）。该表为系统配置类维度表，事实表可通过 id+ds 关联查询玩法维度属性。'
+domains:
+- 系统监控
+granularity: '每 (玩法 id, 日期分区 ds) 一行的玩法配置维度表'
+primary_key:
+- id
+- ds
+label_columns:
+- name
+primary_key_unique: true
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（含全部 ds 分区快照）
+coverage:
+  scenarios:
+  - '事实表（如流水/事件表）通过 play_id + ds 关联本表，查询玩法名（name/玩法名2 name2）、解锁条件（unlock）等维度属性'
+  - '按 ds 分区查询某日全量玩法配置快照，做配置回溯或差异对比'
+  - '按 id 维度做去重后的玩法数量统计（DISTINCT id，注意排除多日快照重复）'
+  limitations:
+  - '配置类维度表，无值度量（measure），仅提供维度属性'
+  - '主键唯一性基于 (id, ds) 复合键实测（r=d=110918）；id 单列跨 ds 分区不唯一（共 262 个玩法 id），跨分区聚合需 DISTINCT'
+  - 'name2 为玩法别名/二次命名，可能与 name 不同；如需权威展示名建议优先 name'
+  - 'ds 分区粒度为日，跨日查询需注意同一 id 的多版本快照'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '基于 meta describe 列校验 + (id,ds) 复合唯一性实测通过；保持 draft 待业务确认。'
+columns:
+- name: id
+  type: string
+  comment: 玩法id
+  role: dimension
+- name: name
+  type: string
+  comment: 玩法名
+  role: dimension
+- name: unlock
+  type: string
+  comment: 解锁条件
+  role: dimension
+- name: name2
+  type: string
+  comment: 玩法名2
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition

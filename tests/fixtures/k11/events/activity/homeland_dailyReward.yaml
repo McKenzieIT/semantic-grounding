@@ -1,0 +1,122 @@
+name: game.homeland.dailyReward
+event_filter: event = 'game.homeland.dailyReward'
+description: 家园系统每日奖励领取事件：角色在家园中领取每日发放的奖励时上报，记录角色基础信息（角色等级、vip等级、战力、经验）与家园等级，以及奖励涉及的多种货币变动（充值钻石、赠送钻石、免费钻石、紫金、经验卷轴、体力）。主体粒度为 role_id（角色），单条日志对应一次角色领取动作；附带 account_id 与 server_id 用于跨账号/跨服聚合。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  level:
+    type: int
+    description: 家园等级
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: "ds=20260729 scout: cnt=0 role_uv=0 acc_uv=0 server_uv=0; ds=20260728 重试: cnt=0。两日零命中，疑似事件下线/未触发或未接入该视图。"
+  coverage_status: draft
+metrics:
+  game_homeland_dailyReward_cnt:
+    expression: COUNT(*)
+    description: 家园每日奖励领取事件总触发次数
+  game_homeland_dailyReward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取家园每日奖励的去重角色数
+  game_homeland_dailyReward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取家园每日奖励的去重账号数
+  game_homeland_dailyReward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取家园每日奖励覆盖的去重游戏服数
+coverage:
+  scenarios:
+    - 量化家园每日奖励的领取规模与角色/账号/服务器覆盖度
+    - 监控家园日常玩法的活跃参与情况
+  limitations:
+    - 日志中零命中(ds=20260729 与 ds=20260728 两日 cnt=0)，疑似事件下线/未触发或未接入 ieu_ods.ods_10000251_all_view
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认主体粒度为 role_id（角色）
+external_refs:
+  - dim_table: dim_10000251_knight_awaken_info_arch
+    join_keys:
+      - dws_column: level
+        dim_column: level
+    derivation: 确定性：事件字段 level 与 dim_10000251_knight_awaken_info_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_knight_level_info
+    join_keys:
+      - dws_column: level
+        dim_column: level
+    derivation: 确定性：事件字段 level 与 dim_10000251_knight_level_info 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_knight_level_info_arch
+    join_keys:
+      - dws_column: level
+        dim_column: level
+    derivation: 确定性：事件字段 level 与 dim_10000251_knight_level_info_arch 主键精确同名
+    origin: deterministic

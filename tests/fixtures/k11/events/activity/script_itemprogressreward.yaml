@@ -1,0 +1,118 @@
+name: game.script.itemprogressreward
+event_filter: event = 'game.script.itemprogressreward'
+description: 剧本进度奖励领取事件：玩家在剧本(script)推进过程中达到进度节点时领取道具奖励(rewardId)的上报。 分析粒度主体为 role_id（角色）；脚本参数携带 scriptId/rewardId 及领取时刻的角色货币余额快照(coinList:gold/sendgold/freegold/diamond/expCoin/energy)、角色等级、vip等级、战力等。 scout 实测 ds=20260729 单日：cnt=292 次领取，覆盖 role_uv=240 个角色、acc_uv=238 个账号、server_uv=103 个游戏服。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  scriptId:
+    type: int
+    description: 剧本id
+  rewardId:
+    type: int
+    description: 奖励id
+metrics:
+  script_itemprogressreward_cnt:
+    expression: COUNT(*)
+    description: 剧本进度奖励领取总次数
+  script_itemprogressreward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取剧本进度奖励的去重角色数（分析主体）
+  script_itemprogressreward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取剧本进度奖励的去重账号数
+  script_itemprogressreward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取剧本进度奖励的去重游戏服数
+  script_itemprogressreward_script_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.scriptId'))
+    description: 触发进度奖励领取的去重剧本数
+  script_itemprogressreward_reward_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.rewardId'))
+    description: 被领取的去重奖励类型数
+  script_itemprogressreward_claims_per_role:
+    expression: ROUND(CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0), 3)
+    description: 人均领取次数（总次数/去重角色数，分母为0时返回NULL）
+coverage:
+  scenarios:
+    - 剧本进度奖励领取活跃度与覆盖角色/账号/游戏服规模
+    - 不同剧本(scriptId)与奖励类型(rewardId)的领取分布与热门奖励
+    - 人均领取频次，识别高频领取角色
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核（未覆盖多日趋势/周同比）
+    - 分析主体默认 role_id（角色粒度），未验证 account_id 维度全量一致性
+    - coinList.* 为领取时刻角色货币余额快照（非奖励发放量），未作为产出指标核算
+    - 未区分奖励道具类型与数量明细（rewardId 仅作去重计数）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=292，role_uv=240，acc_uv=238，server_uv=103，数据合理
+coverage_status: analyst_confirmed
+external_refs: []

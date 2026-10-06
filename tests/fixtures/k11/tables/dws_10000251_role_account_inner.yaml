@@ -1,0 +1,56 @@
+table_name: dws_10000251_role_account_inner
+engine: maxcompute
+table_comment: star002内部账号表。业务咨询：xuwenlong.xwl(null)#
+description: |-
+  star002内部账号表（内部/测试账号清单，用于排除真实玩家分析）。业务咨询：xuwenlong.xwl(null)#。
+  粒度：明细快照表（无 ds 分区，静态全量）。分析主体=账号（user_type=2 推断；表无 user_type 列，主体由主键 account_id 决定，role_id/role_name 全表 NULL）。
+  主要字段：account_id（主键，已填充）, role_id（全 NULL）, role_name（全 NULL）。
+domains:
+  - 用户生命周期
+  - 系统监控
+granularity: 明细快照表（无 ds 分区），分析主体=账号（user_type=2）
+columns:
+  - name: account_id
+    type: string
+    comment: 账号id
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色id
+    role: dimension
+  - name: role_name
+    type: string
+    comment: 角色名
+    role: attribute
+metrics:
+  internal_acc_count:
+    expression: COUNT(DISTINCT account_id)
+    description: 内部账号去重总数（静态快照口径，全表无 ds 分区）
+  role_mapped_acc_count:
+    expression: COUNT(DISTINCT CASE WHEN role_id IS NOT NULL THEN account_id END)
+    description: 已填充 role_id 的内部账号去重数（实测全表为 0）
+  role_mapping_fill_rate:
+    expression: COUNT(role_id) / NULLIF(COUNT(DISTINCT account_id), 0)
+    description: 内部账号已关联角色的占比（实测全表为 0，role_id 列空缺）
+coverage:
+  scenarios:
+    - 内部/测试账号总量盘点（internal_acc_count），用于在玩家分析前剔除内部账号
+    - 评估 role_id 关联完整度（role_mapping_fill_rate），判断角色级粒度是否可用
+  limitations:
+    - 无 ds 分区，静态快照表，无时间维度，不可做趋势/增量分析
+    - role_id 与 role_name 全表 NULL（实测 n_role=0, n_name=0, n_acc=133），角色级指标不可用，仅账号级可用
+    - 仅 scout 抽样验证（COUNT 实测=133），未做全量 maxc 复核
+    - 表无 user_type 列，user_type=2 为按主键 account_id 推断，未在数据中直接验证
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+primary_key:
+  - account_id
+primary_key_unique: true
+dimension_refs: []
+pref_label: 内部账号表
+alt_labels:
+  - 内部
+  - 员工
+  - 白名单

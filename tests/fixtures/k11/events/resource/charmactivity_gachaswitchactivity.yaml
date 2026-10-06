@@ -1,0 +1,124 @@
+name: game.charmactivity.gachaswitchactivity
+event_filter: event = 'game.charmactivity.gachaswitchactivity'
+description: |-
+  灵器活动-切换活动卡池(gacha switch)：角色在灵器/抽卡活动中切换当前参与的活动卡池(gachaIds列表)并标记是否本期卡池(isCurrent)。主体粒度为角色(role_id)，记录每次卡池切换行为(activityId/gachaIds/isCurrent)。scout 实测 ds=20260729/20260728 均零命中，疑似活动未上线或仅在特定档期触发
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等25个
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  activityId:
+    type: int
+    description: 活动id
+  gachaIds:
+    type: array
+    description: 卡池id列表
+  isCurrent:
+    type: bool
+    description: 是否为本期卡池
+metrics:
+  gachaswitchactivity_cnt:
+    expression: COUNT(*)
+    description: 切换活动卡池事件触发次数(每次卡池切换记1条)
+  gachaswitchactivity_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 切换卡池的独立角色数(去重 role_id；主体粒度为角色)
+  gachaswitchactivity_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 切换卡池的独立账号数(去重 account_id)
+  gachaswitchactivity_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的区服数(去重 server_id，反映活动覆盖面)
+  gachaswitchactivity_activity_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.activityId'))
+    description: 涉及的灵器活动数(去重 activityId)
+  gachaswitchactivity_current_pool_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN GET_JSON_OBJECT(params, '$.isCurrent') = 'true' THEN role_id END)
+    description: 切换到本期卡池的独立角色数(isCurrent=true 时去重 role_id)
+  gachaswitchactivity_per_role_switch_cnt:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均切换次数(总切换次数/独立角色数；衡量反复切换强度)
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+coverage:
+  scenarios:
+    - 灵器活动卡池切换规模(gachaswitchactivity_cnt / gachaswitchactivity_role_uv / gachaswitchactivity_account_uv)
+    - 活动覆盖面(gachaswitchactivity_server_uv 区服数、gachaswitchactivity_activity_uv 活动数)
+    - 本期卡池切换占比(gachaswitchactivity_current_pool_role_uv)
+    - 反复切换强度(gachaswitchactivity_per_role_switch_cnt)
+  limitations:
+    - 日志中零命中(ds=20260729 cnt=0；ds=20260728 cnt=0)，疑似活动下线/未触发/仅特定档期触发，所有指标值预计为0
+    - 仅 ds=20260729/20260728 双日 scout 实测，未做全量多日复核，建议活动上线后复查
+    - 主体粒度默认 role_id 未逐事件实测角色归属正确性，按 base view 同时含 account_id+role_id 推断为角色级
+    - isCurrent 为 bool，GET_JSON_OBJECT 取回字符串 'true'/'false'，零命中无法抽样验证字段填充率
+    - 本游戏无 MaxCompute 事件分布查询，无 daily_count/total_count/active_days
+  coverage_status: draft
+external_refs: []

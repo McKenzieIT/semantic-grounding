@@ -1,0 +1,122 @@
+name: game.equip.autoReinforce
+event_filter: event = 'game.equip.autoReinforce'
+description: 装备自动强化事件：角色对武将(knightId)的装备执行自动强化（一键升到材料允许的等级上限）时上报，每次自动强化操作计为一条日志。分析主体粒度为 role_id（角色），account_id 作为账号维度可下钻。ds=20260729 实测：cnt=40206，role_uv=1850，acc_uv=1769，server_uv=228，涉及被强化武将种类(knightId去重) 60 个。参数含角色基础信息、coinList 关键货币列表、knightId(武将id)、upLevels(装备升级明细数组) 等26个。
+domains:
+  - 装备道具
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightId:
+    type: int
+    description: 武将id
+  upLevels:
+    type: array
+    description: 每个装备提升的级别
+  upLevels.uid:
+    type: int
+    description: 装备uid
+  upLevels.level:
+    type: int
+    description: 升级
+metrics:
+  game_equip_autoReinforce_cnt:
+    expression: COUNT(*)
+    description: 自动强化事件日志总条数（每次自动强化操作一条）
+  game_equip_autoReinforce_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发自动强化的角色去重数（分析主体粒度 role_id）
+  game_equip_autoReinforce_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发自动强化的账号去重数
+  game_equip_autoReinforce_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及自动强化的游戏服去重数
+  game_equip_autoReinforce_knight_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.knightId'))
+    description: 被自动强化的武将种类去重数（knightId，GET_JSON_OBJECT 取值）
+  game_equip_autoReinforce_per_role_avg_cnt:
+    expression: ROUND(CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0), 2)
+    description: 人均自动强化次数 = 总事件 / 参与角色数（NULLIF 防零除）
+coverage:
+  scenarios:
+    - 通过 role_uv/account_uv/server_uv 评估装备自动强化玩法的角色/账号/服务器渗透规模
+    - 通过 knight_uv 量化被养成武将种类的覆盖广度，辅助装备养成投放评估
+    - 通过 per_role_avg_cnt 衡量人均自动强化强度，识别高活跃养成角色
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量多日复核；多日趋势需另行批量校验
+    - 分析主体粒度默认 role_id（角色），未对 account_id 跨角色复用做去重校验
+    - params 中声明的 upLevels 数组(每件装备 uid + 升级 level)在 ds=20260729 日志中实测为 NULL（schema 声明但日志未写入），单次事件装备升级级别合计无法计算
+    - coinList 为数组类型(强化前后货币余额快照)，未对其元素做 SUM 聚合，如需货币消耗量需后续展开建模
+    - 本事件非付费事件，coinList.gold 等货币字段为余额快照而非收入口径，不可直接当收入统计
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=40206, role_uv=1850, acc_uv=1769, server_uv=228, knight_uv=60。数值合理，event+ds 双过滤命中，确认在线可查。upLevels 字段实测为 NULL（schema 声明但日志未写入），已在 limitations 标注。
+coverage_status: analyst_confirmed
+external_refs: []

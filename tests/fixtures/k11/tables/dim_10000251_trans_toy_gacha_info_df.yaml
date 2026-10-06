@@ -1,0 +1,146 @@
+table_name: dim_10000251_trans_toy_gacha_info_df
+engine: maxcompute
+kind: dim
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+table_comment: 扭蛋/卡池配置维度表（游戏 10000251），日全量快照(_df)，每卡池(id)一行，含卡池名称/分组/开放关闭时间/抽取消耗/掉落保底等配置属性。
+description: '游戏 10000251 扭蛋(卡池)配置维度表（日全量快照 _df）。粒度：每卡池(id)一行；主键 id（卡池ID，唯一），标签列 name（卡池名称）。键/属性：id(卡池ID)、name(卡池名称)、group_name(卡池组名称)、group(卡池组)、gacha_type(卡池类型)、function_id(解锁规则)、exchange_id(兑换ID)；时间窗口：open_time(开放)、close_time(关闭)；抽取消耗：cost(单抽消耗)、cost_resource(消耗资源数)、gacha_multi_num(默认多抽次数)；掉落/保底：gacha_star_drop_id(掉落编号)、gacha_star_weight(掉落权重)、gacha_grade_guarantee(按品质保底)、gacha_guarantee_group(保底组)、guarantee_maxmum(奖励限制)、up_gacha_reward(up池购买资源)；展示：group_bg(组背景)、bg_name(背景图)、banner_name(页签图)、node_name(预览)、display_weight(品质显示)、gacha_desc(说明文本)、drop_desc(概率说明)、tab_show(标签描述)、directions(备注)、is_show(未解锁是否展示)、points(积分)。注：cost/star_drop_id/star_weight/guarantee_maxmum 等为复合编码串，JOIN 使用时需二次解码。'
+domains:
+- 探索收集
+granularity: 每卡池(id)一行的配置/维度表（日全量快照 _df）
+coverage:
+  scenarios:
+  - 通过 id JOIN 事实表，为抽卡流水补充卡池名称(name)、组(group/group_name)、类型(gacha_type)等维度属性
+  - 按 group/group_name 聚合分析各卡池组表现；按 gacha_type 分类对比不同卡池机制
+  - 利用 open_time/close_time 分析卡池生命周期与开放窗口
+  - 配合 gacha_star_drop_id/weight 评估掉落概率分布（需解码复合编码串）
+  limitations:
+  - 配置类维度表，无值度量(metrics)，仅提供维度属性
+  - cost/gacha_star_drop_id/gacha_star_weight/guarantee_maxmum/gacha_grade_guarantee 为下划线分隔的复合编码串，需二次解析后才能作为可分组维度使用
+  - 为 _df 日全量快照表，同一卡池历史配置变更会以多日快照形式存在；若需"最新"状态需取快照日期最新分区
+  - open_time/close_time 为字符串类型时间，需 CAST 后方可做时间运算
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 maxc meta describe 校验 29 列与原始 YAML 一致；主键 id 经实测 COUNT(*)=30, COUNT(DISTINCT id)=30 满足唯一性(primary_key_unique=true)。label_columns 选取 name(卡池名称)。角色均为 dimension（dim 表无值度量）。保持 draft 待业务确认。'
+columns:
+- name: id
+  type: string
+  comment: 卡池ID
+  role: dimension
+- name: directions
+  type: string
+  comment: 卡池备注
+  role: dimension
+- name: name
+  type: string
+  comment: 卡池名称
+  role: dimension
+- name: group_name
+  type: string
+  comment: 卡池组名称
+  role: dimension
+- name: group_bg
+  type: string
+  comment: 卡池组背景
+  role: dimension
+- name: group
+  type: string
+  comment: 卡池组
+  role: dimension
+- name: exchange_id
+  type: string
+  comment: exchange_id
+  role: dimension
+- name: function_id
+  type: string
+  comment: 解锁规则
+  role: dimension
+- name: gacha_type
+  type: string
+  comment: 卡池类型
+  role: dimension
+- name: cost
+  type: string
+  comment: 单抽消耗
+  role: dimension
+- name: gacha_multi_num
+  type: string
+  comment: 默认多抽次数
+  role: dimension
+- name: cost_resource
+  type: string
+  comment: 单抽消耗资源数
+  role: dimension
+- name: gacha_star_drop_id
+  type: string
+  comment: 不同品质掉落编号
+  role: dimension
+- name: gacha_star_weight
+  type: string
+  comment: 不同品质掉落权重
+  role: dimension
+- name: gacha_grade_guarantee
+  type: string
+  comment: 按品质保底
+  role: dimension
+- name: gacha_guarantee_group
+  type: string
+  comment: 卡池保底组
+  role: dimension
+- name: up_gacha_reward
+  type: string
+  comment: up池购买资源
+  role: dimension
+- name: open_time
+  type: string
+  comment: 卡池开放时间
+  role: dimension
+- name: close_time
+  type: string
+  comment: 卡池关闭时间
+  role: dimension
+- name: guarantee_maxmum
+  type: string
+  comment: 奖励限制
+  role: dimension
+- name: display_weight
+  type: string
+  comment: 品质显示
+  role: dimension
+- name: node_name
+  type: string
+  comment: 卡池预览
+  role: dimension
+- name: bg_name
+  type: string
+  comment: 卡池背景图
+  role: dimension
+- name: banner_name
+  type: string
+  comment: 卡池页签图
+  role: dimension
+- name: gacha_desc
+  type: string
+  comment: 卡池说明文本
+  role: dimension
+- name: tab_show
+  type: string
+  comment: 标签描述
+  role: dimension
+- name: drop_desc
+  type: string
+  comment: 概率说明
+  role: dimension
+- name: is_show
+  type: string
+  comment: 卡池未解锁是否展示
+  role: dimension
+- name: points
+  type: string
+  comment: 卡池积分
+  role: dimension

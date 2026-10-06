@@ -1,0 +1,122 @@
+name: game.knight.setSkin
+event_filter: event = 'game.knight.setSkin'
+description: 记录武将设置皮肤事件。玩家为武将(knightId)切换/设置皮肤时触发，每次设置产出一条日志，含旧皮肤id(oldSkinId)、新皮肤id(newSkinId)、武将id、角色等级、战力、货币列表(coinList)等25个参数。分析粒度为角色(role_id)，单角色可多次设置皮肤，亦可通过account_id聚合到账号维度。scout实测 ds=20260729：事件次数223、去重角色187、去重账号186、去重游戏服28。
+domains:
+  - 角色成长
+domain: system
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  knightId:
+    type: int
+    description: 武将id
+  oldSkinId:
+    type: int
+    description: 旧皮肤id
+  newSkinId:
+    type: int
+    description: 新皮肤id
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=223, role_uv=187, acc_uv=186, server_uv=28，数据合理(单日量级偏小但符合设置皮肤低频行为)"
+metrics:
+  knight_set_skin_cnt:
+    expression: COUNT(*)
+    description: 武将设置皮肤事件总次数
+  knight_set_skin_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发设置皮肤的去重角色数
+  knight_set_skin_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发设置皮肤的去重账号数
+  knight_set_skin_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发设置皮肤的去重游戏服数
+  knight_set_skin_distinct_knight:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.knightId'))
+    description: 设置皮肤涉及的武将去重数(按knightId)
+  knight_set_skin_distinct_new_skin:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.newSkinId'))
+    description: 被设置的新皮肤去重数(按newSkinId)
+  knight_set_skin_avg_per_role:
+    expression: COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 单角色平均设置皮肤次数
+coverage:
+  scenarios:
+    - 设置皮肤总体规模：通过 cnt/role_uv 衡量设置皮肤活动总量与渗透角色数
+    - 跨服分布：server_uv 反映设置皮肤覆盖的游戏服范围
+    - 武将/皮肤广度：distinct_knight/distinct_new_skin 反映玩家设置皮肤的武将与新皮肤覆盖广度
+    - 设置频次：avg_per_role 反映单角色平均设置皮肤次数
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析粒度默认 role_id；同账号多角色需在用数侧自行去重
+    - 旧皮肤id(oldSkinId)区分"首次设置"与"切换"未单独建模，用数侧可按需扩展
+    - 货币(coinList)、战力(roleForce)等参数字段未纳入指标定义，用数侧可按需扩展
+coverage_status: analyst_confirmed
+external_refs: []

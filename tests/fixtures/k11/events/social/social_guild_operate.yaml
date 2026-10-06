@@ -1,0 +1,126 @@
+name: game.social.guild.operate
+event_filter: event = 'game.social.guild.operate'
+description: 公会操作埋点 game.social.guild.operate：记录角色在公会中的各类操作行为（创建/加入/退出/管理/捐赠等，由 params.action 数值编码区分），并携带目标公会 ID/类型/成员数及操作人公会职位等上下文。分析主体为 role_id（角色粒度），account_id 为账号粒度。ds=20260729 单日 scout 实测：操作事件 1076 次，涉及角色 625 个、账号 480 个、62 个游戏服，params.action 分布 13 类（峰值 action=11 共 397 次）。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  action:
+    type: int
+    description: 行为
+  targetRoleId:
+    type: string
+    description: 目标角色ID
+  targetGuildId:
+    type: string
+    description: 目标公会ID
+  targetGuildTag:
+    type: int
+    description: 目标公会类型
+  targetGuildRoleNum:
+    type: int
+    description: 目标公会成员数
+  guildPosition:
+    type: int
+    description: 操作人当前所在公会的职位，0-未加入公会 1-公会长 2-管理 3-普通成员
+metrics:
+  game_social_guild_operate_cnt:
+    expression: COUNT(*)
+    description: 公会操作事件总次数
+  game_social_guild_operate_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发公会操作的去重角色数（分析主体粒度）
+  game_social_guild_operate_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发公会操作的去重账号数
+  game_social_guild_operate_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发公会操作的去重游戏服数
+  game_social_guild_operate_action_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.action'))
+    description: 公会操作类型去重数（params.action 取值种类）
+  game_social_guild_operate_per_role_freq:
+    expression: ROUND(COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0), 3)
+    description: 平均每个触发角色的公会操作次数（事件数/角色UV）
+coverage:
+  scenarios:
+    - 评估公会玩法整体活跃度与参与规模（操作事件总量、参与角色/账号/游戏服 UV）
+    - 衡量单角色公会操作频率，识别高粘性公会玩家
+    - 通过 params.action 分布分析各类公会操作（创建/加入/退出/管理/捐赠等）的发生占比
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - params.action 为数值编码（如 11/82/51/81...），具体语义需对照客户端行为字典
+    - 默认分析主体 role_id；account_id 仅作账号粒度参考
+  coverage_status: analyst_confirmed
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: ds=20260729 scout 实测命中：cnt=1076, role_uv=625, acc_uv=480, server_uv=62；params.action 分布 13 类，峰值 action=11(397次)/82(228次)/51(134次)/81(121次)。数据量合理，事件真实在线。
+external_refs: []

@@ -1,0 +1,171 @@
+table_name: dws_10000251_role_tag_df
+engine: maxcompute
+table_comment: DWS 角色标签日全量表：角色标签/活跃/付费/战力/排名画像(_df)
+description: |-
+  角色标签日全量快照表：每 role_id 一行的角色画像标签（活跃/付费/战力/学堂/排名），(_df) 日全量。
+  分析主体=角色（role_id 为 key；表无 user_type 列，由表名 role_tag 推断主体为角色，user_type=3）。
+  主要字段：role_id, server_id, os_id, act_tm_fst/lst, act_days_std/1w/1m, pay_amt_std/1w/1m, vip_level, pay_level, role_name, role_level, role_force, tech1/2/3_level, role_level_rank, role_force_rank, p01/p02/p03_goals_rank, goals_rank, apvp_rank, spvp_rank, ext_info 等29列。
+domains:
+  - 角色成长
+  - 付费经济
+granularity: 日全量快照(_df)，每 role_id 一行（角色标签画像），主体=角色
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id，key
+    role: dimension
+  - name: os_id
+    type: int
+    comment: 平台id
+    role: dimension
+  - name: act_tm_fst
+    type: datetime
+    comment: 首次活跃时间
+    role: dimension
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近活跃时间
+    role: dimension
+  - name: act_days_std
+    type: int
+    comment: 累计活跃天数
+    role: measure
+  - name: act_days_1w
+    type: int
+    comment: 最近7日活跃天数
+    role: measure
+  - name: act_days_1m
+    type: int
+    comment: 最近30日活跃天数
+    role: measure
+  - name: pay_amt_std
+    type: decimal
+    comment: 累计付费金额
+    role: measure
+  - name: pay_amt_1w
+    type: decimal
+    comment: 最近7日付费金额
+    role: measure
+  - name: pay_amt_1m
+    type: decimal
+    comment: 最近30日付费金额
+    role: measure
+  - name: vip_level
+    type: int
+    comment: VIP等级，缺省值0
+    role: dimension
+  - name: pay_level
+    type: string
+    comment: 付费等级，0-非R，1-小R，2-中R，3-大R
+    role: dimension
+  - name: role_name
+    type: string
+    comment: 角色名
+    role: attribute
+  - name: role_level
+    type: int
+    comment: 角色等级
+    role: dimension
+  - name: role_force
+    type: int
+    comment: 角色战力
+    role: measure
+  - name: tech1_level
+    type: int
+    comment: 研学堂攻击等级
+    role: dimension
+  - name: tech2_level
+    type: int
+    comment: 研学堂防御等级
+    role: dimension
+  - name: tech3_level
+    type: int
+    comment: 研学堂辅助等级
+    role: dimension
+  - name: role_level_rank
+    type: int
+    comment: 角色等级排名，缺省值0
+    role: dimension
+  - name: role_force_rank
+    type: int
+    comment: 角色战力排名，缺省值0
+    role: dimension
+  - name: p01_goals_rank
+    type: int
+    comment: 主线排名，缺省值0
+    role: dimension
+  - name: p02_goals_rank
+    type: int
+    comment: 无尽塔排名，缺省值0
+    role: dimension
+  - name: p03_goals_rank
+    type: int
+    comment: 阵营塔排名，缺省值0
+    role: dimension
+  - name: goals_rank
+    type: int
+    comment: 星数排名，缺省值0
+    role: dimension
+  - name: apvp_rank
+    type: int
+    comment: 异步PVP排名，演武场，缺省值0
+    role: dimension
+  - name: spvp_rank
+    type: int
+    comment: 同步PVP排名，竞技场，缺省值0
+    role: dimension
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 快照角色数（role_id 去重）
+  paying_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN role_id END)
+    description: 快照累计付费角色数（pay_amt_std>0）
+  pay_amt_total:
+    expression: SUM(pay_amt_std)
+    description: 快照累计付费总金额
+  pay_rate:
+    expression: COUNT(DISTINCT CASE WHEN pay_amt_std > 0 THEN role_id END) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 付费渗透率（付费角色数/总角色数）
+  active_1w_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN act_days_1w > 0 THEN role_id END)
+    description: 近7日活跃角色数（act_days_1w>0）
+coverage:
+  scenarios:
+    - 角色画像规模与活跃分布（role_uv / active_1w_role_uv，可按 server_id、os_id、vip_level、pay_level 切分）
+    - 付费规模与付费渗透（pay_amt_total / paying_role_uv / pay_rate）
+    - 角色战力分布（SUM(role_force) 可按 role_level、tech1/2/3_level 切分；rank 列为排名位次用于筛选/分桶）
+  limitations:
+    - 表为空/无数据（MAX(ds) NULL，maxc 实测 20260731 查询无数据），指标为结构化草案，未抽样验证。
+    - _df 为日全量快照，每 role_id 一行；跨日聚合 UV 需按 ds 切分去重，不可直接跨日 SUM(UV)。
+    - 表无 user_type 列，分析主体由表名 role_tag 推断为角色（user_type=3），未实测验证。
+    - rank 列（role_level_rank/role_force_rank/p01_goals_rank 等）为排名位次，SUM 无业务意义，仅用于筛选/分桶维度，未纳入聚合指标。
+    - act_tm_fst/lst 为时间戳维度，未纳入聚合指标；ext_info 为 JSON 扩展文本，未解析。
+    - 仅 scout 推断字段语义，未做全量 maxc 实测复核（表空）。
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表为空（MAX(ds) NULL），指标为结构化草案未抽样验证；待有数据后对 role_uv / pay_rate 抽样实测，升级为 analyst_confirmed。
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS server_id (区服id，key) joins to dim_10000251_server_info (PK server_id), the 服务器/区服维度配置表 used for fact-table server attribute lookup.
+    origin: deterministic
+pref_label: 角色标签宽表
+alt_labels:
+  - 排名

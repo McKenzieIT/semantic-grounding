@@ -1,0 +1,61 @@
+table_name: dim_10000251_trans_card_df
+engine: maxcompute
+kind: dim
+primary_key:
+- id
+label_columns:
+- name
+primary_key_unique: true
+table_comment: '武将(角色)配置维度表，日全量快照(_df)；以武将id为唯一键，承载武将名/品质/阵营/职业/性别/初始星数等静态属性'
+description: '游戏 10000251 的武将(角色)配置维度表(日全量快照 _df)。每行描述一个武将的静态配置属性：武将id(主键)、武将名(标签)、品质、阵营、职业、性别、初始星数。用于按武将维度对事实表进行 JOIN 查询、属性下钻与分组聚合。'
+domains:
+- 角色成长
+granularity: 每武将(id)一行的配置维度表(日全量快照 _df)
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数(武将数)
+columns:
+- name: id
+  type: STRING
+  comment: 武将id
+  role: dimension
+- name: name
+  type: STRING
+  comment: 武将名
+  role: dimension
+- name: quality
+  type: BIGINT
+  comment: 品质
+  role: dimension
+- name: group
+  type: STRING
+  comment: 阵营
+  role: dimension
+- name: job
+  type: BIGINT
+  comment: 职业
+  role: dimension
+- name: sex
+  type: BIGINT
+  comment: 性别
+  role: dimension
+- name: ini_star_num
+  type: BIGINT
+  comment: 初始星数
+  role: dimension
+coverage:
+  scenarios:
+  - '武将维度查询：事实表通过武将id关联本表，获取武将名/品质/阵营等属性用于筛选与展示'
+  - '武将分组下钻：按品质、阵营、职业、性别、初始星数等维度属性对玩家持有/抽卡/培养事实进行分组聚合'
+  - '维度标签回填：将武将名作为标签回填到事实表行，用于报表可视化'
+  limitations:
+  - '配置类维度表，无值度量(数值字段均为分类属性，非度量)'
+  - '仅含武将静态属性，不含动态状态(等级/星级/进阶等运行时数据)'
+  - 'group(阵营)为编码字符串(如"1"/"4")，需二次映射阵营名称'
+  - '品质/职业/性别为编码值，需配合业务码表二次解码'
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '基于 meta describe 与唯一性实测(r=73,d=73)建摸；属性字段角色统一为 dimension；status 保持 draft 待业务确认'

@@ -1,0 +1,150 @@
+name: game.campaign.disposableReward
+event_filter: event = 'game.campaign.disposableReward'
+description: 历战一次性奖励事件：角色在历战（campaign）玩法中领取一次性奖励时上报，包含角色基础信息（等级、vip、战力、经验）、关键货币（钻石/紫金/体力等）与奖励明细（reward 数组：类型/值/数量/uid）。subject 粒度为 role_id（角色）。实测 ds=20260729 单日 cnt=2052、role_uv=1293、acc_uv=1256、server_uv=138。
+domains:
+  - 自定义
+domain: activity
+metrics:
+  game_campaign_disposablereward_cnt:
+    expression: COUNT(*)
+    description: 历战一次性奖励事件总次数
+  game_campaign_disposablereward_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 领取一次性奖励的去重角色数
+  game_campaign_disposablereward_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 领取一次性奖励的去重账号数
+  game_campaign_disposablereward_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 领取一次性奖励的去重游戏服数
+coverage:
+  scenarios:
+    - 历战一次性奖励的发放规模与角色/账号/服务器覆盖
+    - 历战玩法参与度与奖励触达广度
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 默认 subject 为 role_id（角色粒度），账号/服务器口径为辅助维度
+    - reward 为数组字段，未对 reward.size 做聚合 SUM（数组解析复杂，暂以事件次数为主口径）
+    - coinList 为数组字段，未拆解各货币余额指标
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  reward:
+    type: array
+    description: 奖励
+  reward.type:
+    type: int
+    description: 类型
+  reward.value:
+    type: int
+    description: 值
+  reward.size:
+    type: int
+    description: 数量
+  reward.uid:
+    type: int
+    description: 唯一id
+  group:
+    type: int
+    description: boss组id
+  level:
+    type: int
+    description: 难度
+  levelorders:
+    type: array
+    description: 已领取的order
+  levelorders.level:
+    type: int
+    description: levelorders.level
+  levelorders.order:
+    type: int
+    description: levelorders.order
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: ds=20260729 实测 cnt=2052、role_uv=1293、acc_uv=1256、server_uv=138，数据合理
+  coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_knight_awaken_info_arch
+    join_keys:
+      - dws_column: level
+        dim_column: level
+    derivation: 确定性：事件字段 level 与 dim_10000251_knight_awaken_info_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_knight_level_info
+    join_keys:
+      - dws_column: level
+        dim_column: level
+    derivation: 确定性：事件字段 level 与 dim_10000251_knight_level_info 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_knight_level_info_arch
+    join_keys:
+      - dws_column: level
+        dim_column: level
+    derivation: 确定性：事件字段 level 与 dim_10000251_knight_level_info_arch 主键精确同名
+    origin: deterministic

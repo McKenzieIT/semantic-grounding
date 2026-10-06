@@ -1,0 +1,104 @@
+table_name: dws_10000251_lineup_pve_di
+engine: maxcompute
+table_comment: PVE阵容使用表
+description: |-
+  PVE阵容使用日增量表。按角色(role)维度记录每个角色在不同玩法/子玩法下使用阵容的参与与胜利次数。
+  粒度：日增量(_di)，角色(role)级别。
+  主要字段：role_id, server_id, play_id, sub_play_id, lineup, lineup_tag, part_pv, win_pv, ext_info 等10列。
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 日增量(_di)，按角色(role)维度
+columns:
+  - name: role_id
+    type: string
+    comment: 角色id，key
+    role: dimension
+  - name: server_id
+    type: string
+    comment: 区服id，key
+    role: dimension
+  - name: play_id
+    type: string
+    comment: 玩法id，key，缺省值0
+    role: dimension
+  - name: sub_play_id
+    type: string
+    comment: 子玩法id，key，缺省值0
+    role: dimension
+  - name: lineup
+    type: string
+    comment: 阵容，key
+    role: dimension
+  - name: lineup_tag
+    type: string
+    comment: 阵容标签
+    role: attribute
+  - name: part_pv
+    type: bigint
+    comment: 参与次数，0表示未参与
+    role: measure
+  - name: win_pv
+    type: bigint
+    comment: 胜利次数
+    role: measure
+  - name: ext_info
+    type: string
+    comment: 扩展内容
+    role: attribute
+  - name: ds
+    type: string
+    comment: 业务日期
+    role: partition
+metrics:
+  participate_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与PVE阵容玩法的角色数(UV)
+  total_part_pv:
+    expression: SUM(part_pv)
+    description: PVE阵容参与总次数
+  total_win_pv:
+    expression: SUM(win_pv)
+    description: PVE阵容胜利总次数
+  win_rate:
+    expression: SUM(win_pv) / NULLIF(SUM(part_pv), 0)
+    description: PVE阵容胜率
+  lineup_count:
+    expression: COUNT(DISTINCT lineup)
+    description: 使用阵容种类数
+coverage:
+  scenarios:
+    - 按玩法/子玩法统计阵容参与UV、参与次数、胜利次数与胜率
+    - 评估各阵容在PVE玩法中的使用偏好与表现
+  limitations:
+    - 表为空/无数据(MAX(ds) NULL)，指标为结构性定义，未做实测验证
+    - 仅抽样验证，未做全量 maxc 实测复核
+    - _di为日增量，跨日汇总需注意去重
+    - 缺少阵容配置明细维度(仅lineup/lineup_tag文本)
+confirmation:
+  status: draft
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 表为空(MAX(ds) NULL)，无法做指标实测复核，故置draft
+dimension_refs:
+  - dim_table: dim_10000251_server_info
+    join_keys:
+      - dws_column: server_id
+        dim_column: server_id
+    derivation: DWS 列 server_id (comment 区服id) 与 dim server_info 主键 server_id 完全一致；该 dim 为区服维度配置表。
+    origin: deterministic
+  - dim_table: dim_10000251_trans_play_df
+    join_keys:
+      - dws_column: play_id
+        dim_column: id
+    derivation: DWS 列 play_id (comment 玩法id) 语义对应 dim trans_play_df 主键 id；该 dim 为玩法配置维度表，其主键 id 即 玩法id。
+  - dim_table: dim_10000251_trans_sub_play_od
+    join_keys:
+      - dws_column: sub_play_id
+        dim_column: sub_play_id
+    derivation: DWS 列 sub_play_id (comment 子玩法id) 与 dim trans_sub_play_od 主键 sub_play_id 完全一致；该 dim 为子玩法配置维度表。
+    origin: deterministic
+pref_label: PVE阵容表
+alt_labels:
+  - 阵容
+  - 编队

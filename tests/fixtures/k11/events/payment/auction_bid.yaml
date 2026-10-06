@@ -1,0 +1,625 @@
+name: game.auction.bid
+event_filter: event = 'game.auction.bid'
+description: 拍卖行竞价事件：玩家在拍卖行对商品出价竞拍。分析主体为 role_id（角色），按角色/账号/服务器粒度统计竞价次数、参与人数及竞价金额（price）。scout 实测 ds=20260729：cnt=110, role_uv=31, acc_uv=31, server_uv=23, price_sum=81290。
+domains:
+  - 付费经济
+domain: payment
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  goodUid:
+    type: string
+    description: goodUid
+  id:
+    type: int
+    description: id
+  price:
+    type: int
+    description: price
+metrics:
+  game_auction_bid_cnt:
+    expression: COUNT(*)
+    description: 拍卖竞价事件总次数
+  game_auction_bid_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与竞价的去重角色数
+  game_auction_bid_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与竞价的去重账号数
+  game_auction_bid_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 参与竞价覆盖的去重服务器数
+  game_auction_bid_price_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.price') AS BIGINT))
+    description: 竞价出价金额总和（price 字段累加）
+  game_auction_bid_good_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.goodUid'))
+    description: 被竞价商品的去重数量（goodUid）
+  game_auction_bid_arpu:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.price') AS BIGINT)) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均竞价金额（price_sum / role_uv）
+coverage:
+  scenarios:
+    - 拍卖行竞价参与度：日竞价次数、参与角色/账号数、覆盖服务器数
+    - 拍卖行成交规模：竞价金额总和（price_sum）、被竞价商品数量（goodUid 去重）
+    - 人均竞价金额（ARPU）：price_sum / role_uv
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id；若需账号粒度改用 account_id
+    - price 为竞价出价金额，非最终成交价；同一商品可能多次出价累加
+    - goodUid 去重数(107)接近事件总数(110)，多数商品仅被竞价一次
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: "scout 实测 ds=20260729: cnt=110, role_uv=31, acc_uv=31, server_uv=23, price_sum=81290, goodUid_uv=107, id_uv=22; 数字合理，事件在线且持续触发"
+coverage_status: analyst_confirmed
+external_refs:
+  - dim_table: dim_10000251_auto_event_cfg_info
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_auto_event_cfg_info 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_business_analysis_recharge
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_business_analysis_recharge 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_gmactivity_info
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_gmactivity_info 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_k11_recharge_info
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_k11_recharge_info 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_sync_platform_reward_item_catalogue_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_sync_platform_reward_item_catalogue_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_sync_platform_reward_item_catalogue_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_sync_platform_reward_item_catalogue_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_sync_platform_reward_item_catalogue_test_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_sync_platform_reward_item_catalogue_test_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_sync_platform_reward_item_catalogue_test_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_sync_platform_reward_item_catalogue_test_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_sync_platform_reward_item_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_sync_platform_reward_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_sync_platform_reward_item_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_sync_platform_reward_item_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_sync_platform_reward_item_test_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_sync_platform_reward_item_test_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_sync_platform_reward_item_test_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_sync_platform_reward_item_test_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans__action_game_coin_change_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans__action_game_coin_change_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans__action_game_item_change_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans__action_game_item_change_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans__action_game_train_card_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans__action_game_train_card_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_apvp_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_apvp_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_apvp_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_apvp_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_awaskill_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_awaskill_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_card_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_card_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_card_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_card_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_cardpool_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_cardpool_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_cardpool_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_cardpool_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_dim_play_od
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_dim_play_od 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_drop_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_drop_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_equipment_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_equipment_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_equipment_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_equipment_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_event_od
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_event_od 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_exp_coll_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_exp_coll_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_exp_coll_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_exp_coll_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_fteam_dungeon_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_fteam_dungeon_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_fteam_dungeon_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_fteam_dungeon_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_goods_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_goods_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_goods_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_goods_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_homeland_fish_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_homeland_fish_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_homeland_fish_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_homeland_fish_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_info_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_item_info_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_item_info_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_item_info_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_main_task_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_main_task_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_main_task_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_main_task_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_natalchart_info
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_natalchart_info 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_natalchart_info_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_natalchart_info_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_play_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_play_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_play_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_play_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_props_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_props_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_props_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_props_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_pvp_rank_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_pvp_rank_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_recharge_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_recharge_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_recharge_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_recharge_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_recharge_prod_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_recharge_prod_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_recharge_prod_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_recharge_prod_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_recharge_shop_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_recharge_shop_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_recharge_shop_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_recharge_shop_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_recover_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_recover_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_resource_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_resource_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_resource_item_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_resource_item_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_resource_item_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_rogue_buff_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_rogue_buff_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_rogue_buff_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_rogue_buff_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_rogue_buff_group_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_rogue_buff_group_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_rogue_buff_group_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_rogue_buff_group_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_rogue_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_rogue_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_rogue_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_rogue_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_rogue_suit_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_rogue_suit_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_rogue_suit_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_rogue_suit_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_role_temp_od
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_role_temp_od 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_spvp_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_spvp_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_stage_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_stage_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_stage_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_stage_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_stage_test_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_stage_test_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_stage_test_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_stage_test_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_starup_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_starup_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_story_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_story_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_story_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_story_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_stra_buff_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_stra_buff_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_stra_buff_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_stra_buff_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_stra_buff_group_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_stra_buff_group_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_stra_buff_group_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_stra_buff_group_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_task_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_task_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_task_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_task_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_test_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_test_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_test_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_test_df_arch 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_toy_gacha_info_df
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_toy_gacha_info_df 主键精确同名
+    origin: deterministic
+  - dim_table: dim_10000251_trans_toy_gacha_info_df_arch
+    join_keys:
+      - dws_column: id
+        dim_column: id
+    derivation: 确定性：事件字段 id 与 dim_10000251_trans_toy_gacha_info_df_arch 主键精确同名
+    origin: deterministic

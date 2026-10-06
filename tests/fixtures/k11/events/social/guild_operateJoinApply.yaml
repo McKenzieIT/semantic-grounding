@@ -1,0 +1,119 @@
+name: game.guild.operateJoinApply
+event_filter: event = 'game.guild.operateJoinApply'
+description: 公会管理者处理（通过/拒绝等）加入公会申请的操作事件。role_id 为操作人角色（分析主体），targetUid 为被操作的申请人目标ID，op 标记具体操作类型（scout 日 ds=20260729 仅观测到 op=1）。单日 ds=20260729 实测：操作次数 12 次、去重操作角色 6 人、去重账号 6 个、覆盖游戏服 3 个。
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  targetUid:
+    type: int
+    description: 目标ID
+  op:
+    type: int
+    description: 操作
+metrics:
+  game_guild_operate_join_apply_cnt:
+    expression: COUNT(*)
+    description: 加入申请处理操作总次数（通过/拒绝等所有 op 合计）
+  game_guild_operate_join_apply_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 处理加入申请的去重操作角色数（分析主体）
+  game_guild_operate_join_apply_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 处理加入申请的去重账号数
+  game_guild_operate_join_apply_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 发生加入申请处理的去重游戏服数
+  game_guild_operate_join_apply_target_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.targetUid'))
+    description: 被处理的去重申请人目标数（取自 params.targetUid）
+  game_guild_operate_join_apply_approve_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.op') = '1' THEN 1 ELSE 0 END)
+    description: op=1（通过）操作次数；scout 日 ds=20260729 该 op 为唯一观测值
+  game_guild_operate_join_apply_approve_rate:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.op') = '1' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 通过操作占比 = 通过次数 / 总操作次数
+coverage:
+  scenarios:
+    - 公会入会审批处理量：按日/服统计操作次数与操作角色数，衡量公会管理活跃度
+    - 审批通过率：approve_rate 反映通过占比，结合 approve_cnt 评估审批倾向
+    - 申请人覆盖：target_uv 统计被处理的去重申请人目标数，配合 applyJoin 形成申请-处理链路
+    - 跨服分布：server_uv 反映审批行为覆盖的游戏服范围
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（操作人角色粒度），account_id 仅供去重参考；未与 targetUid（申请人）交叉核验
+    - op 字段当日仅观测到值 '1'（通过），拒绝等其他 op 值的含义需全量复核确认
+    - approve_cnt/approve_rate 在 op 单一取值日下区分度有限，建议多日聚合后再用
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=12，role_uv=6，acc_uv=6，server_uv=3（op 全为 1）；数字偏小但合理，事件在线且正常触发
+coverage_status: analyst_confirmed
+external_refs: []

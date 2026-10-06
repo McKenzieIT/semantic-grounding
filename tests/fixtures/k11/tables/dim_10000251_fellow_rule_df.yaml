@@ -1,0 +1,51 @@
+table_name: dim_10000251_fellow_rule_df
+engine: maxcompute
+kind: dim
+primary_key: [rule_id]
+label_columns: [event_type, event_id]
+primary_key_unique: true
+table_comment: 内部用户游戏规则配置维度表
+description: '内部用户游戏规则配置维度表（_df 日全量快照）。
+
+  记录游戏内部规则配置：每条规则由 rule_id（ip/role/code 三类编码）唯一标识，
+  关联事件分类(event_type)与事件id(event_id)，rule_data 承载规则内容。
+
+  用途：作为规则/事件的维度查找表，供事实表通过 rule_id JOIN 解析规则语义。'
+domains:
+- 系统监控
+granularity: 每条游戏规则(rule_id)一行的配置维度表
+coverage:
+  scenarios:
+  - 事实表通过 rule_id JOIN 本表，解析规则的事件分类、事件id与规则内容
+  - 按 event_type 分组统计不同规则分布
+  limitations:
+  - 配置类维度表，无值度量字段（rule_data 为字符串内容，非数值度量）
+  - rule_id 为复合编码串（ip/role/code 三类），如需细分类型需二次解码
+  - 当前表为空表(0 行)，primary_key_unique 仅 r=d 形式满足，未承载实际数据，待有数据后复测
+columns:
+- name: rule_id
+  type: string
+  comment: 规则id，ip、role、code
+  role: dimension
+- name: event_type
+  type: string
+  comment: 事件分类
+  role: dimension
+- name: event_id
+  type: string
+  comment: 事件id
+  role: dimension
+- name: rule_data
+  type: string
+  comment: 规则内容
+  role: dimension
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 meta describe 与空表 r=d 校验建模；rule_id 为主键、event_type/event_id 为标签列。
+    表当前 0 行，primary_key_unique 形式满足但无数据，保留 draft 待数据落地后复测。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数

@@ -1,0 +1,68 @@
+table_name: dim_10000251_play_progress_di
+engine: maxcompute
+kind: dim
+primary_key:
+- stage_id
+label_columns:
+- datetime2
+table_comment: star002 进度明细配置维度表，按日记录核心/积极/普通玩家三类群体的关卡进度里程碑。
+description: 'star002 进度明细配置维度表（dim）。每行记录进度第几天（datetime2）对应的当日上限进度（stage_id）以及核心/积极/普通玩家三类群体的关卡排序（core_stage/active_stage/normal_stage）与关卡进度（core_id/active_id/normal_id）。用于按天切片查询玩家进度里程碑，并作为进度维表供事实表 JOIN 查询当日上限与分群体进度。'
+domains:
+- 战斗关卡
+granularity: 每进度天(datetime2)一行的进度配置维度表
+columns:
+- name: datetime2
+  type: string
+  comment: 0开始的进度第几天
+  role: dimension
+- name: stage_id
+  type: string
+  comment: 当日上限进度
+  role: dimension
+- name: core_stage
+  type: string
+  comment: 核心玩家关卡排序
+  role: dimension
+- name: active_stage
+  type: string
+  comment: 积极玩家关卡排序
+  role: dimension
+- name: normal_stage
+  type: string
+  comment: 普通玩家关卡排序
+  role: dimension
+- name: core_id
+  type: string
+  comment: 核心玩家关卡进度
+  role: dimension
+- name: active_id
+  type: string
+  comment: 积极玩家关卡进度
+  role: dimension
+- name: normal_id
+  type: string
+  comment: 普通玩家关卡进度
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+coverage:
+  scenarios:
+  - 按进度天(datetime2)查询当日上限进度(stage_id)及核心/积极/普通玩家群体的关卡排序与进度
+  - 作为进度维表供日粒度事实表 JOIN，回填当日 stage_id / core_id / active_id / normal_id 等里程碑字段
+  - 分群体对比核心/积极/普通玩家的关卡进度分布
+  limitations:
+  - 配置类维度表，无值度量(measure)字段，columns 均为 dimension 属性
+  - 实测时表为空(r=0, d=0)，未做唯一性实测，primary_key(stage_id) 唯一性未经验证
+  - 字段为 STRING 类型，部分进度编码串(stage_id / *_id)可能为复合编码，需二次解码
+  - 仅含进度里程碑配置，不含玩家实际进度事实，事实查询需关联对应进度事实表
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 'dim 建模：primary_key=stage_id（依 meta describe 提示），label=datetime2；实测时表为空 r=0 未做唯一性实测，保持 draft；域=战斗关卡。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数

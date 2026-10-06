@@ -1,0 +1,128 @@
+name: game.equip.preciseFlushMulti
+event_filter: event = 'game.equip.preciseFlushMulti'
+description: 装备精炼多属性批量洗练事件（game.equip.preciseFlushMulti）：角色对装备部件（partId 取值 1/2/3/4 共 4 个部位）执行精炼洗练时上报，单条日志携带 flushMultiAttrs 多属性数组（attrId/attrValue）以及 partId、knightId 等装备上下文，并附带角色基线属性（roleLevel/vipLevel/roleForce/exp）与 coinList 货币快照。分析主体粒度为 role_id（角色），亦可按 account_id 聚合账号维度。ds=20260729 实测单日 19327 条事件，覆盖 413 角色 / 408 账号 / 190 服务器，partId 分布 1=5429、4=4898、3=4518、2=4482。
+domains:
+  - 装备道具
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  partId:
+    type: int
+    description: partId
+  knightId:
+    type: int
+    description: knightId
+  flushMultiAttrs:
+    type: array
+    description: flushMultiAttrs
+  flushMultiAttrs.attrs:
+    type: array
+    description: flushMultiAttrs.attrs
+  flushMultiAttrs.attrs.attrId:
+    type: int
+    description: flushMultiAttrs.attrs.attrId
+  flushMultiAttrs.attrs.attrValue:
+    type: int
+    description: flushMultiAttrs.attrs.attrValue
+metrics:
+  game_equip_preciseFlushMulti_cnt:
+    expression: COUNT(*)
+    description: 精炼多属性洗练事件总次数（单条日志=一次洗练操作）
+  game_equip_preciseFlushMulti_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与精炼洗练的去重角色数（分析主体粒度=role_id）
+  game_equip_preciseFlushMulti_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与精炼洗练的去重账号数
+  game_equip_preciseFlushMulti_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 覆盖游戏服去重数
+  game_equip_preciseFlushMulti_part_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.partId'))
+    description: 被洗练的装备部位去重数（partId 取值 1/2/3/4）
+  game_equip_preciseFlushMulti_avg_per_role:
+    expression: ROUND(COUNT(*) / NULLIF(COUNT(DISTINCT role_id), 0), 2)
+    description: 人均洗练次数=总次数/去重角色数
+coverage:
+  scenarios:
+    - 装备养成活跃度：通过 _cnt / _role_uv 监控精炼洗练日均触发量与参与角色规模
+    - 部位均衡性：通过 _part_uv 与 partId 分组判断 4 个装备部位洗练是否均衡
+    - 养成深度：通过 _avg_per_role 衡量角色在精炼多属性上的投入强度
+    - 服务器覆盖：通过 _server_uv 评估功能在不同服的渗透情况
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核；多日趋势/环比同比待补
+    - 分析主体默认 role_id；若需账号视角请改用 _account_uv 并标注粒度切换
+    - flushMultiAttrs 数组元素个数无法在纯 SQL COUNT 直接聚合（ODPS SIZE 不接受 STRING），单事件属性条数需走 JSON 解析离线脚本
+    - 未关联精炼消耗货币/道具数量，仅记录行为次数；成本侧分析需 join 资源消耗事件（当前规则禁止 JOIN，需在独立事件度量）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=19327，role_uv=413，acc_uv=408，server_uv=190；partId 分布 1=5429/4=4898/3=4518/2=4482，数值合理（4 部位、活跃角色高复洗练），确认事件在线且数据可量化。
+coverage_status: analyst_confirmed
+external_refs: []

@@ -1,0 +1,112 @@
+name: game.toy.techonekeyactive
+event_filter: event = 'game.toy.techonekeyactive'
+description: 玩家一次性激活多个科技（一键科技）的埋点事件。每次玩家在科技面板点击「一键激活」时触发，params.techIds 携带本次批量激活的科技id列表，同时上报角色当前等级/战力/vip/经验及关键货币（钻石、紫金、体力等）快照。分析主体为 role_id（角色粒度，account_id 作为账号维度补充）。实测 ds=20260729 单日：cnt=732 次一键激活，role_uv=636 角色，acc_uv=623 账号，server_uv=281 服务器。
+domains:
+  - 探索收集
+domain: resource
+metrics:
+  techonekeyactive_cnt:
+    description: 一键科技激活事件总次数（每次点击一键激活记 1 次，对应一个 techIds 批量激活）
+    expression: COUNT(*)
+  techonekeyactive_role_uv:
+    description: 触发一键科技激活的去重角色数（分析主体为 role_id）
+    expression: COUNT(DISTINCT role_id)
+  techonekeyactive_account_uv:
+    description: 触发一键科技激活的去重账号数
+    expression: COUNT(DISTINCT account_id)
+  techonekeyactive_server_uv:
+    description: 触发一键科技激活的去重服务器数
+    expression: COUNT(DISTINCT server_id)
+  techonekeyactive_role_per_server_uv:
+    description: 平均每服参与一键科技激活的角色数（用于评估功能在不同服务器的渗透，分母用 NULLIF 防零）
+    expression: ROUND(COUNT(DISTINCT role_id) * 1.0 / NULLIF(COUNT(DISTINCT server_id), 0), 2)
+  techonekeyactive_avg_activations_per_role:
+    description: 平均每个参与角色的激活次数（衡量一键激活功能的重复使用强度，分母用 NULLIF 防零）
+    expression: ROUND(COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0), 2)
+coverage:
+  scenarios:
+    - 一键科技功能渗透：通过 role_uv / account_uv 评估每日使用一键激活功能的角色和账号规模
+    - 单服参与度：role_per_server_uv 反映功能在不同服务器的覆盖广度
+    - 重复使用强度：avg_activations_per_role 判断玩家是否在一天内多次使用一键激活
+    - 服务器活跃分布：server_uv 用于横向比较各服科技功能活跃情况
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核；多日趋势需补全 ds 范围后重新评估
+    - 分析主体默认 role_id（角色粒度），account_id 仅作账号维度补充；未对 techIds 数组长度做 SUM（Hive 数组聚合复杂），故未提供「激活科技总条数」指标，需后续如需可基于 json_size 补齐
+    - 未对 roleLevel/vipLevel/roleForce 等快照字段做分桶聚合，如需画像分析可后续扩展
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  techIds:
+    type: array
+    description: 科技id列表
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=732 次一键科技激活，role_uv=636，acc_uv=623，server_uv=281，数值合理（单服单日平均 ~2.6 角色、~1.15 次/角色），事件在线且数据质量正常
+coverage_status: analyst_confirmed
+external_refs: []

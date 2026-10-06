@@ -1,0 +1,142 @@
+name: game.social.guild.boss
+event_filter: event = 'game.social.guild.boss'
+description: |-
+  公会BOSS挑战：角色挑战公会BOSS关卡并上报挑战进度。记录每次公会BOSS挑战(bossId/stageId/stageType)、本次挑战百分比(stageProcess)、今日最佳百分比(dailyProcess)、个人历史最佳百分比(bestProcess)及对应战斗id(battleId)。主体粒度为角色(role_id)。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等30个
+domains:
+  - 社交公会
+domain: social
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  buffList:
+    type: array
+    description: 生效的buff列表
+  battleId:
+    type: string
+    description: 战斗id，与此次game.pve.begin中的战斗id一一对应
+  stageType:
+    type: int
+    description: 关卡类型
+  stageProcess:
+    type: int
+    description: 本次挑战百分比
+  dailyProcess:
+    type: int
+    description: 今日最佳百分比
+  bestProcess:
+    type: int
+    description: 个人历史最佳百分比
+  bossId:
+    type: int
+    description: boss id
+  stageId:
+    type: int
+    description: 关卡id
+metrics:
+  game_social_guild_boss_cnt:
+    expression: COUNT(*)
+    description: 公会BOSS挑战事件触发次数(每次公会BOSS挑战记1条)
+  game_social_guild_boss_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 挑战公会BOSS的独立角色数(去重 role_id；主体粒度为角色 user_type=3)
+  game_social_guild_boss_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 挑战公会BOSS的独立账号数(去重 account_id)
+  game_social_guild_boss_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的区服数(去重 server_id，反映公会BOSS玩法覆盖面)
+  game_social_guild_boss_id_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.bossId'))
+    description: 涉及的BOSS种类数(去重 bossId；按 params_fields 推断)
+  game_social_guild_boss_stage_id_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.stageId'))
+    description: 涉及的关卡数(去重 stageId)
+  game_social_guild_boss_best_process_max:
+    expression: MAX(CAST(GET_JSON_OBJECT(params, '$.bestProcess') AS BIGINT))
+    description: 个人历史最佳百分比最大值(单日全区服最高 bestProcess；衡量顶尖进度)
+  game_social_guild_boss_role_per_account:
+    expression: COUNT(DISTINCT role_id) / NULLIF(COUNT(DISTINCT account_id), 0)
+    description: 平均每账号挑战角色数(独立角色/独立账号；衡量多角色账号占比)
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+coverage:
+  scenarios:
+    - 公会BOSS挑战参与规模(game_social_guild_boss_cnt / _role_uv / _account_uv)
+    - 玩法覆盖面(game_social_guild_boss_server_uv 区服数、_id_uv BOSS种类、_stage_id_uv 关卡数)
+    - 顶尖进度衡量(game_social_guild_boss_best_process_max 历史最佳百分比)
+    - 多角色账号占比(game_social_guild_boss_role_per_account)
+  limitations:
+    - 日志中零命中(ds=20260729 cnt=0；retry ds=20260728 仍 cnt=0)，疑似该事件下线/未触发或埋点未上报，所有 metrics 为定义态、未实测
+    - 仅 ds=20260729/20260728 单日 scout 实测(均零命中)，未做全量多日复核
+    - 主体粒度默认 role_id 未逐事件实测角色归属正确性，按 base view 同时含 account_id+role_id 推断为角色级(user_type=3)
+    - bossId/stageId/bestProcess 仅按 params_fields 定义，未实测非空率(因零命中无法抽样)
+    - 本游戏无 MaxCompute 事件分布查询，无 daily_count/total_count/active_days
+  coverage_status: draft
+external_refs: []

@@ -1,0 +1,108 @@
+name: game.welfare.sign
+event_filter: event = 'game.welfare.sign'
+description: 福利-签到事件：玩家在福利系统中完成每日签到时上报，记录签到当天的角色快照（角色等级/vip等级/战力/经验）与签到天数（day）。分析主体为 role_id（角色），可统计签到参与角色数、签到天数累计及活跃趋势。scout 实测 ds=20260729 与 ds=20260728 在事件视图 ieu_ods.ods_10000251_all_view 中均零命中（cnt=0），疑似该事件未上报或已下线。
+domains:
+  - 自定义
+domain: activity
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  day:
+    type: int
+    description: 天数
+metrics:
+  game_welfare_sign_cnt:
+    expression: COUNT(*)
+    description: 福利签到事件总记录数
+  game_welfare_sign_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 签到角色去重数（分析主体 role_id）
+  game_welfare_sign_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 签到账号去重数
+  game_welfare_sign_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 签到涉及游戏服去重数
+  game_welfare_sign_day_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params, '$.day') AS BIGINT))
+    description: 累计签到天数（day 字段求和，仅用于总量参考）
+coverage:
+  scenarios:
+    - 每日福利签到角色参与规模（签到角色UV、总签到次数）
+    - 签到角色在游戏服维度上的分布
+    - 累计签到天数（day 字段）趋势
+  limitations:
+    - 日志中零命中(ds=20260729/20260728)，疑似下线/未触发
+    - 仅 scout 单日实测，未做全量复核
+    - coinList 为数组结构，相关货币指标暂未物化为 metric，需单独按 array 展开建模
+  coverage_status: draft
+confirmation:
+  status: draft
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729 cnt=0/role_uv=0/acc_uv=0/server_uv=0；retry ds=20260728 同样 cnt=0；事件疑似下线/未触发，保持 draft
+external_refs: []

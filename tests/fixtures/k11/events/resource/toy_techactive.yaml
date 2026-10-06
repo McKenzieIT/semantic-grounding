@@ -1,0 +1,120 @@
+name: game.toy.techactive
+event_filter: event = 'game.toy.techactive'
+description: "玩具(toy)科技激活事件：角色在科技树中激活/研究一项科技(techId)时上报，用于衡量科技玩法推进深度与广度。参数包含游戏服id/名字、账号id、角色id/名字、性别、创角/上线时间、角色等级、vip等级、角色战力、经验、看板娘、关键货币列表(coinList: 充值钻石/赠送钻石/免费钻石/紫金/经验卷轴/体力)、会话id、logUUID、科技id等23项。分析主体粒度为 role_id（事件由角色触发）。ds=20260729 scout 实测：cnt=1823, role_uv=673, acc_uv=658, server_uv=291, tech_uv=495。"
+domains:
+  - 探索收集
+domain: resource
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  techId:
+    type: int
+    description: 科技id
+metrics:
+  game_toy_techactive_cnt:
+    expression: COUNT(*)
+    description: 科技激活事件总次数（每次激活一项科技记一行）
+  game_toy_techactive_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发科技激活的去重角色数（分析主体粒度 role_id）
+  game_toy_techactive_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发科技激活的去重账号数
+  game_toy_techactive_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发科技激活的去重游戏服数
+  game_toy_techactive_tech_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.techId'))
+    description: 被激活的去重科技种类数（techId），反映科技树覆盖广度
+  game_toy_techactive_role_force_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.roleForce') AS BIGINT))
+    description: 激活时刻角色战力(roleForce)累计（瞬时快照求和，非增量，重复角色多次激活会重复计入）
+  game_toy_techactive_exp_sum:
+    expression: SUM(CAST(GET_JSON_OBJECT(params,'$.exp') AS BIGINT))
+    description: 激活时刻角色经验(exp)累计（瞬时快照求和，非增量）
+  game_toy_techactive_avg_act_per_role:
+    expression: COUNT(*) * 1.0 / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均科技激活次数（按 role_id 去重）= 事件总次数/去重角色数，衡量科技推进深度
+coverage:
+  scenarios:
+    - 评估科技树整体推进活跃度（激活总量 cnt 与人均深度 avg_act_per_role）
+    - 衡量科技种类覆盖广度（tech_uv），识别主力科技与冷门科技
+    - 评估参与科技玩法的角色/账号/游戏服覆盖面（role_uv/account_uv/server_uv）
+    - 观察激活时刻的战力/经验快照体量（role_force_sum/exp_sum）作为进度参考
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核；样本日可能存在活动/版本波动
+    - 分析主体默认为 role_id（事件由角色触发；账号/游戏服仅作覆盖面参考）
+    - coinList 货币字段为激活瞬时余额快照，非增量产出，不作为经济产出度量
+    - roleLevel 在样本日恒为 100（min=max=100，疑似封顶/数据特征），区间类指标需谨慎
+    - roleForce/exp 的 SUM 为瞬时快照求和，重复角色多次激活会重复计入，仅供体量参考
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: ds=20260729 scout 实测 cnt=1823, role_uv=673, acc_uv=658, server_uv=291, tech_uv=495; roleLevel 恒=100; sum_roleForce=76684916986; sum_exp=2703090
+coverage_status: analyst_confirmed
+external_refs: []

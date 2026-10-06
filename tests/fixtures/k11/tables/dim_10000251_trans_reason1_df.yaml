@@ -1,0 +1,39 @@
+table_name: dim_10000251_trans_reason1_df
+engine: maxcompute
+table_comment: 变更一级原因维度/配置表，按 reason1 编码键值展开明细说明
+description: '游戏内各类变更消耗的一级原因(reason1)与明细说明(detail)映射表。粒度：每条 reason1 编码一行；以 reason1 为主键(detail 为可读说明)，用于在事务/流水表 JOIN 时将变更一级原因编码翻译为人类可读描述。日全量快照(_df)。'
+kind: dim
+primary_key:
+- reason1
+label_columns:
+- detail
+primary_key_unique: true
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+domains:
+- 系统监控
+granularity: 每条变更一级原因编码(reason1)一行的维度/配置表
+columns:
+- name: reason1
+  type: string
+  comment: 变更一级原因
+  role: dimension
+- name: detail
+  type: string
+  comment: 详细信息
+  role: dimension
+coverage:
+  scenarios:
+  - 事务/流水表通过 reason1 编码 JOIN 本表，将变更一级原因编码翻译为人类可读的 detail 说明
+  - 作为变更消耗原因的维度字典，支撑按一级原因分组的统计分析
+  limitations:
+  - 配置类维度表，无值度量(无数值型指标)
+  - 仅 2 列(reason1/detail)，不包含变更二级原因或其它层级维度，需关联其它维表扩展
+  - detail 为复合编码串(如 "折扣服 营地 解锁武将展示消耗")，部分场景需二次解码拆分
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于 maxc meta describe 验证真实列(reason1/detail STRING)。主键唯一性实测通过(SELECT COUNT(*) AS r, COUNT(DISTINCT reason1) AS d FROM ieu_cdm.dim_10000251_trans_reason1_df -> r=426=d)。保持 draft 待业务确认。'

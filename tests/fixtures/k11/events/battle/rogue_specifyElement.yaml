@@ -1,0 +1,114 @@
+name: game.rogue.specifyElement
+event_filter: event = 'game.rogue.specifyElement'
+description: |-
+  古战场（rogue）副本中玩家指定元素（element）埋点；每次玩家在古战场挑战过程中选择/指定某个元素时上报一条记录。分析主体为 role_id（角色粒度），单条记录粒度为 角色×element。ds=20260729 scout 实测：17 条事件，覆盖 16 角色 / 16 账号 / 13 服务器。
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等23个
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  element:
+    type: int
+    description: 元素id
+metrics:
+  game_rogue_specifyElement_cnt:
+    expression: COUNT(*)
+    description: 古战场指定元素总记录数
+  game_rogue_specifyElement_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 触发指定元素的角色去重数
+  game_rogue_specifyElement_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 触发指定元素的账号去重数
+  game_rogue_specifyElement_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 触发指定元素的服务器去重数
+  game_rogue_specifyElement_element_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params,'$.element'))
+    description: 被指定的元素id去重数（element）
+  game_rogue_specifyElement_cnt_per_role:
+    expression: CAST(COUNT(*) AS DOUBLE) / NULLIF(COUNT(DISTINCT role_id), 0)
+    description: 人均指定元素次数（总记录数/角色去重数）
+coverage:
+  scenarios:
+    - 古战场指定元素的参与角色/账号/服务器覆盖
+    - 被指定的元素id分布与去重数
+    - 人均指定元素次数
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测，未做全量复核
+    - 分析主体默认 role_id（角色粒度），未单独校验 accountId 与 roleId 的 1:1 关系
+    - element 字段为客户端上报的元素id，未做枚举校验与异常值清洗
+    - 单日样本量较小（17 条），分元素分布的统计意义有限
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+  note: scout 实测 ds=20260729：cnt=17 / role_uv=16 / acc_uv=16 / server_uv=13，数量合理；事件在 ds=20260729 正常触发
+coverage_status: analyst_confirmed
+external_refs: []

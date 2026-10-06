@@ -1,0 +1,121 @@
+table_name: dim_10000251_knight_awaken_info_arch
+engine: maxcompute
+table_comment: 武将觉醒信息配置归档维度表（每武将每觉醒点位一行，按 ds 日期分区快照）
+kind: dim
+primary_key:
+- knight_id
+- order
+- level
+primary_key_unique: false
+label_columns:
+- knight_name
+- name
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数
+description: '武将觉醒信息配置归档维度表。粒度：每武将(knight_id)每觉醒点位(order+level)一行，按 ds 日期分区做历史快照归档。主要字段：knight_id(武将ID)、knight_name(武将名称)、order(点位)、level(等级)、type(类型)、stage(归属阶段)、awaken_stage(阶数)、show_type(显示类型)、name(节点名称)、former_id(前置id)、unlock_require(额外解锁要求)、unlock_describtion(特殊解锁条件描述)、cost(消耗资源串)、develop(成长系数)、attribute_value(加成属性效果串)、talent_num(潜能奖励)、skill_id(激活技能)、skill_type(技能类型)、knight_grade(提升后资质)、senior_job_type(解锁进阶职业)。cost/attribute_value 为复合编码串，需二次解码后用于度量。'
+domains:
+- 角色成长
+granularity: 每武将每觉醒点位(order+level)一行，按 ds 日期分区做历史快照的配置维度表
+columns:
+- name: knight_id
+  type: string
+  comment: 武将ID
+  role: dimension
+- name: knight_name
+  type: string
+  comment: 武将名称
+  role: dimension
+- name: order
+  type: string
+  comment: 点位
+  role: dimension
+- name: level
+  type: string
+  comment: 等级
+  role: dimension
+- name: type
+  type: string
+  comment: 类型
+  role: dimension
+- name: stage
+  type: string
+  comment: 归属阶段
+  role: dimension
+- name: awaken_stage
+  type: string
+  comment: 阶数
+  role: dimension
+- name: show_type
+  type: string
+  comment: 显示类型
+  role: dimension
+- name: name
+  type: string
+  comment: 名称
+  role: dimension
+- name: former_id
+  type: string
+  comment: 前置id
+  role: dimension
+- name: unlock_require
+  type: string
+  comment: 额外解锁要求
+  role: dimension
+- name: unlock_describtion
+  type: string
+  comment: 特殊解锁条件描述
+  role: dimension
+- name: cost
+  type: string
+  comment: 消耗资源
+  role: dimension
+- name: develop
+  type: string
+  comment: 成长系数
+  role: dimension
+- name: attribute_value
+  type: string
+  comment: 加成属性效果
+  role: dimension
+- name: talent_num
+  type: string
+  comment: 潜能奖励
+  role: dimension
+- name: skill_id
+  type: string
+  comment: 激活技能
+  role: dimension
+- name: skill_type
+  type: string
+  comment: 技能类型
+  role: dimension
+- name: knight_grade
+  type: string
+  comment: 提升后资质
+  role: dimension
+- name: senior_job_type
+  type: string
+  comment: 解锁进阶职业
+  role: dimension
+- name: ds
+  type: string
+  comment: ''
+  role: partition
+coverage:
+  scenarios:
+  - 以 knight_id 关联事实表，按武将维度展开觉醒点位(order/level/stage/awaken_stage)配置属性
+  - 以 knight_id+order+level 复合键精确查找某武将某觉醒节点的消耗(cost)/属性加成(attribute_value)/技能(skill_id)等配置
+  - 按 ds 日期分区回溯某武将觉醒配置的历史快照演变
+  - 按 stage/awaken_stage 聚合统计各觉醒阶段下武将节点数与资源消耗
+  limitations:
+  - 配置类维度表，无值度量；talent_num/cost 等为编码串，需二次解码后方可用于度量
+  - cost 与 attribute_value 为复合编码串（如 3_50101_12|1_3_1000），不能直接 SUM/AVG，须拆解后取明细
+  - primary_key_unique=false：复合键 (knight_id, order, level) 在单 ds 分区内唯一，跨全表多分区不唯一（历史归档快照）
+  - knight_name/name 为配置展示名，无业务唯一性校验
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: '2026-07-31'
+  note: '自动建模：基于 meta describe 与单分区唯一性实测推断复合键 (knight_id, order, level) 为单分区自然唯一键；跨全表多 ds 快照不唯一，故 primary_key_unique=false 且保持 draft 未做分析师确认。'

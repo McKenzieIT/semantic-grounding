@@ -1,0 +1,158 @@
+table_name: dws_10000251_pve_progress_di
+engine: maxcompute
+table_comment: PVE关卡挑战记录日表（角色级PVE关卡推进进度）
+description: |-
+  PVE关卡挑战记录日表。记录角色(role_id)在各类PVE玩法(pve_type)下的逐次关卡挑战进度。
+  粒度：日增量(_di)，每行为一条战斗记录(battle_id为主键)，主体为角色(role)。
+  主要字段：pve_type, battle_id, role_id, stage_id, chapter_id, suggest_level, lineup_level, lineup_force, result, first_pass, full_star, score, battle_duration, bond_buff, effect_group 等26列。
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 日增量(_di)，角色(role)级PVE挑战记录
+columns:
+  - name: pve_type
+    type: BIGINT
+    comment: PVE玩法
+    role: dimension
+  - name: battle_id
+    type: STRING
+    comment: 战斗ID
+    role: dimension
+  - name: role_id
+    type: STRING
+    comment: 角色ID
+    role: dimension
+  - name: stage_id
+    type: BIGINT
+    comment: 关卡ID
+    role: dimension
+  - name: chapter_id
+    type: BIGINT
+    comment: 章节ID
+    role: dimension
+  - name: suggest_level
+    type: BIGINT
+    comment: 推荐等级
+    role: dimension
+  - name: lineup_level
+    type: BIGINT
+    comment: 阵容平均等级
+    role: measure
+  - name: lineup_force
+    type: BIGINT
+    comment: 阵容平均战力
+    role: measure
+  - name: npc_status
+    type: BIGINT
+    comment: NPC是否上阵 1:是 0:否
+    role: dimension
+  - name: is_boost
+    type: BIGINT
+    comment: 是否代打 1:是 0:否
+    role: dimension
+  - name: force
+    type: BIGINT
+    comment: 战力
+    role: measure
+  - name: result
+    type: BIGINT
+    comment: 战果 1:胜/2:负/3:平/4:主动退出/5:其他原因退出
+    role: dimension
+  - name: full_star
+    type: BIGINT
+    comment: 是否满星通关 1:是 0:否
+    role: measure
+  - name: full_achieve
+    type: BIGINT
+    comment: 是否全成就通关 1:是 0:否
+    role: measure
+  - name: first_pass
+    type: BIGINT
+    comment: 是否首通 1:是 0:否 -1:未通关
+    role: measure
+  - name: score
+    type: BIGINT
+    comment: 分数
+    role: measure
+  - name: back
+    type: BIGINT
+    comment: 回溯次数
+    role: measure
+  - name: battle_round
+    type: BIGINT
+    comment: 战斗轮次
+    role: measure
+  - name: battle_duration
+    type: BIGINT
+    comment: 战斗时长
+    role: measure
+  - name: bond_buff
+    type: STRING
+    comment: 激活羁绊
+    role: attribute
+  - name: effect_group
+    type: BIGINT
+    comment: 激活阵营
+    role: dimension
+  - name: effect_group_level
+    type: BIGINT
+    comment: 激活阵营等级
+    role: dimension
+  - name: tm
+    type: DATETIME
+    comment: 挑战时间
+    role: dimension
+  - name: cumulative_pv
+    type: BIGINT
+    comment: 累计挑战次数
+    role: measure
+  - name: lead_status
+    type: BIGINT
+    comment: 同关卡下一次挑战状态 0:未挑战:1:挑战成功;2:挑战失败
+    role: dimension
+  - name: ds
+    type: STRING
+    comment: 分区
+    role: partition
+metrics:
+  battle_count:
+    expression: COUNT(*)
+    description: 当日PVE挑战记录条数（每行一条战斗记录）
+  active_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日参与PVE挑战的去重角色数（role_id 去重，角色粒度UV）
+  win_rate:
+    expression: SUM(CASE WHEN result = 1 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 当日PVE胜率（战果为胜的记录占比）
+  first_pass_count:
+    expression: SUM(CASE WHEN first_pass = 1 THEN 1 ELSE 0 END)
+    description: 当日首通次数（first_pass=1 的记录数，反映新关卡推进节奏）
+  full_star_rate:
+    expression: SUM(CASE WHEN full_star = 1 THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0)
+    description: 当日满星通关率（full_star=1 记录占比，反映通关质量）
+coverage:
+  scenarios:
+    - 每日PVE挑战规模与活跃角色数（battle_count, active_role_uv）
+    - 关卡通关表现（win_rate, full_star_rate）反映难度与玩家推进质量
+    - 首通进度（first_pass_count）反映新内容推进节奏
+    - 可按 pve_type / stage_id / chapter_id / result 分组对比各玩法、章节、战果的通关率与首通数
+  limitations:
+    - 仅在最新分区 ds=20260730 抽样验证核心指标，未做全量 maxc 实测复核（仅 scout 抽样验证）。
+    - _di 为日增量，每行为单次战斗记录（battle_id 为主键）；累计/跨日 UV 需按 ds 切分去重，不可直接跨日 SUM(UV)。
+    - 表无 user_type 列，分析主体由 role_id 推断为角色（role），未通过 user_type 实测验证。
+    - lead_status（同关卡下一次挑战状态）/cumulative_pv（累计挑战次数）含历史与跨次语义，跨分区口径需复核，未纳入核心聚合指标。
+    - bond_buff/effect_group 为激活羁绊/阵营的列表/枚举文本，未做聚合，仅作分组维度。
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 在最新分区 ds=20260730 抽样验证 5 项核心指标均合理（battle_count=113287, active_role_uv=4209, win_rate≈0.901, first_pass_count=91314, full_star_rate≈0.144），标 analyst_confirmed；指标均基于 meta describe 真实列。
+dimension_refs:
+  - dim_table: dim_10000251_trans_stage_df
+    join_keys:
+      - dws_column: stage_id
+        dim_column: id
+    derivation: DWS stage_id (comment 关卡ID) is the stage identifier and matches dim_10000251_trans_stage_df primary key id, which is described as '每行一个关卡，主键 id（关卡id）' — a canonical 关卡(stage)配置维度表.
+pref_label: PVE进度日表
+alt_labels:
+  - 推进

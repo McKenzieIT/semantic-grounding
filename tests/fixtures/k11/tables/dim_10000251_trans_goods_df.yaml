@@ -1,0 +1,56 @@
+table_name: dim_10000251_trans_goods_df
+engine: maxcompute
+kind: dim
+primary_key:
+- id
+primary_key_unique: true
+label_columns:
+- name
+table_comment: '商品交易配置维度表（日全量快照），记录可购买/兑换商品的定义：消耗与获得资源编码。'
+description: '商品交易配置维度表（日全量快照 _df）。每行一个商品定义，包含商品id、备注名、资源消耗编码(cost)、获得类型(gain_type)、获得值(gain_value)、获得资源编码(gain_resource)。用于交易/商店/兑换行为事实表的维度lookup，解析cost与gain_resource复合编码可还原具体资源项。'
+domains:
+- 装备道具
+granularity: 每商品(id)一行的配置/维度表
+coverage:
+  scenarios:
+  - 通过id JOIN交易/购买事实表，lookup商品名(name)与消耗/获得配置
+  - 解析cost与gain_resource复合编码(如1_2_100_1)还原资源类型与数量
+  - 按gain_type筛选不同获得途径的商品集合
+  limitations:
+  - 配置类维度表，无值度量(metric)字段
+  - cost/gain_resource为复合编码串，需业务侧二次解码还原资源项
+  - 日全量快照(_df)，无分区字段，历史快照按日覆盖
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '基于meta describe核实列结构与注释；primary_key唯一性已实测(r=18=d)；配置类维度表，保持draft。'
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数(商品数)
+columns:
+- name: id
+  type: string
+  comment: 商品id
+  role: dimension
+- name: name
+  type: string
+  comment: 商品备注
+  role: dimension
+- name: cost
+  type: string
+  comment: 资源消耗
+  role: dimension
+- name: gain_type
+  type: string
+  comment: 获得类型
+  role: dimension
+- name: gain_value
+  type: string
+  comment: 获得值
+  role: dimension
+- name: gain_resource
+  type: string
+  comment: 获得资源
+  role: dimension

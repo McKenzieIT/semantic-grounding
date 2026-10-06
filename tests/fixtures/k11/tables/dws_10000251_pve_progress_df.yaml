@@ -1,0 +1,181 @@
+table_name: dws_10000251_pve_progress_df
+engine: maxcompute
+table_comment: PVE关卡进程总表（角色粒度日全量快照）
+description: |-
+  PVE关卡进程总表，记录角色在 PVE 玩法各关卡的挑战进程（角色粒度，日全量快照 _df）。
+  粒度：角色×PVE玩法×关卡，日全量快照(_df)；主键 role_id。 主体：角色(role_id)；无 user_type 列，依据 role_id 主键推断为角色粒度(user_type=3 推断，未实测)。 主要字段：pve_type, role_id, stage_id, chapter_id, suggest_level, battle_times, win_times, lose_times, avg_*, fst_pass_tm, stay_status 等31列。
+domains:
+  - 战斗关卡
+  - 角色成长
+granularity: 角色×PVE玩法×关卡 日全量快照(_df)
+columns:
+  - name: pve_type
+    type: int
+    comment: PVE玩法
+    role: dimension
+  - name: role_id
+    type: string
+    comment: 角色ID
+    role: dimension
+  - name: stage_id
+    type: int
+    comment: 关卡ID
+    role: dimension
+  - name: chapter_id
+    type: int
+    comment: 章节ID
+    role: dimension
+  - name: suggest_level
+    type: int
+    comment: 推荐等级
+    role: dimension
+  - name: battle_times
+    type: int
+    comment: 战斗次数
+    role: measure
+  - name: win_times
+    type: int
+    comment: 胜利次数
+    role: measure
+  - name: lose_times
+    type: int
+    comment: 失败次数
+    role: measure
+  - name: avg_back
+    type: decimal
+    comment: 平均回溯次数
+    role: measure
+  - name: avg_round
+    type: decimal
+    comment: 平均轮次
+    role: measure
+  - name: avg_duration
+    type: decimal
+    comment: 平均时长
+    role: measure
+  - name: avg_lineup_level
+    type: decimal
+    comment: 平均阵容等级
+    role: measure
+  - name: avg_lineup_force
+    type: decimal
+    comment: 平均阵容战力
+    role: measure
+  - name: max_score
+    type: int
+    comment: 最高分数
+    role: measure
+  - name: boost_times
+    type: int
+    comment: 代打次数
+    role: measure
+  - name: retry_times
+    type: int
+    comment: 失败后当日重新挑战次数
+    role: measure
+  - name: fst_pass_tm
+    type: datetime
+    comment: 首次通关时间
+    role: dimension
+  - name: fst_pass_info
+    type: string
+    comment: 首次通关信息
+    role: attribute
+  - name: act_tm_lst
+    type: datetime
+    comment: 最近一次挑战时间
+    role: dimension
+  - name: stay_status
+    type: int
+    comment: 驻留状态 0-未驻留 1-驻留且通关 2-驻留未通关
+    role: dimension
+  - name: win_avg_back
+    type: decimal
+    comment: 胜利平均回溯次数
+    role: measure
+  - name: win_avg_round
+    type: decimal
+    comment: 胜利平均轮次
+    role: measure
+  - name: win_avg_duration
+    type: decimal
+    comment: 胜利平均时长
+    role: measure
+  - name: win_avg_lineup_level
+    type: decimal
+    comment: 胜利平均阵容等级
+    role: measure
+  - name: win_avg_lineup_force
+    type: decimal
+    comment: 胜利平均阵容战力
+    role: measure
+  - name: lose_avg_back
+    type: decimal
+    comment: 失败平均回溯次数
+    role: measure
+  - name: lose_avg_round
+    type: decimal
+    comment: 失败平均轮次
+    role: measure
+  - name: lose_avg_duration
+    type: decimal
+    comment: 失败平均时长
+    role: measure
+  - name: lose_avg_lineup_level
+    type: decimal
+    comment: 失败平均阵容等级
+    role: measure
+  - name: lose_avg_lineup_force
+    type: decimal
+    comment: 失败平均阵容战力
+    role: measure
+  - name: ds
+    type: string
+    comment: 分区
+    role: partition
+metrics:
+  pve_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 当日参与 PVE 的角色数（去重 UV）
+  total_battle_times:
+    expression: SUM(battle_times)
+    description: 当日 PVE 战斗总次数
+  total_win_times:
+    expression: SUM(win_times)
+    description: 当日 PVE 胜利总次数
+  win_rate:
+    expression: ROUND(SUM(win_times) / NULLIF(SUM(battle_times), 0), 4)
+    description: PVE 胜率（胜利次数/战斗次数）
+  pass_uv:
+    expression: COUNT(DISTINCT CASE WHEN win_times > 0 THEN role_id END)
+    description: 当日通关至少一次的角色数
+coverage:
+  scenarios:
+    - PVE 玩法日活角色规模与通关渗透（pve_uv / pass_uv）
+    - PVE 战斗强度与胜负分布（total_battle_times / total_win_times / win_rate）
+    - 按 pve_type/stage_id/chapter_id 下钻定位卡点关卡
+  limitations:
+    - 仅 maxc 抽样验证最新分区 ds=20260730，未做全量多日复核
+    - 无 user_type 列，角色粒度(user_type=3)为依据 role_id 主键推断，未实测
+    - _df 为日全量快照，指标按当日状态聚合；跨日趋势需多分区查询
+    - fst_pass_info 为 JSON 文本属性，未结构化展开
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  notes: 已 maxc 实测 ds=20260730 抽样验证 pve_uv/total_battle_times/win_rate，数值合理（1.49M 角色/316M 战斗/90% 胜率）
+dimension_refs:
+  - dim_table: dim_10000251_trans_stage_df
+    join_keys:
+      - dws_column: stage_id
+        dim_column: id
+    derivation: DWS stage_id (comment 关卡ID) is the stage identifier and matches dim_10000251_trans_stage_df primary key id, which is described as '每行一个关卡，主键 id（关卡id）' — a canonical 关卡(stage)配置维度表.
+pref_label: PVE进度表
+alt_labels:
+  - PVE
+  - 闯关
+  - 进度
+  - 副本
+  - 通关
+  - 通关率
+  - 关卡

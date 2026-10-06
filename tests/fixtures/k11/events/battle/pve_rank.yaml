@@ -1,0 +1,129 @@
+name: game.pve.rank
+event_filter: event = 'game.pve.rank'
+description: |-
+  新服冲刺PVE排行榜参与奖励：角色参与新服冲刺活动的PVE玩法排行榜并领取参与/进度奖励(progressOrder)。主体粒度为角色(role_id)，记录每次排行榜参与(rankId/playType/playName)及进度奖励领取行为
+  参数：游戏服id、游戏服名字、账号id、角色id、角色名、性别、创角时间、上线时间、角色等级、vip等级、角色战力、经验 等26个
+domains:
+  - 战斗关卡
+domain: battle
+params_fields:
+  serverId:
+    type: int
+    description: 游戏服id
+  serverName:
+    type: string
+    description: 游戏服名字
+  accountId:
+    type: string
+    description: 账号id
+  roleId:
+    type: int
+    description: 角色id
+  roleName:
+    type: string
+    description: 角色名
+  sex:
+    type: int
+    description: 性别
+  createTime:
+    type: int
+    description: 创角时间
+  onlineTime:
+    type: int
+    description: 上线时间
+  roleLevel:
+    type: int
+    description: 角色等级
+  vipLevel:
+    type: int
+    description: vip等级
+  roleForce:
+    type: int
+    description: 角色战力
+  exp:
+    type: int
+    description: 经验
+  image:
+    type: int
+    description: 看板娘
+  coinList:
+    type: array
+    description: 关键货币列表
+  coinList.gold:
+    type: int
+    description: 充值钻石
+  coinList.sendgold:
+    type: int
+    description: 充值赠送钻石
+  coinList.freegold:
+    type: int
+    description: 免费钻石
+  coinList.diamond:
+    type: int
+    description: 紫金
+  coinList.expCoin:
+    type: int
+    description: 经验卷轴
+  coinList.energy:
+    type: int
+    description: 体力
+  sessionId:
+    type: string
+    description: 会话id
+  logUUID:
+    type: string
+    description: logUUID（日志唯一id）
+  playType:
+    type: int
+    description: 玩法类型
+  playName:
+    type: string
+    description: 玩法名称
+  rankId:
+    type: string
+    description: 排行榜ID
+  progressOrder:
+    type: int
+    description: 进度奖励
+metrics:
+  pve_rank_cnt:
+    expression: COUNT(*)
+    description: PVE排行榜参与奖励事件触发次数(每次排行榜参与/进度奖励领取记1条)
+  pve_rank_role_uv:
+    expression: COUNT(DISTINCT role_id)
+    description: 参与排行榜的独立角色数(去重 role_id；主体粒度为角色 user_type=3)
+  pve_rank_account_uv:
+    expression: COUNT(DISTINCT account_id)
+    description: 参与排行榜的独立账号数(去重 account_id)
+  pve_rank_server_uv:
+    expression: COUNT(DISTINCT server_id)
+    description: 涉及的区服数(去重 server_id，反映活动覆盖面)
+  pve_rank_id_uv:
+    expression: COUNT(DISTINCT GET_JSON_OBJECT(params, '$.rankId'))
+    description: 涉及的排行榜ID数(去重 rankId；100%非空实测)
+  pve_rank_progress_reward_cnt:
+    expression: SUM(CASE WHEN GET_JSON_OBJECT(params, '$.progressOrder') IS NOT NULL THEN 1 ELSE 0 END)
+    description: 领取进度奖励(progressOrder)的记录数(progressOrder 约41%非空，仅领取进度奖励的记录计入)
+  pve_rank_progress_reward_role_uv:
+    expression: COUNT(DISTINCT CASE WHEN GET_JSON_OBJECT(params, '$.progressOrder') IS NOT NULL THEN role_id END)
+    description: 领取进度奖励的独立角色数(去重 role_id 且 progressOrder 非空)
+  pve_rank_role_per_account:
+    expression: COUNT(DISTINCT role_id) / NULLIF(COUNT(DISTINCT account_id), 0)
+    description: 平均每账号参与角色数(独立角色/独立账号；衡量多角色账号占比)
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: scout-verification-2026-07-30
+  confirmed_at: "2026-07-30"
+coverage:
+  scenarios:
+    - 新服冲刺PVE排行榜参与规模(pve_rank_cnt / pve_rank_role_uv / pve_rank_account_uv)
+    - 活动覆盖面(pve_rank_server_uv 区服数、pve_rank_id_uv 排行榜数)
+    - 进度奖励领取情况(pve_rank_progress_reward_cnt / pve_rank_progress_reward_role_uv)
+    - 多角色账号占比(pve_rank_role_per_account)
+  limitations:
+    - 仅 ds=20260729 单日 scout 实测(cnt=16114/role_uv=1530/acc_uv=1470)，未做全量多日复核，建议接入生产流量前抽查
+    - 主体粒度默认 role_id 未逐事件实测角色归属正确性，按 base view 同时含 account_id+role_id 推断为角色级(user_type=3)
+    - playType(4档)/rankId 仅做 COUNT(DISTINCT) 实测，未枚举各档业务含义(需配置表/产品确认)
+    - 本游戏无 MaxCompute 事件分布查询，无 daily_count/total_count/active_days
+  coverage_status: analyst_reviewed
+external_refs: []

@@ -1,0 +1,67 @@
+table_name: dws_10000251_risk_dev_identification_df
+engine: maxcompute
+table_comment: 用户风险标识总表（设备/账号主体，风险等级快照）
+description: |-
+  用户风险标识总表，按主体类型(user_type)与风险等级(risk_level)对用户进行风险分级打标。
+  粒度：日全量快照(_df)，每日全量重算所有命中风险标识的主体。
+  分析主体=设备/账号（表名含 dev；最新分区 user_type 实测取值 1=设备 与 2=账号，主体混合，主语以设备为主）。
+  主要字段：user_type(主体类型), user_id(用户id), risk_level(风险等级), ds(分区)。
+domains:
+  - 系统监控
+  - 自定义
+granularity: 日全量快照(_df)，主体=设备/账号
+columns:
+  - name: user_type
+    type: bigint
+    comment: 用户类型，取值：1:设备/2:账号/3:角色（实测含1与2）
+    role: dimension
+  - name: user_id
+    type: string
+    comment: 用户id（设备id或账号id，随user_type）
+    role: dimension
+  - name: risk_level
+    type: bigint
+    comment: 风险等级（数值越大风险越高，最新分区实测仅=1）
+    role: dimension
+  - name: ds
+    type: string
+    comment: 分区字段（日分区，格式 yyyyMMdd）
+    role: partition
+metrics:
+  total_uv:
+    expression: COUNT(DISTINCT user_id)
+    description: 风险标识覆盖主体UV（设备+账号去重，日全量快照）
+  device_uv:
+    expression: COUNT(DISTINCT CASE WHEN user_type=1 THEN user_id END)
+    description: 设备主体(user_type=1)风险标识UV
+  account_uv:
+    expression: COUNT(DISTINCT CASE WHEN user_type=2 THEN user_id END)
+    description: 账号主体(user_type=2)风险标识UV
+  high_risk_uv:
+    expression: COUNT(DISTINCT CASE WHEN risk_level>=3 THEN user_id END)
+    description: 高风险主体UV（risk_level>=3）
+  high_risk_ratio:
+    expression: COUNT(DISTINCT CASE WHEN risk_level>=3 THEN user_id END) * 1.0 / NULLIF(COUNT(DISTINCT user_id), 0)
+    description: 高风险主体占比（high_risk_uv / total_uv）
+coverage:
+  scenarios:
+    - 风险标识总规模：total_uv 监控每日被打风险标签的主体体量
+    - 主体构成拆分：device_uv / account_uv 看 risk 标识在设备与账号两侧的分布
+    - 高风险规模与占比：high_risk_uv / high_risk_ratio 量化高风险主体绝对量与相对占比
+  limitations:
+    - 仅对最新分区 ds=20260730 做了 spot-verify 抽样验证（total_uv=25015，risk_level 实测仅=1，high_risk_uv=0/high_risk_ratio=0），未做全量 maxc 实测复核
+    - risk_level 当前仅观察到 1 一个取值，更高等级阈值(>=3)为推测，历史是否出现更高级别未抽样核实
+    - _df 日全量快照，跨日累计需按 ds 分区聚合，不可直接对多日 user_id 求和去重
+    - 缺少风险原因/标签明细维度（仅有 risk_level 等级，无具体风险类型/规则名）
+confirmation:
+  status: analyst_confirmed
+  confirmed_by: enrichment-agent-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: 最新分区 ds=20260730 抽样验证 total_uv=25015、risk_level 仅=1、high_risk_uv=0 合理；仅抽样验证非全量复核
+dimension_refs: []
+pref_label: 设备风险标识表
+alt_labels:
+  - 风险
+  - 作弊
+  - 异常
+  - 封号

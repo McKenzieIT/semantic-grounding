@@ -1,0 +1,73 @@
+table_name: dim_10000251_trans_stage_test_df
+engine: maxcompute
+table_comment: '关卡（trans_stage）配置维度表：每行描述一个关卡的ID、名称、类型、难度、所属章、怪物组、强制阵容与三档成就达成条件。'
+description: '关卡配置维度表（dim，日全量快照 _df）。记录每个关卡（id）的名称（name）、类型（type）、难度（difficulty）、所属章（chapter_id）、怪物组（monster）、强制阵容（npc）及三档成就达成条件（goal1/2/3_term）。用于事实表按关卡 id 进行属性查找与关卡维度切片。'
+kind: dim
+primary_key:
+- id
+label_columns:
+- name
+primary_key_unique: true
+domains:
+- 系统监控
+granularity: 每个关卡（id）一行的配置/维度表（_df 日全量快照）
+columns:
+- name: id
+  type: string
+  comment: 关卡id
+  role: dimension
+- name: name
+  type: string
+  comment: 关卡名
+  role: dimension
+- name: type
+  type: int
+  comment: 关卡类型
+  role: dimension
+- name: difficulty
+  type: int
+  comment: 难度
+  role: dimension
+- name: chapter_id
+  type: string
+  comment: 章
+  role: dimension
+- name: monster
+  type: string
+  comment: 怪物组
+  role: dimension
+- name: npc
+  type: string
+  comment: 强制阵容（必须上场的武将或npc）
+  role: dimension
+- name: goal1_term
+  type: string
+  comment: 成就1达成条件
+  role: dimension
+- name: goal2_term
+  type: string
+  comment: 成就2达成条件
+  role: dimension
+- name: goal3_term
+  type: string
+  comment: 成就3达成条件
+  role: dimension
+coverage:
+  scenarios:
+  - 事实表按关卡 id JOIN 本表，查找关卡名称/类型/难度/所属章，用于关卡进度、关卡难度分析、章节维度切片与报表展示
+  - 按章（chapter_id）或关卡类型（type）聚合关卡相关行为指标，做章节推进与关卡类型对比
+  - 通过 goal1/2/3_term 提供应达成条件，支持成就/星级达成分析时的条件维度切片
+  limitations:
+  - 配置类维度表，无值度量（measure）字段，仅用于维度查找
+  - type/difficulty 为编码值，需关联类型/难度字典二次解码才能解释含义
+  - monster/npc/goal*_term 为编码串（如 "0" 或组ID），需关联对应配置表二次解码
+  - _df 为日全量快照，配置变更会以快照形式保留多版本行，跨日分析时需注意取数日期
+metrics:
+  row_count:
+    expression: COUNT(*)
+    description: 维度表总行数（_df 日快照）
+confirmation:
+  status: draft
+  confirmed_by: dim-enrichment-2026-07-31
+  confirmed_at: "2026-07-31"
+  note: '配置类关卡维度表（_df 日快照）；primary_key 唯一性实测通过（r=372,d=372），保持 draft 待业务确认快照取数口径'
