@@ -39,6 +39,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@deepseek-ai/schemastery": "^3.18.4",
     "@standard-schema/spec": "^1.1.0",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.20.0",
@@ -49,5 +51,9 @@
   },
   "pnpm": {
     "autoInstallPeers": false
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.4",
+    "@deepseek-ai/schemastery": "^3.18.4"
   }
 }

@@ -14,6 +14,24 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import { wireEnrichmentLlm, type TextLlm } from './index.ts'
 
+/**
+ * `llm` service augmentation — `@deepseek-ai/dsh-llm` (shimmed in this repo,
+ * real on the host) provides `ctx.llm.stream`. Declared here rather than in an
+ * ambient `.d.ts` because this file has top-level imports, so `declare module`
+ * *merges* with the real package instead of shadowing its specifier (an
+ * ambient `declare module '@deepseek-ai/cordis'` in a no-import `.d.ts`
+ * replaces the package's own types wholesale — the slice 1 gotcha).
+ *
+ * This augmentation lives in the one file that consumes `ctx.llm`: this plugin
+ * is the host-facing shell for the enrichment LLM seam, and the substrate core
+ * no longer reaches for `ctx` at all.
+ */
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    llm: { stream(options: unknown): AsyncIterable<unknown> }
+  }
+}
+
 export const name = 'enrichment-llm-wiring'
 export const inject = ['schema', 'llm']
 

@@ -1,33 +1,20 @@
 import { defineConfig } from 'vitest/config'
-import { resolve, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const __dirname = dirname(fileURLToPath(import.meta.url))
 
 /**
  * Minimal standalone vitest config.
  *
  * Tests import the substrate via relative paths (`../src/...`), so no alias is
- * needed for the substrate itself. The host-framework deps
- * (`@deepseek-ai/cordis`, `schemastery`, `cosmokit`) resolve to the vendored
- * SOURCE under `vendor-deps/` via `resolve.alias` — both the exact package
- * specifier and any `/<subpath>` deep import. This keeps a single module
- * identity between typecheck (tsconfig `paths`) and test runtime, and lets
- * vite compile the cordis source the tests actually exercise (`new Context()`).
+ * needed for the substrate itself. The host framework (`@deepseek-ai/cordis`
+ * and its `schemastery`/`cosmokit` siblings) resolves from `node_modules` like
+ * any other dependency — slice 2 ① replaced slice 1's `vendor-deps/` source
+ * copy with the published packages, so typecheck and runtime share one module
+ * identity without `paths`/`resolve.alias` plumbing.
+ *
+ * Only the host-facing shell (`src/llm-wiring-plugin.ts`) and the tests that
+ * exercise it still touch cordis; the substrate core is host-symbol-free (see
+ * the `pretest` core-purity gate in package.json).
  */
-const vendorAlias = (pkg: string) => [
-  { find: new RegExp(`^@deepseek-ai/${pkg}$`), replacement: resolve(__dirname, `vendor-deps/${pkg}/index.ts`) },
-  { find: new RegExp(`^@deepseek-ai/${pkg}/`), replacement: resolve(__dirname, `vendor-deps/${pkg}/`) },
-]
-
 export default defineConfig({
-  resolve: {
-    alias: [
-      ...vendorAlias('cordis'),
-      ...vendorAlias('schemastery'),
-      ...vendorAlias('cosmokit'),
-    ],
-  },
   test: {
     include: ['tests/**/*.spec.ts'],
   },
