@@ -1,5 +1,5 @@
 /**
- * P1 wiring — SemanticLayerService delegates semanticRoot/scopeId to the
+ * P1 wiring — SemanticGroundingCore delegates semanticRoot/scopeId to the
  * optional `ctx.scopes` (scope-registry) and invalidates its corpus-version
  * signal on every scope switch. Mounts the REAL ScopeRegistryService via direct
  * construction (`new ScopeRegistryService(ctx, …)` — the same pattern
@@ -19,8 +19,8 @@
  */
 import { test, expect, describe, afterEach } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { SemanticLayerService } from '../src/index.ts'
-import ScopeRegistryService from '../src/vendor/scope-registry.ts'
+import { SemanticGroundingCore } from '../src/index.ts'
+import ScopeRegistryService from './fixtures/scope-registry.ts'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -46,7 +46,7 @@ function makeScopeDir(scopeId: string, eventName: string): string {
   return dir
 }
 
-describe('SemanticLayerService ctx.scopes delegation (P1 wiring)', () => {
+describe('SemanticGroundingCore ctx.scopes delegation (P1 wiring)', () => {
   const tmps: string[] = []
 
   afterEach(() => {
@@ -70,14 +70,14 @@ describe('SemanticLayerService ctx.scopes delegation (P1 wiring)', () => {
     const { ctx, scopes } = setup()
     const xRoot = makeScopeDir('10000334', 'x63.only_event'); tmps.push(xRoot)
     await scopes.register({ id: '10000334', semanticRoot: xRoot })
-    const svc = new SemanticLayerService(ctx, { semanticRoot: '/static-fallback', scopeId: 'fallback' })
+    const svc = new SemanticGroundingCore({ semanticRoot: '/static-fallback', scopeId: 'fallback' })
+    svc.setScopeRegistry(scopes) // P1: setter-injected, no longer ctx.get(\'scopes\')
     expect(svc.semanticRoot).toBe(xRoot)
     expect(svc.scopeId).toBe('10000334')
   })
 
   test('semanticRoot + scopeId fall back to static config when scope-registry is unmounted', () => {
-    const ctx = new Context() // no scope-registry mounted
-    const svc = new SemanticLayerService(ctx, { semanticRoot: '/static-fallback', scopeId: 'fallback' })
+    const svc = new SemanticGroundingCore({ semanticRoot: '/static-fallback', scopeId: 'fallback' })
     expect(svc.semanticRoot).toBe('/static-fallback')
     expect(svc.scopeId).toBe('fallback')
   })
@@ -88,7 +88,8 @@ describe('SemanticLayerService ctx.scopes delegation (P1 wiring)', () => {
     const xRoot = makeScopeDir('10000334', 'x63.only_event'); tmps.push(xRoot)
     await scopes.register({ id: '10000251', semanticRoot: kRoot })
     await scopes.register({ id: '10000334', semanticRoot: xRoot })
-    const svc = new SemanticLayerService(ctx, { semanticRoot: kRoot })
+    const svc = new SemanticGroundingCore({ semanticRoot: kRoot })
+    svc.setScopeRegistry(scopes) // P1: setter-injected, no longer ctx.get(\'scopes\')
 
     // K11 active → K11 corpus only
     const kCorpus = svc.loadRetrievalCorpusAll().map(c => c.id)
@@ -109,7 +110,8 @@ describe('SemanticLayerService ctx.scopes delegation (P1 wiring)', () => {
     const xRoot = makeScopeDir('10000334', 'x63.only_event'); tmps.push(xRoot)
     await scopes.register({ id: '10000251', semanticRoot: kRoot })
     await scopes.register({ id: '10000334', semanticRoot: xRoot })
-    const svc = new SemanticLayerService(ctx, { semanticRoot: kRoot })
+    const svc = new SemanticGroundingCore({ semanticRoot: kRoot })
+    svc.setScopeRegistry(scopes) // P1: setter-injected, no longer ctx.get(\'scopes\')
 
     const v0 = svc.corpusVersion()                  // K11 active
     // oxlint-disable-next-line typescript/no-deprecated -- active-scope API; no replacement until Phase 4 GA-GT1-cleanup
@@ -129,8 +131,9 @@ describe('SemanticLayerService ctx.scopes delegation (P1 wiring)', () => {
     // unterminated YAML flow sequence → yaml.load throws
     writeFileSync(registryPath, 'a: [1, 2\n', 'utf8')
     const ctx = new Context()
-    new ScopeRegistryService(ctx, { registryPath }) // mounts under the 'scopes' name
-    const svc = new SemanticLayerService(ctx, { semanticRoot: '/whatever' })
+    const scopes = new ScopeRegistryService(ctx, { registryPath })
+    const svc = new SemanticGroundingCore({ semanticRoot: '/whatever' })
+    svc.setScopeRegistry(scopes) // P1: setter-injected, no longer ctx.get('scopes')
     expect(() => svc.corpusVersion()).toThrow()
   })
 })

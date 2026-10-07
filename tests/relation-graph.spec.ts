@@ -4,9 +4,8 @@
  * CL-1 Phase 2: alias index tests (resolveAlias, getAliases).
  */
 import { test, expect } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
 import { RelationGraph } from '../src/relation-graph.ts'
-import { SemanticLayerService } from '../src/index.ts'
+import { SemanticGroundingCore } from '../src/index.ts'
 import type { RelationDef } from '../src/registry.ts'
 import type { NodeAliasData } from '../src/relation-graph.ts'
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
@@ -367,8 +366,7 @@ function makeCleanLayer(): string {
 test('CL-2 D2 — dangling domain ref does NOT throw; valid assets still build; ref collected', () => {
   const dir = makeDanglingLayer()
   try {
-    const ctx = new Context()
-    const svc = new SemanticLayerService(ctx, { semanticRoot: dir })
+    const svc = new SemanticGroundingCore({ semanticRoot: dir })
     // Must NOT throw — the dangling 'ghost' ref is skipped + warned.
     const g = svc.getRelationGraph()
     // Valid domain 'pay' still gets its bidirectional related_to edge.
@@ -390,8 +388,7 @@ test('CL-2 D2 — dangling domain ref does NOT throw; valid assets still build; 
 test('CL-2 D2 — clean layer (all domains resolve) reports zero dangling refs', () => {
   const dir = makeCleanLayer()
   try {
-    const ctx = new Context()
-    const svc = new SemanticLayerService(ctx, { semanticRoot: dir })
+    const svc = new SemanticGroundingCore({ semanticRoot: dir })
     svc.getRelationGraph()
     expect(svc.getDanglingDomainRefs()).toEqual([])
   } finally {

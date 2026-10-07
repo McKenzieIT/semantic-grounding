@@ -6,7 +6,7 @@
  * (Tier-1 suggest->pending->approve; Tier-2 via a ctx.audit recorder), and
  * BasicIndex (lookup + ADR-0011 invalidate rebuild). The swap test shows the
  * substrate provides the EventDefinition.params_fields / TableDefinition.partitions
- * contract P13b makeCriticCtx consumes (the SemanticLayerService exposes these
+ * contract P13b makeCriticCtx consumes (the SemanticGroundingCore exposes these
  * via ctx.schema.load_*).
  *
  * Run: `pnpm vitest run packages/data/semantic-layer`

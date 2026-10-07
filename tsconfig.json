@@ -6,12 +6,12 @@
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
     "strict": true,
-    "noImplicitAny": false,
-    "noImplicitThis": false,
-    "strictFunctionTypes": false,
-    "noUncheckedIndexedAccess": false,
-    "exactOptionalPropertyTypes": false,
-    "noImplicitOverride": false,
+    "noImplicitAny": true,
+    "noImplicitThis": true,
+    "strictFunctionTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
@@ -19,12 +19,7 @@
     "esModuleInterop": true,
     "verbatimModuleSyntax": false,
     "noEmit": true,
-    "types": ["node"],
-    "paths": {
-      "@deepseek-ai/cordis": ["./vendor-deps/cordis"],
-      "@deepseek-ai/schemastery": ["./vendor-deps/schemastery"],
-      "@deepseek-ai/cosmokit": ["./vendor-deps/cosmokit"]
-    }
+    "types": ["node"]
   },
   "include": ["src", "tests"]
 }

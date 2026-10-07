@@ -16,8 +16,7 @@ import {
   type EventCorpusInput,
 } from '../src/corpus.ts'
 import { loadRetrievalCorpus, invalidateCaches, getCorpusVersion } from '../src/io.ts'
-import { SemanticLayerService } from '../src/index.ts'
-import { Context } from '@deepseek-ai/cordis'
+import { SemanticGroundingCore } from '../src/index.ts'
 
 
 
@@ -159,9 +158,9 @@ test('getCorpusVersion bumps after invalidateCaches(semanticLayer); independent 
 })
 
 // ── D2f Service corpusVersion() ──
-test('SemanticLayerService.corpusVersion() reflects invalidateCaches(semanticRoot)', () => {
+test('SemanticGroundingCore.corpusVersion() reflects invalidateCaches(semanticRoot)', () => {
   const layer = '/d2f-svc-version-test'
-  const svc = new SemanticLayerService(new Context(), { semanticRoot: layer, scopeId: '' })
+  const svc = new SemanticGroundingCore({ semanticRoot: layer, scopeId: '' })
   const before = svc.corpusVersion()
   invalidateCaches(layer)
   expect(svc.corpusVersion()).toBe(before + 1)
@@ -230,7 +229,7 @@ test('loadRetrievalCorpus(layer, "term-only") packs alt_labels but NOT params_fi
   }
 })
 
-test('SemanticLayerService.loadRetrievalCorpus() honors corpusVariant config', () => {
+test('SemanticGroundingCore.loadRetrievalCorpus() honors corpusVariant config', () => {
   const scratch = mkdtempSync(join(tmpdir(), 'd2h-svc-variant-'))
   const layer = join(scratch, '10000demo')
   mkdirSync(join(layer, 'events', 'role_public'), { recursive: true })
@@ -249,12 +248,12 @@ test('SemanticLayerService.loadRetrievalCorpus() honors corpusVariant config', (
   writeFileSync(join(layer, 'config.yaml'), 'project:\n  name: demo\n  scope_id: 10000demo\n')
   try {
     // Separate contexts: each service registers itself as `schema`.
-    const termSvc = new SemanticLayerService(new Context(), { semanticRoot: layer, scopeId: '', corpusVariant: 'term-only' })
+    const termSvc = new SemanticGroundingCore({ semanticRoot: layer, scopeId: '', corpusVariant: 'term-only' })
     const termCorpus = termSvc.loadRetrievalCorpus()
     expect(termCorpus[0]!.description).toContain('日活')
     expect(termCorpus[0]!.description).not.toContain('角色id')
     expect(termSvc.corpusVariant).toBe('term-only')
-    const defSvc = new SemanticLayerService(new Context(), { semanticRoot: layer, scopeId: '' })
+    const defSvc = new SemanticGroundingCore({ semanticRoot: layer, scopeId: '' })
     const defCorpus = defSvc.loadRetrievalCorpus()
     expect(defCorpus[0]!.description).toContain('角色id')
     expect(defSvc.corpusVariant).toBe('params+term')

@@ -1,6 +1,5 @@
 import { test, expect, describe, it } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
-import { SemanticLayerService } from '../src/index.ts'
+import { SemanticGroundingCore } from '../src/index.ts'
 import { wireEnrichmentLlm, type TextLlm } from '../src/index.ts'
 import { RelationGraph } from '../src/relation-graph.ts'
 import { tableKindPlugin } from '../src/kinds/table-kind.ts'
@@ -11,9 +10,8 @@ import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import yaml from 'js-yaml'
 
-function makeService(): SemanticLayerService {
-  const ctx = new Context()
-  return new SemanticLayerService(ctx, { semanticRoot: '' })
+function makeService(): SemanticGroundingCore {
+  return new SemanticGroundingCore({ semanticRoot: '' })
 }
 
 test('A1 — service registers table + event + concept kind plugins (metrics derived virtually, M1)', () => {
@@ -80,8 +78,7 @@ test('B2 — discoverEventRelations writes events external_refs via the Service'
     mkdirSync(join(dir, 'events', 'pay'), { recursive: true })
     writeFileSync(join(dir, 'tables', 'dim_server.yaml'), dimYaml())
     writeFileSync(join(dir, 'events', 'pay', 'game.pay.order.yaml'), eventYaml())
-    const ctx = new Context()
-    const svc = new SemanticLayerService(ctx, { semanticRoot: dir })
+    const svc = new SemanticGroundingCore({ semanticRoot: dir })
     const res = await svc.discoverEventRelations()
     expect(res.errors).toEqual([])
     expect(res.enriched).toBe(1)
@@ -114,8 +111,7 @@ const K11_SEED_DIR = join(dirname(fileURLToPath(import.meta.url)), './fixtures/k
 
 describe('M1 virtual metric projection', () => {
   it('loadMetricDefinition(name) derives from host table metrics block', () => {
-    const ctx = new Context()
-    const service = new SemanticLayerService(ctx, { semanticRoot: K11_SEED_DIR })
+    const service = new SemanticGroundingCore({ semanticRoot: K11_SEED_DIR })
     const md = service.loadMetricDefinition('dws_10000251_acc_summary_di__daily_active_account_uv')
     expect(md).not.toBeNull()
     expect(md!.computation.metadata.source).toBe('dws_10000251_acc_summary_di')
@@ -123,36 +119,59 @@ describe('M1 virtual metric projection', () => {
   })
 
   it('loadRetrievalCorpusAll emits virtual metric CorpusItems with kind:metric', () => {
-    const ctx = new Context()
-    const service = new SemanticLayerService(ctx, { semanticRoot: K11_SEED_DIR })
+    const service = new SemanticGroundingCore({ semanticRoot: K11_SEED_DIR })
     const corpus = service.loadRetrievalCorpusAll()
     const metricItems = corpus.filter(c => (c.payload as { kind?: string } | undefined)?.kind === 'metric')
     expect(metricItems.length).toBeGreaterThan(0)
   })
 })
 
-// ── Fiber-tracked registration (W27) ───────────────────────────────────
+// ── Owned-disposer registration (W27, re-expressed by slice 2 ②) ─────────
 // The constructor's cache-invalidation listener and its three built-in kind
-// registrations are the mechanism that keeps a disposed kind's nodes and edges
-// out of the cached graph. A context without the fiber lifecycle cannot carry
-// either, so construction must fail rather than produce a service whose graph
-// cache is never invalidated; these two tests pin that stance against a
-// reintroduced `typeof ctx.effect === 'function'` fallback.
-describe('W27 fiber-tracked registration', () => {
-  it('withdraws the built-in kinds when the owning fiber disposes', async () => {
-    const ctx = new Context()
-    let service: SemanticLayerService | undefined
-    const fiber = ctx.plugin((inner: Context) => {
-      service = new SemanticLayerService(inner, { semanticRoot: '' })
-    })
-    await fiber
-    expect(service?.getRegistry().allKinds().sort()).toEqual(['concept', 'event', 'table'])
-    await fiber.dispose()
-    expect(service?.getRegistry().allKinds()).toEqual([])
+// registrations are the mechanism that keeps a withdrawn kind's nodes and edges
+// out of the cached graph. W27 originally pinned that mechanism through the
+// *host*: both went through `ctx.effect`, so the guarantee read "a context
+// without the fiber lifecycle must fail construction rather than yield a
+// service whose graph cache never invalidates".
+//
+// Slice 2 ② moved the mechanism into the core: `registry.onChange` and
+// `registry.register` already mint their own disposers, so the core collects
+// them and releases them from `dispose()`. The guarantee survives verbatim —
+// after disposal the registry holds no kinds — but it no longer depends on a
+// host supplying `effect`, so the invalidation listener is now *structurally*
+// always wired and there is no silent-degradation branch left to pin.
+//
+// The fiber-shaped expression of W27 (register inside `ctx.plugin`, assert on
+// `fiber.dispose()`) belongs to the dsh adapter's own suite — the adapter is
+// what owes "my fiber unloading calls core.dispose()". Recorded as a slice 4
+// pointer; it is not a core behaviour any more.
+describe('W27 owned-disposer registration', () => {
+  it('registers the three built-in kinds on construction', () => {
+    const svc = new SemanticGroundingCore({ semanticRoot: '' })
+    expect(svc.getRegistry().allKinds().sort()).toEqual(['concept', 'event', 'table'])
   })
 
-  it('refuses a context without the fiber lifecycle instead of degrading silently', () => {
-    const partial = { reflect: { provide: () => {} }, get: () => undefined } as unknown as Context
-    expect(() => new SemanticLayerService(partial, { semanticRoot: '' })).toThrow()
+  it('withdraws the built-in kinds on dispose()', () => {
+    const svc = new SemanticGroundingCore({ semanticRoot: '' })
+    expect(svc.getRegistry().allKinds().sort()).toEqual(['concept', 'event', 'table'])
+    svc.dispose()
+    expect(svc.getRegistry().allKinds()).toEqual([])
+  })
+
+  it('dispose() is idempotent', () => {
+    const svc = new SemanticGroundingCore({ semanticRoot: '' })
+    svc.dispose()
+    expect(() => svc.dispose()).not.toThrow()
+    expect(svc.getRegistry().allKinds()).toEqual([])
+  })
+
+  it('wires the graph-cache invalidation listener without needing a host effect system', () => {
+    // The listener is what W27 existed to protect: a kind withdrawn after a
+    // graph has been cached must not leave its nodes/edges in that cache.
+    const svc = new SemanticGroundingCore({ semanticRoot: '' })
+    const before = svc.getRelationGraph()
+    expect(svc.getRelationGraph()).toBe(before) // cached: same instance
+    svc.dispose()                               // withdrawing kinds fires onChange
+    expect(svc.getRelationGraph()).not.toBe(before) // cache was invalidated, not stale
   })
 })

@@ -5,12 +5,11 @@
  * (gated by autoEnrich). No Tier-2 audit for the enrichment itself (auto-derived).
  */
 import { test, expect, describe, beforeEach, afterEach } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import yaml from 'js-yaml'
-import { SemanticLayerService, buildExcludeColumns, type Tier2Recorder } from '../src/index.ts'
+import { SemanticGroundingCore, buildExcludeColumns, type Tier2Recorder } from '../src/index.ts'
 import { dumpYaml } from '../src/io.ts'
 import { discoverRelationsDeterministic, type DimInventoryEntry } from '../src/enrichment.ts'
 import type { TableDefinition, TableMeta } from '../src/types.ts'
@@ -55,8 +54,7 @@ describe('ctx.schema.discoverRelations (B3)', () => {
 
   test('discoverRelations writes dimension_refs into DWS tables (deterministic round, no llmCall)', async () => {
     dir = newLayer({ name: 'dws_pay', cols: [{ name: 'server_id', comment: '区服ID' }] })
-    const ctx = new Context()
-    const schema = new SemanticLayerService(ctx, { semanticRoot: dir })
+    const schema = new SemanticGroundingCore({ semanticRoot: dir })
     const res = await schema.discoverRelations()
     expect(res.written).toBe(1)
     expect(res.enriched).toBe(1)
@@ -65,8 +63,7 @@ describe('ctx.schema.discoverRelations (B3)', () => {
 
   test('discoverRelations with tables? filter enriches only the named tables', async () => {
     dir = newLayer({ name: 'dws_a', cols: [{ name: 'server_id' }] }, { name: 'dws_b', cols: [{ name: 'server_id' }] })
-    const ctx = new Context()
-    const schema = new SemanticLayerService(ctx, { semanticRoot: dir })
+    const schema = new SemanticGroundingCore({ semanticRoot: dir })
     const res = await schema.discoverRelations({ tables: ['dws_a'] })
     expect(res.written).toBe(1)
     expect(readRefs(dir, 'dws_a')).toHaveLength(1)
@@ -75,7 +72,7 @@ describe('ctx.schema.discoverRelations (B3)', () => {
 
   test('discoverRelations preserves pre-existing curated refs on a DWS (origin-aware replace, GA-GT3 item 5)', async () => {
     // The agent-invoked discover_relations tool runs in replace mode
-    // (mergeExisting=false, hardcoded in SemanticLayerService.discoverRelations).
+    // (mergeExisting=false, hardcoded in SemanticGroundingCore.discoverRelations).
     // Before GA-GT3 item 5, a re-discovery discarded ALL existing dimension_refs
     // — including hand-curated joins the deterministic round cannot rediscover —
     // and wrote dimension_refs: [] with a misleading enriched:0. Origin-aware
@@ -96,8 +93,7 @@ describe('ctx.schema.discoverRelations (B3)', () => {
     }
     writeFileSync(join(dir, 'tables', 'dws_pay.yaml'), dumpYaml(dws))
 
-    const ctx = new Context()
-    const schema = new SemanticLayerService(ctx, { semanticRoot: dir })
+    const schema = new SemanticGroundingCore({ semanticRoot: dir })
     const res = await schema.discoverRelations()
     expect(res.written).toBe(1)
     const refs = readRefs(dir, 'dws_pay') as Array<{ dim_table: string; origin?: string; derivation: string }>
@@ -118,9 +114,8 @@ describe('ctx.schema on-write hook (B3, G3 auto-trigger)', () => {
 
   test('syncWrite of a DWS triggers the on-write hook -> dimension_refs written', async () => {
     dir = newLayer()
-    const ctx = new Context()
-    ctx.provide('audit', noopRecorder as never)
-    const schema = new SemanticLayerService(ctx, { semanticRoot: dir })
+    const schema = new SemanticGroundingCore({ semanticRoot: dir })
+    schema.setTier2Recorder(noopRecorder) // D5: setter-injected, no longer ctx.provide('audit')
     const meta: TableMeta = {
       table_name: 'dws_pay', comment: 'pay',
       partitions: [{ name: 'ds', type: 'string' }],
@@ -134,9 +129,8 @@ describe('ctx.schema on-write hook (B3, G3 auto-trigger)', () => {
 
   test('autoEnrich=false suppresses the on-write hook', async () => {
     dir = newLayer()
-    const ctx = new Context()
-    ctx.provide('audit', noopRecorder as never)
-    const schema = new SemanticLayerService(ctx, { semanticRoot: dir, autoEnrich: false })
+    const schema = new SemanticGroundingCore({ semanticRoot: dir, autoEnrich: false })
+    schema.setTier2Recorder(noopRecorder) // D5: setter-injected, no longer ctx.provide('audit')
     const meta: TableMeta = { table_name: 'dws_pay', comment: 'pay', partitions: [], columns: [{ name: 'server_id', type: 'string', comment: '区服ID' }] }
     await schema.syncWrite([meta])
     expect(readRefs(dir, 'dws_pay')).toHaveLength(0) // hook suppressed
@@ -275,8 +269,7 @@ describe('CL-18 Phase 2: ctx.schema.discoverRelations forwards excludeColumns (w
     }
     writeFileSync(join(dir, 'tables', 'dws_pay.yaml'), dumpYaml(dws))
 
-    const ctx = new Context()
-    const schema = new SemanticLayerService(ctx, { semanticRoot: dir })
+    const schema = new SemanticGroundingCore({ semanticRoot: dir })
     const res = await schema.discoverRelations()
     const refs = readRefs(dir, 'dws_pay') as Array<{ dim_table: string }>
     // dim_server (PK server_id) matches; dim_arch_ds (PK ds) is filtered out.

@@ -11,16 +11,23 @@
  * - Registry YAML = WHAT scopes exist + which is active (runtime-mutable).
  * - Scope = pure namespace; the id carries no semantics beyond being a key.
  * - Active scope is a per-process singleton; switching emits an event so
- *   consumers (SemanticLayerService, audit, query engine) can react.
+ *   consumers (SemanticGroundingCore, audit, query engine) can react.
  *
- * @module @deepseek-ai/dsh-scope-registry
+ * **Test fixture.** This is a vendored copy of dsh's
+ * `@deepseek-ai/dsh-scope-registry` service, kept as a *real* ScopeRegistry
+ * implementation to exercise the core's `setScopeRegistry` delegation against
+ * something other than a hand-rolled stub. It is deliberately NOT core source:
+ * it is a cordis `Service`, and slice 2 ③ made the core host-framework-free.
+ * Moved out of `src/vendor/` so the core-purity gate can cover all of `src/`.
+ *
+ * @module @deepseek-ai/dsh-scope-registry (vendored test double)
  */
 
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { writeFileAtomic, withFileLock } from './atomic-write.ts'
+import { writeFileAtomic, withFileLock } from '../../src/vendor/atomic-write.ts'
 import * as yaml from 'js-yaml'
 
 // ── Types ───────────────────────────────────────────────────────────────────

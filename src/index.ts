@@ -37,8 +37,10 @@
  *
  * @module @deepseek-ai/dsh-semantic-layer
  */
-import { Context, Service } from '@deepseek-ai/cordis'
-import z from '@deepseek-ai/schemastery'
+// No host-framework import. Slice 2 ③ removed `{ Context, Service }` from
+// '@deepseek-ai/cordis' and the `z` from '@deepseek-ai/schemastery' that only
+// existed to type the cordis mount-time `static Config`. Both now live in the
+// dsh adapter, which wraps this core as a cordis Service.
 // Type-only: makes `ctx.get('audit')` resolve to the Audit augmentation. The
 // seam stays optional at runtime (Tier-2 writes fail-loud without it).
 import type {} from '@deepseek-ai/dsh-audit'
@@ -195,6 +197,36 @@ interface ScopeRegistryLike {
   get(id: string): { readonly id: string; readonly semanticRoot: string } | undefined
 }
 
+// ── On-write enrichment health (slice 2 ②) ────────────────────────────────
+// The on-write enrichment hook is best-effort by design: a failure must not
+// fail the originating write. Before slice 2 ② that meant its failures went to
+// `ctx.logger.warn` and nowhere else — `enrichOnWrite` returns void, so the
+// information had exactly one exit and that exit was a host log line.
+//
+// That is the wrong shape for this domain. A failed enrichment round means the
+// definition is missing derived facts (`dimension_refs`, `alt_labels`) that
+// retrieval and prompt-context projection depend on, so a consumer asking
+// "is my understanding of this table complete?" could not find out. Provenance
+// is supposed to answer "why is this field's value what it is"; "the round that
+// would have filled it failed" is part of that answer.
+//
+// These records are now a structured health surface, mirroring the existing
+// `getDanglingDomainRefs()` pattern: reset at the start of each hook run, read
+// back via `getEnrichmentHealth()`.
+/** Which deterministic+semantic enrichment round a health record came from. */
+export type EnrichmentRound = 'relation' | 'alt_labels'
+/** One failed (or partially failed) on-write enrichment round. */
+export interface EnrichmentHealthEntry {
+  /** The round that did not fully succeed. */
+  readonly round: EnrichmentRound
+  /** `'partial'` — the round ran and some tables failed; `'failed'` — the whole round threw. */
+  readonly outcome: 'partial' | 'failed'
+  /** The `table_name`s the round was asked to enrich. */
+  readonly tables: readonly string[]
+  /** Per-table error messages (`'partial'`), or the single thrown message (`'failed'`). */
+  readonly errors: readonly string[]
+}
+
 // ── CL-18 Phase 2: partition-column exclude set (calling-layer metadata) ──
 /**
  * CL-18 Phase 2: minimal fallback blocklist of partition column names used
@@ -270,11 +302,10 @@ export interface ResolvedSemanticLayerConfig {
   readonly autoEnrich: boolean
 }
 
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    schema: SemanticLayerService
-  }
-}
+// The `ctx.schema` Context augmentation moved to src/llm-wiring-plugin.ts
+// (slice 2 ③) — that file is the host-facing shell and the only remaining
+// consumer of `ctx`. Declaring the seam from core would re-couple core to the
+// host it no longer imports.
 
 /** CONVENTIONS.md "explicit resolve step": apply cfg defaults ONCE into a
  * typed resolved-config object (required fields), so run()-path use sites
@@ -292,25 +323,54 @@ function resolveSemanticLayerConfig(config: SemanticLayerConfig): ResolvedSemant
 }
 
 /**
- * The semantic-layer Cordis `Service`. Owns the `ctx.schema` seam: substrate
- * definitions (load_*, sync-read) + live-engine schema (discover/describe/sample,
- * delegated to an injectable `SchemaProvider` — P6b Q3 deferred). Tier-2 writes
- * (syncWrite/updateTableMeta) route through `ctx.audit.recordTier2Write`.
+ * The semantic grounding core — a plain class with no host framework.
+ *
+ * Gives a text-to-SQL agent a typed, structured understanding of a data domain:
+ * substrate definitions (load_*, sync-read), the relation graph and retrieval
+ * corpus projections, provenance-carrying enrichment, and Tier-2 persistent
+ * writes. Live-engine schema access (discover/describe/sample) is delegated to
+ * an injectable `SchemaProvider` (P6b Q3 deferred).
+ *
+ * **Embedding.** Construct it, then wire the collaborators the host can supply.
+ * Every seam is a setter; none is looked up by name:
+ *
+ * ```ts
+ * const core = new SemanticGroundingCore({ semanticRoot, scopeId })
+ * core.setTier2Recorder(recorder)    // REQUIRED before any auditable write (D5)
+ * core.setScopeRegistry(scopes)      // optional — falls back to static config
+ * core.setSchemaProvider(provider)   // optional — discover/describe/sample throw without one
+ * core.setLlmCall(fn)                // optional — enrichment runs deterministic-only without one
+ * // ...
+ * core.dispose()                     // releases the kind registrations + cache listener
+ * ```
+ *
+ * Nothing above is cordis-specific, and the class imports no host framework
+ * (slice 2 ③, map #1). A host adapts it by wrapping, not by being reached for:
+ * the dsh adapter wraps this as a cordis `Service` exposing the `ctx.schema`
+ * seam and forwards `ctx.audit` / `ctx.get('scopes')` into the setters above.
+ *
+ * Instances are independent — the recorder, scope registry, provider and LLM
+ * call are per-instance state — so one process can hold several cores over
+ * different corpora (the MCP management-surface case, which the former
+ * `extends Service` made impossible: a cordis context admits only one service
+ * under a given name).
  */
-export class SemanticLayerService extends Service {
-  static Config: z<SemanticLayerConfig> = z.object({
-    semanticRoot: z.string().default(''),
-    scopeId: z.string().default(''),
-    corpusVariant: z.union(['params+term', 'term-only'] as const).default('params+term'),
-    autoEnrich: z.boolean().default(true),
-  })
-
+export class SemanticGroundingCore {
   private readonly resolved: ResolvedSemanticLayerConfig
   private provider: SchemaProvider | undefined
   /** G3: injected one-shot LLM call for the semantic relation round (undefined => deterministic round only). */
   private llmCall: LlmCall | undefined
+  /** P1: setter-injected per-scope registry (undefined => fall back to static mount config). */
+  private scopeRegistry: ScopeRegistryLike | undefined
+  /** D5: setter-injected Tier-2 recorder. Undefined is NOT "audit off" — every
+   * auditable mutation throws until one is wired (ADR-0001). */
+  private tier2Recorder: Tier2Recorder | undefined
 
   private readonly registry = new DataSourceRegistry()
+  /** Disposers owned by this instance (registry listener + built-in kinds), released by `dispose()`. */
+  private readonly disposers: Array<() => void> = []
+  /** Health records from the most recent on-write enrichment run (reset per run). */
+  private enrichmentHealth: EnrichmentHealthEntry[] = []
 
   /** P1: strictly-monotonic counter bumped when the active scope id changes
    * (detected lazily in corpusVersion() — no event listener, so the constructor
@@ -328,25 +388,46 @@ export class SemanticLayerService extends Service {
    * unchanged pre-P1 behavior). */
   private hasObservedScope = false
 
-  constructor(ctx: Context, config: SemanticLayerConfig) {
-    super(ctx, 'schema')
+  constructor(config: SemanticLayerConfig) {
     this.resolved = resolveSemanticLayerConfig(config)
     // W27: invalidate the relation-graph cache when a kind is added or removed
-    // (fiber dispose/reload) so a disposed kind's nodes/edges do not linger.
-    // The node projection (projectGraphNodes) is not cached — it iterates the
-    // live registry — so only the edge-graph caches need clearing. Both the
-    // listener and the built-in kind registrations go through `ctx.effect` so
-    // their disposers track this service's fiber. `effect` is a reflect mixin
-    // present on every Cordis context; a caller that cannot supply one fails
-    // here rather than yielding a service whose graph cache never invalidates.
-    ctx.effect(() => this.registry.onChange(() => {
+    // so a withdrawn kind's nodes/edges do not linger. The node projection
+    // (projectGraphNodes) is not cached — it iterates the live registry — so
+    // only the edge-graph caches need clearing.
+    //
+    // `registry.onChange` and `registry.register` each already return their own
+    // disposer; the core collects them and surfaces them on `dispose()` rather
+    // than handing them to a host effect system. Disposal is therefore a core
+    // concept (the registry minted the disposers) and the host's only job is to
+    // call `dispose()` when it tears the instance down.
+    this.disposers.push(this.registry.onChange(() => {
       this.graphCache = undefined
       this.graphVersion = -1
       this.graphCacheByScope.clear()
     }))
     for (const p of [eventKindPlugin, tableKindPlugin, conceptKindPlugin]) {
-      ctx.effect(() => this.registry.register(p))
+      this.disposers.push(this.registry.register(p))
     }
+  }
+
+  /**
+   * Release everything this instance registered: the relation-graph
+   * cache-invalidation listener and the three built-in kind registrations.
+   * Idempotent — a second call is a no-op.
+   *
+   * This replaces the `ctx.effect(...)` wrapping the registrations used to
+   * carry (slice 2 ②). The behavioural guarantee is unchanged — after disposal
+   * the registry holds no kinds — but the trigger moves from a host fiber
+   * unloading to an explicit call, so the host owns the lifecycle boundary.
+   *
+   * A host that embeds the core per request/tenant MUST call this; the
+   * module-level `registerInvalidationHook` list in `io.ts` is global, so a
+   * leaked instance leaks a hook (see the map's Not-yet-specified).
+   */
+  dispose(): void {
+    // splice before running so a disposer that re-enters cannot double-run
+    const pending = this.disposers.splice(0, this.disposers.length)
+    for (const d of pending.reverse()) d()
   }
 
   /**
@@ -361,7 +442,21 @@ export class SemanticLayerService extends Service {
    * intranet-security-first choice. Locked by the corrupt-yaml test below.
    */
   private scopes(): ScopeRegistryLike | undefined {
-    return this.ctx.get('scopes') as ScopeRegistryLike | undefined
+    return this.scopeRegistry
+  }
+
+  /**
+   * P1: inject (or clear) the per-scope registry. When absent, `semanticRoot`
+   * and `scopeId` fall back to this instance's static mount config.
+   *
+   * Setter-injected rather than looked up by name (slice 2 ② replaced
+   * `ctx.get('scopes')`): the registry is a *collaborator* of the core, so the
+   * wiring is visible at the call site instead of depending on whether some
+   * host happened to mount a service under the string `'scopes'`.
+   * @param registry - the scope registry to delegate to, or undefined to clear.
+   */
+  setScopeRegistry(registry: ScopeRegistryLike | undefined): void {
+    this.scopeRegistry = registry
   }
 
   /**
@@ -548,8 +643,10 @@ export class SemanticLayerService extends Service {
           const group = groups.get(d)
           if (group === undefined) {
             const ref = `asset="${sourceId}" domain="${d}"`
+            // Structured only: `getDanglingDomainRefs()` is the health surface.
+            // The host-logger warn that used to sit here was pure duplication of
+            // the line above (slice 2 ②).
             this.danglingDomainRefs.push(ref)
-            this.ctx.logger.warn(`ctx.schema relation graph: dangling domain reference — ${ref} (no matching concept definition in concepts/; reference skipped)`)
             continue
           }
           entries.push({ sourceId: group.nodeId, relations: [{ type: group.memberRelationType, target: sourceId }] })
@@ -812,6 +909,9 @@ export class SemanticLayerService extends Service {
    */
   private async enrichOnWrite(names: readonly string[]): Promise<void> {
     if (!this.resolved.autoEnrich || names.length === 0) return
+    // Reset per run, same as `danglingDomainRefs` per graph build: the surface
+    // reports the health of the LAST write's enrichment, not an unbounded log.
+    this.enrichmentHealth = []
     try {
       // mergeExisting=true: the auto on-write hook MERGES discovered refs with
       // any existing dimension_refs (curated joins preserved) rather than
@@ -821,20 +921,39 @@ export class SemanticLayerService extends Service {
       // matches (e.g. ds-only DIM snapshots) do not add noise JOIN relations.
       const res = await enrichAllDwsTablesFromLayer(this.semanticRoot, this.llmCall, names, true, buildExcludeColumns)
       if (res.errors.length > 0) {
-        this.ctx.logger.warn(`ctx.schema on-write relation enrichment partial failures: ${res.errors.join('; ')}`)
+        this.enrichmentHealth.push({ round: 'relation', outcome: 'partial', tables: [...names], errors: [...res.errors] })
       }
     } catch (e) {
-      this.ctx.logger.warn(`ctx.schema on-write relation enrichment failed: ${(e as Error).message}`)
+      this.enrichmentHealth.push({ round: 'relation', outcome: 'failed', tables: [...names], errors: [(e as Error).message] })
     }
     // CL-1 Phase 3: also discover alt_labels for the written tables
     try {
       const res = await enrichAllTablesAltLabelsFromLayer(this.semanticRoot, this.llmCall, names)
       if (res.errors.length > 0) {
-        this.ctx.logger.warn(`ctx.schema on-write alt_labels enrichment partial failures: ${res.errors.join('; ')}`)
+        this.enrichmentHealth.push({ round: 'alt_labels', outcome: 'partial', tables: [...names], errors: [...res.errors] })
       }
     } catch (e) {
-      this.ctx.logger.warn(`ctx.schema on-write alt_labels enrichment failed: ${(e as Error).message}`)
+      this.enrichmentHealth.push({ round: 'alt_labels', outcome: 'failed', tables: [...names], errors: [(e as Error).message] })
     }
+  }
+
+  /**
+   * The on-write enrichment health records from the most recent write, or an
+   * empty array when the last hook run fully succeeded (or did not run).
+   *
+   * A non-empty result means the just-written definitions are missing derived
+   * facts (`dimension_refs` from the relation round, `alt_labels` from the
+   * alt-labels round). The originating write still succeeded — the hook is
+   * best-effort by design and never propagates — so this surface is how a
+   * caller finds out that its write landed with incomplete enrichment and
+   * whether to retry the round or degrade.
+   *
+   * Replaces four `ctx.logger.warn` call sites (slice 2 ②) that were the sole
+   * exit for this information.
+   * @returns a snapshot of the last run's health records.
+   */
+  getEnrichmentHealth(): readonly EnrichmentHealthEntry[] {
+    return [...this.enrichmentHealth]
   }
 
   /** The semantic-layer scope root (the dir with config.yaml/events/tables), or
@@ -1085,13 +1204,37 @@ export class SemanticLayerService extends Service {
     return this.provider.sample(tableName, n)
   }
 
-  // ── Tier-2 persistent writes (via ctx.audit; D5 non-disableable) ──
+  // ── Tier-2 persistent writes (setter-injected recorder; D5 non-disableable) ──
+  /**
+   * D5: inject the Tier-2 recorder. There is deliberately **no** way to turn
+   * Tier-2 audit off — a host that wants audit-off behaviour must pass an
+   * explicit no-op recorder that still satisfies the interface, making the
+   * downgrade a deliberate, code-visible choice rather than a wiring accident
+   * (ADR-0001).
+   *
+   * Setter-injected rather than looked up via `ctx.get('audit')` (slice 2 ②).
+   * The guarantee is unchanged — an auditable mutation with no recorder still
+   * throws — but the wiring is now legible at the call site instead of
+   * depending on whether the host mounted something under the name `'audit'`.
+   * @param recorder - the Tier-2 recorder, or undefined to clear (re-arming the throw).
+   */
+  setTier2Recorder(recorder: Tier2Recorder | undefined): void {
+    this.tier2Recorder = recorder
+  }
+
+  /**
+   * The wired Tier-2 recorder, or throw.
+   *
+   * **Invariant (D5)**: any code path that mutates auditable state MUST either
+   * record the mutation via the wired `Tier2Recorder` or throw. Silent drop is
+   * not a valid outcome (ADR-0001). This is the single chokepoint that enforces
+   * it for the Service-level write methods.
+   */
   private recorder(): Tier2Recorder {
-    const audit = this.ctx.get('audit')
-    if (audit === undefined) {
-      throw new Error('ctx.schema Tier-2 write requires ctx.audit (Tier-2 audit is non-disableable, D5; mount @deepseek-ai/dsh-audit)')
+    if (this.tier2Recorder === undefined) {
+      throw new Error('semantic-grounding Tier-2 write requires a recorder (Tier-2 audit is non-disableable, D5; call setTier2Recorder — pass an explicit no-op recorder if you really mean audit-off)')
     }
-    return audit
+    return this.tier2Recorder
   }
 
   /**
@@ -1225,7 +1368,7 @@ export interface TextLlm {
  * Production (once the bundle mounts `ctx.schema` + `ctx.llm`):
  *   `wireEnrichmentLlm(ctx.schema, ctx.llm)`
  * The adapter wraps `llm.text` as the substrate's `LlmCall = (prompt) => Promise<string>`.
- * @param schema - the `SemanticLayerService` (or a structural `{ setLlmCall }` test double).
+ * @param schema - the `SemanticGroundingCore` (or a structural `{ setLlmCall }` test double).
  * @param llm - the text-LLM to adapt.
  */
 export function wireEnrichmentLlm(schema: { setLlmCall(fn?: (prompt: string) => Promise<string>): void }, llm: TextLlm): void {
@@ -1252,4 +1395,4 @@ function graphAliasData(def: unknown, nodeId: string | undefined): NodeAliasData
   return { nodeId, prefLabel, altLabels }
 }
 
-export default SemanticLayerService
+export default SemanticGroundingCore

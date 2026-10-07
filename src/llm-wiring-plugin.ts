@@ -12,7 +12,35 @@
  */
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { wireEnrichmentLlm, type TextLlm } from './index.ts'
+import { wireEnrichmentLlm, type TextLlm, type SemanticGroundingCore } from './index.ts'
+
+/**
+ * Cordis `Context` augmentations for the two host seams this plugin touches.
+ *
+ * Both are declared here rather than in an ambient `.d.ts` because this file
+ * has top-level imports, so `declare module` *merges* with the real package
+ * instead of shadowing its specifier (an ambient
+ * `declare module '@deepseek-ai/cordis'` in a no-import `.d.ts` replaces the
+ * package's own types wholesale — the slice 1 gotcha).
+ *
+ *  - `llm` — provided by `@deepseek-ai/dsh-llm` (shimmed here, real on the
+ *    host); this plugin adapts `ctx.llm.stream` into the core's `TextLlm` seam.
+ *  - `schema` — the seam the dsh adapter mounts the core under. Declared here
+ *    and not in the core because slice 2 ③ made the core host-framework-free:
+ *    a core that declared its own `ctx` seam would still be coupled to the
+ *    host it no longer imports.
+ *
+ * This file is the host-facing shell — the one place in `src/` that still names
+ * cordis — and is the first candidate to move into the dsh adapter package
+ * (slice 4). The core-purity gate in package.json whitelists it for exactly
+ * that reason.
+ */
+declare module '@deepseek-ai/cordis' {
+  interface Context {
+    llm: { stream(options: unknown): AsyncIterable<unknown> }
+    schema: SemanticGroundingCore
+  }
+}
 
 export const name = 'enrichment-llm-wiring'
 export const inject = ['schema', 'llm']

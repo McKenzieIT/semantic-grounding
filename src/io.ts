@@ -92,7 +92,7 @@ export function registerInvalidationHook(hook: (semanticLayer: string) => void):
 
 // D2f: per-path corpus-version counter bumped on every invalidateCaches call.
 // A cached enriched Bm25Linker (tool-search-data-sources, keyed by ctx.schema)
-// probes SemanticLayerService.corpusVersion() and rebuilds on a mismatch, so a
+// probes SemanticGroundingCore.corpusVersion() and rebuilds on a mismatch, so a
 // mid-session event edit (writeEventYaml -> invalidateCaches) no longer leaves
 // the enriched linker stale until reboot (D2e-deferred cache-invalidation).
 // Path-scoped: a write to layer A bumps only A's counter. Table writes
