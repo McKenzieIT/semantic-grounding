@@ -5,7 +5,7 @@
  */
 import { describe, test, expect, afterEach, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { SemanticLayerService, wireEnrichmentLlm, type TextLlm } from '../src/index.ts'
+import { SemanticGroundingCore, wireEnrichmentLlm, type TextLlm } from '../src/index.ts'
 import { apply } from '../src/llm-wiring-plugin.ts'
 import { tableKindPlugin } from '../src/kinds/table-kind.ts'
 import { TableDefinitionSchema } from '../src/types.ts'
@@ -62,8 +62,7 @@ function setupLayer(): { dir: string; cleanup: () => void } {
 test('F1 — wireEnrichmentLlm enables two-round discoverRelations', async () => {
   const { dir, cleanup } = setupLayer()
   try {
-    const ctx = new Context()
-    const svc = new SemanticLayerService(ctx, { semanticRoot: dir })
+    const svc = new SemanticGroundingCore({ semanticRoot: dir })
 
     const llmCalls: string[] = []
     const fakeLlm: TextLlm = {
@@ -96,8 +95,7 @@ test('F1 — wireEnrichmentLlm enables two-round discoverRelations', async () =>
 test('F1 — wireEnrichmentLlm enables two-round discoverEventRelations', async () => {
   const { dir, cleanup } = setupLayer()
   try {
-    const ctx = new Context()
-    const svc = new SemanticLayerService(ctx, { semanticRoot: dir })
+    const svc = new SemanticGroundingCore({ semanticRoot: dir })
 
     const llmCalls: string[] = []
     const fakeLlm: TextLlm = {
@@ -128,8 +126,7 @@ test('F1 — wireEnrichmentLlm enables two-round discoverEventRelations', async 
 test('F1 — on-write hook path: enrichOnWrite merges with existing refs', async () => {
   const { dir, cleanup } = setupLayer()
   try {
-    const ctx = new Context()
-    const svc = new SemanticLayerService(ctx, { semanticRoot: dir, autoEnrich: true })
+    const svc = new SemanticGroundingCore({ semanticRoot: dir, autoEnrich: true })
 
     const llmCalls: string[] = []
     const fakeLlm: TextLlm = {

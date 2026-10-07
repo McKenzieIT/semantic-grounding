@@ -13,8 +13,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
-import { Context } from '@deepseek-ai/cordis'
-import { SemanticLayerService } from '../src/index.ts'
+import { SemanticGroundingCore } from '../src/index.ts'
 import type { CorpusItem, DataSourceKindPlugin, GraphNodeProjection, RelationDef, SchemaLike } from '../src/registry.ts'
 
 const roots: string[] = []
@@ -118,7 +117,7 @@ describe('relation targets across two registered kinds (C1)', () => {
     writeFileSync(join(root, 'alpha', 'src.yaml'), yaml.dump({ name: 'src', target: 'x' }))
     writeFileSync(join(root, 'beta', 'x.yaml'), yaml.dump({ name: 'x' }))
 
-    const svc = new SemanticLayerService(new Context(), { semanticRoot: root, scopeId: '' })
+    const svc = new SemanticGroundingCore({ semanticRoot: root, scopeId: '' })
     // `beta` first: the prefixed-id kind is visited before the bare-id kind.
     svc.getRegistry().register(fixtureKind({ kind: 'beta', storageDir: 'beta', idPrefix: 'beta:' }))
     svc.getRegistry().register(fixtureKind({ kind: 'alpha', storageDir: 'alpha' }))
@@ -135,7 +134,7 @@ describe('relation targets across two registered kinds (C1)', () => {
     writeFileSync(join(root, 'alpha', 'src.yaml'), yaml.dump({ name: 'src', target: 'x' }))
     writeFileSync(join(root, 'beta', 'x.yaml'), yaml.dump({ name: 'x' }))
 
-    const svc = new SemanticLayerService(new Context(), { semanticRoot: root, scopeId: '' })
+    const svc = new SemanticGroundingCore({ semanticRoot: root, scopeId: '' })
     svc.getRegistry().register(fixtureKind({ kind: 'beta', storageDir: 'beta', idPrefix: 'beta:' }))
     svc.getRegistry().register(fixtureKind({ kind: 'alpha', storageDir: 'alpha' }))
 
@@ -147,11 +146,11 @@ describe('relation targets across two registered kinds (C1)', () => {
 
 describe('a kind declaring a built-in storage dir (I7)', () => {
   /** `tables/` holds one real table plus one file only the widget kind accepts. */
-  function seedSharedTablesDir(): { root: string; widget: FixtureKind; svc: SemanticLayerService } {
+  function seedSharedTablesDir(): { root: string; widget: FixtureKind; svc: SemanticGroundingCore } {
     const root = seedRoot(['tables'])
     writeFileSync(join(root, 'tables', 'orders.yaml'), yaml.dump({ table_name: 'orders', kind: 'dws', columns: [] }))
     writeFileSync(join(root, 'tables', 'widget-a.yaml'), yaml.dump({ name: 'widget-a' }))
-    const svc = new SemanticLayerService(new Context(), { semanticRoot: root, scopeId: '' })
+    const svc = new SemanticGroundingCore({ semanticRoot: root, scopeId: '' })
     const widget = fixtureKind({ kind: 'widget', storageDir: 'tables', idPrefix: 'widget:' })
     svc.getRegistry().register(widget)
     return { root, widget, svc }
@@ -241,7 +240,7 @@ describe('declared kind capabilities (I6)', () => {
   it('lets a registered kind contribute derived nodes to the graph, its edges, and the corpus', () => {
     const root = seedRoot(['gadgets'])
     writeFileSync(join(root, 'gadgets', 'g1.yaml'), yaml.dump({ name: 'g1', parts: ['hinge'] }))
-    const svc = new SemanticLayerService(new Context(), { semanticRoot: root, scopeId: '' })
+    const svc = new SemanticGroundingCore({ semanticRoot: root, scopeId: '' })
     svc.getRegistry().register(gadgetKind)
 
     expect(svc.projectGraphNodes()).toContainEqual({ id: 'part:hinge', kind: 'part', label: 'hinge', domains: [] })
@@ -254,7 +253,7 @@ describe('declared kind capabilities (I6)', () => {
     writeFileSync(join(root, 'teams', 'alpha.yaml'), yaml.dump({ name: 'alpha' }))
     writeFileSync(join(root, 'workers', 'w1.yaml'), yaml.dump({ name: 'w1', domains: ['alpha'] }))
     writeFileSync(join(root, 'workers', 'w2.yaml'), yaml.dump({ name: 'w2', domains: ['ghost'] }))
-    const svc = new SemanticLayerService(new Context(), { semanticRoot: root, scopeId: '' })
+    const svc = new SemanticGroundingCore({ semanticRoot: root, scopeId: '' })
     svc.getRegistry().register(teamKind)
     svc.getRegistry().register(fixtureKind({ kind: 'worker', storageDir: 'workers', idPrefix: 'worker:' }))
 
@@ -271,12 +270,12 @@ describe('declared kind capabilities (I6)', () => {
 
 describe('skipping derived nodes the caller discards (I4)', () => {
   /** A table carrying one inline metric, so `metric` nodes are derivable. */
-  function seedTableWithMetric(): SemanticLayerService {
+  function seedTableWithMetric(): SemanticGroundingCore {
     const root = seedRoot(['tables'])
     writeFileSync(join(root, 'tables', 'orders.yaml'), yaml.dump({
       table_name: 'orders', kind: 'dws', columns: [], metrics: { total: { expression: 'SUM(amount)' } },
     }))
-    return new SemanticLayerService(new Context(), { semanticRoot: root, scopeId: '' })
+    return new SemanticGroundingCore({ semanticRoot: root, scopeId: '' })
   }
 
   it('projects derived nodes by default and omits them when not requested', () => {
@@ -290,7 +289,7 @@ describe('skipping derived nodes the caller discards (I4)', () => {
   it('never asks a kind to derive nodes the caller will discard', () => {
     const root = seedRoot(['gizmos'])
     writeFileSync(join(root, 'gizmos', 'g1.yaml'), yaml.dump({ name: 'g1' }))
-    const svc = new SemanticLayerService(new Context(), { semanticRoot: root, scopeId: '' })
+    const svc = new SemanticGroundingCore({ semanticRoot: root, scopeId: '' })
     let derivations = 0
     svc.getRegistry().register({
       ...fixtureKind({ kind: 'gizmo', storageDir: 'gizmos', idPrefix: 'gizmo:' }),

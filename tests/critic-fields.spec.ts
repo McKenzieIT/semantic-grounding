@@ -30,7 +30,7 @@ function resetLayer(): void {
 }
 afterAll(() => { rmSync(SCRATCH, { recursive: true, force: true }) })
 
-/** Replicate SemanticLayerService.buildCriticFields logic (no Cordis ctx needed). */
+/** Replicate SemanticGroundingCore.buildCriticFields logic (no Cordis ctx needed). */
 function buildCriticFields(semanticLayer: string, definitionNames: string[]): CriticFields {
   const registry = new DataSourceRegistry()
   registry.register(eventKindPlugin)

@@ -37,7 +37,7 @@ import type { EventCorpusItem, CorpusVariant } from './corpus.ts'
 
 /**
  * A frozen point-in-time view of semantic layer definitions. Provides the same
- * read-only API surface as `SemanticLayerService` but the data is pinned at
+ * read-only API surface as `SemanticGroundingCore` but the data is pinned at
  * the version captured when the snapshot was acquired — subsequent
  * `invalidateCaches()` calls do not affect it.
  */

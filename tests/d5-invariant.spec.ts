@@ -21,8 +21,7 @@
  * @see docs/adr/0001-d5-tier2-audit-invariant.md
  */
 import { test, expect, describe, it, beforeEach, afterEach } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
-import { SemanticLayerService, type TableMeta } from '../src/index.ts'
+import { SemanticGroundingCore, type TableMeta } from '../src/index.ts'
 import type { Tier2Recorder } from '../src/io.ts'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -32,8 +31,8 @@ import yaml from 'js-yaml'
 /** The explicit no-op recorder a host must pass if it really means audit-off. */
 const noopRecorder: Tier2Recorder = { recordTier2Write: () => 'noop-log-id' }
 
-function newService(root = ''): SemanticLayerService {
-  return new SemanticLayerService(new Context(), { semanticRoot: root, autoEnrich: false })
+function newService(root = ''): SemanticGroundingCore {
+  return new SemanticGroundingCore({ semanticRoot: root, autoEnrich: false })
 }
 
 const SAMPLE_META: TableMeta = {

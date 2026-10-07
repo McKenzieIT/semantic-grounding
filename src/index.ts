@@ -37,8 +37,10 @@
  *
  * @module @deepseek-ai/dsh-semantic-layer
  */
-import { Context, Service } from '@deepseek-ai/cordis'
-import z from '@deepseek-ai/schemastery'
+// No host-framework import. Slice 2 ③ removed `{ Context, Service }` from
+// '@deepseek-ai/cordis' and the `z` from '@deepseek-ai/schemastery' that only
+// existed to type the cordis mount-time `static Config`. Both now live in the
+// dsh adapter, which wraps this core as a cordis Service.
 // Type-only: makes `ctx.get('audit')` resolve to the Audit augmentation. The
 // seam stays optional at runtime (Tier-2 writes fail-loud without it).
 import type {} from '@deepseek-ai/dsh-audit'
@@ -300,11 +302,10 @@ export interface ResolvedSemanticLayerConfig {
   readonly autoEnrich: boolean
 }
 
-declare module '@deepseek-ai/cordis' {
-  interface Context {
-    schema: SemanticLayerService
-  }
-}
+// The `ctx.schema` Context augmentation moved to src/llm-wiring-plugin.ts
+// (slice 2 ③) — that file is the host-facing shell and the only remaining
+// consumer of `ctx`. Declaring the seam from core would re-couple core to the
+// host it no longer imports.
 
 /** CONVENTIONS.md "explicit resolve step": apply cfg defaults ONCE into a
  * typed resolved-config object (required fields), so run()-path use sites
@@ -322,19 +323,39 @@ function resolveSemanticLayerConfig(config: SemanticLayerConfig): ResolvedSemant
 }
 
 /**
- * The semantic-layer Cordis `Service`. Owns the `ctx.schema` seam: substrate
- * definitions (load_*, sync-read) + live-engine schema (discover/describe/sample,
- * delegated to an injectable `SchemaProvider` — P6b Q3 deferred). Tier-2 writes
- * (syncWrite/updateTableMeta) route through `ctx.audit.recordTier2Write`.
+ * The semantic grounding core — a plain class with no host framework.
+ *
+ * Gives a text-to-SQL agent a typed, structured understanding of a data domain:
+ * substrate definitions (load_*, sync-read), the relation graph and retrieval
+ * corpus projections, provenance-carrying enrichment, and Tier-2 persistent
+ * writes. Live-engine schema access (discover/describe/sample) is delegated to
+ * an injectable `SchemaProvider` (P6b Q3 deferred).
+ *
+ * **Embedding.** Construct it, then wire the collaborators the host can supply.
+ * Every seam is a setter; none is looked up by name:
+ *
+ * ```ts
+ * const core = new SemanticGroundingCore({ semanticRoot, scopeId })
+ * core.setTier2Recorder(recorder)    // REQUIRED before any auditable write (D5)
+ * core.setScopeRegistry(scopes)      // optional — falls back to static config
+ * core.setSchemaProvider(provider)   // optional — discover/describe/sample throw without one
+ * core.setLlmCall(fn)                // optional — enrichment runs deterministic-only without one
+ * // ...
+ * core.dispose()                     // releases the kind registrations + cache listener
+ * ```
+ *
+ * Nothing above is cordis-specific, and the class imports no host framework
+ * (slice 2 ③, map #1). A host adapts it by wrapping, not by being reached for:
+ * the dsh adapter wraps this as a cordis `Service` exposing the `ctx.schema`
+ * seam and forwards `ctx.audit` / `ctx.get('scopes')` into the setters above.
+ *
+ * Instances are independent — the recorder, scope registry, provider and LLM
+ * call are per-instance state — so one process can hold several cores over
+ * different corpora (the MCP management-surface case, which the former
+ * `extends Service` made impossible: a cordis context admits only one service
+ * under a given name).
  */
-export class SemanticLayerService extends Service {
-  static Config: z<SemanticLayerConfig> = z.object({
-    semanticRoot: z.string().default(''),
-    scopeId: z.string().default(''),
-    corpusVariant: z.union(['params+term', 'term-only'] as const).default('params+term'),
-    autoEnrich: z.boolean().default(true),
-  })
-
+export class SemanticGroundingCore {
   private readonly resolved: ResolvedSemanticLayerConfig
   private provider: SchemaProvider | undefined
   /** G3: injected one-shot LLM call for the semantic relation round (undefined => deterministic round only). */
@@ -367,8 +388,7 @@ export class SemanticLayerService extends Service {
    * unchanged pre-P1 behavior). */
   private hasObservedScope = false
 
-  constructor(ctx: Context, config: SemanticLayerConfig) {
-    super(ctx, 'schema')
+  constructor(config: SemanticLayerConfig) {
     this.resolved = resolveSemanticLayerConfig(config)
     // W27: invalidate the relation-graph cache when a kind is added or removed
     // so a withdrawn kind's nodes/edges do not linger. The node projection
@@ -1348,7 +1368,7 @@ export interface TextLlm {
  * Production (once the bundle mounts `ctx.schema` + `ctx.llm`):
  *   `wireEnrichmentLlm(ctx.schema, ctx.llm)`
  * The adapter wraps `llm.text` as the substrate's `LlmCall = (prompt) => Promise<string>`.
- * @param schema - the `SemanticLayerService` (or a structural `{ setLlmCall }` test double).
+ * @param schema - the `SemanticGroundingCore` (or a structural `{ setLlmCall }` test double).
  * @param llm - the text-LLM to adapt.
  */
 export function wireEnrichmentLlm(schema: { setLlmCall(fn?: (prompt: string) => Promise<string>): void }, llm: TextLlm): void {
@@ -1375,4 +1395,4 @@ function graphAliasData(def: unknown, nodeId: string | undefined): NodeAliasData
   return { nodeId, prefLabel, altLabels }
 }
 
-export default SemanticLayerService
+export default SemanticGroundingCore

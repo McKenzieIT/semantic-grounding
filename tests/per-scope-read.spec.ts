@@ -1,5 +1,5 @@
 /**
- * GA-GT1 Phase 2 (D4 β) — per-request scope on the SemanticLayerService READ
+ * GA-GT1 Phase 2 (D4 β) — per-request scope on the SemanticGroundingCore READ
  * methods. The 5 substrate read methods (`loadTableDefinition`,
  * `getRelationGraph`, `acquireSnapshot`, `loadRetrievalCorpus`,
  * `corpusVersion`) each gain an OPTIONAL trailing `scopeId?` param; omitted,
@@ -32,8 +32,8 @@
  */
 import { test, expect, describe, afterEach } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { SemanticLayerService, clearSnapshotCache } from '../src/index.ts'
-import ScopeRegistryService from '../src/vendor/scope-registry.ts'
+import { SemanticGroundingCore, clearSnapshotCache } from '../src/index.ts'
+import ScopeRegistryService from './fixtures/scope-registry.ts'
 import { invalidateCaches } from '../src/io.ts'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -126,7 +126,7 @@ function makeScopeDirWithGraph(scopeId: string, eventName: string, dwsTable: str
   return dir
 }
 
-describe('GA-GT1 Phase 2 — SemanticLayerService per-request scopeId on read methods (D4 β)', () => {
+describe('GA-GT1 Phase 2 — SemanticGroundingCore per-request scopeId on read methods (D4 β)', () => {
   const tmps: string[] = []
 
   afterEach(() => {
@@ -155,7 +155,7 @@ describe('GA-GT1 Phase 2 — SemanticLayerService per-request scopeId on read me
     await scopes.register({ id: '10000334', semanticRoot: xRoot })
     // oxlint-disable-next-line typescript/no-deprecated -- active-scope API; no replacement until Phase 4 GA-GT1-cleanup
     await scopes.setActive('10000334') // X63 active — scopeId must override it
-    const svc = new SemanticLayerService(ctx, { semanticRoot: kRoot })
+    const svc = new SemanticGroundingCore({ semanticRoot: kRoot })
     svc.setScopeRegistry(scopes) // P1: setter-injected, no longer ctx.get(\'scopes\')
 
     // loadTableDefinition(name, scopeId) resolves the named scope's root
@@ -187,7 +187,7 @@ describe('GA-GT1 Phase 2 — SemanticLayerService per-request scopeId on read me
     await scopes.register({ id: '10000334', semanticRoot: xRoot })
     // oxlint-disable-next-line typescript/no-deprecated -- active-scope API; no replacement until Phase 4 GA-GT1-cleanup
     await scopes.setActive('10000334') // X63 active
-    const svc = new SemanticLayerService(ctx, { semanticRoot: kRoot })
+    const svc = new SemanticGroundingCore({ semanticRoot: kRoot })
     svc.setScopeRegistry(scopes) // P1: setter-injected, no longer ctx.get(\'scopes\')
 
     // No scopeId → active (X63) scope, NOT the cfg semanticRoot (kRoot)
@@ -210,7 +210,7 @@ describe('GA-GT1 Phase 2 — SemanticLayerService per-request scopeId on read me
     await scopes.register({ id: '10000334', semanticRoot: xRoot })
     // oxlint-disable-next-line typescript/no-deprecated -- active-scope API; no replacement until Phase 4 GA-GT1-cleanup
     await scopes.setActive('10000334')
-    const svc = new SemanticLayerService(ctx, { semanticRoot: kRoot })
+    const svc = new SemanticGroundingCore({ semanticRoot: kRoot })
     svc.setScopeRegistry(scopes) // P1: setter-injected, no longer ctx.get(\'scopes\')
 
     // corpusVersion(scopeId) is the per-path content counter (no epoch on the scopeId path)
@@ -254,7 +254,7 @@ describe('GA-GT1 Phase 2 — SemanticLayerService per-request scopeId on read me
     await scopes.register({ id: '10000251', semanticRoot: kRoot })
     // oxlint-disable-next-line typescript/no-deprecated -- active-scope API; no replacement until Phase 4 GA-GT1-cleanup
     await scopes.setActive('10000251')
-    const svc = new SemanticLayerService(ctx, { semanticRoot: kRoot })
+    const svc = new SemanticGroundingCore({ semanticRoot: kRoot })
     svc.setScopeRegistry(scopes) // P1: setter-injected, no longer ctx.get(\'scopes\')
 
     // Every scopeId-accepting read must throw, not silently fall back to active
@@ -267,9 +267,8 @@ describe('GA-GT1 Phase 2 — SemanticLayerService per-request scopeId on read me
 
   // (e) registry unmounted + scopeId provided → falls back to active/cfg root (no throw)
   test('(e) registry unmounted + scopeId provided → falls back to cfg root (test stand-in, no throw)', () => {
-    const ctx = new Context() // no scope-registry mounted
     const kRoot = makeScopeDirWithGraph('10000251', 'k11.only_event', 'k11_dws', 'k11_only_dim'); tmps.push(kRoot)
-    const svc = new SemanticLayerService(ctx, { semanticRoot: kRoot })
+    const svc = new SemanticGroundingCore({ semanticRoot: kRoot })
 
     // scopeId is provided but the registry is unmounted → resolveRoot falls back to cfg root
     expect(() => svc.loadRetrievalCorpus('any-scope-id')).not.toThrow()
@@ -293,7 +292,7 @@ describe('GA-GT1 Phase 2 — SemanticLayerService per-request scopeId on read me
     const xRoot = makeScopeDirWithGraph('A', 'x63.only_event', 'x63_dws', 'x63_only_dim'); tmps.push(xRoot)
     // Register 'A' → K11 root; build + cache {root:kRoot, version:0}
     await scopes.register({ id: 'A', semanticRoot: kRoot })
-    const svc = new SemanticLayerService(ctx, { semanticRoot: kRoot })
+    const svc = new SemanticGroundingCore({ semanticRoot: kRoot })
     svc.setScopeRegistry(scopes) // P1: setter-injected, no longer ctx.get(\'scopes\')
     const g1 = svc.getRelationGraph('A')
     expect(g1.findJoinPath('k11_dws', 'k11_only_dim')).not.toBeNull() // K11 content
@@ -324,7 +323,7 @@ describe('GA-GT1 Phase 2 — SemanticLayerService per-request scopeId on read me
     await scopes.register({ id: '10000334', semanticRoot: xRoot })
     // oxlint-disable-next-line typescript/no-deprecated -- active-scope API; no replacement until Phase 4 GA-GT1-cleanup
     await scopes.setActive('10000334') // X63 active
-    const svc = new SemanticLayerService(ctx, { semanticRoot: kRoot })
+    const svc = new SemanticGroundingCore({ semanticRoot: kRoot })
     svc.setScopeRegistry(scopes) // P1: setter-injected, no longer ctx.get(\'scopes\')
 
     // undefined scopeId → active (X63) root, NOT the cfg.semanticRoot
@@ -340,7 +339,7 @@ describe('GA-GT1 Phase 2 — SemanticLayerService per-request scopeId on read me
     await scopes.register({ id: '10000334', semanticRoot: xRoot })
     // oxlint-disable-next-line typescript/no-deprecated -- active-scope API; no replacement until Phase 4 GA-GT1-cleanup
     await scopes.setActive('10000334') // X63 active — scopeId overrides
-    const svc = new SemanticLayerService(ctx, { semanticRoot: kRoot })
+    const svc = new SemanticGroundingCore({ semanticRoot: kRoot })
     svc.setScopeRegistry(scopes) // P1: setter-injected, no longer ctx.get(\'scopes\')
 
     expect(svc.resolveScopeRoot('10000251')).toBe(kRoot) // named K11 root
@@ -354,7 +353,7 @@ describe('GA-GT1 Phase 2 — SemanticLayerService per-request scopeId on read me
     await scopes.register({ id: '10000251', semanticRoot: kRoot })
     // oxlint-disable-next-line typescript/no-deprecated -- active-scope API; no replacement until Phase 4 GA-GT1-cleanup
     await scopes.setActive('10000251')
-    const svc = new SemanticLayerService(ctx, { semanticRoot: kRoot })
+    const svc = new SemanticGroundingCore({ semanticRoot: kRoot })
     svc.setScopeRegistry(scopes) // P1: setter-injected, no longer ctx.get(\'scopes\')
 
     expect(() => svc.resolveScopeRoot('nope-scope')).toThrow(/not found in registry/)
@@ -362,9 +361,8 @@ describe('GA-GT1 Phase 2 — SemanticLayerService per-request scopeId on read me
 
   // (5a-d) registry unmounted + scopeId provided → cfg root fallback (no throw)
   test('(5a-d) resolveScopeRoot(scopeId) with registry unmounted → cfg root fallback (no throw)', () => {
-    const ctx = new Context() // no scope-registry mounted
     const kRoot = makeScopeDirWithGraph('10000251', 'k11.only_event', 'k11_dws', 'k11_only_dim'); tmps.push(kRoot)
-    const svc = new SemanticLayerService(ctx, { semanticRoot: kRoot })
+    const svc = new SemanticGroundingCore({ semanticRoot: kRoot })
 
     expect(() => svc.resolveScopeRoot('any-scope-id')).not.toThrow()
     expect(svc.resolveScopeRoot('any-scope-id')).toBe(kRoot)

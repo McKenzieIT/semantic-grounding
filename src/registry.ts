@@ -98,7 +98,7 @@ export interface DerivedNodeContributor<T = unknown, D = unknown> {
  * names a group that nodes of OTHER kinds join by listing that name in
  * {@link GraphNodeProjection.domains}. The graph build derives one
  * group→member edge per resolved name and reports unresolved names through
- * `SemanticLayerService.getDanglingDomainRefs()` instead of aborting the build.
+ * `SemanticGroundingCore.getDanglingDomainRefs()` instead of aborting the build.
  *
  * A grouping node's own `domains` carry its group name, so nodes of a grouping
  * kind contribute no member references of their own — that would be a self-loop.
@@ -198,7 +198,7 @@ export class DataSourceRegistry {
 
   /**
    * Register a listener invoked when a kind is added or removed. The
-   * SemanticLayerService wires this to invalidate its relation-graph cache so
+   * SemanticGroundingCore wires this to invalidate its relation-graph cache so
    * a disposed kind's nodes/edges do not linger (W27: disposer + cache
    * invalidation). Returns a disposer for this listener.
    * @param listener - a no-arg callback fired after a kind is added or removed.

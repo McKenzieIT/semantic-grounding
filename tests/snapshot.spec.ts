@@ -8,8 +8,7 @@
  *  (d) Snapshot reuses cached data when version is unchanged (cheap).
  */
 import { test, expect, describe, afterEach } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
-import { SemanticLayerService, DefinitionSnapshot, captureSnapshot, clearSnapshotCache, getSnapshotCacheSize, SNAPSHOT_CACHE_MAX } from '../src/index.ts'
+import { SemanticGroundingCore, DefinitionSnapshot, captureSnapshot, clearSnapshotCache, getSnapshotCacheSize, SNAPSHOT_CACHE_MAX } from '../src/index.ts'
 import { invalidateCaches } from '../src/io.ts'
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -48,9 +47,8 @@ function makeLayer(): string {
   return dir
 }
 
-function makeService(root: string): SemanticLayerService {
-  const ctx = new Context()
-  return new SemanticLayerService(ctx, { semanticRoot: root })
+function makeService(root: string): SemanticGroundingCore {
+  return new SemanticGroundingCore({ semanticRoot: root })
 }
 
 let layerDir: string | undefined
