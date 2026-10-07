@@ -5,7 +5,7 @@
  *
  * Aligned with G1 §D2 interface design + G2 ontology decisions.
  *
- * @module @deepseek-ai/dsh-semantic-layer/src/registry
+ * @module registry (internal; only `"."` is importable — see ADR-0002)
  */
 // ── Shared types (G1 §D2) ──────────────────────────────────────────────
 

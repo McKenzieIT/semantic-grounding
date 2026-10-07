@@ -16,7 +16,7 @@
  * HARDENING §1: polluting source-of-truth >> polluting instructions
  * (connects to intranet-security-first).
  *
- * @module @deepseek-ai/dsh-semantic-layer/src/pending
+ * @module pending (internal; only `"."` is importable — see ADR-0002)
  */
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'

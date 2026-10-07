@@ -125,8 +125,14 @@ claim about 14 lines in one file: the domain modules (`io.ts`, `enrichment.ts`,
 `registry.ts`, `corpus.ts`, `relation-graph.ts`, `types.ts`, `snapshot.ts`,
 `metrics.ts`, `kinds/*`) never named a host at all.
 
-Today the only shell file in `src/` is `llm-wiring-plugin.ts`, and it is a candidate
-to move into the [dsh](#dsh) adapter. The shell allow-list shrinking to empty is the
+**`src/` now contains no shell at all.** The last one, `llm-wiring-plugin.ts` (a cordis
+plugin), moved into the [dsh](#dsh) adapter in slice 4a, so
+`scripts/check-core-purity.mjs` runs with an **empty** allow-list and the substrate's
+`peerDependencies` is empty — `schemastery` and `dsh-llm` were only ever imported by
+that one file, and `cordis` was type-only. Core and substrate are therefore the same
+set of files today; the distinction stays in the glossary because a future host seam
+would land as a shell again, and because the [negation test](#negation-test) is phrased
+over it. The shell allow-list shrinking to empty was the
 end state.
 
 ### adapter
@@ -302,17 +308,23 @@ ship needs no host to run).
 
 It asserts over **parsed import specifiers**, not file text. The proof slices 2 and 3
 recorded — `grep -c cordis lib/index.js` = 0 — is weak in the same shape as slice 1's
-vendoring: `lib/index.js` is a 4 KB re-export barrel and the substrate lives in a
-rolldown chunk beside it, so a real `import` of a host framework *in the chunk* would
-have left that grep at 0. (The chunk does match `cordis` 4 times today — all four in
-surviving JSDoc, which is also why a substring grep is simultaneously too loose and
-too tight.) Do not reintroduce a text-grep formulation of this gate.
+vendoring. At the time, `lib/index.js` was a 4 KB re-export barrel and the substrate
+lived in a rolldown chunk beside it, so a real `import` of a host framework *in the
+chunk* would have left that grep at 0 — the gate would have stayed green through
+exactly the regression it was meant to catch. (That chunk also matched `cordis` 4 times
+in surviving JSDoc, which is why a substring grep is simultaneously too loose and too
+tight.) Slice 4a's removal of the second build entry collapsed the build to a single
+file, so the specific hiding place is gone — but the lesson is not, and the gate stays
+specifier-based. **Do not reintroduce a text-grep formulation.**
 
-The [core](#core)/[shell](#shell) split is asserted in both directions: the root entry
-must load with no peers installed, and `./llm-wiring-plugin` must **fail**. A shell
-entry that loaded without peers would mean the host framework got bundled into the
-shipped artifact; a root entry that stopped loading would mean the shell leaked into
-the core graph.
+Since slice 4a the assertion is one-sided and strictly stronger: **no shipped file
+names a host framework, and `peerDependencies` is empty.** It previously had to be
+two-sided — the root entry must load peerless *and* `./llm-wiring-plugin` must fail —
+because that subpath was a cordis plugin and was *supposed* to name a host. Moving it
+into the [adapter](#adapter) retired the exemption, so there is no longer a "but this
+file is allowed to" clause. The gate also pins the retirement itself: the subpath must
+be absent from `exports`, absent from the tarball, and resolve to
+`ERR_PACKAGE_PATH_NOT_EXPORTED`.
 
 ---
 

@@ -3,7 +3,7 @@
  * G1 §D2/D3 aligned: schema field, raw-based getId, CriticFields with partitionCols,
  * relations with G2 types.
  *
- * @module @deepseek-ai/dsh-semantic-layer/src/kinds/table-kind
+ * @module kinds/table-kind (internal; only `"."` is importable — see ADR-0002)
  */
 import { TableDefinitionSchema, type TableDefinition } from '../types.ts'
 import type { DataSourceKindPlugin, RelationDef, CriticFields, CorpusItem, GraphNodeProjection } from '../registry.ts'

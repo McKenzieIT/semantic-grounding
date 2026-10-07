@@ -11,7 +11,7 @@
  * `auditLog` is removed). Readers are sync (readFileSync, fast lookup); writers
  * are async (writeFileAtomic).
  *
- * @module @deepseek-ai/dsh-semantic-layer/src/io
+ * @module io (internal; only `"."` is importable — see ADR-0002)
  */
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'

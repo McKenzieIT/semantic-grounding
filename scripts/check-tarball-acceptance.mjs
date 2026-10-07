@@ -31,15 +31,21 @@
  * So this gate parses **import specifiers** out of every shipped `.js` and
  * `.d.ts`, and asserts over the module graph instead of over file text.
  *
- * ## The core/shell split is asserted, not assumed
+ * ## No shipped entry may name a host framework
  *
- * `./llm-wiring-plugin` is the one shipped entry that is *supposed* to name
- * the host framework — it is a cordis plugin. So this gate does not merely
- * tolerate that, it **requires** it: the root entry must load with no peers
- * installed, and the shell entry must fail. If the shell entry ever started
- * loading without peers it would mean the host framework had been bundled in;
- * if the root entry ever stopped loading it would mean the shell had leaked
- * into the core graph. Both are regressions, and both are caught here.
+ * This used to be a weaker, two-sided claim. While the substrate still shipped
+ * `./llm-wiring-plugin` — a cordis plugin, and the one entry that was
+ * *supposed* to name a host framework — the gate asserted that the root entry
+ * loaded without peers and the shell entry failed, so that a shell which
+ * started loading peerless (host framework bundled in) or a root entry that
+ * stopped loading (shell leaked into the core graph) both went red.
+ *
+ * Slice 4a moved that plugin into the dsh adapter, so the exemption is gone
+ * and the assertion collapses into something strictly stronger: **nothing in
+ * the tarball names a host framework, and `peerDependencies` is empty.** There
+ * is no longer a "but this file is allowed to" clause to argue about — which is
+ * the same reason `scripts/check-core-purity.mjs` now runs with an empty
+ * allow-list.
  *
  * Run: `node scripts/check-tarball-acceptance.mjs`
  */
@@ -307,7 +313,7 @@ console.log('probe-ok ' + names.length)
     return `${m[1]} runtime names on the barrel; D5 enforced with no host present`
   })
 
-  console.error('\n── 5. subpath + shell boundary ─────────────────────────────')
+  console.error('\n── 5. subpath discipline + no host framework anywhere ──────')
   check('"./src/*" is not exported (clean error, not silent miss)', () => {
     let code = ''
     try {
@@ -318,30 +324,40 @@ console.log('probe-ok ' + names.length)
       `expected ERR_PACKAGE_PATH_NOT_EXPORTED, got:\n${code.slice(0, 400)}`)
     return 'ERR_PACKAGE_PATH_NOT_EXPORTED'
   })
-  check('shell entry requires the optional peers (core/shell split is real)', () => {
-    let stderr = ''
+  check('the retired shell subpath is gone', () => {
+    // Slice 4a moved `llm-wiring-plugin` into the dsh adapter. Assert the
+    // subpath is actually retired rather than merely unused: a stale `exports`
+    // entry pointing at a file the build no longer emits would otherwise sit
+    // there until some host tried to mount it.
+    assert(!('./llm-wiring-plugin' in PKG.exports),
+      'package.json still declares the "./llm-wiring-plugin" subpath')
+    const stale = entries.filter(e => e.includes('llm-wiring-plugin'))
+    assert(stale.length === 0, `tarball still ships: ${stale.join(', ')}`)
+    let code = ''
     try {
       execFileSync(process.execPath, ['--input-type=module', '-e',
         `await import('${PKG.name}/llm-wiring-plugin')`], { cwd: scratch, stdio: 'pipe' })
-      throw new Error('shell entry loaded with no peers installed — the host framework must have been bundled into the shipped artifact')
-    } catch (err) {
-      if (!err.stderr) throw err
-      stderr = `${err.stderr}`
-    }
-    assert(/ERR_MODULE_NOT_FOUND|Cannot find package/.test(stderr),
-      `expected a missing-peer failure, got:\n${stderr.slice(0, 400)}`)
-    const shellBare = [...importsOf(shipped.get('lib/llm-wiring-plugin.js'))].filter(isBare)
-    return `fails without peers, as it must; shell deps: ${shellBare.sort().join(', ')}`
+    } catch (err) { code = `${err.stderr ?? ''}` }
+    assert(/ERR_PACKAGE_PATH_NOT_EXPORTED/.test(code),
+      `expected ERR_PACKAGE_PATH_NOT_EXPORTED, got:\n${code.slice(0, 400)}`)
+    return `exports is down to ${Object.keys(PKG.exports).join(' + ')}`
   })
-  check('the shell is the ONLY shipped entry naming a host framework', () => {
+  check('NO shipped file names a host framework (no exemptions left)', () => {
     const offenders = []
     for (const [file, source] of shipped) {
-      if (file.startsWith('lib/llm-wiring-plugin')) continue
       const bad = [...importsOf(source)].filter(s => HOST_FRAMEWORKS.includes(bareRoot(s)))
       if (bad.length) offenders.push(`${file} → ${bad.join(', ')}`)
     }
     assert(offenders.length === 0, offenders.join('\n'))
-    return 'allow-list of shipped shells: lib/llm-wiring-plugin.{js,d.ts}'
+    return `${shipped.size} shipped files, zero host-framework imports`
+  })
+  check('peerDependencies is empty — the substrate needs no host', () => {
+    const peers = Object.keys(PKG.peerDependencies ?? {})
+    assert(peers.length === 0,
+      `the substrate declares peers it should not need: ${peers.join(', ')}. ` +
+      'schemastery and dsh-llm existed only for the shell that moved to the adapter in slice 4a; ' +
+      'cordis was type-only. If one is genuinely needed again, that is a host coupling — say why.')
+    return 'zero peers; runtime deps are ' + Object.keys(PKG.dependencies ?? {}).join(' + ')
   })
 } finally {
   rmSync(work, { recursive: true, force: true })

@@ -4,7 +4,7 @@
  * BFS join-path discovery, getDerived for lineage traversal.
  * CL-1 Phase 2: alias index for SKOS pref_label/alt_labels resolution.
  *
- * @module @deepseek-ai/dsh-semantic-layer/src/relation-graph
+ * @module relation-graph (internal; only `"."` is importable — see ADR-0002)
  */
 import type { RelationDef } from './registry.ts'
 

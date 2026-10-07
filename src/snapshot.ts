@@ -16,7 +16,7 @@
  * snapshot, the cached data arrays are shared (no re-scan). The module-level
  * cache is keyed by `(semanticRoot, version)`.
  *
- * @module @deepseek-ai/dsh-semantic-layer/src/snapshot
+ * @module snapshot (internal; only `"."` is importable — see ADR-0002)
  */
 import {
   loadEvents,

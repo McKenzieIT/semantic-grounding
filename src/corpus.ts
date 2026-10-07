@@ -12,7 +12,7 @@
  * repetition over this shape, so a richer `description` raises recall without
  * touching `FIELD_WEIGHTS`.
  *
- * @module @deepseek-ai/dsh-semantic-layer/src/corpus
+ * @module corpus (internal; only `"."` is importable — see ADR-0002)
  */
 
 /** Event projected to the fields the retrieval corpus indexes — a subset of

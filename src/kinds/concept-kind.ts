@@ -3,7 +3,7 @@
  * CL-2: concepts are first-class graph nodes representing semantic domains.
  * Edges are derived from asset.domains (not declared by the concept itself).
  *
- * @module @deepseek-ai/dsh-semantic-layer/src/kinds/concept-kind
+ * @module kinds/concept-kind (internal; only `"."` is importable — see ADR-0002)
  */
 import { ConceptDefinitionSchema, type ConceptDefinition } from '../types.ts'
 import type { DataSourceKindPlugin, RelationDef, CorpusItem, GraphNodeProjection } from '../registry.ts'

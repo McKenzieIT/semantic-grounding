@@ -44,14 +44,20 @@ const SRC = join(ROOT, 'src')
 /**
  * Files permitted to name a host framework, with the reason each is exempt.
  * Paths are `/`-separated and relative to `src/`.
+ *
+ * **It is empty, which is the end state this gate was written to aim at.**
+ * The sole entry was `llm-wiring-plugin.ts` — a cordis plugin, and the last
+ * host-shaped file in `src/`. Slice 4a moved it into the dsh adapter, where a
+ * cordis plugin belongs. Consequences worth knowing before you consider adding
+ * an entry back: the substrate's `exports` dropped to `"."` + `"./package.json"`,
+ * and `peerDependencies` is now empty — `schemastery` and `dsh-llm` were only
+ * ever imported by that one file.
+ *
+ * Adding an entry is a deliberate decision to accept host coupling in `src/`,
+ * so it needs a reason written next to it. Prefer moving the coupling into the
+ * host adapter instead; that is what emptying this list meant.
  */
-const SHELL_ALLOWLIST = new Map([
-  ['llm-wiring-plugin.ts',
-    'The cordis plugin that adapts ctx.llm into the core\'s TextLlm setter and ' +
-    'declares the ctx.schema / ctx.llm Context augmentations. This IS the host ' +
-    'shell; it ships as its own build entry and is the first candidate to move ' +
-    'into the dsh adapter package (slice 4).'],
-])
+const SHELL_ALLOWLIST = new Map()
 
 /** Host symbols that must not appear in the substrate core. */
 const FORBIDDEN = [

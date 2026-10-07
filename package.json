@@ -1,5 +1,5 @@
 {
-  "name": "@deepseek-ai/dsh-semantic-layer",
+  "name": "@semantic-grounding/substrate",
   "version": "0.1.6-alpha.2",
   "description": "Semantic layer management for NL2SQL data agents: typed definition kinds, alias and relation graph, retrieval projections for grounding natural language, provenance-tracked enrichment, and a two-tier audited write path for agents that maintain the layer themselves. Host-neutral by construction: embeds as a plain class, no plugin framework required.",
   "publishConfig": {
@@ -16,10 +16,6 @@
     ".": {
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
-    },
-    "./llm-wiring-plugin": {
-      "types": "./lib/llm-wiring-plugin.d.ts",
-      "default": "./lib/llm-wiring-plugin.js"
     },
     "./package.json": "./package.json"
   },
@@ -53,21 +49,5 @@
   },
   "pnpm": {
     "autoInstallPeers": false
-  },
-  "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-llm": "^0.1.6-alpha.2",
-    "@deepseek-ai/schemastery": "^3.18.2"
-  },
-  "peerDependenciesMeta": {
-    "@deepseek-ai/cordis": {
-      "optional": true
-    },
-    "@deepseek-ai/dsh-llm": {
-      "optional": true
-    },
-    "@deepseek-ai/schemastery": {
-      "optional": true
-    }
   }
 }

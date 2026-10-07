@@ -6,7 +6,7 @@
  * paths, NEVER model_validates at build. Wires ADR-0011 cache invalidation:
  * a write sets `_dirty`; the next lookup rebuilds from disk.
  *
- * @module @deepseek-ai/dsh-semantic-layer/src/basic-index
+ * @module basic-index (internal; only `"."` is importable — see ADR-0002)
  */
 import { loadEvents, loadTables, loadDomains, registerInvalidationHook } from './io.ts'
 

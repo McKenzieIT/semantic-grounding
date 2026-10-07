@@ -8,7 +8,7 @@
  * G3 §6: Phase 1 = mechanical extraction (no LLM). Each entry → one derived
  * metric; a `derived_from` relation to the source table is auto-established.
  *
- * @module @deepseek-ai/dsh-semantic-layer/src/metrics
+ * @module metrics (internal; only `"."` is importable — see ADR-0002)
  */
 import {
   TableDefinitionSchema,

@@ -1,12 +1,16 @@
 /**
- * F1 integration test: verify that the enrichment-llm-wiring plugin correctly
- * wires ctx.llm into ctx.schema so both rounds of discoverRelations and
- * discoverEventRelations execute, and the on-write hook triggers enrichment.
+ * F1 integration test for the substrate's enrichment-LLM seam: a wired
+ * `TextLlm` makes both rounds of `discoverRelations` / `discoverEventRelations`
+ * execute, and the on-write hook triggers enrichment.
+ *
+ * This exercises `wireEnrichmentLlm` directly — the host-neutral seam on the
+ * root barrel. The cordis plugin that used to adapt `ctx.llm` into this seam
+ * (`src/llm-wiring-plugin.ts`) moved into the dsh adapter in slice 4a, and its
+ * own tests (the CL8 provider/model-resolution block) went with it; they are
+ * recorded verbatim in slice 4b § F.2. Nothing host-shaped is left here.
  */
-import { describe, test, expect, afterEach, vi } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
+import { test, expect } from 'vitest'
 import { SemanticGroundingCore, wireEnrichmentLlm, type TextLlm } from '../src/index.ts'
-import { apply } from '../src/llm-wiring-plugin.ts'
 import { tableKindPlugin } from '../src/kinds/table-kind.ts'
 import { TableDefinitionSchema } from '../src/types.ts'
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync } from 'node:fs'
@@ -190,80 +194,4 @@ test('F1 — alternative FK produces multiple independent join edges', () => {
   expect(rels[0]!.on).toBe('act_server_id_fst = server_id')
   expect(rels[1]!.on).toBe('act_server_id_lst = server_id')
   expect(rels[2]!.on).toBe('pay_server_id_fst = server_id')
-})
-
-// ── CL8: provider/model resolution (no silent vendor fallback) ──────────
-
-describe('CL8 — enrichment-llm-wiring provider/model resolution', () => {
-  const savedProvider = process.env.ENRICHMENT_LLM_PROVIDER
-  const savedModel = process.env.ENRICHMENT_LLM_MODEL
-
-  afterEach(() => {
-    delete process.env.ENRICHMENT_LLM_PROVIDER
-    delete process.env.ENRICHMENT_LLM_MODEL
-    if (savedProvider !== undefined) process.env.ENRICHMENT_LLM_PROVIDER = savedProvider
-    if (savedModel !== undefined) process.env.ENRICHMENT_LLM_MODEL = savedModel
-  })
-
-  /** Minimal ctx mock capturing apply()'s schema.setLlmCall + logger.info/warn. */
-  function mockApplyCtx(): { ctx: Context; logged: string[]; warned: string[]; setLlmCall: ReturnType<typeof vi.fn> } {
-    const logged: string[] = []
-    const warned: string[] = []
-    const setLlmCall = vi.fn()
-    const ctx = {
-      schema: { setLlmCall },
-      logger: {
-        info: (m: string) => { logged.push(m) },
-        warn: (m: string) => { warned.push(m) },
-      },
-    } as unknown as Context
-    return { ctx, logged, warned, setLlmCall }
-  }
-
-  test('no config + no env → apply warns + skips wire (CB-1a α graceful degrade)', () => {
-    const { ctx, warned, setLlmCall } = mockApplyCtx()
-    expect(() => { apply(ctx, {}) }).not.toThrow()
-    expect(setLlmCall).not.toHaveBeenCalled()
-    expect(warned).toHaveLength(1)
-    expect(warned[0]).toContain('enrichment-llm-wiring: no provider/model configured')
-    expect(warned[0]).toContain('deterministic-only')
-  })
-
-  test('config.provider set but model unset → warns + skips wire (!model branch)', () => {
-    const { ctx, warned, setLlmCall } = mockApplyCtx()
-    expect(() => { apply(ctx, { provider: 'x' }) }).not.toThrow()
-    expect(setLlmCall).not.toHaveBeenCalled()
-    expect(warned).toHaveLength(1)
-    expect(warned[0]).toContain('enrichment-llm-wiring: no provider/model configured')
-    expect(warned[0]).toContain('deterministic-only')
-  })
-
-  test('config.model set but provider unset → warns + skips wire (!provider branch)', () => {
-    const { ctx, warned, setLlmCall } = mockApplyCtx()
-    expect(() => { apply(ctx, { model: 'm' }) }).not.toThrow()
-    expect(setLlmCall).not.toHaveBeenCalled()
-    expect(warned).toHaveLength(1)
-    expect(warned[0]).toContain('enrichment-llm-wiring: no provider/model configured')
-    expect(warned[0]).toContain('deterministic-only')
-  })
-
-  test('config.provider/model override env (no silent vendor fallback)', () => {
-    process.env.ENRICHMENT_LLM_PROVIDER = 'envprov'
-    process.env.ENRICHMENT_LLM_MODEL = 'envmodel'
-    const { ctx, logged, setLlmCall } = mockApplyCtx()
-    apply(ctx, { provider: 'cfgprov', model: 'cfgmodel' })
-    expect(setLlmCall).toHaveBeenCalledTimes(1)
-    expect(logged[0]).toContain('cfgprov/cfgmodel')
-    expect(logged[0]).not.toContain('aga')
-    expect(logged[0]).not.toContain('qwen3.7-max')
-  })
-
-  test('env vars used when config empty', () => {
-    process.env.ENRICHMENT_LLM_PROVIDER = 'envprov'
-    process.env.ENRICHMENT_LLM_MODEL = 'envmodel'
-    const { ctx, logged, setLlmCall } = mockApplyCtx()
-    apply(ctx, {})
-    expect(setLlmCall).toHaveBeenCalledTimes(1)
-    expect(logged[0]).toContain('envprov/envmodel')
-  })
 })

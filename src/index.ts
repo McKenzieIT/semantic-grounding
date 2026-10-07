@@ -1,49 +1,58 @@
 /**
- * P6b semantic-layer — package entry. A Cordis `Service` shell (mounts via the
- * bundle patch as a capability-plugin row; declares the `ctx.schema` seam) +
- * the substrate exports consumers (P13b swap, sync-write, BasicIndex) use.
+ * The substrate's public entry — the one importable path (`"."`).
  *
- * P6b grilling (5 decisions, all = A):
- *  - Q1 package form: `packages/data/semantic-layer/` single package
- *    (@deepseek-ai/dsh-semantic-layer), group=data (mirrors audit/phase-gate/
- *    nl2sql-engine). load_* model-facing tools are DEFERRED separate tool
- *    packages (mirror tool-search-data-sources; preset already names them
- *    dsh-tool-load-table-definition / dsh-tool-load-event-definition).
- *  - Q2 seam scope: `ctx.schema` covers BOTH live-engine (discover/describe/sample)
- *    AND substrate definitions (loadEventDefinition/loadTableDefinition). P13b
- *    CriticGuardData swaps to `ctx.schema.load_*` (params_fields/partitions).
- *  - Q3 live-engine implementation: DEFERRED — P6b ships the Service Definition +
- *    substrate + a stand-in provider for sync demo/tests; the real query
- *    provider (query-maxcompute sidecar adding schema tools, or an independent
- *    schema-maxcompute provider) is a follow-up. discover/describe/sample throw
- *    "no provider" until mounted; the P13b swap only needs substrate definitions
- *    (no live engine), so it is unblocked.
- *  - Q4 Tier-2 audit: routes through `ctx.audit.recordTier2Write` (P8b real
- *    sqlite audit), NOT the prototype's flat JSON log (intranet-security-first
- *    unified audit trail). The substrate `Tier2Recorder` interface is satisfied
- *    by `ctx.audit`; Tier-2 writes fail-loud if audit is not mounted (D5
- *    "不可关").
- *  - grounded: zod (mirrors pydantic; schemastery has no .passthrough) + js-yaml
- *    substrate deps; reuse `@deepseek-ai/dsh-atomic-write` for atomic writes.
+ * `SemanticGroundingCore` is a **plain class**, not a plugin. It imports no host
+ * framework and takes every collaborator through a setter:
  *
- * G3 (AI-Native Enrichment, resolved 2026-08-22) implementation:
- *  - `discoverRelations(opts)` Service method: delegates to the substrate
- *    `enrichAllDwsTables` (two-round DWS→DIM discovery; `llmCall` injected via
- *    `setLlmCall`, optional — absent => deterministic round only).
- *  - on-write hook: after `syncWrite`/`updateTableMeta` write a DWS, re-run
- *    discovery + persist `dimension_refs` (best-effort, unaudited — auto-derived;
- *    gated by `autoEnrich`, default true). Substrate `writeTable` is used to
- *    persist, so the hook does NOT re-enter the Service write path (no recursion).
+ *     const core = new SemanticGroundingCore({ semanticRoot, scopeId })
+ *     core.setTier2Recorder(recorder)   // REQUIRED before any auditable write (D5)
+ *     core.setScopeRegistry(scopes)     // optional
+ *     core.setSchemaProvider(provider)  // optional
+ *     core.setLlmCall(fn)               // optional
+ *     core.dispose()
  *
- * @module @deepseek-ai/dsh-semantic-layer
+ * A host wraps it; it does not mount into a host. The dsh adapter is what
+ * exposes it as a cordis `Service` under the `ctx.schema` seam and declares the
+ * `Context` augmentation — none of that lives here. See GLOSSARY.md
+ * § core / shell / adapter, and `scripts/check-core-purity.mjs` (the negation
+ * test, now running with an empty shell allow-list).
+ *
+ * ## Enrichment (G3, resolved 2026-08-22)
+ *
+ *  - `discoverRelations(opts)` delegates to `enrichAllDwsTables` (two-round
+ *    DWS→DIM discovery). `llmCall` arrives via `setLlmCall` and is optional —
+ *    absent means the deterministic round only, never a failure.
+ *  - On-write hook: after `syncWrite`/`updateTableMeta` writes a DWS, discovery
+ *    re-runs and persists `dimension_refs` (best-effort, unaudited because
+ *    auto-derived; gated by `autoEnrich`, default true). It persists through the
+ *    module-level `writeTable`, so the hook does **not** re-enter the class's
+ *    write path — that is what keeps it from recursing.
+ *
+ * ## Historical context (no longer describes this file)
+ *
+ * This started life as `packages/data/semantic-layer/` inside
+ * `deepseek-harness-da`, where it *was* a cordis `Service` shell. Two of that
+ * era's decisions are worth keeping because they still explain the shape:
+ *
+ *  - **Live-engine reads are deferred.** `discover`/`describe`/`sample` throw
+ *    "no provider" until a `SchemaProvider` is set; `StandInSchemaProvider`
+ *    covers demo/tests. Definition reads never needed a live engine, which is
+ *    why they were unblocked independently.
+ *  - **Tier-2 audit is non-disableable (D5).** Originally the recorder was
+ *    `ctx.audit`, found via the host; slice 2 ② made it a setter. The guarantee
+ *    is unchanged — an auditable mutation with no recorder **throws** — and
+ *    ADR-0001 is explicit that dropping the check instead would preserve the
+ *    behaviour while losing the guarantee.
+ *  - **zod, not schemastery**, for the domain model (schemastery has no
+ *    `.passthrough`). schemastery only ever typed the cordis mount-time
+ *    `static Config`, and left with the shell in slice 4a.
+ *
+ * @module . (the substrate's only importable path — see ADR-0002)
  */
 // No host-framework import. Slice 2 ③ removed `{ Context, Service }` from
 // '@deepseek-ai/cordis' and the `z` from '@deepseek-ai/schemastery' that only
 // existed to type the cordis mount-time `static Config`. Both now live in the
 // dsh adapter, which wraps this core as a cordis Service.
-// Type-only: makes `ctx.get('audit')` resolve to the Audit augmentation. The
-// seam stays optional at runtime (Tier-2 writes fail-loud without it).
-import type {} from '@deepseek-ai/dsh-audit'
 import {
   syncWriteDefinitions as syncWriteDefinitionsFromLayer,
   updateTableMeta as updateTableMetaFromLayer,
@@ -303,8 +312,8 @@ export interface SemanticLayerConfig {
  * tunables" + "defaulting is an explicit `resolve(request): Spec` step, never
  * a hidden `?? default` inside run()"). Use sites read resolved fields — no
  * inline `?? default` tunables scattered across the implementation. Mirrors
- * the shell request→spec seam (docs/subsystems/shell.md) and the local
- * `resolveEnrichmentLlmConfig` pattern in llm-wiring-plugin.ts. */
+ * the `resolveEnrichmentLlmConfig` pattern that moved out with the shell in
+ * slice 4a (now in the dsh adapter). */
 export interface ResolvedSemanticLayerConfig {
   /** Semantic-layer scope root (the dir with config.yaml/events/tables); '' when unset. */
   readonly semanticRoot: string
@@ -316,17 +325,16 @@ export interface ResolvedSemanticLayerConfig {
   readonly autoEnrich: boolean
 }
 
-// The `ctx.schema` Context augmentation moved to src/llm-wiring-plugin.ts
-// (slice 2 ③) — that file is the host-facing shell and the only remaining
-// consumer of `ctx`. Declaring the seam from core would re-couple core to the
-// host it no longer imports.
+// The `ctx.schema` Context augmentation lives in the dsh adapter. Slice 2 ③
+// moved it out of core and into `src/llm-wiring-plugin.ts`; slice 4a then moved
+// that shell out of this package entirely. Declaring the seam from here would
+// re-couple core to the host it no longer imports — which is exactly what
+// `scripts/check-core-purity.mjs` now forbids with an empty allow-list.
 
 /** CONVENTIONS.md "explicit resolve step": apply cfg defaults ONCE into a
  * typed resolved-config object (required fields), so run()-path use sites
  * carry no inline `?? default` tunables. This is the single defaulting point;
- * every other read uses `this.resolved.<field>` directly. Mirrors the
- * `resolveEnrichmentLlmConfig` pattern in llm-wiring-plugin.ts and the shell
- * request→spec seam (docs/subsystems/shell.md). */
+ * every other read uses `this.resolved.<field>` directly. */
 function resolveSemanticLayerConfig(config: SemanticLayerConfig): ResolvedSemanticLayerConfig {
   return {
     semanticRoot: config.semanticRoot ?? '',

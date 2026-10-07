@@ -10,9 +10,13 @@ import { defineConfig } from 'vitest/config'
  * copy with the published packages, so typecheck and runtime share one module
  * identity without `paths`/`resolve.alias` plumbing.
  *
- * Only the host-facing shell (`src/llm-wiring-plugin.ts`) and the tests that
- * exercise it still touch cordis; the substrate core is host-symbol-free (see
- * the `pretest` core-purity gate in package.json).
+ * Nothing under `src/` touches cordis any more — slice 4a moved the last
+ * host-facing shell (`src/llm-wiring-plugin.ts`) into the dsh adapter, so the
+ * `pretest` core-purity gate runs with an empty allow-list. cordis survives
+ * here as a **devDependency only**, for the handful of tests that mount the
+ * core under a real host fiber (`service-wiring`, `per-scope-read`,
+ * `scope-delegation`, `registry`, and the `scope-registry` fixture) — proving
+ * the substrate *works* under a host is not the same as *depending* on one.
  */
 export default defineConfig({
   test: {

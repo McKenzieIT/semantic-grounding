@@ -19,7 +19,7 @@
  * adapter that wraps `ctx.llm` lives at the service/tool layer (B3/B4), so the
  * semantic-layer substrate stays zod + js-yaml only.
  *
- * @module @deepseek-ai/dsh-semantic-layer/src/enrichment
+ * @module enrichment (internal; only `"."` is importable — see ADR-0002)
  */
 import {
   TableDefinitionSchema,

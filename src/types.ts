@@ -16,7 +16,7 @@
  * type) so consumers (P13b swap) import the type for `params_fields` /
  * `partitions` access without colliding with the schema value.
  *
- * @module @deepseek-ai/dsh-semantic-layer/src/types
+ * @module types (internal; only `"."` is importable — see ADR-0002)
  */
 import { z } from 'zod'
 

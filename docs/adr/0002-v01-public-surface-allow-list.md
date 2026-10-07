@@ -62,11 +62,40 @@ registry（`npm view` → E404）、无 git tag、版本 `0.1.6-alpha.2`，所�
 | subpath | 依据 |
 |---|---|
 | `"."` | (a) dsh 14 个生产文件消费 19 个根符号。具名例：`packages/data/tool-update-table-config/src/index.ts:47`（`updateTableMeta`）、`packages/eval/eval-cli/src/context.ts:19`（核心类）、`packages/data/evidence-query/src/index.ts:22`（`loadTables`/`loadEvents`/`loadMetricDefinitions` + 三个 schema）、`packages/eval/retrieval-experiment/src/graph-snapshot.ts:1-15`（三个 kind plugin + metrics + `RelationGraph`） |
-| `"./llm-wiring-plugin"` | (a) `packages/bundle/data-agent/cordis.patch.yml:180` 的 cordis mount 行。⚠️ 该行目前指向 `/src/llm-wiring-plugin.ts`，slice 4 必须改指 `@deepseek-ai/dsh-semantic-layer/llm-wiring-plugin` |
+| ~~`"./llm-wiring-plugin"`~~ | ~~(a) `packages/bundle/data-agent/cordis.patch.yml:180` 的 cordis mount 行~~ **已于 slice 4a 退役，见下方修订。** |
 | `"./package.json"` | **无具名消费者**。保留理由是工具约定（resolver / bundler 会读它），且它不暴露任何代码 |
 
 `"./src/*"` 删除。它在 tarball 里指向不存在的路径，删除把一个静默的 module-not-found
 换成清晰的 `ERR_PACKAGE_PATH_NOT_EXPORTED`。
+
+### 修订（slice 4a，2026-10-08）：白名单降为 **2 条**
+
+[slice 4a](https://github.com/McKenzieIT/semantic-grounding/issues/9) 决定把
+`llm-wiring-plugin` 搬进 dsh adapter，连带三个后果，记在这里是因为上表是规范性的：
+
+1. **`"./llm-wiring-plugin"` 退役。** 它的全部依据是 (a) —— 那一条 cordis mount 行。
+   plugin 搬进 adapter 之后，`cordis.patch.yml:180` 改指 adapter 自己的 subpath，
+   底座这边不再有任何消费者，依据随之消失。白名单从 3 条变 **2 条**（`"."` +
+   `"./package.json"`）。
+   ⚠️ 顺带修正上表一处：该行当时写的是 `/src/llm-wiring-plugin.ts`，走的正是本 ADR
+   **已删除**的 `./src/*` 通配 —— 所以它是「改写之后才成立」的依据，不是现成依据。
+2. **`peerDependencies` 变空。** `schemastery` 和 `dsh-llm` 当时**只被这一个文件**真正
+   import（其余提及全是注释，已逐一验证），`cordis` 则是 type-only。三条 optional peer
+   全部删除；`cordis`/`schemastery` 作为 devDependency 留给那几个把 core 挂到真实
+   host fiber 上跑的测试。
+3. **`exports["."]` 完全未受影响。** 这一点专门验过，因为它本来是最大的风险：
+   `TextLlm` 和 `wireEnrichmentLlm` 住在 `src/index.ts`（宿主中立），**不在** shell 文件里。
+   删 shell 只带走 `name`/`inject`/`Config`/`apply` 这些 cordis 插件样板，它们只从
+   `"./llm-wiring-plugin"` 这条 subpath 导出，从不在 root barrel 上。barrel 的 96 个
+   运行时名字、148 个公共名字一个没动。
+
+**给 name 级裁剪票的一条修正**（[slice 5](https://github.com/McKenzieIT/semantic-grounding/issues/7)）：
+该票把 `TextLlm` + `wireEnrichmentLlm` 列为可砍候选，理由是「shell code, documented
+against `ctx.llm`/`ctx.schema`」。shell 搬进 adapter 之后，**adapter 成了它们具名的活
+消费者** —— 依据 (a) 成立，应当**保留**。
+
+本修订**不改**本 ADR 的规则本身（两级白名单、(a)/(b)/(c)、举证责任在「加」的一侧、
+约定耦合条款），只改 subpath 表的内容。
 
 ### 本次同时补上的 barrel 缺口
 
