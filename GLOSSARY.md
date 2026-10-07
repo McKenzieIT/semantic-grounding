@@ -287,6 +287,33 @@ formulation cannot be satisfied that way.
 Do not re-express this as a `node_modules` check. The core legitimately has a host
 framework on `node_modules` — as an optional peer dependency, for the shell.
 
+### tarball acceptance
+
+The packaging-level counterpart to the [negation test](#negation-test), enforced by
+`scripts/check-tarball-acceptance.mjs` (`npm run acceptance`). The negation test reads
+`src/`, which is **not shipped** (`files` is `lib/**`), so it says nothing about the
+artifact a host installs. This one packs the tarball, installs it into a scratch
+project with **no peers present**, and asserts over the resulting module graph that
+the substrate loads, reads, enforces [D5](#d5), and disposes with no host available.
+
+The two are complementary and neither subsumes the other: the negation test is a claim
+about *source* (core names no host concept), this is a claim about *delivery* (what we
+ship needs no host to run).
+
+It asserts over **parsed import specifiers**, not file text. The proof slices 2 and 3
+recorded — `grep -c cordis lib/index.js` = 0 — is weak in the same shape as slice 1's
+vendoring: `lib/index.js` is a 4 KB re-export barrel and the substrate lives in a
+rolldown chunk beside it, so a real `import` of a host framework *in the chunk* would
+have left that grep at 0. (The chunk does match `cordis` 4 times today — all four in
+surviving JSDoc, which is also why a substring grep is simultaneously too loose and
+too tight.) Do not reintroduce a text-grep formulation of this gate.
+
+The [core](#core)/[shell](#shell) split is asserted in both directions: the root entry
+must load with no peers installed, and `./llm-wiring-plugin` must **fail**. A shell
+entry that loaded without peers would mean the host framework got bundled into the
+shipped artifact; a root entry that stopped loading would mean the shell leaked into
+the core graph.
+
 ---
 
 *If a term you want to use is not here, add it. If a term here conflicts with an
