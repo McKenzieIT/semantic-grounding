@@ -77,7 +77,7 @@ import { DefinitionSnapshot, captureSnapshot } from './snapshot.ts'
 export * from './types.ts'
 // W11 C1: MVCC query snapshot — consistent point-in-time view during query execution.
 export { DefinitionSnapshot, captureSnapshot, clearSnapshotCache, getSnapshotCacheSize, SNAPSHOT_CACHE_MAX } from './snapshot.ts'
-export { RelationGraph, type NodeAliasData } from './relation-graph.ts'
+export { RelationGraph, type NodeAliasData, type RelationEdge } from './relation-graph.ts'
 export {
   dumpYaml,
   invalidateCaches,
@@ -110,6 +110,7 @@ export {
   type Tier2Opts,
   type WriteEventYamlResult,
   type UpdateTableMetaResult,
+  type UpdateEventMetaResult,
 } from './io.ts'
 export { BasicIndex, type EventIndexEntry, type TableIndexEntry } from './basic-index.ts'
 export { submit, load as loadPending, listing, discard, isValidId, type PendingSuggestion, type SubmitArgs } from './pending.ts'
@@ -155,6 +156,8 @@ export {
   inferAggregation,
   loadMetricDefinitions,
   metricGraphNode,
+  deriveMetricRelations,
+  projectMetricCorpusItem,
 } from './metrics.ts'
 // W27: data-source kind registry contract (kinds, relations, graph projection).
 export {
@@ -165,7 +168,18 @@ export {
   type CriticFields,
   type RelationDef,
   type GraphNodeProjection,
+  type DerivedNodeContributor,
+  type KindGrouping,
 } from './registry.ts'
+
+// The three built-in kind plugins. On the public surface because registering a
+// kind is the substrate's one extension point: a host composing its own
+// registry needs the built-ins to compose *with*, and `retrieval-experiment`
+// (dsh) builds a graph from exactly these three. Slice 3: these were reachable
+// only through the deleted `exports["./src/*"]` wildcard.
+export { tableKindPlugin } from './kinds/table-kind.ts'
+export { eventKindPlugin } from './kinds/event-kind.ts'
+export { conceptKindPlugin } from './kinds/concept-kind.ts'
 
 // ── SchemaProvider: live-engine schema source (P6b Q3 deferred) ───────────
 // The real provider (query-maxcompute sidecar adding list/describe/sample

@@ -85,6 +85,33 @@ Resolve #6 *through* this ticket, not before it.
   for a gate; "agents maintain the layer" argues against a human-shaped one. The
   resolution is probably an **automated** approve path, which is a design question of
   its own.
+
+  ⚠️ **This choice was posed over a two-tier model that does not match the code.**
+  Found while resolving map #1's slice 3: there is a **third** write path, the
+  *raw-edit surface* — `writeTable(semanticLayer, name, data, { skipValidation? })`
+  and `writeEventYaml(semanticLayer, name, content)` take **no recorder parameter**,
+  so they write corpus YAML with no audit record at all. Both are on the **public API
+  surface**, so an MCP server gets an unaudited write door for free. This is *not*
+  issue #6 (#6 is a *wired* recorder that raises); this is the absence of a recorder
+  parameter. Internally it is deliberate for auto-derived facts (`enrichAll*` persists
+  `dimension_refs` via `writeTable`, documented "best-effort, unaudited"); what is not
+  deliberate is its publicness. dsh uses the same name for it and is migrating off:
+  "routing through the substrate `updateEventMeta` (Tier-2 audited) **instead of the
+  raw-edit `writeEventYaml` surface**"
+  (`packages/extensions/tool-cordis/src/api-catalog.ts:2152`) — but `tool-revert-edit`
+  still calls raw `writeTable`/`writeEventYaml` deliberately
+  (`packages/data/tool-revert-edit/src/index.ts:191-203`), so it cannot simply be
+  deleted. GLOSSARY § write tier now records all three paths honestly.
+
+  **Two questions for this map, not map #1:** (1) should the raw-edit surface exist as
+  a concept, or should auto-derived writes record through a recorder too? (2) should it
+  be public? Note git-as-audit-backbone may dissolve both — under `git add` +
+  `git commit`, "unaudited write" stops being expressible.
+
+  Also corrected: GLOSSARY used to name `writeEventYaml` as the Tier-1 approve path,
+  which meant **the documented approve path bypassed D5**. Fixed to `updateEventMeta` /
+  `updateTableMeta` + `discard`. If this map builds an automated approve path, it must
+  route through the audited pair.
 - **Scope/tenant model.** One core per scope, one per request, or a pool? Interacts
   with the `_invalidationHooks` global-broadcast hazard in map #1's Not-yet-specified
   (the one real multi-instance problem; `_corpusVersion` and `_snapshotCache` were
@@ -97,6 +124,19 @@ Resolve #6 *through* this ticket, not before it.
   investigated and is **not** a real risk — `LoggerService` registers no exporter by
   default, so `ctx.logger.warn` writes 0 bytes to stdout. Recorded so nobody
   re-discovers it as a blocker.
-- **Public API surface.** Depends on map #1's slice 3, which now has a note that the
-  export rule must widen to "live dsh consumer **or** confirmed MCP need", with
-  `pending.ts` / Tier-2 writes / `snapshot.ts` contested in MCP's favour.
+- **Public API surface.** ✅ **Settled by map #1's slice 3** — see
+  `docs/adr/0002-v01-public-surface-allow-list.md`. The contested items were a
+  non-issue: `pending.ts` (Tier-1), Tier-2 writes and `snapshot.ts` were **already**
+  on the root barrel, so nothing had to be added for MCP and nothing was withheld.
+  The export rule's justification set is now three-source — live host consumer, or
+  confirmed host need (MCP counts), or required to implement a documented extension
+  point — with host consumption treated as *evidence* of domain need rather than its
+  definition. No cross-map dependency remains: this map does not wait on map #1's
+  surface work.
+
+  One thing still lands here: **name-level curation of the root barrel** is its own
+  ticket on map #1, blocked by slice 4 (dsh must resolve through `exports["."]` before
+  a cut can be falsified). Convention-coupled names (`enrichAllDwsTables`,
+  `DimensionKeyPair{dws_column,dim_column}`, the `maxcompute`/DWS-DIM defaults) are
+  slated for exclusion there. If this map starts consuming such a name, say so on that
+  ticket — it would promote the name under rule (b).

@@ -16,8 +16,20 @@ language users use to refer to them — without executing queries, rendering UI,
 discovering data. It is *grounding*, in the linguistic sense: it anchors an agent's
 natural-language utterances to typed, auditable domain objects.
 
+Grounding is the **read** half. The project is equally a **semantic layer management**
+product: the agents that consume the layer are also the ones that maintain it, writing
+back the definitions, relations and aliases they discover through the two-tier audited
+[write path](#write-tier). "Management" is why [provenance](#provenance), the
+[D5 invariant](#d5-invariant) and the [pending queue](#pending-queue) are core domain
+concepts rather than operational detail — a layer that agents edit needs to answer
+*who changed this, when, and on what evidence*.
+
 It is **not** a metric engine (metric execution has been intentionally removed upstream).
 It is **not** a data discovery portal.
+
+It is **not** a `deepseek-harness-da` component. dsh is the first host; the MCP
+management surface is the confirmed second. Host-neutrality is proven by the
+[negation test](#negation-test), not by dsh's needs.
 
 Internally it splits into [core](#core) (the domain; names no host) and
 [shell](#shell) (the host-shaped edge). "Host-neutral" is a claim about core, proven
@@ -143,15 +155,35 @@ collaborators, so one host process can hold several cores over different corpora
 
 ### write tier
 
-Which of the two write paths a mutation takes. The distinction is a *security*
-boundary, not an implementation detail, and the two tiers have opposite defaults:
+Which write path a mutation takes. The distinction is a *security* boundary, not an
+implementation detail. Two tiers are **designed**; a third path exists in the code and
+is named here because omitting it made this table read as a guarantee it does not give:
 
-| | **Tier-1** | **Tier-2** |
-|---|---|---|
-| What an agent may do | **suggest** only | write source-of-truth directly |
-| Where it lands | the [pending queue](#pending-queue) in `var/` (gitignored runtime data) | the corpus YAML under the semantic root |
-| Audit | not an auditable mutation; no recorder needed | **required** — [D5](#d5-invariant) applies |
-| Disableable | yes (`disable_admin` can disable the whole layer) | **no** |
+| | **Tier-1** | **Tier-2** | **raw-edit surface** |
+|---|---|---|---|
+| What an agent may do | **suggest** only | write source-of-truth directly | write source-of-truth directly |
+| Where it lands | the [pending queue](#pending-queue) in `var/` (gitignored runtime data) | the corpus YAML under the semantic root | the corpus YAML under the semantic root |
+| Audit | not an auditable mutation; no recorder needed | **required** — [D5](#d5-invariant) applies | **none — takes no recorder parameter** |
+| Disableable | yes (`disable_admin` can disable the whole layer) | **no** | n/a (never records) |
+| Functions | `submit` / `load` / `listing` / `discard` | `updateTableMeta` / `updateEventMeta` / `syncWriteDefinitions` | `writeTable` / `writeEventYaml` |
+
+**The raw-edit surface is not a third tier, it is a gap.** `writeTable(semanticLayer,
+name, data, opts: { skipValidation?: boolean })` and `writeEventYaml(semanticLayer,
+name, content)` take no recorder, so they write corpus YAML with no audit record —
+while this glossary says Tier-2 audit is non-disableable. Internally that is deliberate
+for *auto-derived* facts (`enrichAll*` persists `dimension_refs` through `writeTable`,
+documented as "best-effort, unaudited"). What is not deliberate is that both are on the
+**public API surface**, so any host gets an unaudited write door. dsh names it the same
+way and has been migrating off it: "routing through the substrate `updateEventMeta`
+(Tier-2 audited) **instead of the raw-edit `writeEventYaml` surface**"
+(`packages/extensions/tool-cordis/src/api-catalog.ts:2152`).
+
+This is **not** [issue #6](https://github.com/McKenzieIT/semantic-grounding/issues/6).
+#6 is a *wired* recorder that raises, leaving an unaudited file plus `written: 0`. This
+is the absence of a recorder parameter altogether. Whether the raw-edit surface should
+exist, and whether it should be public, is a design question recorded as fog on the MCP
+map (`docs/mcp-map-seed.md`) — git-as-audit-backbone may dissolve it, since under
+`git add` + `git commit` an unaudited write stops being expressible.
 
 The stance behind the split is recorded in `src/pending.ts`: *"polluting
 source-of-truth >> polluting instructions"*. A wrong definition in the corpus is
@@ -160,7 +192,10 @@ and silently — a bad join or alias yields a plausible SQL rather than an error
 
 **Tier-1 is not an independent write path.** It has no `approve` implementation: the
 queue is consumed by calling a Tier-2 write and then discarding the suggestion
-(`writeEventYaml` + `discard`). So a host that only exposes Tier-1 can accumulate
+(`updateEventMeta` + `discard` for events, `updateTableMeta` + `discard` for tables).
+Earlier revisions of this entry named `writeEventYaml` here; that was wrong — it is the
+unaudited [raw-edit surface](#write-tier), so the approve path as documented bypassed
+D5. A host that only exposes Tier-1 can accumulate
 suggestions but can never update the semantic layer. Any host that must close the
 loop needs Tier-2, and therefore needs a Tier-2 recorder.
 
