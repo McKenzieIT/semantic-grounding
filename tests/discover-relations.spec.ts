@@ -119,8 +119,8 @@ describe('ctx.schema on-write hook (B3, G3 auto-trigger)', () => {
   test('syncWrite of a DWS triggers the on-write hook -> dimension_refs written', async () => {
     dir = newLayer()
     const ctx = new Context()
-    ctx.provide('audit', noopRecorder as never)
     const schema = new SemanticLayerService(ctx, { semanticRoot: dir })
+    schema.setTier2Recorder(noopRecorder) // D5: setter-injected, no longer ctx.provide('audit')
     const meta: TableMeta = {
       table_name: 'dws_pay', comment: 'pay',
       partitions: [{ name: 'ds', type: 'string' }],
@@ -135,8 +135,8 @@ describe('ctx.schema on-write hook (B3, G3 auto-trigger)', () => {
   test('autoEnrich=false suppresses the on-write hook', async () => {
     dir = newLayer()
     const ctx = new Context()
-    ctx.provide('audit', noopRecorder as never)
     const schema = new SemanticLayerService(ctx, { semanticRoot: dir, autoEnrich: false })
+    schema.setTier2Recorder(noopRecorder) // D5: setter-injected, no longer ctx.provide('audit')
     const meta: TableMeta = { table_name: 'dws_pay', comment: 'pay', partitions: [], columns: [{ name: 'server_id', type: 'string', comment: '区服ID' }] }
     await schema.syncWrite([meta])
     expect(readRefs(dir, 'dws_pay')).toHaveLength(0) // hook suppressed

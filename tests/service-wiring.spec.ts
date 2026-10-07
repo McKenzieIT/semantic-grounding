@@ -131,28 +131,52 @@ describe('M1 virtual metric projection', () => {
   })
 })
 
-// ── Fiber-tracked registration (W27) ───────────────────────────────────
+// ── Owned-disposer registration (W27, re-expressed by slice 2 ②) ─────────
 // The constructor's cache-invalidation listener and its three built-in kind
-// registrations are the mechanism that keeps a disposed kind's nodes and edges
-// out of the cached graph. A context without the fiber lifecycle cannot carry
-// either, so construction must fail rather than produce a service whose graph
-// cache is never invalidated; these two tests pin that stance against a
-// reintroduced `typeof ctx.effect === 'function'` fallback.
-describe('W27 fiber-tracked registration', () => {
-  it('withdraws the built-in kinds when the owning fiber disposes', async () => {
-    const ctx = new Context()
-    let service: SemanticLayerService | undefined
-    const fiber = ctx.plugin((inner: Context) => {
-      service = new SemanticLayerService(inner, { semanticRoot: '' })
-    })
-    await fiber
-    expect(service?.getRegistry().allKinds().sort()).toEqual(['concept', 'event', 'table'])
-    await fiber.dispose()
-    expect(service?.getRegistry().allKinds()).toEqual([])
+// registrations are the mechanism that keeps a withdrawn kind's nodes and edges
+// out of the cached graph. W27 originally pinned that mechanism through the
+// *host*: both went through `ctx.effect`, so the guarantee read "a context
+// without the fiber lifecycle must fail construction rather than yield a
+// service whose graph cache never invalidates".
+//
+// Slice 2 ② moved the mechanism into the core: `registry.onChange` and
+// `registry.register` already mint their own disposers, so the core collects
+// them and releases them from `dispose()`. The guarantee survives verbatim —
+// after disposal the registry holds no kinds — but it no longer depends on a
+// host supplying `effect`, so the invalidation listener is now *structurally*
+// always wired and there is no silent-degradation branch left to pin.
+//
+// The fiber-shaped expression of W27 (register inside `ctx.plugin`, assert on
+// `fiber.dispose()`) belongs to the dsh adapter's own suite — the adapter is
+// what owes "my fiber unloading calls core.dispose()". Recorded as a slice 4
+// pointer; it is not a core behaviour any more.
+describe('W27 owned-disposer registration', () => {
+  it('registers the three built-in kinds on construction', () => {
+    const svc = new SemanticLayerService(new Context(), { semanticRoot: '' })
+    expect(svc.getRegistry().allKinds().sort()).toEqual(['concept', 'event', 'table'])
   })
 
-  it('refuses a context without the fiber lifecycle instead of degrading silently', () => {
-    const partial = { reflect: { provide: () => {} }, get: () => undefined } as unknown as Context
-    expect(() => new SemanticLayerService(partial, { semanticRoot: '' })).toThrow()
+  it('withdraws the built-in kinds on dispose()', () => {
+    const svc = new SemanticLayerService(new Context(), { semanticRoot: '' })
+    expect(svc.getRegistry().allKinds().sort()).toEqual(['concept', 'event', 'table'])
+    svc.dispose()
+    expect(svc.getRegistry().allKinds()).toEqual([])
+  })
+
+  it('dispose() is idempotent', () => {
+    const svc = new SemanticLayerService(new Context(), { semanticRoot: '' })
+    svc.dispose()
+    expect(() => svc.dispose()).not.toThrow()
+    expect(svc.getRegistry().allKinds()).toEqual([])
+  })
+
+  it('wires the graph-cache invalidation listener without needing a host effect system', () => {
+    // The listener is what W27 existed to protect: a kind withdrawn after a
+    // graph has been cached must not leave its nodes/edges in that cache.
+    const svc = new SemanticLayerService(new Context(), { semanticRoot: '' })
+    const before = svc.getRelationGraph()
+    expect(svc.getRelationGraph()).toBe(before) // cached: same instance
+    svc.dispose()                               // withdrawing kinds fires onChange
+    expect(svc.getRelationGraph()).not.toBe(before) // cache was invalidated, not stale
   })
 })

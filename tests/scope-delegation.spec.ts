@@ -71,6 +71,7 @@ describe('SemanticLayerService ctx.scopes delegation (P1 wiring)', () => {
     const xRoot = makeScopeDir('10000334', 'x63.only_event'); tmps.push(xRoot)
     await scopes.register({ id: '10000334', semanticRoot: xRoot })
     const svc = new SemanticLayerService(ctx, { semanticRoot: '/static-fallback', scopeId: 'fallback' })
+    svc.setScopeRegistry(scopes) // P1: setter-injected, no longer ctx.get(\'scopes\')
     expect(svc.semanticRoot).toBe(xRoot)
     expect(svc.scopeId).toBe('10000334')
   })
@@ -89,6 +90,7 @@ describe('SemanticLayerService ctx.scopes delegation (P1 wiring)', () => {
     await scopes.register({ id: '10000251', semanticRoot: kRoot })
     await scopes.register({ id: '10000334', semanticRoot: xRoot })
     const svc = new SemanticLayerService(ctx, { semanticRoot: kRoot })
+    svc.setScopeRegistry(scopes) // P1: setter-injected, no longer ctx.get(\'scopes\')
 
     // K11 active → K11 corpus only
     const kCorpus = svc.loadRetrievalCorpusAll().map(c => c.id)
@@ -110,6 +112,7 @@ describe('SemanticLayerService ctx.scopes delegation (P1 wiring)', () => {
     await scopes.register({ id: '10000251', semanticRoot: kRoot })
     await scopes.register({ id: '10000334', semanticRoot: xRoot })
     const svc = new SemanticLayerService(ctx, { semanticRoot: kRoot })
+    svc.setScopeRegistry(scopes) // P1: setter-injected, no longer ctx.get(\'scopes\')
 
     const v0 = svc.corpusVersion()                  // K11 active
     // oxlint-disable-next-line typescript/no-deprecated -- active-scope API; no replacement until Phase 4 GA-GT1-cleanup
@@ -129,8 +132,9 @@ describe('SemanticLayerService ctx.scopes delegation (P1 wiring)', () => {
     // unterminated YAML flow sequence → yaml.load throws
     writeFileSync(registryPath, 'a: [1, 2\n', 'utf8')
     const ctx = new Context()
-    new ScopeRegistryService(ctx, { registryPath }) // mounts under the 'scopes' name
+    const scopes = new ScopeRegistryService(ctx, { registryPath })
     const svc = new SemanticLayerService(ctx, { semanticRoot: '/whatever' })
+    svc.setScopeRegistry(scopes) // P1: setter-injected, no longer ctx.get('scopes')
     expect(() => svc.corpusVersion()).toThrow()
   })
 })
