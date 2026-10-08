@@ -47,7 +47,8 @@
  *    `.passthrough`). schemastery only ever typed the cordis mount-time
  *    `static Config`, and left with the shell in slice 4a.
  *
- * @module . (the substrate's only importable path — see ADR-0002)
+ * @module . (the substrate's only importable path — see ADR-0002; the
+ *          name-level allow-list of what this barrel re-exports is ADR-0003)
  */
 // No host-framework import. Slice 2 ③ removed `{ Context, Service }` from
 // '@deepseek-ai/cordis' and the `z` from '@deepseek-ai/schemastery' that only
@@ -81,36 +82,42 @@ import { toMetricDefinition, splitMetricName } from './metrics.ts'
 import { loadEvents, loadTables, loadConcepts, loadRawDir, loadConceptDefinition as loadConceptDefinitionFromLayer } from './io.ts'
 import { EventDefinitionSchema, TableDefinitionSchema, ConceptDefinitionSchema } from './types.ts'
 import { DefinitionSnapshot, captureSnapshot } from './snapshot.ts'
+import { buildExcludeColumns } from './io.ts'
+import type { SchemaProvider } from './schema-provider.ts'
 
 // ── logic exports (substrate; consumers + tests use directly) ───────────
-export * from './types.ts'
+// v0.1 name-level allow-list (ADR-0003): every name below carries recorded
+// (a)/(b)/(c) evidence. The source modules still export their full internals —
+// in-repo tests import them directly — but only this list is public. The
+// 11 zod sub-model schemas + their inferred types stay in types.ts (internal):
+// no public signature takes one, and z.infer expands in the shipped .d.ts.
+export {
+  EventDefinitionSchema,
+  TableDefinitionSchema,
+  ConceptDefinitionSchema,
+  type TableDefinition,
+  type EventDefinition,
+  type ConceptDefinition,
+  type MetricDefinition,
+  type TableMeta,
+} from './types.ts'
 // W11 C1: MVCC query snapshot — consistent point-in-time view during query execution.
-export { DefinitionSnapshot, captureSnapshot, clearSnapshotCache, getSnapshotCacheSize, SNAPSHOT_CACHE_MAX } from './snapshot.ts'
+// clearSnapshotCache / getSnapshotCacheSize / SNAPSHOT_CACHE_MAX stay in
+// snapshot.ts (internal): own-JSDoc test utilities, no host consumer (ADR-0003).
+export { DefinitionSnapshot, captureSnapshot } from './snapshot.ts'
 export { RelationGraph, type NodeAliasData, type RelationEdge } from './relation-graph.ts'
 export {
   dumpYaml,
   invalidateCaches,
   resolveSemanticLayer,
   loadConfig,
-  loadDomains,
   loadEvents,
   loadTables,
-  loadEventDefinition,
-  loadTableDefinition,
   loadConcepts,
-  loadConceptDefinition,
-  loadRawDir,
-  loadRetrievalCorpus,
   writeTable,
   writeEventYaml,
   updateTableMeta,
   updateEventMeta,
-  inferRole,
-  generateTableYaml,
-  generateDimYaml,
-  mergeColumns,
-  mergeChangedYaml,
-  syncWriteDefinitions,
   WriteValidationError,
   type RawEvent,
   type RawTable,
@@ -121,53 +128,43 @@ export {
   type UpdateTableMetaResult,
   type UpdateEventMetaResult,
 } from './io.ts'
-export { BasicIndex, type EventIndexEntry, type TableIndexEntry } from './basic-index.ts'
+// Off the barrel per ADR-0003, still exported from io.ts for in-repo tests:
+// loadDomains (legacy domains.yaml, superseded by the concept kind),
+// loadEventDefinition/loadTableDefinition/loadConceptDefinition (the core
+// class exposes the same reads as methods), loadRawDir, loadRetrievalCorpus
+// (core.loadRetrievalCorpus is the public route), inferRole/generateTableYaml/
+// generateDimYaml/mergeColumns/mergeChangedYaml (convention-coupled or merge
+// internals), syncWriteDefinitions (P6b sync flow, no consumer yet).
+// basic-index (BasicIndex + EventIndexEntry/TableIndexEntry) is internal now:
+// corpus plumbing with no host consumer; the public read path is the core
+// class (ADR-0003).
 export { submit, load as loadPending, listing, discard, isValidId, type PendingSuggestion, type SubmitArgs } from './pending.ts'
 export {
-  buildRetrievalCorpus,
   type CorpusVariant,
   type EventCorpusItem,
-  type EventCorpusInput,
 } from './corpus.ts'
+// buildRetrievalCorpus + EventCorpusInput stay in corpus.ts (internal): the
+// public corpus route is core.loadRetrievalCorpus (ADR-0003).
 // G3: AI-Native enrichment substrate (B1/B2) + mechanical metrics extraction (B5).
 // CL-1 Phase 3: alt_labels enrichment (G3 同構).
-export {
-  discoverRelationsDeterministic,
-  mergeRefs,
-  buildLlmPrompt,
-  parseLlmRefs,
-  discoverRelationsFor,
-  buildDimInventory,
-  enrichAllDwsTables,
-  discoverEventRelationsDeterministic,
-  buildEventLlmPrompt,
-  discoverEventRelationsFor,
-  enrichAllEvents,
-  discoverAltLabelsDeterministic,
-  buildAltLabelsPrompt,
-  parseAltLabelsResponse,
-  mergeAltLabels,
-  discoverAltLabelsFor,
-  enrichAllTablesAltLabels,
-  enrichAllEventsAltLabels,
-  discoverAltLabels,
-  type AltLabelsTarget,
-  type DimInventoryEntry,
-  type LlmCall,
-} from './enrichment.ts'
+// The enrichment pipeline itself (enrichAll*, discover*Deterministic, the
+// build*/parse*/merge* prompt internals, AltLabelsTarget/DimInventoryEntry) is
+// convention-coupled (DWS→DIM typing, CJK label heuristics, k11-sized metric
+// keys) with no production host consumer — off the public barrel per
+// ADR-0002's convention clause. The public entry is the core class's
+// discoverRelations / discoverEventRelations / discoverAltLabels. LlmCall
+// stays: it types setLlmCall, one of the documented extension seams.
+export { type LlmCall } from './enrichment.ts'
 export {
   extractMetricsFromTable,
   extractMetricsFromEvent,
-  extractMetricsFromTables,
-  toMetricDefinition,
-  metricName,
-  splitMetricName,
-  inferAggregation,
-  loadMetricDefinitions,
-  metricGraphNode,
   deriveMetricRelations,
   projectMetricCorpusItem,
+  loadMetricDefinitions,
 } from './metrics.ts'
+// metricName/splitMetricName/inferAggregation/toMetricDefinition/
+// metricGraphNode/extractMetricsFromTables stay in metrics.ts (internal):
+// k11-fixture-sized naming + derivation internals (ADR-0003).
 // W27: data-source kind registry contract (kinds, relations, graph projection).
 export {
   DataSourceRegistry,
@@ -191,19 +188,11 @@ export { eventKindPlugin } from './kinds/event-kind.ts'
 export { conceptKindPlugin } from './kinds/concept-kind.ts'
 
 // ── SchemaProvider: live-engine schema source (P6b Q3 deferred) ───────────
-// The real provider (query-maxcompute sidecar adding list/describe/sample
-// tools, or an independent schema-maxcompute provider) is a follow-up. P6b
-// ships this interface + a stand-in for sync demo/tests. discover/describe/
-// sample on the Service throw "no provider" until one is mounted.
-/** Live-engine schema source: discover/describe/sample tables for sync-write (P6b Q3 deferred; production mounts a real provider). */
-export interface SchemaProvider {
-  /** List tables in a scope (optionally filtered by kind). Real impl: maxc list + per-table describe. */
-  discover(scopeId: string, kind?: string): Promise<readonly TableMeta[]>
-  /** Describe one table's columns/partitions/comment. */
-  describe(tableName: string): Promise<TableMeta | null>
-  /** Sample N rows as formatted text. */
-  sample(tableName: string, n?: number): Promise<string>
-}
+// Moved to ./schema-provider.ts in slice 5 so its test stand-in
+// (StandInSchemaProvider) can live beside it without being on the public
+// barrel (ADR-0003: test double, no host consumer). Re-exported here because
+// setSchemaProvider's signature needs it and it is a documented extension seam.
+export type { SchemaProvider } from './schema-provider.ts'
 
 // ── ScopeRegistry: optional per-scope registry (P1) ───────────────────
 // Structural — no static dep on @deepseek-ai/dsh-scope-registry, the same probe
@@ -250,44 +239,10 @@ export interface EnrichmentHealthEntry {
   readonly errors: readonly string[]
 }
 
-// ── CL-18 Phase 2: partition-column exclude set (calling-layer metadata) ──
-/**
- * CL-18 Phase 2: minimal fallback blocklist of partition column names used
- * when a target table has no `role: 'partition'` columns to drive a
- * data-driven exclude set. These three names are the standard MaxCompute
- * business-date partition spellings; hardcoding them keeps the substrate's
- * `discoverRelationsDeterministic` free of any specific metadata format while
- * still catching the common noise (a DIM keyed by `ds` matching every DWS).
- */
-const DEFAULT_PARTITION_BLOCKLIST: readonly string[] = ['ds', 'pt', 'dt']
-
-/**
- * CL-18 Phase 2: build the partition-column exclude set for a target table.
- *
- * Strategy (layered, per the ticket design):
- *  - **Data-driven (preferred)**: when the table has columns tagged
- *    `role: 'partition'`, those names form the exclude set. This is the
- *    high-precision path — it excludes exactly the partition columns the
- *    analyst declared for THIS table, including any custom partition names
- *    beyond `ds`/`pt`/`dt`.
- *  - **Fallback blocklist**: when the table has NO `role: 'partition'`
- *    columns (e.g. a sync-written table whose partition columns live in the
- *    separate `partitions` array rather than `columns`, or an unannotated
- *    dataset), fall back to the minimal `DEFAULT_PARTITION_BLOCKLIST`
- *    (`ds`/`pt`/`dt`). This still filters the common noise without depending
- *    on metadata annotations.
- *
- * The result is forwarded into `discoverRelationsFor` via
- * `enrichAllDwsTables`'s `excludeColumnsFn` so the deterministic PK match
- * skips partition columns (e.g. an `_arch` DIM snapshot keyed by `ds` no
- * longer matches every DWS carrying a `ds` column).
- * @param def - the target table definition.
- * @returns a set of column names to exclude from deterministic PK matching (never empty).
- */
-export function buildExcludeColumns(def: TableDefinition): Set<string> {
-  const partitionCols = def.columns.filter(c => c.role === 'partition').map(c => c.name)
-  return partitionCols.length > 0 ? new Set(partitionCols) : new Set(DEFAULT_PARTITION_BLOCKLIST)
-}
+// ── CL-18 Phase 2: partition-column exclude set ────────────────────────────
+// buildExcludeColumns moved to ./io.ts in slice 5 (convention-coupled
+// fallback list; off the public barrel per ADR-0003). Imported above for the
+// discoverRelations exclude-columns seam.
 
 // ── ctx.schema Service Definition (Q2: covers live-engine + substrate) ───
 /** Configuration for the `ctx.schema` Cordis Service (semantic-layer root + default scope id). */
@@ -314,7 +269,7 @@ export interface SemanticLayerConfig {
  * inline `?? default` tunables scattered across the implementation. Mirrors
  * the `resolveEnrichmentLlmConfig` pattern that moved out with the shell in
  * slice 4a (now in the dsh adapter). */
-export interface ResolvedSemanticLayerConfig {
+interface ResolvedSemanticLayerConfig {
   /** Semantic-layer scope root (the dir with config.yaml/events/tables); '' when unset. */
   readonly semanticRoot: string
   /** Default scope id for Tier-2 audit + schema discovery; '' when unset. */
@@ -1345,33 +1300,9 @@ export class SemanticGroundingCore {
   }
 }
 
-/**
- * Stand-in live-engine schema provider (P6b Q3 deferred). Mirrors the P6
- * prototype's `schema-stub.mjs` fake tables so the decoupled sync flow
- * (discover -> TableMeta[] -> generate/merge YAML -> write) is demoable +
- * testable without the engine. Production mounts a real provider (follow-up).
- */
-export class StandInSchemaProvider implements SchemaProvider {
-  private readonly tables: Readonly<Record<string, TableMeta>>
-
-  constructor(tables: Readonly<Record<string, TableMeta>>) {
-    this.tables = tables
-  }
-
-  discover(_scopeId: string, kind?: string): Promise<readonly TableMeta[]> {
-    const all = Object.values(this.tables)
-    const filtered = kind === undefined ? all : all.filter(t => (t.comment ?? '').includes(kind))
-    return Promise.resolve(filtered)
-  }
-
-  describe(tableName: string): Promise<TableMeta | null> {
-    return Promise.resolve(this.tables[tableName] ?? null)
-  }
-
-  sample(tableName: string, n = 5): Promise<string> {
-    return Promise.resolve(`(stand-in sample of ${tableName}, ${n} rows)`)
-  }
-}
+// StandInSchemaProvider moved to ./schema-provider.ts in slice 5 — off the
+// public barrel (test double, no host consumer; ADR-0003), still exported
+// from its module for in-repo tests.
 
 /**
  * A text-only LLM seam: `text(prompt) -> string`. Production `ctx.llm`

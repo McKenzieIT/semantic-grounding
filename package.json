@@ -1,6 +1,6 @@
 {
   "name": "@semantic-grounding/substrate",
-  "version": "0.1.6-alpha.2",
+  "version": "0.1.6-alpha.3",
   "description": "Semantic layer management for NL2SQL data agents: typed definition kinds, alias and relation graph, retrieval projections for grounding natural language, provenance-tracked enrichment, and a two-tier audited write path for agents that maintain the layer themselves. Host-neutral by construction: embeds as a plain class, no plugin framework required.",
   "publishConfig": {
     "access": "public"

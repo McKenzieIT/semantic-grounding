@@ -263,8 +263,46 @@ assert.equal(mod.SemanticLayerService, undefined, 'no SemanticLayerService back-
 assert.equal(mod.getCorpusVersion, undefined, 'getCorpusVersion stays off the barrel (ADR-0002 (a))')
 assert.equal(mod.registerInvalidationHook, undefined, 'registerInvalidationHook withheld (known multi-instance hazard)')
 
+// ADR-0003: the v0.1 name-level allow-list, pinned exactly. Adding a name to
+// src/index.ts without recorded (a)/(b)/(c) evidence turns this red; removing
+// one does too. Type-only names are pinned by the ADR's table, not here
+// (Object.keys cannot see them).
+const EXPECTED_RUNTIME_NAMES = [
+  'ConceptDefinitionSchema', 'DataSourceRegistry', 'DefinitionSnapshot', 'EventDefinitionSchema',
+  'RelationGraph', 'SemanticGroundingCore', 'TableDefinitionSchema', 'WriteValidationError',
+  'captureSnapshot', 'conceptKindPlugin', 'deriveMetricRelations', 'discard', 'dumpYaml',
+  'eventKindPlugin', 'extractMetricsFromEvent', 'extractMetricsFromTable', 'invalidateCaches',
+  'isValidId', 'listing', 'loadConcepts', 'loadConfig', 'loadEvents', 'loadMetricDefinitions',
+  'loadPending', 'loadTables', 'projectMetricCorpusItem', 'resolveSemanticLayer', 'submit',
+  'tableKindPlugin', 'updateEventMeta', 'updateTableMeta', 'wireEnrichmentLlm', 'writeEventYaml',
+  'writeTable',
+].sort()
 const names = Object.keys(mod).sort()
-assert.ok(names.length >= 90, 'barrel exports the curated surface, got ' + names.length)
+assert.deepEqual(names, [...EXPECTED_RUNTIME_NAMES, 'default'].sort(),
+  'barrel runtime surface must equal the ADR-0003 allow-list (34 names + default), got: ' + names.join(', '))
+// Headline names that must STAY off the barrel (ADR-0002/0003: convention-
+// coupled, test utilities, internals). getCorpusVersion / registerInvalidationHook
+// / SemanticLayerService are asserted separately above and not repeated here.
+for (const absent of [
+  'enrichAllDwsTables', 'discoverRelationsDeterministic', 'discoverEventRelationsDeterministic',
+  'buildDimInventory', 'buildLlmPrompt', 'buildEventLlmPrompt', 'buildAltLabelsPrompt',
+  'parseLlmRefs', 'parseAltLabelsResponse', 'mergeRefs', 'mergeAltLabels',
+  'discoverAltLabels', 'discoverRelationsFor', 'discoverEventRelationsFor', 'discoverAltLabelsFor',
+  'enrichAllEvents', 'enrichAllTablesAltLabels', 'enrichAllEventsAltLabels',
+  'DimensionRefSchema', 'CaliberVariantSchema', 'metricName', 'splitMetricName',
+  'inferAggregation', 'toMetricDefinition', 'metricGraphNode', 'extractMetricsFromTables',
+  'buildExcludeColumns', 'inferRole', 'generateTableYaml', 'generateDimYaml',
+  'ConfirmationSchema', 'CoverageDefSchema', 'SupersedesDefSchema', 'ParamFieldSchema',
+  'MetricDefSchema', 'MetricDefinitionSchema', 'DisambiguationSchema', 'TableTermDefaultsSchema',
+  'DimensionKeyPairSchema', 'PartitionDefSchema', 'ColumnMetaSchema', 'PartitionMetaSchema',
+  'ColumnDefSchema', 'TableMetaSchema', 'canonicalizeType',
+  'StandInSchemaProvider', 'clearSnapshotCache', 'getSnapshotCacheSize', 'SNAPSHOT_CACHE_MAX',
+  'BasicIndex', 'buildRetrievalCorpus', 'isPlainObject',
+  'loadDomains', 'loadRawDir', 'loadEventDefinition', 'loadTableDefinition', 'loadConceptDefinition',
+  'loadRetrievalCorpus', 'mergeColumns', 'mergeChangedYaml', 'syncWriteDefinitions',
+]) {
+  assert.equal(mod[absent], undefined, absent + ' must stay off the barrel (ADR-0003)')
+}
 
 // reads work with no host
 const tables = loadTables(${JSON.stringify(layer)})

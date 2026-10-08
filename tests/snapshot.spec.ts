@@ -8,7 +8,8 @@
  *  (d) Snapshot reuses cached data when version is unchanged (cheap).
  */
 import { test, expect, describe, afterEach } from 'vitest'
-import { SemanticGroundingCore, DefinitionSnapshot, captureSnapshot, clearSnapshotCache, getSnapshotCacheSize, SNAPSHOT_CACHE_MAX } from '../src/index.ts'
+import { SemanticGroundingCore, DefinitionSnapshot, captureSnapshot } from '../src/index.ts'
+import { clearSnapshotCache, getSnapshotCacheSize, SNAPSHOT_CACHE_MAX } from '../src/snapshot.ts'
 import { invalidateCaches } from '../src/io.ts'
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'

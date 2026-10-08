@@ -32,7 +32,8 @@
  */
 import { test, expect, describe, afterEach } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { SemanticGroundingCore, clearSnapshotCache } from '../src/index.ts'
+import { SemanticGroundingCore } from '../src/index.ts'
+import { clearSnapshotCache } from '../src/snapshot.ts'
 import ScopeRegistryService from './fixtures/scope-registry.ts'
 import { invalidateCaches } from '../src/io.ts'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'

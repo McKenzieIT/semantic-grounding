@@ -35,7 +35,7 @@ import {
 } from '../src/io.ts'
 import { BasicIndex } from '../src/basic-index.ts'
 import { submit, load as loadPending, listing, discard, isValidId } from '../src/pending.ts'
-import { StandInSchemaProvider } from '../src/index.ts'
+import { StandInSchemaProvider } from '../src/schema-provider.ts'
 import { makeCriticCtx } from '../src/vendor/nl2sql-types.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
