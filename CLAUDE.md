@@ -23,8 +23,14 @@ Issue 追踪在 GitHub（McKenzieIT/semantic-grounding），通过 `gh` CLI 操�
 
 ### Active map
 
-当前 wayfinder map：[#1 extract semantic grounding substrate](https://github.com/McKenzieIT/semantic-grounding/issues/1)。
-**Destination 已在 slice 4b 达成**（dsh 对 tarball 安装启动并过门禁，PR dsh#187），
-只剩 [#7 slice 5](https://github.com/McKenzieIT/semantic-grounding/issues/7)（barrel 名级裁剪）一张票，
-关掉它即关 map。MCP 管理面是已确认的第二 host，另起 map，种子在 `docs/mcp-map-seed.md`。
-发布 `@semantic-grounding/substrate` 是 dsh 下次发版的阻塞前置，记录在 map 的 Out of scope。
+**没有活跃 map**（2026-10-08）。map #1（extract semantic grounding substrate）已随
+[slice 5](https://github.com/McKenzieIT/semantic-grounding/issues/7) 关闭：Destination 在
+slice 4b 达成（dsh 对 tarball 安装启动并过门禁，PR dsh#187），slice 5 把 root barrel
+名级白名单落地（ADR-0003，148 → 67，acceptance gate 以精确名单断言钉死）。
+
+**下一程（用户方向，2026-10-08）：MCP 管理面**——按 `docs/mcp-map-seed.md` 起新 wayfinder
+map（charting 是独立会话）；dsh 深耕暂停。遗留两件、各有去处：dsh 升级 substrate
+alpha.3 的全部断点在 [#11](https://github.com/McKenzieIT/semantic-grounding/issues/11)
+（低优先，随 dsh 下次升级一并处理）；发布 `@semantic-grounding/substrate` 是 dsh 下次发版
+的阻塞前置（map #1 Out of scope 记录，届时作 fresh effort，alpha 发布不关 ADR-0003 的
+裁剪窗口）。
