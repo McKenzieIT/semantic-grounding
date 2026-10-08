@@ -97,6 +97,14 @@ against `ctx.llm`/`ctx.schema`」。shell 搬进 adapter 之后，**adapter 成�
 本修订**不改**本 ADR 的规则本身（两级白名单、(a)/(b)/(c)、举证责任在「加」的一侧、
 约定耦合条款），只改 subpath 表的内容。
 
+### 修订（slice 5，2026-10-08）：name 级白名单落地为 ADR-0003
+
+本 ADR 说过「name 级裁剪不在本 ADR 的执行范围内，是独立一票，且必须排在 slice 4 之后」
+——那一票已关闭：见 [ADR-0003](./0003-v01-root-barrel-name-allow-list.md)。规则零修改；
+barrel 从 148 名裁到 67 名（含三条适用口径的明确化：(a) 只认生产消费、签名闭包属于公共
+面、zod 子模型不公共），acceptance gate 从计数断言升级为精确名单断言。本 ADR 的 subpath
+表（2 条）不变。
+
 ### 本次同时补上的 barrel 缺口
 
 删掉通配符后，dsh 生产代码只有两簇符号会真的断，它们不在 barrel 里——已补入 `"."`：
