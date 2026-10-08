@@ -68,7 +68,9 @@ definition's canonical identity. Aliases feed the BM25 retrieval projection.
 A scoped collection of definitions and relations — the unit the substrate operates
 on at runtime. A corpus is what gets loaded, indexed, searched, and enriched. The
 k11 corpus (5.5 MB, 321 tables / 453 events / 10 concepts) is the reference fixture;
-production deployments assemble their own.
+production deployments assemble their own. Under the MCP management surface a corpus
+is its **own git repository** (corpus root = repo root): the [git recorder](#git-recorder)
+makes commits the audit record, so the repo boundary and the corpus boundary coincide.
 
 ### enrichment
 
@@ -165,31 +167,29 @@ Which write path a mutation takes. The distinction is a *security* boundary, not
 implementation detail. Two tiers are **designed**; a third path exists in the code and
 is named here because omitting it made this table read as a guarantee it does not give:
 
-| | **Tier-1** | **Tier-2** | **raw-edit surface** |
+| | **Tier-1** | **Tier-2** | **write primitive** (raw-edit) |
 |---|---|---|---|
 | What an agent may do | **suggest** only | write source-of-truth directly | write source-of-truth directly |
 | Where it lands | the [pending queue](#pending-queue) in `var/` (gitignored runtime data) | the corpus YAML under the semantic root | the corpus YAML under the semantic root |
-| Audit | not an auditable mutation; no recorder needed | **required** — [D5](#d5-invariant) applies | **none — takes no recorder parameter** |
-| Disableable | yes (`disable_admin` can disable the whole layer) | **no** | n/a (never records) |
+| Audit | not an auditable mutation; no recorder needed | **required** — [D5](#d5-invariant) applies | **optional** — takes an optional `Tier2Opts`; without one the write has no substrate-level audit (the host's concern) |
+| Disableable | yes (`disable_admin` can disable the whole layer) | **no** | n/a (records only when a recorder is passed) |
 | Functions | `submit` / `load` / `listing` / `discard` | `updateTableMeta` / `updateEventMeta` / `syncWriteDefinitions` | `writeTable` / `writeEventYaml` |
 
-**The raw-edit surface is not a third tier, it is a gap.** `writeTable(semanticLayer,
-name, data, opts: { skipValidation?: boolean })` and `writeEventYaml(semanticLayer,
-name, content)` take no recorder, so they write corpus YAML with no audit record —
-while this glossary says Tier-2 audit is non-disableable. Internally that is deliberate
-for *auto-derived* facts (`enrichAll*` persists `dimension_refs` through `writeTable`,
-documented as "best-effort, unaudited"). What is not deliberate is that both are on the
-**public API surface**, so any host gets an unaudited write door. dsh names it the same
-way and has been migrating off it: "routing through the substrate `updateEventMeta`
-(Tier-2 audited) **instead of the raw-edit `writeEventYaml` surface**"
-(`packages/extensions/tool-cordis/src/api-catalog.ts:2152`).
-
-This is **not** [issue #6](https://github.com/McKenzieIT/semantic-grounding/issues/6).
-#6 is a *wired* recorder that raises, leaving an unaudited file plus `written: 0`. This
-is the absence of a recorder parameter altogether. Whether the raw-edit surface should
-exist, and whether it should be public, is a design question recorded as fog on the MCP
-map (`docs/mcp-map-seed.md`) — git-as-audit-backbone may dissolve it, since under
-`git add` + `git commit` an unaudited write stops being expressible.
+**The raw-edit surface is the write primitive, not a gap.** `writeTable` and
+`writeEventYaml` are the low-level functions the Tier-2 paths themselves compose
+(`syncWriteDefinitions` writes through `writeTable`), so they cannot be deleted. Per
+[#13](https://github.com/McKenzieIT/semantic-grounding/issues/13) they accept an
+**optional** `Tier2Opts`: passed, the write takes the same atomic write-and-record path
+as Tier-2 (commit trailer `Derivation: deterministic`); omitted, behaviour is unchanged
+— an unaudited write whose audit is the host's responsibility. dsh relies on the
+omitted form: its recorder is deliberately fail-silent, and `tool-revert-edit` writes
+raw on purpose (a revert must not re-enrich; dsh's own audit store snapshots the
+pre-revert state). Hosts running the [git recorder](#git-recorder) pass a recorder on
+**every** write path they expose — under a git backbone an unaudited write is a dirty
+worktree, which the startup checks refuse or restore. The historical "gap" framing (a
+public, never-audited door) was retired by #13; publicness stays (live consumer +
+ADR-0002's extension-point basis). Landing tracked in
+[#18](https://github.com/McKenzieIT/semantic-grounding/issues/18).
 
 The stance behind the split is recorded in `src/pending.ts`: *"polluting
 source-of-truth >> polluting instructions"*. A wrong definition in the corpus is
@@ -223,9 +223,43 @@ which the substrate records auditable mutations. The recorder is setter-injected
 (`setTier2Recorder`) and is **per core instance**, so one host process serving several
 corpora cannot have one tenant's recorder answer for another's writes.
 
+The contract per
+[#13](https://github.com/McKenzieIT/semantic-grounding/issues/13): `recordTier2Write`
+is async — it returns `Promise<string>` — and **raising is the statement that the write
+did not happen**: the substrate restores the pre-write raw bytes and propagates the
+error. An optional `beginBatch()` slot lets a recorder coalesce many records into one
+commit (for `enrichAll*` batch runs; the git recorder implements it, landing with map
+#12's enrichment ticket).
+
+Recorders divide by failure semantics, and the division is a host choice the substrate
+cannot force: a **fail-loud** recorder (the [git recorder](#git-recorder), where commit
+failure throws by construction) makes D5 real end-to-end; a **fail-silent** recorder
+(dsh's `ctx.audit`, deliberately — a 留痕 failure must not break the business write)
+never raises, so D5's second half never triggers and the host owns that trade.
+
 There is deliberately no audit-off switch. A host that wants audit-off behaviour must
 pass an explicit no-op recorder satisfying the interface, which makes the downgrade a
 visible choice in code rather than a wiring accident.
+
+### git recorder
+
+The Tier-2 recorder implementation that uses the corpus repository's own git history as
+the audit backbone — lives in `packages/mcp` (host wiring; core takes recorders by
+setter and ships none), designed in
+[#13](https://github.com/McKenzieIT/semantic-grounding/issues/13) / ADR-0004. One
+auditable write = one commit: `git add` + `git commit` is a single atomic
+write-and-record, which is what makes an unaudited write stop being expressible — a
+raised commit rolls the worktree back and throws; there is no third state. The commit
+**is** the audit record: author is the driving agent (declared at server startup,
+`<id>@agents.<corpus>` namespace), committer is the server (separating agent-written
+from human-written history at a glance), and the message is a one-line summary plus
+`X-SG-*` trailers — derivation (`deterministic` / `llm` / `agent`), confidence, scope,
+session — readable back via `git log -p --follow`. Cross-process serialization is one
+exclusive lock over the whole corpus repo whose critical section spans read-merge-write
+through commit; a stale baseline is caught by content fingerprint (sha256 of the bytes
+the agent actually read) checked inside the lock. Deployment posture: the corpus root
+must be its own git repository root, and a dirty worktree at startup is refused unless
+a dead-owner lock identifies crashed-write residue, which is restored to HEAD.
 
 ### D5 invariant
 
@@ -236,12 +270,16 @@ as this repo's first core invariant in ADR-0001.
 
 ADR-0001 states it in two halves — throw when **no** recorder is wired, **and** throw
 when a **wired** recorder raises. The first half is enforced and regression-tested
-(`tests/d5-invariant.spec.ts`). The second half does **not** hold today: the write
-path writes the YAML before recording, inside one `try` whose `catch` collects the
-error, so a raising recorder leaves an unaudited file on disk while the return value
-reports `written: 0`. Tracked as issue #6; it is a write/audit *atomicity* decision,
-and may dissolve into the MCP map's choice of git as the audit backbone (where
-`git add` + `git commit` is one atomic write-and-record).
+(`tests/d5-invariant.spec.ts`). The second half is decided in
+[#13](https://github.com/McKenzieIT/semantic-grounding/issues/13), closing
+[#6](https://github.com/McKenzieIT/semantic-grounding/issues/6): the recorder contract
+became async and the Tier-2 paths snapshot the pre-write **raw bytes**, restore them
+when a recorder raises, and re-throw. After a failed write there is no third state
+(an unaudited file on disk while the return value reports `written: 0`); disk is back
+at the pre-write state. With the [git recorder](#git-recorder) this holds end-to-end:
+commit failure throws by construction. A deliberately fail-silent recorder (dsh's
+`ctx.audit`) remains a visible host choice — the substrate cannot force a recorder to
+be honest, only make honesty the contract.
 
 ### enrichment health
 

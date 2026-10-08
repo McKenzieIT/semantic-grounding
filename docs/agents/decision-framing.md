@@ -32,6 +32,11 @@ and the reason was functional (a cordis context admits one service per name, so 
 context held exactly one semantic layer) rather than aesthetic. State that link; a
 priority that changes without a stated cause reads as drift.
 
+**Grilling rounds ask ONE question at a time.** A wayfinder grilling round resolves a
+single decision point: one question + one recommended answer, illustrated with a concrete
+问数 / 数据工程 scenario, jargon glossed inline. Do not batch the whole frontier into one
+round (2026-10-08 session correction).
+
 Shape that works: **verdict first**, then an ROI table (`action | cost | concrete
 user-facing benefit | ROI`), then only the genuinely open questions.
 
