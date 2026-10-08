@@ -24,4 +24,7 @@ Issue 追踪在 GitHub（McKenzieIT/semantic-grounding），通过 `gh` CLI 操�
 ### Active map
 
 当前 wayfinder map：[#1 extract semantic grounding substrate](https://github.com/McKenzieIT/semantic-grounding/issues/1)。
-MCP 管理面是已确认的第二 host，另起 map，种子在 `docs/mcp-map-seed.md`。
+**Destination 已在 slice 4b 达成**（dsh 对 tarball 安装启动并过门禁，PR dsh#187），
+只剩 [#7 slice 5](https://github.com/McKenzieIT/semantic-grounding/issues/7)（barrel 名级裁剪）一张票，
+关掉它即关 map。MCP 管理面是已确认的第二 host，另起 map，种子在 `docs/mcp-map-seed.md`。
+发布 `@semantic-grounding/substrate` 是 dsh 下次发版的阻塞前置，记录在 map 的 Out of scope。

@@ -113,9 +113,13 @@ Resolve #6 *through* this ticket, not before it.
   `updateTableMeta` + `discard`. If this map builds an automated approve path, it must
   route through the audited pair.
 - **Scope/tenant model.** One core per scope, one per request, or a pool? Interacts
-  with the `_invalidationHooks` global-broadcast hazard in map #1's Not-yet-specified
-  (the one real multi-instance problem; `_corpusVersion` and `_snapshotCache` were
-  checked and are root-keyed, hence safe).
+  with the `_invalidationHooks` global-broadcast hazard — **recorded here** since map
+  #1's fog closed with its Destination: `invalidateCaches(layer)` (`src/io.ts:79`)
+  iterates *every* registered hook regardless of which layer changed, so each hook must
+  self-filter; and since slice 2 ② replaced `ctx.effect` with `dispose()`, the only
+  release is manual, so a host embedding core per tenant that forgets `dispose()` leaks
+  a hook. The one real multi-instance problem — `_corpusVersion` (`io.ts:103`) and
+  `_snapshotCache` (`snapshot.ts:180`) were checked and are root-keyed, hence safe.
 - **Does the MCP server own enrichment?** Core's enrichment needs an LLM call
   (`setLlmCall`). dsh wires it from `ctx.llm` via `llm-wiring-plugin.ts`. The MCP
   server needs its own provider wiring, or it ships deterministic-only enrichment.
