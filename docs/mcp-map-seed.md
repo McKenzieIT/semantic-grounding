@@ -5,6 +5,15 @@ the loose idea below). Recorded here so the facts established while resolving
 [map #1](https://github.com/McKenzieIT/semantic-grounding/issues/1)'s slice 2 are not
 lost between sessions.
 
+> **2026-10-08 更新**：map 已 chart（[map #12](https://github.com/McKenzieIT/semantic-grounding/issues/12)），
+> 本文件降为历史记录，开放问题以 map body 为准。「First ticket」节的设计问题全部由
+> [#13](https://github.com/McKenzieIT/semantic-grounding/issues/13) 裁决（ADR-0004，#6 随之关闭）；
+> 「Known costs」四条各有归宿——commit 延迟=门禁实测（本地毫秒级 vs LLM 秒级，预期非瓶颈）、
+> 并发冲突=整仓排它锁、提交身份=启动配置声明、非 git corpus=unsupported 启动即拒。「Fog」节的
+> raw-edit 两问已裁（写原语、公共保留、MCP host 全链路必传 recorder）；tool surface 与 enrichment
+> 两片已成票（[#15](https://github.com/McKenzieIT/semantic-grounding/issues/15) /
+> [#16](https://github.com/McKenzieIT/semantic-grounding/issues/16)，输入见各自评论区）。
+
 **Why a separate map and not fog on map #1.** Map #1's Destination is the dsh tarball
 cutover. The MCP surface sits past it, and map #1's Out-of-scope already listed "MCP
 adapter". The wayfinder rule is that out-of-scope work never graduates — it returns
