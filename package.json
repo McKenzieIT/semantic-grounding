@@ -1,51 +1,15 @@
 {
-  "name": "@semantic-grounding/substrate",
-  "version": "0.1.6-alpha.3",
-  "description": "Semantic layer management for NL2SQL data agents: typed definition kinds, alias and relation graph, retrieval projections for grounding natural language, provenance-tracked enrichment, and a two-tier audited write path for agents that maintain the layer themselves. Host-neutral by construction: embeds as a plain class, no plugin framework required.",
-  "publishConfig": {
-    "access": "public"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/McKenzieIT/semantic-grounding.git"
-  },
+  "name": "semantic-grounding",
+  "version": "0.0.0",
+  "private": true,
+  "description": "pnpm workspace root for @semantic-grounding/substrate and @semantic-grounding/mcp. See packages/*.",
   "type": "module",
-  "main": "lib/index.js",
-  "types": "lib/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./lib/index.d.ts",
-      "default": "./lib/index.js"
-    },
-    "./package.json": "./package.json"
-  },
-  "files": [
-    "lib/**/*.js",
-    "lib/**/*.d.ts"
-  ],
-  "license": "MIT",
   "scripts": {
-    "build": "tsdown",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run",
-    "pretest": "node scripts/check-core-purity.mjs",
-    "negation-test": "node scripts/check-core-purity.mjs",
-    "acceptance": "node scripts/check-tarball-acceptance.mjs"
-  },
-  "dependencies": {
-    "js-yaml": "^4.2.0",
-    "zod": "^4.4.3"
-  },
-  "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.4",
-    "@deepseek-ai/schemastery": "^3.18.4",
-    "@standard-schema/spec": "^1.1.0",
-    "@types/js-yaml": "^4.0.9",
-    "@types/node": "^22.20.0",
-    "tsdown": "^0.22.2",
-    "tsx": "^4.22.4",
-    "typescript": "^6.0.3",
-    "vitest": "^4.1.8"
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "negation-test": "pnpm --filter @semantic-grounding/substrate run negation-test",
+    "acceptance": "pnpm --filter @semantic-grounding/substrate run acceptance"
   },
   "pnpm": {
     "autoInstallPeers": false
