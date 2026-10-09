@@ -29,7 +29,7 @@ import {
   type EventDefinition,
   type DimensionRef,
 } from './types.ts'
-import { loadTables, writeTable, loadEvents, writeEventYaml, dumpYaml } from './io.ts'
+import { loadTables, writeTable, loadEvents, writeEventYaml, dumpYaml, type Tier2Opts } from './io.ts'
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -355,6 +355,10 @@ function originAwareReplaceRefs(
  *   manual/undefined preserved, machine dropped); when false, raw full replace
  *   (ALL existing refs dropped, only discovered remain) — the escape-hatch for
  *   blow-away-rebuild (GA-GT3-5b). Ignored when `mergeExisting=true`.
+ * @param tier2 - optional Tier-2 options (#18); passed, each table write
+ *   below is demoted-to-primitive through `writeTable`'s audited path
+ *   instead of the default unaudited write. Not batched yet — one commit per
+ *   table — until a recorder's `beginBatch` is wired through (#16).
  * @returns `enriched` (DWS tables that gained at least one ref) + `written` (DWS
  *   tables updated) + per-table `errors`.
  */
@@ -365,6 +369,7 @@ export async function enrichAllDwsTables(
   mergeExisting = false,
   excludeColumnsFn?: (def: TableDefinition) => ReadonlySet<string> | undefined,
   preserveCurated = true,
+  tier2?: Tier2Opts,
 ): Promise<{ enriched: number; written: number; errors: string[]; note?: string }> {
   const dimInventory = buildDimInventory(semanticLayer)
   // GA-GT3 item 6: no DIM tables -> no joins are possible for any table; skip
@@ -410,7 +415,7 @@ export async function enrichAllDwsTables(
           ? originAwareReplaceRefs(existingRefs(t.raw), discovered)
           : discovered
       // write raw + refs (preserves physical types / extra keys; writeTable validates)
-      await writeTable(semanticLayer, t.table_name, { ...t.raw, dimension_refs: refs })
+      await writeTable(semanticLayer, t.table_name, { ...t.raw, dimension_refs: refs }, {}, tier2)
       written += 1
       if (refs.length > 0) enriched += 1
     } catch (e) {
@@ -544,6 +549,9 @@ export async function discoverEventRelationsFor(
  *   manual/undefined preserved, machine dropped); when false, raw full replace
  *   (ALL existing refs dropped, only discovered remain) — the escape-hatch for
  *   blow-away-rebuild (GA-GT3-5b). Ignored when `mergeExisting=true`.
+ * @param tier2 - optional Tier-2 options (#18); passed, each event write
+ *   below is demoted-to-primitive through `writeEventYaml`'s audited path
+ *   instead of the default unaudited write.
  * @returns `enriched` (events gaining >=1 ref) + `written` (events updated) + per-event `errors`.
  */
 export async function enrichAllEvents(
@@ -553,6 +561,7 @@ export async function enrichAllEvents(
   mergeExisting = false,
   excludeColumnsFn?: (def: EventDefinition) => ReadonlySet<string> | undefined,
   preserveCurated = true,
+  tier2?: Tier2Opts,
 ): Promise<{ enriched: number; written: number; errors: string[]; note?: string }> {
   const dimInventory = buildDimInventory(semanticLayer)
   // GA-GT3 item 6: no DIM tables -> no joins possible for any event; skip the
@@ -591,7 +600,7 @@ export async function enrichAllEvents(
           ? originAwareReplaceRefs(existingEventRefs(e.raw), discovered)
           : discovered
       const content = dumpYaml({ ...e.raw, external_refs: refs })
-      const res = await writeEventYaml(semanticLayer, e.name, content)
+      const res = await writeEventYaml(semanticLayer, e.name, content, tier2)
       if (res.ok) {
         written += 1
         if (refs.length > 0) enriched += 1
@@ -823,12 +832,15 @@ function eventToAltLabelsTarget(def: EventDefinition): AltLabelsTarget {
  * @param semanticLayer - the semantic-layer directory path.
  * @param llmCall - optional LLM call for the semantic round.
  * @param tables - optional table_name filter; omit/empty to enrich all.
+ * @param tier2 - optional Tier-2 options (#18); passed, each table write
+ *   below takes `writeTable`'s audited write-and-record path.
  * @returns `enriched` (tables gaining >=1 new label) + `written` + per-table `errors`.
  */
 export async function enrichAllTablesAltLabels(
   semanticLayer: string,
   llmCall?: LlmCall,
   tables?: readonly string[],
+  tier2?: Tier2Opts,
 ): Promise<{ enriched: number; written: number; errors: string[] }> {
   const filter = tables !== undefined && tables.length > 0 ? new Set(tables) : undefined
   let enriched = 0
@@ -846,7 +858,7 @@ export async function enrichAllTablesAltLabels(
       const newLabels = await discoverAltLabelsFor(target, llmCall)
       if (newLabels.length === 0) continue
       const merged = mergeAltLabels(r.data.alt_labels, newLabels)
-      await writeTable(semanticLayer, t.table_name, { ...t.raw, alt_labels: merged })
+      await writeTable(semanticLayer, t.table_name, { ...t.raw, alt_labels: merged }, {}, tier2)
       written += 1
       enriched += 1
     } catch (e) {
@@ -864,12 +876,15 @@ export async function enrichAllTablesAltLabels(
  * @param semanticLayer - the semantic-layer directory path.
  * @param llmCall - optional LLM call for the semantic round.
  * @param events - optional event-name filter; omit/empty to enrich all.
+ * @param tier2 - optional Tier-2 options (#18); passed, each event write
+ *   below takes `writeEventYaml`'s audited write-and-record path.
  * @returns `enriched` (events gaining >=1 new label) + `written` + per-event `errors`.
  */
 export async function enrichAllEventsAltLabels(
   semanticLayer: string,
   llmCall?: LlmCall,
   events?: readonly string[],
+  tier2?: Tier2Opts,
 ): Promise<{ enriched: number; written: number; errors: string[] }> {
   const filter = events !== undefined && events.length > 0 ? new Set(events) : undefined
   let enriched = 0
@@ -888,7 +903,7 @@ export async function enrichAllEventsAltLabels(
       if (newLabels.length === 0) continue
       const merged = mergeAltLabels(r.data.alt_labels, newLabels)
       const content = dumpYaml({ ...e.raw, alt_labels: merged })
-      const res = await writeEventYaml(semanticLayer, e.name, content)
+      const res = await writeEventYaml(semanticLayer, e.name, content, tier2)
       if (res.ok) {
         written += 1
         enriched += 1
@@ -910,6 +925,8 @@ export async function enrichAllEventsAltLabels(
  * @param llmCall - optional LLM call for the semantic round.
  * @param tables - optional table_name filter (omit to enrich all tables).
  * @param events - optional event-name filter (omit to enrich all events).
+ * @param tier2 - optional Tier-2 options (#18); forwarded verbatim to both
+ *   `enrichAllTablesAltLabels` and `enrichAllEventsAltLabels`.
  * @returns combined `enriched` + `written` + `errors`.
  */
 export async function discoverAltLabels(
@@ -917,9 +934,10 @@ export async function discoverAltLabels(
   llmCall?: LlmCall,
   tables?: readonly string[],
   events?: readonly string[],
+  tier2?: Tier2Opts,
 ): Promise<{ enriched: number; written: number; errors: string[] }> {
-  const tRes = await enrichAllTablesAltLabels(semanticLayer, llmCall, tables)
-  const eRes = await enrichAllEventsAltLabels(semanticLayer, llmCall, events)
+  const tRes = await enrichAllTablesAltLabels(semanticLayer, llmCall, tables, tier2)
+  const eRes = await enrichAllEventsAltLabels(semanticLayer, llmCall, events, tier2)
   return {
     enriched: tRes.enriched + eRes.enriched,
     written: tRes.written + eRes.written,

@@ -70,7 +70,7 @@ afterAll(() => {
 function mockRecorder(): { recorder: Tier2Recorder; calls: string[] } {
   const calls: string[] = []
   const recorder: Tier2Recorder = {
-    recordTier2Write(toolName: string): string {
+    async recordTier2Write(toolName: string): Promise<string> {
       calls.push(toolName)
       return 'log-id'
     },

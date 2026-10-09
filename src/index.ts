@@ -63,6 +63,7 @@ import {
   loadRetrievalCorpus as loadRetrievalCorpusFromLayer,
   getCorpusVersion as getCorpusVersionFromLayer,
   type Tier2Recorder,
+  type Tier2Opts,
 } from './io.ts'
 import type { TableMeta, EventDefinition, TableDefinition, MetricDefinition } from './types.ts'
 import { type CorpusVariant, type EventCorpusItem } from './corpus.ts'
@@ -119,11 +120,14 @@ export {
   updateTableMeta,
   updateEventMeta,
   WriteValidationError,
+  StaleBaselineError,
   type RawEvent,
   type RawTable,
   type RawConcept,
   type Tier2Recorder,
   type Tier2Opts,
+  type Tier2Batch,
+  type Tier2RecordMeta,
   type WriteEventYamlResult,
   type UpdateTableMetaResult,
   type UpdateEventMetaResult,
@@ -810,11 +814,17 @@ export class SemanticGroundingCore {
    * raw full-replace escape-hatch (ALL existing refs dropped, only discovered
    * remain — for the rare blow-away-rebuild case). Additive: default behavior
    * unchanged.
-   * @param opts - optional `tables` filter + `preserveCurated` toggle (default true).
+   *
+   * `tier2` (#18): optional Tier-2 options forwarded to `enrichAllDwsTables`,
+   * which passes it on to every `writeTable` call this round makes. Passed,
+   * this explicit enrichment round becomes an audited write (one commit per
+   * table until a recorder's `beginBatch` is wired through — #16); omitted,
+   * unchanged unaudited behavior.
+   * @param opts - optional `tables` filter + `preserveCurated` toggle (default true) + optional `tier2`.
    * @returns `enriched` (DWS gaining >=1 ref) + `written` (DWS updated) + per-table `errors`.
    */
   async discoverRelations(
-    opts: { readonly tables?: readonly string[]; readonly preserveCurated?: boolean } = {},
+    opts: { readonly tables?: readonly string[]; readonly preserveCurated?: boolean; readonly tier2?: Tier2Opts } = {},
   ): Promise<{ enriched: number; written: number; errors: string[]; note?: string }> {
     // CL-18 Phase 2: forward the partition-column exclude set so ds/pt/dt
     // partition-column PK matches do not generate noise JOIN relations.
@@ -827,6 +837,7 @@ export class SemanticGroundingCore {
       false,
       buildExcludeColumns,
       opts.preserveCurated ?? true,
+      opts.tier2,
     )
   }
 
@@ -848,15 +859,18 @@ export class SemanticGroundingCore {
    * manual/undefined preserved, machine dropped — PR #43); `false` = raw
    * full-replace escape-hatch (ALL existing refs dropped, only discovered
    * remain). Additive: default behavior unchanged.
-   * @param opts - optional `events` filter + `preserveCurated` toggle (default true).
+   *
+   * `tier2` (#18): optional Tier-2 options forwarded to `enrichAllEvents`,
+   * parallel to `discoverRelations`'s `tier2`.
+   * @param opts - optional `events` filter + `preserveCurated` toggle (default true) + optional `tier2`.
    * @returns `enriched` (events gaining >=1 ref) + `written` (events updated) + per-event `errors`.
    */
   async discoverEventRelations(
-    opts: { readonly events?: readonly string[]; readonly preserveCurated?: boolean } = {},
+    opts: { readonly events?: readonly string[]; readonly preserveCurated?: boolean; readonly tier2?: Tier2Opts } = {},
   ): Promise<{ enriched: number; written: number; errors: string[]; note?: string }> {
     // GA-GT3-5b: forward preserveCurated (default true = origin-aware replace;
     // false = raw full-replace escape-hatch; parallel to discoverRelations).
-    return enrichAllEventsFromLayer(this.semanticRoot, this.llmCall, opts.events, false, undefined, opts.preserveCurated ?? true)
+    return enrichAllEventsFromLayer(this.semanticRoot, this.llmCall, opts.events, false, undefined, opts.preserveCurated ?? true, opts.tier2)
   }
 
   /**
@@ -865,13 +879,16 @@ export class SemanticGroundingCore {
    * domains + optional LLM semantic suggestions. Merges with existing labels
    * (never removes curated aliases).
    *
-   * @param opts - optional filters: `tables` (table_names) and/or `events` (event names).
+   * `tier2` (#18): optional Tier-2 options forwarded to `discoverAltLabels`
+   * (the substrate function), which passes it on to both the table and event
+   * alt_labels write-back rounds.
+   * @param opts - optional filters: `tables` (table_names) and/or `events` (event names); optional `tier2`.
    * @returns combined `enriched` + `written` + `errors` across tables and events.
    */
   async discoverAltLabels(
-    opts: { readonly tables?: readonly string[]; readonly events?: readonly string[] } = {},
+    opts: { readonly tables?: readonly string[]; readonly events?: readonly string[]; readonly tier2?: Tier2Opts } = {},
   ): Promise<{ enriched: number; written: number; errors: string[] }> {
-    return discoverAltLabelsFromLayer(this.semanticRoot, this.llmCall, opts.tables, opts.events)
+    return discoverAltLabelsFromLayer(this.semanticRoot, this.llmCall, opts.tables, opts.events, opts.tier2)
   }
 
   /**
@@ -1252,17 +1269,21 @@ export class SemanticGroundingCore {
    * (gated by `autoEnrich`).
    * @param name - the table `table_name` to update.
    * @param updates - the field overrides merged over the existing table YAML.
-   * @param opts - optional scope id override (default scope id is used when omitted).
+   * @param opts - optional scope id override (default scope id is used when
+   *   omitted) + optional `expected_version` (#18, ADR-0004 ruling 8: sha256
+   *   baseline checked against the on-disk fingerprint before the write
+   *   lands; a mismatch throws `StaleBaselineError`).
    * @returns `{ ok: true, table_name }` on success, or `{ ok: false, error }` when the table is missing/malformed or validation fails.
    */
   async updateTableMeta(
     name: string,
     updates: Record<string, unknown>,
-    opts: { readonly scopeId?: string } = {},
+    opts: { readonly scopeId?: string; readonly expected_version?: string } = {},
   ): Promise<{ ok: true; table_name: string } | { ok: false; error: string }> {
     const res = await updateTableMetaFromLayer(this.resolveRoot(opts.scopeId), name, updates, {
       recorder: this.recorder(),
       scope_id: opts.scopeId ?? this.scopeId,
+      ...opts.expected_version !== undefined ? { expected_version: opts.expected_version } : {},
     })
     if (res.ok && this.resolved.autoEnrich) {
       await this.enrichOnWrite([name])
@@ -1285,17 +1306,21 @@ export class SemanticGroundingCore {
    * `writeEventYaml` surface.
    * @param name - the event `name` to update (must already exist on disk).
    * @param updates - the field overrides merged over the existing event YAML.
-   * @param opts - optional scope id override (default scope id is used when omitted).
+   * @param opts - optional scope id override (default scope id is used when
+   *   omitted) + optional `expected_version` (#18, ADR-0004 ruling 8: sha256
+   *   baseline checked against the on-disk fingerprint before the write
+   *   lands; a mismatch throws `StaleBaselineError`).
    * @returns `{ ok: true, event_name }` on success, or `{ ok: false, error }` when the event is missing/malformed or validation fails.
    */
   async updateEventMeta(
     name: string,
     updates: Record<string, unknown>,
-    opts: { readonly scopeId?: string } = {},
+    opts: { readonly scopeId?: string; readonly expected_version?: string } = {},
   ): Promise<{ ok: true; event_name: string } | { ok: false; error: string }> {
     return updateEventMetaFromLayer(this.resolveRoot(opts.scopeId), name, updates, {
       recorder: this.recorder(),
       scope_id: opts.scopeId ?? this.scopeId,
+      ...opts.expected_version !== undefined ? { expected_version: opts.expected_version } : {},
     })
   }
 }

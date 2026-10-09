@@ -23,13 +23,13 @@
 import { test, expect, describe, it, beforeEach, afterEach } from 'vitest'
 import { SemanticGroundingCore, type TableMeta } from '../src/index.ts'
 import type { Tier2Recorder } from '../src/io.ts'
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import yaml from 'js-yaml'
 
 /** The explicit no-op recorder a host must pass if it really means audit-off. */
-const noopRecorder: Tier2Recorder = { recordTier2Write: () => 'noop-log-id' }
+const noopRecorder: Tier2Recorder = { recordTier2Write: async () => 'noop-log-id' }
 
 function newService(root = ''): SemanticGroundingCore {
   return new SemanticGroundingCore({ semanticRoot: root, autoEnrich: false })
@@ -106,7 +106,7 @@ describe('D5 — audit-off is reachable only by passing an explicit no-op record
     const calls: Array<{ tool: string }> = []
     const svc = newService(dir)
     svc.setTier2Recorder({
-      recordTier2Write: (toolName: string) => { calls.push({ tool: toolName }); return 'log-id' },
+      recordTier2Write: async (toolName: string) => { calls.push({ tool: toolName }); return 'log-id' },
     })
     await svc.syncWrite([SAMPLE_META])
     expect(calls.length).toBeGreaterThan(0)
@@ -120,37 +120,67 @@ describe('D5 — audit-off is reachable only by passing an explicit no-op record
     await expect(svc.syncWrite([SAMPLE_META])).rejects.toThrow(/D5/)
   })
 
-  // ── KNOWN GAP (see issue #6) ──────────────────────────────────────────
+  // ── #6 closed by #18 (ADR-0004 ruling 1 / ADR-0001's 2026-10-08 update) ──
   // ADR-0001 requires the core to throw "when a Tier-2 recording is required
   // but no recorder is wired, OR **when a wired recorder raises**". The first
-  // half holds (the describe block above). The second half does NOT, and the
-  // way it fails is worse than a missing throw.
+  // half holds (the describe block above). This used to be where the second
+  // half failed, and the way it failed was worse than a missing throw:
   //
-  // `syncWriteDefinitions` (io.ts) writes the YAML to disk and records the
-  // audit *afterwards*, inside one try/catch whose handler pushes to `errors`:
+  // `syncWriteDefinitions` (io.ts) used to write the YAML to disk and record
+  // the audit *afterwards*, inside one try/catch whose handler pushed to
+  // `errors` — a recorder raise there left the write on disk, unaudited,
+  // while the return value reported `written: 0`.
   //
-  //     await writeTable(...)                 // disk write lands
-  //     opts.recorder.recordTier2Write(...)   // raises
-  //     written += 1                          // never reached
-  //   } catch (e) { errors.push(...) }        // swallowed
-  //
-  // Measured consequence, with a recorder that throws:
-  //     returns  { written: 0, skipped: 0, errors: ['dws_unaudited: audit backend down'] }
-  //     on disk  tables/dws_unaudited.yaml    ← EXISTS, unaudited
-  //
-  // So an auditable mutation reached source-of-truth with no audit record,
-  // while the return value reports `written: 0`. That is the exact outcome D5
-  // exists to forbid, plus a return value that misreports it.
-  //
-  // Not fixed here: this is a write/audit *atomicity* decision, not the ~10 LOC
-  // inversion slice 2 scoped. Deliberately left as `it.fails` so the gap stays
-  // visible and this test turns red the moment it is fixed.
-  it.fails('a recorder that throws propagates — a failed recording is not a silent drop', async () => {
+  // #18 closes it: `syncWriteDefinitions` now snapshots the pre-write raw
+  // bytes before writing, and a recorder failure for the current table
+  // restores them (deletes the file when this write created it) and
+  // re-throws instead of being swallowed into `errors` — so the promise
+  // itself rejects, and disk ends up back at its pre-write state. This test
+  // was `it.fails` (see git history); it is now a regression guard, with an
+  // added assertion for exactly the "disk == pre-write state" half of the
+  // guarantee that the old bug violated.
+  it('a recorder that throws propagates — a failed recording is not a silent drop', async () => {
     const svc = newService(dir)
+    const probeFile = join(dir, 'tables', `${SAMPLE_META.table_name}.yaml`)
+    expect(existsSync(probeFile)).toBe(false) // pre-write state: no file yet
     svc.setTier2Recorder({
-      recordTier2Write: () => { throw new Error('audit backend down') },
+      recordTier2Write: async () => { throw new Error('audit backend down') },
     })
     await expect(svc.syncWrite([SAMPLE_META])).rejects.toThrow(/audit backend down/)
+    // #6's execution closure: disk after the throw == disk before the write.
+    // The old bug left `dws_d5_probe.yaml` on disk, unaudited, while the
+    // return value never even got produced (the promise now rejects
+    // instead). There is no third state any more.
+    expect(existsSync(probeFile)).toBe(false)
+  })
+
+  // A second, more exacting instance of the same closure: `updateTableMeta`
+  // (one of the three Tier-2 paths #18 names explicitly) UPDATING a file
+  // that already carries a hand-written comment. The rollback must restore
+  // the literal pre-write bytes — not a `yaml.dump` of the pre-merge parsed
+  // object, which would already have dropped the comment during the initial
+  // parse. Byte-identical disk content is the proof the restore uses the raw
+  // snapshot, not a reconstruction.
+  it('a recorder that throws on updateTableMeta leaves the file byte-identical to its pre-write state, hand-written comment included', async () => {
+    const tf = join(dir, 'tables', 'dws_d5_probe.yaml')
+    const doc = {
+      table_name: 'dws_d5_probe', table_comment: 'd5', description: '', alt_labels: [], domains: [],
+      granularity: '', engine: 'maxcompute',
+      columns: [{ name: 'server_id', type: 'string', comment: '区服ID', role: 'dimension' }],
+      metrics: {}, partitions: [{ name: 'ds', type: 'string' }],
+      confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
+      coverage: null, supersedes: [], disambiguation: null, kind: 'dws', primary_key: [],
+      primary_key_unique: null, duplicate_sample: [], label_columns: [], freshness: '', dimension_refs: [],
+    }
+    const original = '# hand-written note: do not remove\n'
+      + yaml.dump(doc, { sortKeys: false, lineWidth: -1, noRefs: true, quotingType: '"' })
+    writeFileSync(tf, original, 'utf8')
+    const svc = newService(dir)
+    svc.setTier2Recorder({
+      recordTier2Write: async () => { throw new Error('audit backend down') },
+    })
+    await expect(svc.updateTableMeta('dws_d5_probe', { table_comment: 'updated' })).rejects.toThrow(/audit backend down/)
+    expect(readFileSync(tf, 'utf8')).toBe(original) // comment survives — this was never re-dumped
   })
 })
 
