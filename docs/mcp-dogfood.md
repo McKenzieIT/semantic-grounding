@@ -50,6 +50,21 @@ modern era；`"method":"initialize"` 即 2025 legacy era（`legacy:'serve'` 下�
 
 **记录：**（每项：成功/失败、agent 的原话或截图要点、git log 摘录）
 
+## 实测记录（进行中）
+
+**2026-10-09，首次连接尝试（QoderWork，stdio，命令 + 环境变量注册）**：宿主连接即报
+`MCP error -32601: Method not found`。复现（两 era 全序列探测，`/tmp` 探针）：`prompts/list`、
+`resources/list`、`resources/templates/list` 在两个 era 都 -32601——这是宿主连接期的标准能力
+发现探测。根因在 SDK v2.3.1：「声明能力即接线」只对 tools 生效（构造器
+`if (capabilities.tools) setToolRequestHandlers()`），prompts/resources 的 list handler 只随
+`registerPrompt`/`registerResource` 挂，而本 server 从不调用二者——声明了能力也没有 handler。
+**已修**（`server.ts` 测量 5）：声明 `prompts`/`resources`（`listChanged:false`）+ 显式注册空
+handler（`prompts:[]` / `resources:[]` / `resourceTemplates:[]`）——「空」与「坏」必须可区分，
+与 #22 测量 4（零工具也声明 `tools:{}`）同一裁决的延伸；回归测试落 `server-startup.spec.ts`
+（mcp 249 测试）。**遗留实测未修**：modern era `ping` 在 SDK v2.3.1 答 -32601（era 路由层
+miss；string handler 已存在，重注册被 `assertCanSetRequestHandler` 拒），legacy era ping 正常——
+记录在案，待有宿主依赖 modern ping 再议。era 判定：待 QoderWork 复连后按上节抓取。
+
 ## 观察点（fog 的触发条件挂在这）
 
 - **写-删循环**：agent `remove_relation` 删掉机器推导的 ref 后，下一轮 enrichment 又推
