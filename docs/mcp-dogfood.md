@@ -65,6 +65,17 @@ handler（`prompts:[]` / `resources:[]` / `resourceTemplates:[]`）——「空�
 miss；string handler 已存在，重注册被 `assertCanSetRequestHandler` 拒），legacy era ping 正常——
 记录在案，待有宿主依赖 modern ping 再议。era 判定：待 QoderWork 复连后按上节抓取。
 
+**记录（读路径，2026-10-10）**：问数场景「上个月付费用户的充值情况」——agent 首选
+`dws_10000251_com_pay_order_di`，并主动区分孪生表 `dws_10000251_com_pay_order_df`
+（日全量快照）——di/df 增量/全量语义答对；给出关联维表 `dim_10000251_com_recharge_info` /
+`dim_10000251_com_order_detail_info` / `dim_10000251_server_info`，**JOIN 关联经业务判断
+正确**。宿主工具调用面板显示**五个读工具全部被真实调用**（Resolve Alias / Search
+Definitions / Get Relations / Get JOIN Path / Get Definitions）——真查语义层，非模型幻觉
+作答。读路径零 commit、树干净（读不拿锁，设计行为）。**era**：直连注册未抓取（无 tee），
+QoderWork 详情页未见 protocolVersion 显示——记「未测」（`legacy:'serve'` 两 era 均服务，
+不阻塞）。**配置形态实测**：env-only 注册（SG_CORPUS/SG_AGENT_ID/SG_SCOPE，argv 零参数）
+——#22 双通道设计的决定性输入在真实宿主上成立。
+
 ## 观察点（fog 的触发条件挂在这）
 
 - **写-删循环**：agent `remove_relation` 删掉机器推导的 ref 后，下一轮 enrichment 又推
