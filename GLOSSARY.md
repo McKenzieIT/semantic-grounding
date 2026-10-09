@@ -80,6 +80,12 @@ the substrate propagates derived facts (e.g. a column inheriting a business glos
 tag from its parent table). Enrichment is deterministic: same inputs → same outputs,
 always.
 
+The LLM-assisted supplement is host-supplied, and the discipline never leaves the
+substrate: an in-process host injects a completion callback, while the MCP
+management surface offers outstanding gaps as [enrichment work](#enrichment-work)
+for the connecting agent to complete (ADR-0006) — prompts, parsing, and the
+merge rules stay inside either way.
+
 ### provenance
 
 The record of where a definition's field value came from — authored in YAML, derived
@@ -296,6 +302,19 @@ commit failure throws by construction. A deliberately fail-silent recorder (dsh'
 `ctx.audit`) remains a visible host choice — the substrate cannot force a recorder to
 be honest, only make honesty the contract.
 
+### enrichment work
+
+A unit of enrichment the substrate could not complete on its own: a definition with
+a gap that survived the deterministic round (missing `alt_labels` / `dimension_refs`),
+offered for completion as a self-contained work item — target, gap kind, prompt, and
+the content fingerprint of the target at issue time. The LLM half of enrichment made
+exchangeable: under the [MCP management surface](#write-tier) the connecting agent
+pulls work items, supplies completions with its own model, and returns them for an
+audited merge (ADR-0006); an in-process host supplies the same completions through
+the injected callback instead. The fingerprint makes "the target changed since this
+work was issued" detectable at apply time — a stale item is reported, never blindly
+merged.
+
 ### enrichment health
 
 The structured record of what the on-write [enrichment](#enrichment) hook failed to
@@ -310,6 +329,10 @@ how a caller learns its write landed with incomplete grounding. It exists becaus
 [provenance](#provenance)'s question, and before slice 2 that answer had no exit other
 than a host log line. Mirrors the older `getDanglingDomainRefs()` health surface:
 reset per run, returned as a snapshot.
+
+Distinct from the surface an agent works from: health is the per-run snapshot inlined
+in write responses; the corpus-computed list of outstanding gaps is
+[enrichment work](#enrichment-work).
 
 ## Project-level terms
 
