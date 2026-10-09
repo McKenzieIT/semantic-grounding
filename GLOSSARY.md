@@ -201,7 +201,7 @@ pre-revert state). Hosts running the [git recorder](#git-recorder) pass a record
 **every** write path they expose — under a git backbone an unaudited write is a dirty
 worktree, which the startup checks refuse or restore. The historical "gap" framing (a
 public, never-audited door) was retired by #13; publicness stays (live consumer +
-ADR-0002's extension-point basis). Landing tracked in
+ADR-0002's extension-point basis). Landed in
 [#18](https://github.com/McKenzieIT/semantic-grounding/issues/18).
 
 Under the MCP management surface the write paths appear as **intent tools** (ADR-0005):

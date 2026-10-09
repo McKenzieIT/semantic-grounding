@@ -37,9 +37,19 @@ sampling 形状踩弃用线、elicitation 形状押宿主路由策略），宿�
 client 下界），工具面 15→18（+get_enrichment_work / apply_enrichment / run_enrichment），
 纪律留 core（新增 listEnrichmentWork / applyEnrichmentResults class 方法、discover* 补 recorder
 透传随 #18、零新 barrel 名；GLOSSARY enrichment 词条改 + enrichment work 新词条）。
-Frontier：#17 workspace 化（task）、#18 substrate 契约升级（task：recorder 异步化、Tier-2 回滚、
-写原语可选 Tier2Opts、beginBatch 槽位、discover* recorder 透传）；#19 git recorder 实现、
-#20 读写工具实现、#21 enrichment 工具实现（task，#19 被 #18+#17 挡，#20/#21 被 #18+#19 挡）。
+#17 workspace 化已关：单包 → pnpm workspace，`src/`/`tests`/`scripts` 迁入 `packages/substrate`
+（包名/exports 不变），`packages/mcp` 建空脚手架（未引入 MCP SDK，留给 #22）；两道门禁脚本零
+改动（用 `import.meta.url` 算路径，非 CWD/硬编码）。commit `07ce9d3`。#18 substrate 契约升级
+已关：ADR-0004 七项落地——recorder 异步化、Tier-2 三路径 + 写原语原始字节回滚（**#6 执行
+关闭**）、syncWriteDefinitions 改回滚当前表 + 中止批次、expected_version/StaleBaselineError、
+enrichAll*/Core 方法 Tier2Opts 透传、beginBatch 预留槽位（仅类型）；StaleBaselineError 上公开
+barrel（ADR-0003 名单 34→35，addendum 记录）。commit `2656864`。两票分支经 git 的
+rename-aware merge **无冲突**合入 main，合入后重跑全量门禁（typecheck/278+1 测试/
+negation-test/acceptance）确认绿。Fog「server 骨架与配置面」graduate 为
+[#22](https://github.com/McKenzieIT/semantic-grounding/issues/22)（task，被 #19 挡；#20/#21
+新增阻塞于 #22——工具注册需先有骨架可挂）。
+Frontier：**#19** git recorder 实现（唯一解锁票）。#20 读写工具实现、#21 enrichment 工具实现、
+#22 server 骨架与配置面（task，均被 #19 挡，#20/#21 另被 #22 挡）。
 dsh 深耕暂停。遗留两件、
 各有去处：dsh 升级 substrate alpha.3 的全部断点在
 [#11](https://github.com/McKenzieIT/semantic-grounding/issues/11)（低优先，随 dsh 下次升级一并
