@@ -72,19 +72,10 @@ args/env 无法核实），**`legacy:'serve'`** 两 era 都服务（Core/锁/rec
 一次，代价为零）。拒绝一律在 transport 连接**之前**、stdout **零字节**、退出码 64 EX_USAGE /
 78 EX_CONFIG。56 新测试（合计 147），四条载重断言全做反证（其中「只构造一次」原断言**无鉴别力**
 ——工厂 per-connection——已改用 discover→legacy 输入）。
-**⚠️ #20/#21 开工必读 ADR-0005 的 2026-10-09 addendum**：两条前提证伪——`registerTool` 抛错被
-SDK 转成 `isError` **结果**、**码值丢弃**（故「抛 `SgApplicationError` 即得 -31xxx」不成立，只有
-低层 `setRequestHandler` 透码值，出路由 #20 裁）；`clientInfo` 是**逐请求信封**数据（工厂 ctx 只
-有 `{era}`）且同连接逐请求可变，故 #22 不在启动期填 `clientName`，而 `AuditContext` 今天缺该字段。
-Frontier：**#20** 读写工具实现、**#21** enrichment 工具实现——#22 关闭后两票阻塞均清零，**可并行**
-（如 #17/#18 那次，分支经 git rename-aware merge 无冲突）。fog 的「端到端验收门禁」一项已
-graduate 为 [#23](https://github.com/McKenzieIT/semantic-grounding/issues/23)（task，被 #20+#21
-挡）——问题已能精确陈述（断言清单照搬 ADR-0005/0006 的 Verification 节，底座是 #19 的
-`fixture-corpus.ts` + #22 的 `registrar-server.ts`），只是还不能动手，按 wayfinder「sharp 即成票、
-blocked 不影响」成票；两条待裁随票记：门禁脚本的落位形状、以及错误断言**必须跟随 #20 对工具层
-错误码出路的裁决**（不可照抄 -31xxx）。**Not yet specified 现只剩一项**：agent 持久否决权
-（tombstone），触发条件是 dogfood 出现写-删循环。所以**到 Destination 的路已清**：#20 → #21 →
-#23，无悬而未决的设计裁决。
+**#20（已关，`b4d0d2e`）** ADR-0005 十五 intent 工具（读五/写十）落地 `packages/mcp/src/tools/`（read/write/items/suggestions/shared），挂 `TOOL_REGISTRARS`，root barrel 零新名。错误契约 **`toToolErrorResult`（errors.ts）返回非抛出**——实测 `registerTool` 抛出被 SDK catch 成只剩裸字符串（比 ADR-0005 addendum 记录的「只丢 code」更彻底），`-31xxx` 码值活 `isError` 结果的 JSON content 里、永不上 JSON-RPC `error.code`；`-31020..-31024` 五码值（unsupported_update_field/definition_not_found/definition_already_exists/suggestion_not_found/validation_failed，stale_baseline/锁超时复用 #19）；clientInfo 逐请求线路（`AuditContext.clientName` + `commitContext` firstNonEmpty 镜 sessionId）；`update_definition` 用 zod omit+removeDefault 派生有界 fields；pending 队列落 `<gitDir>/sg-pending/` 防脏树。84 新测试（合计 232）。
+**#21（已关，`e245aaf`）** ADR-0006 七项落地——substrate 新增 `enrichment-work.ts`（internal，off-barrel）+ `listEnrichmentWork`/`applyEnrichmentResults` class 方法对 + work_id 自包含（kind+target+round+sha256 指纹=expected_version，server 无会话、重启不孤儿化）；packages/mcp 三工具（15→18）`get_enrichment_work`/`apply_enrichment`/`run_enrichment`；**`beginBatch` 机制**（ADR-0004 裁决3 槽位真正实现，#18 只留类型——`GitTier2Recorder.beginBatch` 返 `Tier2Batch`，`recordTier2Write` 的 `batchDepth` 吸收分支让 N 逻辑写→1 commit，enrichAll* 家族永不知 batching 存在）；`toToolErrorResult` 与 #20 同一份 spec 各自独立实现；**`-31040` 段故意留空**（enrichment 无 whole-call 失败需单独码值，per-item verdict 是非错误 payload）；两个 apply merge-correctness fix（work_id round 不 stale 同 target 兄弟项；agent 重提 asset 自己名字→idempotent 非 applied）。
+两票合并入 main `547fb4f`（4 冲突 + recorder.ts `clientName` 去重已解，如 #17/#18 那次并行无碍），门禁全绿（mcp 248 测试 / substrate 299+ / negation / acceptance）；ADR-0006 的 2026-10-09 addendum 补齐 `cd12846`（beginBatch 落地、两个 fix、`-31040` 段留空——补 ADR-0004 addendum 第6条的 dangling reference）。
+Frontier：**[#23](https://github.com/McKenzieIT/semantic-grounding/issues/23)（端到端验收门禁，task）**——原被 #20+#21 挡，现两票关闭解除阻塞，是 map 唯一 frontier。问题已能精确陈述（断言清单照搬 ADR-0005/0006 的 Verification 节，底座是 #19 的 `fixture-corpus.ts` + #22 的 `registrar-server.ts` + #20/#21 的工具），只是还不能动手；待裁随票记：门禁脚本的落位形状。错误断言**已跟随 #20 裁决**（判别靠解析 `toToolErrorResult` 的 `isError` 结果 JSON content，不照抄 `-31xxx` 上 JSON-RPC `error.code`）。**Not yet specified 仍只剩一项**：agent 持久否决权（tombstone），触发条件是 dogfood 出现写-删循环。所以**到 Destination 的路已清**：#23 一票即终点。
 dsh 深耕暂停。遗留两件、
 各有去处：dsh 升级 substrate alpha.3 的全部断点在
 [#11](https://github.com/McKenzieIT/semantic-grounding/issues/11)（低优先，随 dsh 下次升级一并
