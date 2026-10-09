@@ -282,6 +282,19 @@ the agent actually read) checked inside the lock. Deployment posture: the corpus
 must be its own git repository root, and a dirty worktree at startup is refused unless
 a dead-owner lock identifies crashed-write residue, which is restored to HEAD.
 
+Implemented in [#19](https://github.com/McKenzieIT/semantic-grounding/issues/19)
+(`packages/mcp/src/git/`), where three details of using it became load-bearing. The
+seam is **`runAudited(ctx, fn)`**, not the bare `recordTier2Write`: the lock has to wrap
+the substrate call (so `expected_version` is checked inside it), and the intent — tool,
+target, summary, derivation, confidence — is known only to the calling tool, so a write
+arriving without one is refused rather than given an invented summary. An **idempotent
+write produces no commit** (`changed: false`): re-writing identical bytes stages nothing,
+and an empty commit would claim a change that did not happen. And a single agent write
+can produce **two** commits, because the substrate's on-write enrichment hook writes
+derived content after the audit commit; that residue is committed separately as
+`enrich_on_write` with `X-SG-Derivation: deterministic`, never folded into the agent's
+commit (ADR-0004's 2026-10-09 update; `beginBatch` makes it structural in #21).
+
 ### D5 invariant
 
 The substrate's non-disableable audit guarantee: an auditable mutation either records

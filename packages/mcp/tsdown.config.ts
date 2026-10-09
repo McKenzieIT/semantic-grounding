@@ -1,13 +1,19 @@
 import { defineConfig } from 'tsdown'
 
 /**
- * Empty-scaffold build (issue #17).
+ * Build for the MCP host wiring.
  *
- * `src/index.ts` has no exports yet — there is no tool surface to bundle
- * until #19/#20/#21 land. No `external` guard is declared because nothing
- * here imports a host framework or the (not-yet-added) MCP SDK; add one if
- * either shows up. Mirrors `packages/substrate/tsdown.config.ts`'s shape so
- * both packages build the same way once real code lands.
+ * `@semantic-grounding/substrate` is a real dependency and stays external — the package
+ * is installed alongside, and bundling it would ship two copies of the substrate (and of
+ * its module-level caches) to any consumer that also depends on it directly.
+ *
+ * No host framework is imported here and the MCP SDK is still absent — it arrives with
+ * the stdio entry point (#22), which is also when an `external` entry for it is worth
+ * adding. The git recorder shells out to `git` rather than linking a git library, so
+ * there is nothing else to keep out of the bundle.
+ *
+ * Mirrors `packages/substrate/tsdown.config.ts`'s shape so both packages build the same
+ * way.
  */
 export default defineConfig({
   entry: ['src/index.ts'],
