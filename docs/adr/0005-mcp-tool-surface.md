@@ -63,3 +63,41 @@ git backbone 下「谁写的、依据什么」由 commit + trailer + `git log -p
 - 协议约束（工具名字符集、错误码段位、无状态语义）：#14 研究，
   `research/mcp-2026-07-28-spec` 分支 → `docs/research/mcp-2026-07-28-spec.md`
 - GLOSSARY：write tier、provenance、git recorder
+
+## Update 2026-10-09 — #22 实测推翻两条输入（工具层错误码、clientInfo 来源）
+
+落 [#22](https://github.com/McKenzieIT/semantic-grounding/issues/22)（server 骨架）时对
+MCP TS SDK v2.3.1 做了实测探针，三条与本 ADR / ADR-0004 相关的前提需要更正。**都不是新裁决，
+是前提证伪**——按本仓证据标准（`docs/agents/decision-framing.md`：执行前验证前提，含本仓 ticket
+与 resolution 里记录的前提），记在这里是因为 #20 的会话会读本 ADR，不更正就会按已证伪的前提实现。
+
+**1. `registerTool` 无法把错误码送上线。** 裁决 8 定了「错误可判别：`stale_baseline` / 锁超时 /
+校验失败，码值归实现票」，ADR-0004 的 2026-10-09 addendum 据此把 `-31020..-31039` 分给 #20。
+实测：`McpServer.registerTool` 的处理器抛出的**任何**异常都被 SDK 捕获并转成
+`{content:[…], isError:true}` 的**结果**，`code` 字段被丢弃——携带 `code` 的 `ProtocolError(-31001)`、
+`-32602`、裸 `Error` 三者在线上**完全无法区分**。能把 `-31xxx` 原样送上线的只有低层 seam
+`server.server.setRequestHandler(...)`（实测原样透出 `{"code":-31001,…}`，不被消毒）。
+另有两条相关事实：SDK 无 `McpError`，码值类是 `ProtocolError`；未知工具名**仍**产生真的 `-32602`。
+
+给 #20 的后果（本票不裁，留 #20 作裁决）：要么工具错误改走 `setRequestHandler` 自行注册（代价：
+绕开 `registerTool` 的 schema 校验与 `tools/list` 自动登记），要么错误契约改形状（判别信息进
+`isError` 结果的结构化载荷，`-31xxx` 只服务非工具层）。**不可**直接按「抛 `SgApplicationError`
+即得 `-31xxx` 错误响应」实现——那是今天读 ADR-0004 addendum 会得出的结论，而它是错的。
+
+**2. `clientInfo` 是逐请求信封数据，不是启动通道数据。** ADR-0004 裁决 9 说
+「clientInfo/session/scope 进 trailer」，`GitRecorderConfig.clientName` 据此做成了构造参数。
+实测：`serveStdio` 工厂收到的 ctx **只有** `{era}`——无 clientInfo、无协议版本、无 scope、无
+凭据（`authInfo`/`requestInfo` 是 HTTP 专用，stdio 永不填）。client 名字出现在**每次请求**的
+`extra.mcpReq.envelope['io.modelcontextprotocol/clientInfo']`，且在**同一条连接上逐请求可变**
+（实测两个名字由同一实例服务），并且是可选键（信封必填项只有 protocolVersion 与
+clientCapabilities）。
+
+给 #20 的后果：`X-SG-Client` 要如实，必须由工具处理器逐调用读信封、随 `AuditContext` 传进
+`runAudited`——而 `AuditContext` 今天**没有** `clientName` 字段（只有 `sessionId` 覆盖槽）。
+#22 因此**不**在启动时填 `clientName`：构造期填死一个值，等于把「某次请求的 client」冒充成
+「本进程的 client」，正是裁决 9 拒绝默认身份的同一类失真。
+
+**3. #22 不占 `-31xxx` 段位，这是分配表的确认而非缺口。** 配置与启动姿态的拒绝全部发生在
+transport 连接**之前**，表现为进程退出码（`64` EX_USAGE / `78` EX_CONFIG），永不上线；所以
+`config.ts` 的 `ConfigError` 故意**不**继承 `SgApplicationError`（那个基类的存在理由就是携带上线
+的码值）。分段表保持 #19 / #20 / #21 三段不变。

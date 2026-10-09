@@ -9,14 +9,25 @@
  * so this package is where git enters the picture (ADR-0004 ruling 4: substrate changed
  * only its contract, took no new dependency, and left ADR-0003's name list alone).
  *
- * Still to come, each blocked on this ticket:
- * [#22](https://github.com/McKenzieIT/semantic-grounding/issues/22) stdio entry point
- * and config surface (it constructs `GitTier2Recorder` and runs `ensureStartupPosture`),
- * [#20](https://github.com/McKenzieIT/semantic-grounding/issues/20) the fifteen intent
- * tools (ADR-0005), [#21](https://github.com/McKenzieIT/semantic-grounding/issues/21)
- * the three enrichment tools and `beginBatch` (ADR-0006).
+ * [#22](https://github.com/McKenzieIT/semantic-grounding/issues/22) added the second
+ * half: the `sg-mcp` executable, its config surface, and the stdio server that carries
+ * them. It registers **no tools** — that is
+ * [#20](https://github.com/McKenzieIT/semantic-grounding/issues/20) (the intent tools,
+ * ADR-0005) and [#21](https://github.com/McKenzieIT/semantic-grounding/issues/21) (the
+ * three enrichment tools and `beginBatch`, ADR-0006), which append to
+ * `TOOL_REGISTRARS`.
  *
- * ## Wiring it
+ * ## Running it
+ *
+ * ```console
+ * $ sg-mcp --corpus /srv/k11-semantic-layer --agent-id analyst-bot
+ * ```
+ *
+ * Refuses to start — non-zero exit, nothing on stdout — when the corpus is not its own
+ * git repository root, when its worktree is dirty in a way that is not recoverable crash
+ * residue, or when no agent id was declared. See `main.ts` for the exit codes.
+ *
+ * ## Wiring it by hand
  *
  * ```ts
  * const report = await ensureStartupPosture({ corpusRoot, agentId })   // refuses, or recovers
@@ -35,6 +46,36 @@
  *
  * @module @semantic-grounding/mcp
  */
+
+// ── Startup: config, the sequence, the stdio server (#22) ────────────────
+export {
+  BIN_NAME,
+  ConfigError,
+  ENV_VARS,
+  HelpRequested,
+  parseServerConfig,
+  usage,
+  type ServerConfig,
+} from './config.ts'
+export {
+  EXIT,
+  runMain,
+  startup,
+  startupBanner,
+  stderrLog,
+  type Log,
+  type MainOutcome,
+  type StartupResult,
+} from './main.ts'
+export {
+  createServerFactory,
+  serve,
+  SERVER_INFO,
+  TOOL_REGISTRARS,
+  type ServeOptions,
+  type ServerDeps,
+  type ToolRegistrar,
+} from './server.ts'
 
 // ── Errors (the coded contract the tool surface maps onto JSON-RPC) ──────
 export {

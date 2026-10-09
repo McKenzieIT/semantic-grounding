@@ -1,11 +1,14 @@
 {
   "name": "@semantic-grounding/mcp",
   "version": "0.0.1",
-  "description": "MCP server for semantic-grounding (packages/substrate exposed to agents). Holds the git Tier-2 audit backbone as of #19 — recorder, corpus lock, startup posture checks (ADR-0004). stdio entry point lands in #22, intent tools in #20/#21; no MCP SDK dependency yet (see map #12).",
+  "description": "MCP server for semantic-grounding (packages/substrate exposed to agents). Holds the git Tier-2 audit backbone (recorder, corpus lock, startup posture checks — ADR-0004, #19) and the sg-mcp stdio entry point (#22). Intent tools land in #20/#21; see map #12.",
   "private": true,
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
+  "bin": {
+    "sg-mcp": "lib/bin.js"
+  },
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
@@ -26,6 +29,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "^2.3.1",
     "@semantic-grounding/substrate": "workspace:*"
   },
   "devDependencies": {
