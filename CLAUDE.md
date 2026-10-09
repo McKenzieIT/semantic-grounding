@@ -29,9 +29,12 @@ MCP 读 grounding、经 Tier-2 审计写路径写回，落成 corpus git 仓库�
 provenance。charting 裁决与每会话必读见 map body。票态：#14 协议研究（已关：TS SDK v2、
 Sampling/Roots/Logging 已弃用→机制在 #16 重开）、#13 git Tier-2 recorder 设计（已关：十项裁决
 成文 ADR-0004 + ADR-0001 addendum，GLOSSARY write-tier/D5/git-recorder 词条已改；#6 随之交叉关闭）。
-Frontier：#17 workspace 化（task）、#18 substrate 契约升级（task：recorder 异步化、Tier-2 回滚、
-写原语可选 Tier2Opts、beginBatch 槽位）；#19 git recorder 实现（task，被 #18+#17 挡）；#15 tool
-surface、#16 enrichment 机制（设计票，已解锁，输入见各自评论区引 #13）。dsh 深耕暂停。遗留两件、
+Frontier：#16 enrichment 机制（设计票，已解锁，输入见评论区引 #13）、#17 workspace 化（task）、
+#18 substrate 契约升级（task：recorder 异步化、Tier-2 回滚、写原语可选 Tier2Opts、beginBatch
+槽位）；#19 git recorder 实现、#20 读写工具实现（task，分别被 #18+#17 / #18+#19 挡）。#15 tool
+surface 已关：十项裁决成文 **ADR-0005**（十五 intent 工具〔读五写十〕、expected_version 更新
+必传/创建免传、derivation 枚举 agent|llm、工具写省略 YAML origin〔origin=合并优先级 vs
+Derivation=提交归属，两类概念〕、零新 barrel 名；GLOSSARY write tier/provenance 词条已改）。dsh 深耕暂停。遗留两件、
 各有去处：dsh 升级 substrate alpha.3 的全部断点在
 [#11](https://github.com/McKenzieIT/semantic-grounding/issues/11)（低优先，随 dsh 下次升级一并
 处理）；发布 `@semantic-grounding/substrate` 是 dsh 下次发版的阻塞前置（map #1 Out of scope
