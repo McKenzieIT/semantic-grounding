@@ -40,6 +40,18 @@ round (2026-10-08 session correction).
 Shape that works: **verdict first**, then an ROI table (`action | cost | concrete
 user-facing benefit | ROI`), then only the genuinely open questions.
 
+**When the decision is about unfamiliar machinery, explain the machinery before the
+verdict.** Verdict-first assumes the reader can already judge the verdict. Where the
+subject is a mechanism they have not seen — a protocol revision's wire format, a
+framework's lifecycle — a verdict plus an ROI table is unjudgeable, and glossing the
+individual jargon words is not enough: what is missing is what the thing *does*. Lead
+with two or three plain sentences on the mechanism (an analogy earns its place here),
+state the one-sentence question it raises, then the verdict and the table. #22's
+`legacy` question was first put as verdict + evidence + ROI and came back
+"重新详细通俗声明当前的问题是什么?"; re-framed as "MCP 是说话规矩，出过几版，新版砍了握手
+改成每句话自带身份牌 —— 对面用老规矩开口时我们理不理?" it resolved in one round
+(2026-10-09 session correction).
+
 ## Register
 
 Write decision discussions in **Chinese**. Illustrate with concrete scenarios from this
