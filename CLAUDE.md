@@ -77,7 +77,14 @@ SDK 转成 `isError` **结果**、**码值丢弃**（故「抛 `SgApplicationErr
 低层 `setRequestHandler` 透码值，出路由 #20 裁）；`clientInfo` 是**逐请求信封**数据（工厂 ctx 只
 有 `{era}`）且同连接逐请求可变，故 #22 不在启动期填 `clientName`，而 `AuditContext` 今天缺该字段。
 Frontier：**#20** 读写工具实现、**#21** enrichment 工具实现——#22 关闭后两票阻塞均清零，**可并行**
-（如 #17/#18 那次，分支经 git rename-aware merge 无冲突）。
+（如 #17/#18 那次，分支经 git rename-aware merge 无冲突）。fog 的「端到端验收门禁」一项已
+graduate 为 [#23](https://github.com/McKenzieIT/semantic-grounding/issues/23)（task，被 #20+#21
+挡）——问题已能精确陈述（断言清单照搬 ADR-0005/0006 的 Verification 节，底座是 #19 的
+`fixture-corpus.ts` + #22 的 `registrar-server.ts`），只是还不能动手，按 wayfinder「sharp 即成票、
+blocked 不影响」成票；两条待裁随票记：门禁脚本的落位形状、以及错误断言**必须跟随 #20 对工具层
+错误码出路的裁决**（不可照抄 -31xxx）。**Not yet specified 现只剩一项**：agent 持久否决权
+（tombstone），触发条件是 dogfood 出现写-删循环。所以**到 Destination 的路已清**：#20 → #21 →
+#23，无悬而未决的设计裁决。
 dsh 深耕暂停。遗留两件、
 各有去处：dsh 升级 substrate alpha.3 的全部断点在
 [#11](https://github.com/McKenzieIT/semantic-grounding/issues/11)（低优先，随 dsh 下次升级一并
