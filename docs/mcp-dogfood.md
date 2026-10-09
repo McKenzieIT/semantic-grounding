@@ -1,7 +1,6 @@
 # MCP dogfood — 真 agent 挂 stdio 的实测记录
 
-**Status: pending** — 记录模板与清单已就位（2026-10-09，#23 Part A 落地时建篇）；下面各节
-「记录」处待真 agent 跑过后填写。本篇是 [#23](https://github.com/McKenzieIT/semantic-grounding/issues/23)
+**Status: done（2026-10-10）** —— QoderWork 全程跑完读写回路 + enrichment 段，Destination 判定达成；四项发现开 A/B/C 三张 issue（编号见文末）。本篇是 [#23](https://github.com/McKenzieIT/semantic-grounding/issues/23)
 Part B 的落点（裁决：dogfood 记录进 docs/，resolution 链接此处），也是 map #12 Destination
 「另做一次真 agent dogfood」的验收材料。
 
@@ -113,6 +112,32 @@ ref 变体）。规避顺序：先净描述（update 写干净文本，hook 无�
 
 **记录：**
 
+**记录（清理 + 打地鼠，2026-10-10）**：25 commits（1 描述重写〔无括引干净文本〕+ 24 条
+remove_alias）全 audited；23 条碎片清除，4 个业务别名保留。**写-删循环 domain 变体实锤**：
+`付费经济` / `用户生命周期` 同时是本表 `domains` 字段值——remove_alias 后 hook 在**同一次锁内**
+从 domains 回灌（git 链：`26fdc32` remove(付费经济) → `fd4ad3f` enrich_on_write 回写），
+agent 并观察到**指纹回退**（60d47c13… → 4dd62262…：remove 未持久，内容被还原）。裁决：
+domain-as-alias **接受**（召回有益，agent 同判：与正文碎片性质不同）；洞 = agent 无持久
+否决权 → **issue A（tombstone）**，批量否决语义在该票一并称量（24 条逐删 + 打地鼠的归宿）。
+
+**记录（enrichment 段，2026-10-10）**：单表 `run_enrichment(tables:[_df])` —— **subject
+「1 table(s)」 vs trailer 「Files=446」**：tables 维度进了 subject 却没约束住 discovery 的
+全维度——**events 未指定 = 全量扫 445 个事件**；客户端超时但 server 侧完成（`3cef160`
+落盘），回执丢失。`get_enrichment_work` 回 **579 项 / 25.9MB**（全库 321 表 + 258 事件；
+_df 无缺口故不在列：dimension_refs 5 条 deterministic、alt_labels 非空）；listing 侧
+tables filter 是否同样失效**待首探**（两版 stdio 探针未保活成功，非结论）。apply_enrichment
+**正确地未被调用**：无 work_id，agent 拒绝硬造——工具契约在真宿主成立。全库 sweep 后多表
+alt_labels 被污染（_df 18 条含碎片）。→ **issue B（过滤语义 + 响应尺寸）**、**issue C（抽取
+器护栏）**。
+
 ## 结论
 
-**记录：**（Destination 是否达成的一句判词 + 需要成票/成 Followup 的事项清单）
+**Destination 达成**（2026-10-10）。三步回路经真宿主（QoderWork，stdio，env-only 注册）全程
+走通：问数读路径五工具全调用、di/df 孪生表语义答对、JOIN 经业务判断正确；三写回 + 幂等
+no-op + stale_baseline 重读重试**活体闭环**；`git log -p --follow` / trailers 对账 agent 自述
+**零出入**（author=agent / committer=server 身位分离全程成立）。四项发现：①写-删循环
+（tombstone 触发，domain 变体，指纹回退铁证）②enrichment 维度过滤缺陷（1 表 subject /
+446 files）③work listing 无尺寸上限（579 项 / 25.9MB）④抽取器撕碎长描述。①→issue A、
+②③→issue B、④→issue C（编号见 #23 resolution）。era 记「未测」（信封无 clientInfo、宿主
+详情页无版本显示；`legacy:'serve'` 双 era 服务，不阻塞）；X-SG-Client 因同因诚实缺席。
+LLM 半边（get_work→apply）真宿主无对象可演（所选表无缺口），由 CI 门禁 `pnpm e2e` 覆盖。
