@@ -133,6 +133,12 @@ Allocated so far: `lock_timeout` −31001, `stale_baseline` −31002, `commit_fa
 `stale_baseline` is marked retryable: a lock timeout means the corpus is genuinely
 contended (ruling 7 made queuing *be* the lock), and retrying it silently would hide that.
 
+> ⚠️ **#22 的实测推翻了这段的一个隐含前提**：`registerTool` 的处理器抛出的异常会被 SDK 转成
+> `isError` 结果、**码值丢弃**，所以「抛 `SgApplicationError` 即得 `-31xxx` 错误响应」在工具层
+> 不成立（低层 `setRequestHandler` 才透出码值）。同时裁决 9 的 `clientInfo` 来源也被更正：它是
+> 逐请求信封数据，不是启动通道数据。两条的完整测量与对 #20 的后果见
+> **ADR-0005 的 2026-10-09 addendum**。
+
 One ruling the implementation declined to soften: a `recordTier2Write` arriving with no
 ambient audit context **throws** (`missing_audit_context`) rather than synthesizing a
 subject from the substrate payload. ADR-0005 ruling 8 rejected server-written summaries,
