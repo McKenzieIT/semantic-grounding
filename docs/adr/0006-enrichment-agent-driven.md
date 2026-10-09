@@ -70,3 +70,45 @@ substrate 侧新增 `listEnrichmentWork` / `applyEnrichmentResults` 两个 core 
   best-effort 轮次）、`src/index.ts:150-157`（公共入口 = class 方法、纯函数 off-barrel 的
   convention 条款）、`src/index.ts:795-838`（discoverRelations 显式入口今日无审计）
 - GLOSSARY：enrichment、enrichment work（新）、enrichment health、write tier
+
+## Update 2026-10-09 — 实现落地：beginBatch、两个 apply merge-correctness fix、`-31040` 段留空
+
+落 [#21](https://github.com/McKenzieIT/semantic-grounding/issues/21)。ADR-0004 的 2026-10-09 addendum
+第 6 条（`beginBatch` 槽位实现）留了 dangling reference 指向本节，此处补齐，避免悬空。
+
+**1. `beginBatch` 落地（ADR-0004 裁决 3 槽位，#18 只留了类型）。**
+`GitTier2Recorder.beginBatch()` 返回 `Tier2Batch`：`record()` 是 caller 计数簿记钩（git 无独立的
+"何为一轮"概念，调用方自己的调用计数即 `X-SG-Rounds`）；`end()` 先 `git add -A` 学真实文件数再
+委托既有 `stageAndCommit`（多一次冗余 add，不维护第二条 commit 路径）；`abort()` 回滚到 pre-batch
+HEAD。关键是 `recordTier2Write` 的新**吸收分支**：batch 开着时（`batchDepth > 0`，像锁一样可重入），
+每个本会单独 commit 的 `Tier2Opts` 写返回廉价 no-op（返回 head）。这让 `run_enrichment` 调**未改动的**
+#18 `discoverRelations`/`discoverEventRelations`/`discoverAltLabels`（仍照传 `tier2`）在一个 beginBatch
+窗口内得**一个** commit 而非每表一个——enrichAll* 家族永不知道 batching 存在，recorder 是唯一知情者。
+`apply_enrichment` 内部也开自己的 beginBatch（`applyEnrichmentResultsBatch`）收拢整批。
+
+**2. 两个 apply 路径的 merge-correctness fix（实现中发现）。**
+- 一个 work_id 的 round 不 stale **同 target 上兄弟 work_id 的 round**——同一定义上并发多个 work item
+  时，先 apply 的改基底，后 apply 的指纹不符；裁该项 `stale_baseline`，不毒死兄弟项。
+- agent 重提一个 asset 自己已有的名字应 resolve 为 `idempotent` 而非 `applied`——否则幂等重放被记成
+  新写入，污染审计史的"改了什么"。
+
+**3. `-31040..-31059` 段留空（确认，非缺口）。** enrichment 没有 whole-call 失败需要单独码值：
+lock timeout / commit failure / dirty-tree refusal / missing audit context 全是 #19 已编码的通用 Tier-2
+写失败；per-item verdict（`stale_baseline`/`unparseable`/work_id 解码失败）是裁决 4 的**非错误 payload
+数据**（一项 stale 不毒死整批，不到 `toToolErrorResult`）。与 #22 addendum 第 3 条同构（"分配表的确认
+而非缺口"）。未来若出现真正 enrichment-specific 的 whole-call 失败，从 `-31040` 起分配。
+
+**4. 错误契约 `toToolErrorResult`（ADR-0005 2026-10-09 addendum，与 #20 同一份 spec 各自独立实现）。**
+`packages/mcp/src/errors.ts`：**返回而非抛出**——实测 `registerTool` 处理器若抛出，SDK 会 catch 成
+只剩裸字符串（比 addendum 记录的"只丢 code"更彻底）；只有**返回**一个 `{isError:true, content:[...]}`
+结果，完整 JSON 才经 `projectCallToolResult` 原样上线。`-31xxx` 码值活在 `content[0].text` 的 JSON 里，
+永不上 JSON-RPC 的 `error.code` 字段。非 `SgApplicationError` 异常原样重抛（内部故障不伪装成工具结果）。
+`SgApplicationError.code` 类型放宽为 `number`（三票共用基类，各自构造自己段位）。
+
+**5. `clientInfo` 逐请求线路（同 addendum 第二条）。** `AuditContext` 加 `clientName?`，
+`commitContext()` 改 `firstNonEmpty(ctx.clientName, this.cfg.clientName)` 镜 sessionId；每个写工具处理器
+`clientNameFromEnvelope(extra)` 逐请求读 `extra.mcpReq.envelope[CLIENT_INFO_META_KEY]`。
+
+**门禁全绿**（main 上 #20 + #21 合并后）：substrate typecheck / test(299+) / negation / acceptance 全过；
+mcp typecheck 0 错 / test 248 passed（17 files，含 intent-tools 84 + tool-error-contract +
+enrichment-tools + git-recorder 33 + server-startup/build-shape/config 等）。
