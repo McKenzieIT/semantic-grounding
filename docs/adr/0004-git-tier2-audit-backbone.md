@@ -140,7 +140,7 @@ and a commit whose stated basis is invented is worse than a loud wiring error. T
 exception is the derived-residue commit in item 1, where the basis genuinely is known to
 the server (the round, and the write that triggered it) — reporting, not fabrication.
 
-Verification as shipped: 92 tests in `packages/mcp/tests/`, including four real writer
+Verification as shipped: 91 tests in `packages/mcp/tests/`, including four real writer
 **processes** contending for one fixture corpus. That suite was checked against a
 neutered lock (`withLock` reduced to `fn()`) and the lost-update assertions fail, so they
 are measuring the lock rather than passing regardless. Commit failure is forced with a

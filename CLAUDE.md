@@ -48,8 +48,20 @@ rename-aware merge **无冲突**合入 main，合入后重跑全量门禁（type
 negation-test/acceptance）确认绿。Fog「server 骨架与配置面」graduate 为
 [#22](https://github.com/McKenzieIT/semantic-grounding/issues/22)（task，被 #19 挡；#20/#21
 新增阻塞于 #22——工具注册需先有骨架可挂）。
-Frontier：**#19** git recorder 实现（唯一解锁票）。#20 读写工具实现、#21 enrichment 工具实现、
-#22 server 骨架与配置面（task，均被 #19 挡，#20/#21 另被 #22 挡）。
+#19 git recorder 实现已关：ADR-0004 裁决 4–7/9/10 + 启动四情形落在 `packages/mcp/src/git/`
+（substrate 零改动，裁决 4 端到端成立）；seam 是 **`runAudited(ctx, fn)`**（锁须包住基底调用，
+intent 只有工具层知道——无 context 的 `recordTier2Write` 抛错不自拼 summary）。三处实测修正
+入 **ADR-0004 的 2026-10-09 addendum**：①`autoEnrich` 默认 true，on-write enrichment 钩子在
+审计 commit **之后**无 `Tier2Opts` 写盘（probe 实测），故一次 agent 写可能产**两个** commit
+（另提 `enrich_on_write` / `Derivation: deterministic`，不与 agent commit 合并；`beginBatch`
+在 #21 使其结构化）；②`--show-toplevel` 返回 realpath，裁决 5 须比规范化路径（按字符串比会错拒
+软链配置的合法 corpus）；③裁决 6 延伸到每次写（暂存是 `add -A`，脏树上的写按原理由拒绝）。
+锁手写而非 proper-lockfile：裁决 6 要属主 pid，后者只按 mtime 判陈旧、表达不出「脏+死锁 vs
+脏+活锁」。错误码分段 -31000..-31019（本票）/ -31020..-31039（#20）/ -31040..-31059（#21），
+仅 `stale_baseline` retryable。91 测试含四个真实 writer **进程**争用，且对「锁被摘掉」做过
+反证（丢更新断言会失败）。commit `b4fd070`。
+Frontier：**#22** server 骨架与配置面（唯一解锁票；#19 关闭后其阻塞清零）。#20 读写工具实现、
+#21 enrichment 工具实现（均被 #22 挡——工具注册需先有骨架可挂）。
 dsh 深耕暂停。遗留两件、
 各有去处：dsh 升级 substrate alpha.3 的全部断点在
 [#11](https://github.com/McKenzieIT/semantic-grounding/issues/11)（低优先，随 dsh 下次升级一并
