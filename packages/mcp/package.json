@@ -1,0 +1,37 @@
+{
+  "name": "@semantic-grounding/mcp",
+  "version": "0.0.1",
+  "description": "MCP server for semantic-grounding (packages/substrate exposed to agents). Empty scaffold as of #17 — tool surface lands in #19/#20/#21; no MCP SDK dependency yet (version is a research-ticket decision, see map #12).",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/**/*.js",
+    "lib/**/*.d.ts"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "tsdown",
+    "pretypecheck": "pnpm --filter @semantic-grounding/substrate run build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "pretest": "pnpm --filter @semantic-grounding/substrate run build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@semantic-grounding/substrate": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "tsdown": "^0.22.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
+  }
+}
