@@ -117,6 +117,18 @@ export interface AuditContext {
   readonly derivation: Derivation
   /** The caller's own confidence, 0–1. */
   readonly confidence: number
+  /**
+   * Per-call client application name, overriding the configured one.
+   *
+   * `clientInfo` is per-request envelope data under the 2026-07-28 revision, not a
+   * startup-channel value (ADR-0005's 2026-10-09 addendum, #22's measurement:
+   * `serveStdio`'s factory ctx carries only `{era}`, and `_meta['io.modelcontextprotocol/
+   * clientInfo']` is readable only from inside a request handler, where it can also
+   * legitimately differ request-to-request on one connection). This is the slot a tool
+   * handler reads it into: pass `extra.mcpReq.envelope['io.modelcontextprotocol/
+   * clientInfo']?.name` here, read fresh on every call, never cached at construction.
+   */
+  readonly clientName?: string
   /** Per-call session id, overriding the configured one. */
   readonly sessionId?: string
   /** Files in this commit — batch callers only (#21). */
@@ -319,12 +331,17 @@ export class GitTier2Recorder implements Tier2Recorder {
   /**
    * Merge the per-call context with construction-time metadata into the full commit
    * context. Scope/session prefer the substrate's forwarded values, which carry the
-   * Core's active scope when the host overrode it per call.
+   * Core's active scope when the host overrode it per call. Client name mirrors the
+   * session-id pattern: the per-call value (read from the request envelope by the tool
+   * handler) wins over the configured one — which #22 deliberately leaves unset,
+   * because a startup-time value would be a *process-wide* default standing in for
+   * data that is legitimately per-request (this module's `clientName` field doc).
    * @param ctx - the per-call audit context.
    * @param opts - scope/session metadata forwarded by the substrate.
    * @returns the assembled {@link CommitContext}.
    */
   private commitContext(ctx: AuditContext, opts?: Tier2RecordMeta): CommitContext {
+    const clientName = firstNonEmpty(ctx.clientName, this.cfg.clientName)
     const scopeId = firstNonEmpty(opts?.scope_id, this.cfg.scopeId)
     const sessionId = firstNonEmpty(opts?.session_id, ctx.sessionId, this.cfg.sessionId)
     return {
@@ -334,7 +351,7 @@ export class GitTier2Recorder implements Tier2Recorder {
       derivation: ctx.derivation,
       confidence: ctx.confidence,
       agentId: this.agentId,
-      ...this.cfg.clientName !== undefined ? { clientName: this.cfg.clientName } : {},
+      ...clientName !== undefined ? { clientName } : {},
       ...scopeId !== undefined ? { scopeId } : {},
       ...sessionId !== undefined ? { sessionId } : {},
       ...ctx.files !== undefined ? { files: ctx.files } : {},

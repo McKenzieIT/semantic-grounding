@@ -46,6 +46,11 @@ describe('dependencies stay external', () => {
   it.each([
     ['@semantic-grounding/substrate', 'SemanticGroundingCore'],
     ['@modelcontextprotocol/server', 'McpServer'],
+    // Added by #20: ADR-0005's fifteen tools build real `inputSchema`s (zod objects —
+    // `TableFieldsSchema` etc., `tools/shared.ts`), so this package now has its own
+    // legitimate reason to import zod, not just a transitive one through the SDK or the
+    // substrate. It must stay external for the same reason the other two do.
+    ['zod', 'z'],
   ])('imports %s rather than bundling it', (specifier, _symbol) => {
     expect(emitted).toContain(`from "${specifier}"`)
   })
@@ -57,8 +62,7 @@ describe('dependencies stay external', () => {
     expect(emitted).not.toContain('registerInvalidationHook =')
   })
 
-  it('does not inline the MCP SDK or its zod dependency', () => {
+  it('does not inline the MCP SDK', () => {
     expect(emitted).toContain('from "@modelcontextprotocol/server/stdio"')
-    expect(emitted).not.toMatch(/from "zod/)
   })
 })

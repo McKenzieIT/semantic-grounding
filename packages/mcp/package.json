@@ -30,7 +30,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.3.1",
-    "@semantic-grounding/substrate": "workspace:*"
+    "@semantic-grounding/substrate": "workspace:*",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^22.20.0",

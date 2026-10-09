@@ -210,7 +210,14 @@ definition-level `create_definition` / `update_definition`, entry-level `add_ali
 (`submit` / `list` / `get` / `discard_suggestion`) — thin wrappers that compile onto the
 functions in this table and do their read-modify-write inside the corpus lock. The
 raw-edit row never appears as a tool: `create_definition` routes through the primitives
-with a recorder passed on every call (ADR-0004 ruling 2's constraint).
+with a recorder passed on every call (ADR-0004 ruling 2's constraint). Implemented in
+[#20](https://github.com/McKenzieIT/semantic-grounding/issues/20) (`packages/mcp/src/tools/`),
+alongside the five read-only intent tools (`search_definitions` / `get_definition` /
+`get_join_path` / `get_relations` / `resolve_alias`) ADR-0005 also rules on. Tool-layer
+errors are discriminated through a payload inside the `isError` result, not the
+JSON-RPC `error.code` field — `toToolErrorResult`, `packages/mcp/src/errors.ts` —
+because `registerTool`'s handler wrapper reduces any *thrown* error to its bare
+`.message` (measured against SDK v2.3.1).
 
 The stance behind the split is recorded in `src/pending.ts`: *"polluting
 source-of-truth >> polluting instructions"*. A wrong definition in the corpus is
@@ -229,8 +236,21 @@ loop needs Tier-2, and therefore needs a Tier-2 recorder.
 ### pending queue
 
 The Tier-1 store of agent-authored suggestions (`src/pending.ts`): one JSON file per
-suggestion under `var/`. Ported from reverse-bi's `rbi-mcp` package, i.e. this
-mechanism was designed for exactly the agent-over-MCP shape.
+suggestion under a directory `submit`/`listing`/`load`/`discard` take as an explicit
+`root` parameter — originally `var/` in reverse-bi's `rbi-mcp` package, i.e. this
+mechanism was designed for exactly the agent-over-MCP shape; `root` is a deployment
+choice, not something `pending.ts` itself fixes.
+
+Under the [git recorder](#git-recorder)'s host (`packages/mcp`, the Tier-1 suggestion
+tools of [#20](https://github.com/McKenzieIT/semantic-grounding/issues/20)), `root` is
+**`<gitDir>/sg-pending/`, not inside the corpus worktree** — the same placement, and the
+same reason, as the [git recorder](#git-recorder)'s own write lock
+(`<gitDir>/sg-write.lock`, `git/lock.ts`): a suggestion file living in the worktree
+would be corpus *content*, so `git status --porcelain` would report it as an untracked,
+uncommitted change, and the *next* Tier-2 write would refuse — mistaking an agent's own
+suggestion for an operator's uncommitted edit (ADR-0004 ruling 6). The git dir is
+outside the tree git tracks, which sidesteps this with no new corpus-level
+`.gitignore` entry to ask an operator to add.
 
 `submit` / `load` / `listing` / `discard` exist; **`approve` does not** — approving
 means performing the corresponding [Tier-2](#write-tier) write and discarding the

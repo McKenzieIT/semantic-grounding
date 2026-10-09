@@ -20,6 +20,57 @@
  * | `-31020..-31039` | intent tool surface (#20, ADR-0005)     |
  * | `-31040..-31059` | enrichment tools (#21, ADR-0006)        |
  *
+ * Allocated so far in the `-31020..-31039` segment: `unsupported_update_field` −31020,
+ * `definition_not_found` −31021, `definition_already_exists` −31022,
+ * `suggestion_not_found` −31023, `validation_failed` −31024. `stale_baseline`,
+ * `lock_timeout`, `commit_failed`, `posture_refused` and `missing_audit_context` are
+ * **not** re-allocated here — a tool-layer write surfaces #19's own codes unchanged
+ * (`runAudited`/`recordTier2Write` already throw {@link SgApplicationError} subclasses
+ * carrying them), which is exactly what {@link toToolErrorResult} is generic over.
+ *
+ * ## The `-31xxx` code never rides the JSON-RPC wire for a tool-layer failure
+ *
+ * ADR-0005 ruling 8 named the error *kinds* a tool caller must be able to discriminate
+ * (`stale_baseline`, lock timeout, validation failure) and deferred the mechanism to
+ * this ticket (#20) — the deferral was forced by a premise ADR-0004's addendum had
+ * recorded and #22's SDK probe then falsified: **`McpServer.registerTool`'s handler
+ * wrapper catches every exception the handler throws and converts it to a
+ * `{content:[…], isError:true}` *result*, discarding everything but `.message`.**
+ * Measured directly against the installed `@modelcontextprotocol/server@2.3.1` (its
+ * `tools/call` handler, `mcp-DIH4cS6P.mjs`):
+ *
+ * ```js
+ * try {
+ *   const result = await this.executeToolHandler(tool, args, ctx)
+ *   ...
+ * } catch (error) {
+ *   if (error instanceof ProtocolError && error.code === ProtocolErrorCode.UrlElicitationRequired) throw error
+ *   return this.createToolError(error instanceof Error ? error.message : String(error))
+ * }
+ * // createToolError(errorMessage) { return { content: [{ type: 'text', text: errorMessage }], isError: true } }
+ * ```
+ *
+ * So a *thrown* {@link SgApplicationError} would not merely lose its `code` on the wire —
+ * `createToolError` keeps only `.message`, so `.code`/`.retryable`/`.data` are **all**
+ * discarded before a single byte is written. The only seam that puts a bare `-31xxx` on
+ * the actual JSON-RPC `error.code` field is the low-level `server.server.setRequestHandler`
+ * (bypassing `registerTool` entirely) — rejected here because it costs the zod schema
+ * validation and the automatic `tools/list` registration `registerTool` gives for free
+ * (and the already-tested "`capabilities:{tools:{}}` coexists with a later `registerTool`"
+ * assertion the whole #20/#21 integration step rests on, `tests/server-startup.spec.ts`).
+ *
+ * The decision kept here: **keep `registerTool`**, and have every tool handler *catch*
+ * its own errors and *return* — never throw — a structured `isError` result via
+ * {@link toToolErrorResult}. Returning (rather than throwing) is what matters: a result a
+ * handler returns reaches the wire through `projectCallToolResult` untouched, so the full
+ * `{code, name, message, retryable, data}` payload this function builds survives inside
+ * `content[0].text` as JSON. The `-31xxx` value is still meaningful — it is just read out
+ * of that JSON by the calling agent, never off `error.code`. Two facts the SDK still gives
+ * for free, confirmed by the same read: an **unknown tool name** throws before the
+ * try/catch above even starts, so it still produces a genuine `-32602`; and the SDK's own
+ * `outputSchema`/`structuredContent` feature (real in this version, unlike the error path)
+ * is simply never declared by any tool below, so it never enters the picture.
+ *
  * ## Why codes at all, in a layer that throws
  *
  * The recorder is called from inside the substrate (`Tier2Recorder`), which knows
@@ -37,6 +88,7 @@
  *
  * @module errors
  */
+import type { CallToolResult } from '@modelcontextprotocol/server'
 
 /** The reserved JSON-RPC range application codes must avoid (MCP 2026-07-28). */
 export const JSONRPC_RESERVED_RANGE = { min: -32768, max: -32000 } as const
@@ -64,13 +116,48 @@ export const GIT_AUDIT_ERROR_CODES = {
 export type GitAuditErrorCode = (typeof GIT_AUDIT_ERROR_CODES)[keyof typeof GIT_AUDIT_ERROR_CODES]
 
 /**
+ * Error codes owned by the intent tool surface (#20), in the `-31020..-31039`
+ * segment documented in this module's header.
+ *
+ * These are the genuinely *new* tool-layer conditions ADR-0005's ruling 8 asks to be
+ * discriminable — "validation failure" in its three concrete tool-layer shapes. The
+ * other two kinds ruling 8 names (`stale_baseline`, lock timeout) are **not**
+ * reallocated here: they already arrive as coded {@link SgApplicationError} subclasses
+ * out of `GitTier2Recorder.runAudited`/`recordTier2Write` (the `-31000..-31019`
+ * segment), and {@link toToolErrorResult} is generic over any of them. Allocating a
+ * second code for the same condition would give one failure two numbers.
+ */
+export const INTENT_TOOL_ERROR_CODES = {
+  /** `update_definition` was asked to set an identity or array-reference field (ADR-0005 ruling 4). */
+  unsupported_update_field: -31020,
+  /** The named table/event/concept/metric does not exist. */
+  definition_not_found: -31021,
+  /** `create_definition` named a table/event that already exists. */
+  definition_already_exists: -31022,
+  /** The named Tier-1 suggestion id does not exist in the pending queue. */
+  suggestion_not_found: -31023,
+  /** The merged document failed re-validation against the kind's full definition schema. */
+  validation_failed: -31024,
+} as const
+
+/** The union of codes this module allocates for the intent tool surface. */
+export type IntentToolErrorCode = (typeof INTENT_TOOL_ERROR_CODES)[keyof typeof INTENT_TOOL_ERROR_CODES]
+
+/**
  * Base class for errors that are part of this surface's contract — a condition the
- * caller can act on, as opposed to an internal fault. Carries the numeric code the
- * tool layer puts on the JSON-RPC error response.
+ * caller can act on, as opposed to an internal fault. Carries the numeric code a tool
+ * handler reads back out via {@link toToolErrorResult} (never the JSON-RPC wire's own
+ * `error.code` for a tool-layer failure — see this module's header).
+ *
+ * `code`'s type is a plain `number` rather than a single ticket's own union
+ * ({@link GitAuditErrorCode} / {@link IntentToolErrorCode}) because this one base class
+ * is shared across all three `-31xxx` segments (git audit backbone #19, intent tools
+ * #20 here, enrichment tools #21) — a subclass from any segment constructs the same
+ * base with its own segment's literal.
  */
 export class SgApplicationError extends Error {
   /** The application error code (outside the JSON-RPC reserved range). */
-  readonly code: GitAuditErrorCode
+  readonly code: number
   /** Whether the calling agent should re-read its inputs and retry without human help. */
   readonly retryable: boolean
   /** Structured detail for the error response; free-form per subclass. */
@@ -82,7 +169,7 @@ export class SgApplicationError extends Error {
    * @param opts - `retryable` (default false) and structured `data` for the response.
    */
   constructor(
-    code: GitAuditErrorCode,
+    code: number,
     message: string,
     opts: { readonly retryable?: boolean; readonly data?: Readonly<Record<string, unknown>> } = {},
   ) {
@@ -206,4 +293,133 @@ export class MissingAuditContextError extends SgApplicationError {
   constructor(message: string, data?: Readonly<Record<string, unknown>>) {
     super(GIT_AUDIT_ERROR_CODES.missing_audit_context, message, { ...data !== undefined ? { data } : {} })
   }
+}
+
+/**
+ * `update_definition` was asked to set a field it does not accept: an identity field
+ * (`table_name` / `name` / `kind`, immutable after creation) or an array-reference
+ * field (`alt_labels` / `dimension_refs` / `external_refs`, maintained item-by-item so
+ * two concurrent callers merging whole arrays cannot lose each other's entries —
+ * ADR-0005 ruling 4). Array-reference rejections always carry `data.use_instead`
+ * naming the item-level tool that does accept the field; identity rejections do not
+ * (there is no tool that renames a definition or changes a table's dws/dim kind).
+ */
+export class UnsupportedUpdateFieldError extends SgApplicationError {
+  /**
+   * @param message - names the rejected field and, for an array-reference field, the tool to use instead.
+   * @param data - structured detail: `field`, and `use_instead` when one applies.
+   */
+  constructor(message: string, data?: Readonly<Record<string, unknown>>) {
+    super(INTENT_TOOL_ERROR_CODES.unsupported_update_field, message, { ...data !== undefined ? { data } : {} })
+  }
+}
+
+/**
+ * The named definition does not exist: `get_definition` was asked for a table / event /
+ * concept / metric with no matching definition, or a write tool (`update_definition`,
+ * `add_alias`, `remove_alias`, `add_relation`, `remove_relation`) was asked to modify
+ * one. Not retryable in the `stale_baseline` sense — the fix is a different call
+ * (`create_definition`, or re-checking the name via `search_definitions`), not a retry
+ * of this one with fresh inputs.
+ */
+export class DefinitionNotFoundError extends SgApplicationError {
+  /**
+   * @param message - names the missing kind and name.
+   * @param data - structured detail: `kind`, `name`.
+   */
+  constructor(message: string, data?: Readonly<Record<string, unknown>>) {
+    super(INTENT_TOOL_ERROR_CODES.definition_not_found, message, { ...data !== undefined ? { data } : {} })
+  }
+}
+
+/**
+ * `create_definition` named a table or event that already has a definition on disk.
+ * Refused rather than silently overwritten: creation and update are deliberately two
+ * different tools with two different audit verbs (ADR-0005 ruling 2), so a `create`
+ * that lands on an existing name is the caller's mistake to correct — with
+ * `update_definition` — not this tool's to paper over.
+ */
+export class DefinitionAlreadyExistsError extends SgApplicationError {
+  /**
+   * @param message - names the kind and name that already exists.
+   * @param data - structured detail: `kind`, `name`.
+   */
+  constructor(message: string, data?: Readonly<Record<string, unknown>>) {
+    super(INTENT_TOOL_ERROR_CODES.definition_already_exists, message, { ...data !== undefined ? { data } : {} })
+  }
+}
+
+/**
+ * `get_suggestion` / `discard_suggestion` named a `suggestion_id` with no matching
+ * entry in the Tier-1 pending queue (never submitted, already discarded, or
+ * malformed — `isValidId` rejects anything that cannot be a real id before a lookup
+ * is even attempted, which this error also covers).
+ */
+export class SuggestionNotFoundError extends SgApplicationError {
+  /**
+   * @param message - names the missing suggestion id.
+   * @param data - structured detail: `suggestion_id`.
+   */
+  constructor(message: string, data?: Readonly<Record<string, unknown>>) {
+    super(INTENT_TOOL_ERROR_CODES.suggestion_not_found, message, { ...data !== undefined ? { data } : {} })
+  }
+}
+
+/**
+ * The document that would result from this write failed re-validation against the
+ * kind's full definition schema (`TableDefinitionSchema` / `EventDefinitionSchema`,
+ * refinements included — e.g. a DIM table whose merged `primary_key` ends up empty).
+ *
+ * Distinct from {@link UnsupportedUpdateFieldError}: that one rejects a *field name*
+ * before any write is attempted; this one is the kind's own schema rejecting the
+ * *merged value* — `updateTableMeta` / `updateEventMeta` already compute this message
+ * (ADR-0004/#18's `UpdateTableMetaResult`/`UpdateEventMetaResult`'s `{ok:false, error}`
+ * branch) without throwing, so this class only gives it a code and a wire shape.
+ */
+export class DefinitionValidationError extends SgApplicationError {
+  /**
+   * @param message - the schema's own validation message (from `updateTableMeta`/`updateEventMeta`).
+   * @param data - structured detail: `kind`, `name`.
+   */
+  constructor(message: string, data?: Readonly<Record<string, unknown>>) {
+    super(INTENT_TOOL_ERROR_CODES.validation_failed, message, { ...data !== undefined ? { data } : {} })
+  }
+}
+
+/**
+ * Convert a thrown error into the `isError` tool result that is the only way its
+ * structured detail survives `registerTool`'s handler wrapper — see this module's
+ * header for the measured reason a *thrown* {@link SgApplicationError} cannot do this
+ * (the SDK's own catch keeps only `.message`). Every tool handler in `src/tools/` ends
+ * with `catch (e) { return toToolErrorResult(e) }`.
+ *
+ * `code`/`name`/`message`/`retryable`/`data` all travel inside `content[0].text` as a
+ * JSON string — never on the JSON-RPC envelope's own `error.code` for a tool-layer
+ * failure, which is the SDK's own idiom for `tools/call` (as opposed to prompts/
+ * resources, which still get a real JSON-RPC error — this module's header). The
+ * calling agent discriminates by parsing that JSON, not by reading `error.code`.
+ * @param error - whatever a tool handler's try block caught.
+ * @returns an `isError: true` result carrying the coded detail, when `error` is one of
+ *   this surface's {@link SgApplicationError}s.
+ * @throws the original `error`, unmodified, when it is **not** an `SgApplicationError`
+ *   — an internal fault (a bug in this server) stays loud rather than being reported to
+ *   the calling agent as if it were a condition the agent could act on.
+ */
+export function toToolErrorResult(error: unknown): CallToolResult {
+  if (error instanceof SgApplicationError) {
+    return {
+      isError: true,
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          code: error.code,
+          name: error.name,
+          message: error.message,
+          retryable: error.retryable,
+          data: error.data,
+        }),
+      }],
+    }
+  }
+  throw error // internal fault — stays loud, not masked as a tool result
 }

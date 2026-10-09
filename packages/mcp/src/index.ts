@@ -11,11 +11,17 @@
  *
  * [#22](https://github.com/McKenzieIT/semantic-grounding/issues/22) added the second
  * half: the `sg-mcp` executable, its config surface, and the stdio server that carries
- * them. It registers **no tools** — that is
- * [#20](https://github.com/McKenzieIT/semantic-grounding/issues/20) (the intent tools,
- * ADR-0005) and [#21](https://github.com/McKenzieIT/semantic-grounding/issues/21) (the
- * three enrichment tools and `beginBatch`, ADR-0006), which append to
- * `TOOL_REGISTRARS`.
+ * them, registering no tools of its own.
+ * [#20](https://github.com/McKenzieIT/semantic-grounding/issues/20) appends ADR-0005's
+ * fifteen intent tools (`src/tools/`) to `TOOL_REGISTRARS`, and
+ * [#21](https://github.com/McKenzieIT/semantic-grounding/issues/21) (the three
+ * enrichment tools and `beginBatch`, ADR-0006) appends the rest the same way.
+ *
+ * Every tool handler wraps its body in `try { ... } catch (e) { return
+ * toToolErrorResult(e) }` — see that function's doc for why a *returned* `isError`
+ * result is the only way `SgApplicationError`'s `code`/`retryable`/`data` survive
+ * `registerTool`'s handler wrapper (measured against SDK v2.3.1: a *thrown* error is
+ * reduced to its bare `.message`).
  *
  * ## Running it
  *
@@ -80,16 +86,30 @@ export {
 // ── Errors (the coded contract the tool surface maps onto JSON-RPC) ──────
 export {
   GIT_AUDIT_ERROR_CODES,
+  INTENT_TOOL_ERROR_CODES,
   JSONRPC_RESERVED_RANGE,
   SgApplicationError,
   CommitFailedError,
+  DefinitionAlreadyExistsError,
+  DefinitionNotFoundError,
+  DefinitionValidationError,
   IdentityMissingError,
   LockTimeoutError,
   MissingAuditContextError,
   PostureRefusedError,
   StaleBaselineRejection,
+  SuggestionNotFoundError,
+  UnsupportedUpdateFieldError,
+  toToolErrorResult,
   type GitAuditErrorCode,
+  type IntentToolErrorCode,
 } from './errors.ts'
+
+// ── Intent tools (ADR-0005, #20) ──────────────────────────────────────────
+export {
+  INTENT_TOOL_NAMES,
+  INTENT_TOOL_REGISTRARS,
+} from './tools/index.ts'
 
 // ── The recorder (ADR-0004) ─────────────────────────────────────────────
 export {

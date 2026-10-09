@@ -2,9 +2,10 @@
  * The stdio server: how a `SemanticGroundingCore` and its git recorder become an MCP
  * server ([#22](https://github.com/McKenzieIT/semantic-grounding/issues/22)).
  *
- * This module registers **no tools**. #20 (ADR-0005's intent tools) and #21 (ADR-0006's
- * enrichment tools) hook onto the {@link ToolRegistrar} seam below; until they land, the
- * server answers `tools/list` with an empty list — serving, with nothing to offer.
+ * This module itself registers **no tools** — #20 (ADR-0005's fifteen intent tools) and
+ * #21 (ADR-0006's enrichment tools) hook onto the {@link ToolRegistrar} seam below.
+ * #20's fifteen are appended to {@link TOOL_REGISTRARS} from `./tools/index.ts`; #21's
+ * three land the same way when that ticket lands.
  *
  * Every shape here was settled by measuring SDK v2.3.1 rather than reading its docs, and
  * four of those measurements contradicted what the map had recorded. They are written up
@@ -54,6 +55,11 @@ import { serveStdio, type ServeStdioOptions, type StdioServerHandle } from '@mod
 import type { SemanticGroundingCore } from '@semantic-grounding/substrate'
 import type { ServerConfig } from './config.ts'
 import type { GitTier2Recorder } from './git/recorder.ts'
+// Value import (not `import type`): `TOOL_REGISTRARS` needs the real array at runtime.
+// Every tool file's own import of `ServerDeps`/`ToolRegistrar` back from this module is
+// `import type`-only (erased at compile time), so this does not create a runtime import
+// cycle — only `tools/index.ts` → this module's *types*, never the reverse at the value level.
+import { INTENT_TOOL_REGISTRARS } from './tools/index.ts'
 
 /**
  * The MCP server's identity, as reported in `_meta.serverInfo`.
@@ -106,11 +112,13 @@ export type ToolRegistrar = (server: McpServer, deps: ServerDeps) => void
 /**
  * The registrars the executable installs, in order.
  *
- * Empty by #22's own scope: the ticket is the skeleton, and "stdio transport 启动但零工具
- * 可用" is its acceptance criterion. #20 appends ADR-0005's eighteen-minus-three intent
- * tools and #21 the three enrichment tools; appending here is the whole integration step.
+ * Was empty by #22's own scope ("stdio transport 启动但零工具可用" was that ticket's
+ * acceptance criterion). #20 appends ADR-0005's fifteen intent tools below
+ * (`INTENT_TOOL_REGISTRARS`, from `./tools/index.ts`) — appending here was the whole
+ * integration step the seam was built for. #21 appends ADR-0006's three enrichment
+ * tools the same way when that ticket lands.
  */
-export const TOOL_REGISTRARS: readonly ToolRegistrar[] = []
+export const TOOL_REGISTRARS: readonly ToolRegistrar[] = [...INTENT_TOOL_REGISTRARS]
 
 /**
  * Build the factory `serveStdio` calls to get a server instance.
