@@ -87,6 +87,13 @@ by enrichment, or recorded from an LLM call. Provenance is what makes the substr
 auditable: for any field on any definition, you can answer "why is this value what
 it is?".
 
+Under the [git recorder](#git-recorder) the answer lives in the commit, not the YAML:
+`X-SG-Derivation` / `X-SG-Confidence` trailers plus `git log -p --follow` say who wrote
+a value and on what basis. YAML `origin` remains what it always was —
+[enrichment](#enrichment) merge-priority machinery (undefined = curated = preserved by
+rounds), not an authorship record. Two classes of concept in one neighborhood,
+deliberately not aligned (ADR-0005).
+
 ## Runtime architecture
 
 ### registry
@@ -190,6 +197,14 @@ worktree, which the startup checks refuse or restore. The historical "gap" frami
 public, never-audited door) was retired by #13; publicness stays (live consumer +
 ADR-0002's extension-point basis). Landing tracked in
 [#18](https://github.com/McKenzieIT/semantic-grounding/issues/18).
+
+Under the MCP management surface the write paths appear as **intent tools** (ADR-0005):
+definition-level `create_definition` / `update_definition`, entry-level `add_alias` /
+`remove_alias` / `add_relation` / `remove_relation`, and the Tier-1 suggestion quartet
+(`submit` / `list` / `get` / `discard_suggestion`) — thin wrappers that compile onto the
+functions in this table and do their read-modify-write inside the corpus lock. The
+raw-edit row never appears as a tool: `create_definition` routes through the primitives
+with a recorder passed on every call (ADR-0004 ruling 2's constraint).
 
 The stance behind the split is recorded in `src/pending.ts`: *"polluting
 source-of-truth >> polluting instructions"*. A wrong definition in the corpus is
