@@ -60,8 +60,24 @@ intent 只有工具层知道——无 context 的 `recordTier2Write` 抛错不�
 脏+活锁」。错误码分段 -31000..-31019（本票）/ -31020..-31039（#20）/ -31040..-31059（#21），
 仅 `stale_baseline` retryable。91 测试含四个真实 writer **进程**争用，且对「锁被摘掉」做过
 反证（丢更新断言会失败）。commit `b4fd070`。
-Frontier：**#22** server 骨架与配置面（唯一解锁票；#19 关闭后其阻塞清零）。#20 读写工具实现、
-#21 enrichment 工具实现（均被 #22 挡——工具注册需先有骨架可挂）。
+#22 server 骨架与配置面已关：`sg-mcp` 可执行入口 + 配置面 + stdio server 落在 `packages/mcp`
+（`config.ts`/`main.ts`/`server.ts`/`bin.ts`），零 intent 工具，commit `3dbc717`。形状全由实测
+定下，**四条已记录前提被推翻**：①stdio 在 `./stdio` 子路径，且手接 transport 对 2026-07-28 请求
+按 2025 形状**静默作答** → 必须用 `serveStdio`；②SDK 的 `LATEST_PROTOCOL_VERSION` 是 2025-11-25，
+`2026-07-28` 无公开常量；③**不能有「那个 `Server` 实例」**（复用单例在 discover→legacy 回退路径
+静默损坏）→ seam 是 **`ToolRegistrar = (server, deps) => void` + `TOOL_REGISTRARS`**；④零工具也
+必须显式声明 `capabilities:{tools:{}}`。自裁两项：配置载体 = **CLI flag + 环境变量回退、flag
+优先**（决定性输入：dogfood 宿主是 **QoderWork 等办公 agent**，非 Claude Code，其注册面是否暴露
+args/env 无法核实），**`legacy:'serve'`** 两 era 都服务（Core/锁/recorder 建在工厂之外，实测各
+一次，代价为零）。拒绝一律在 transport 连接**之前**、stdout **零字节**、退出码 64 EX_USAGE /
+78 EX_CONFIG。56 新测试（合计 147），四条载重断言全做反证（其中「只构造一次」原断言**无鉴别力**
+——工厂 per-connection——已改用 discover→legacy 输入）。
+**⚠️ #20/#21 开工必读 ADR-0005 的 2026-10-09 addendum**：两条前提证伪——`registerTool` 抛错被
+SDK 转成 `isError` **结果**、**码值丢弃**（故「抛 `SgApplicationError` 即得 -31xxx」不成立，只有
+低层 `setRequestHandler` 透码值，出路由 #20 裁）；`clientInfo` 是**逐请求信封**数据（工厂 ctx 只
+有 `{era}`）且同连接逐请求可变，故 #22 不在启动期填 `clientName`，而 `AuditContext` 今天缺该字段。
+Frontier：**#20** 读写工具实现、**#21** enrichment 工具实现——#22 关闭后两票阻塞均清零，**可并行**
+（如 #17/#18 那次，分支经 git rename-aware merge 无冲突）。
 dsh 深耕暂停。遗留两件、
 各有去处：dsh 升级 substrate alpha.3 的全部断点在
 [#11](https://github.com/McKenzieIT/semantic-grounding/issues/11)（低优先，随 dsh 下次升级一并
