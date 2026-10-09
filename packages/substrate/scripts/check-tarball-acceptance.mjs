@@ -267,19 +267,27 @@ assert.equal(mod.registerInvalidationHook, undefined, 'registerInvalidationHook 
 // src/index.ts without recorded (a)/(b)/(c) evidence turns this red; removing
 // one does too. Type-only names are pinned by the ADR's table, not here
 // (Object.keys cannot see them).
+//
+// #18 (ADR-0004 ruling 8) added 'StaleBaselineError': the error a write path
+// throws when an expected_version baseline no longer matches the on-disk
+// fingerprint, on the barrel for the same reason 'WriteValidationError' (its
+// sibling error type) already was — a caller needs instanceof to tell
+// "stale, re-read and retry" apart from every other write failure. The two
+// new reserved-batch-slot types ('Tier2Batch', 'Tier2RecordMeta') are
+// type-only and so do not appear in this runtime list (see the note above).
 const EXPECTED_RUNTIME_NAMES = [
   'ConceptDefinitionSchema', 'DataSourceRegistry', 'DefinitionSnapshot', 'EventDefinitionSchema',
-  'RelationGraph', 'SemanticGroundingCore', 'TableDefinitionSchema', 'WriteValidationError',
-  'captureSnapshot', 'conceptKindPlugin', 'deriveMetricRelations', 'discard', 'dumpYaml',
-  'eventKindPlugin', 'extractMetricsFromEvent', 'extractMetricsFromTable', 'invalidateCaches',
-  'isValidId', 'listing', 'loadConcepts', 'loadConfig', 'loadEvents', 'loadMetricDefinitions',
-  'loadPending', 'loadTables', 'projectMetricCorpusItem', 'resolveSemanticLayer', 'submit',
-  'tableKindPlugin', 'updateEventMeta', 'updateTableMeta', 'wireEnrichmentLlm', 'writeEventYaml',
-  'writeTable',
+  'RelationGraph', 'SemanticGroundingCore', 'StaleBaselineError', 'TableDefinitionSchema',
+  'WriteValidationError', 'captureSnapshot', 'conceptKindPlugin', 'deriveMetricRelations', 'discard',
+  'dumpYaml', 'eventKindPlugin', 'extractMetricsFromEvent', 'extractMetricsFromTable',
+  'invalidateCaches', 'isValidId', 'listing', 'loadConcepts', 'loadConfig', 'loadEvents',
+  'loadMetricDefinitions', 'loadPending', 'loadTables', 'projectMetricCorpusItem',
+  'resolveSemanticLayer', 'submit', 'tableKindPlugin', 'updateEventMeta', 'updateTableMeta',
+  'wireEnrichmentLlm', 'writeEventYaml', 'writeTable',
 ].sort()
 const names = Object.keys(mod).sort()
 assert.deepEqual(names, [...EXPECTED_RUNTIME_NAMES, 'default'].sort(),
-  'barrel runtime surface must equal the ADR-0003 allow-list (34 names + default), got: ' + names.join(', '))
+  'barrel runtime surface must equal the ADR-0003 allow-list (35 names + default), got: ' + names.join(', '))
 // Headline names that must STAY off the barrel (ADR-0002/0003: convention-
 // coupled, test utilities, internals). getCorpusVersion / registerInvalidationHook
 // / SemanticLayerService are asserted separately above and not repeated here.
@@ -331,8 +339,10 @@ await assert.rejects(
 )
 
 // the only way to audit-off is an explicit no-op recorder — code-visible by design
+// #18: recordTier2Write is async (Promise<string>) in the contract; this
+// double returns one to match, though 'await'-ing a plain value works too.
 const recorded = []
-core.setTier2Recorder({ recordTier2Write: (...a) => { recorded.push(a); return 'probe-log-id' } })
+core.setTier2Recorder({ recordTier2Write: async (...a) => { recorded.push(a); return 'probe-log-id' } })
 await core.updateTableMeta('dws_probe_di', { description: 'tarball acceptance' })
 assert.equal(recorded.length, 1, 'a wired recorder receives the Tier-2 write')
 

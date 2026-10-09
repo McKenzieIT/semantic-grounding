@@ -106,3 +106,19 @@ barrel——它们在 dsh 侧只剩测试/脚本消费，(a) 不成立（口径 
 - **publish 是独立 effort**（map #1 Out-of-scope）：本票只 bump 版本到 `0.1.6-alpha.3`
   并产出 tarball，不发布。发布 alpha 不影响本 ADR 的免费裁剪窗口。
 - 版本 bump `0.1.6-alpha.2` → `0.1.6-alpha.3`；tarball 76.1KB → 62.6KB。
+
+## Update 2026-10-09 — #18 落地：barrel +3（34→35 runtime、type +2）
+
+[#18](https://github.com/McKenzieIT/semantic-grounding/issues/18) 执行 ADR-0004 的 substrate
+契约改动时，按本 ADR 口径 2（签名闭包属于公共面）新增三个名字，证据如下：
+
+- **`StaleBaselineError`**（runtime，34→35）：`expected_version` 基线过期时写路径抛出的
+  专用错误类型（ADR-0004 裁决 8）。证据同 `WriteValidationError` 的既有先例——调用方需要
+  `instanceof` 把「基线过期，重读重试」与其他写失败区分开，两者是同一张表上的兄弟错误类型。
+  `scripts/check-tarball-acceptance.mjs` 的 `EXPECTED_RUNTIME_NAMES` 已同步到 35。
+- **`Tier2Batch`、`Tier2RecordMeta`**（type-only，不计入 runtime 断言——`Object.keys` 看不见
+  型）：`Tier2Recorder.beginBatch?`（ADR-0004 裁决 3 的预留槽位，实现随 #16）的返回型，与
+  `recordTier2Write`/`beginBatch` 共用的 opts 型。口径 2：`Tier2Recorder` 本身是保留名字，
+  它新增方法的签名引用的型必须保留。
+
+三者均落在 `src/io.ts`，由 `src/index.ts` re-export；本次新增不改变裁掉名单。

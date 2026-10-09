@@ -46,7 +46,7 @@ function readRefs(dir: string, name: string): unknown[] {
   return ((yaml.load(f) as Record<string, unknown>).dimension_refs as unknown[]) ?? []
 }
 
-const noopRecorder: Tier2Recorder = { recordTier2Write: () => 'log-id' }
+const noopRecorder: Tier2Recorder = { recordTier2Write: async () => 'log-id' }
 
 describe('ctx.schema.discoverRelations (B3)', () => {
   let dir: string

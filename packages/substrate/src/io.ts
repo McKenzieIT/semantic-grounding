@@ -11,9 +11,23 @@
  * `auditLog` is removed). Readers are sync (readFileSync, fast lookup); writers
  * are async (writeFileAtomic).
  *
+ * ADR-0004 / #18 (2026-10-09): `Tier2Recorder.recordTier2Write` is async
+ * (`Promise<string>` — the git recorder's commit is a subprocess call) and a
+ * recorder that raises is the statement "this write did not happen": the
+ * three Tier-2 paths below (`updateTableMeta` / `updateEventMeta` /
+ * `syncWriteDefinitions`) snapshot the pre-write raw bytes — never a
+ * parse-then-re-dump, which would drop hand-written YAML comments — and
+ * restore them verbatim on a recorder failure before re-throwing (a file this
+ * write created is deleted instead of restored). `writeTable`/`writeEventYaml`
+ * take the same optional `Tier2Opts`: passed, the raw-edit surface is demoted
+ * to a write primitive that takes the identical atomic write-and-record path;
+ * omitted, both are unchanged byte-for-byte (ADR-0004 ruling 2).
+ *
  * @module io (internal; only `"."` is importable — see ADR-0002)
  */
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs'
+import { rm } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
 import { writeFileAtomic } from './vendor/atomic-write.ts'
@@ -34,18 +48,66 @@ import {
   type EventCorpusItem,
 } from './corpus.ts'
 
-/** Tier-2 recorder contract — `ctx.audit` satisfies this (P6b grilling Q4). */
+/**
+ * Identity/scope metadata attached to one Tier-2 record (`recordTier2Write`'s
+ * `opts`), or supplied to `beginBatch` as the per-batch default every
+ * `record()` call in that batch inherits unless it overrides a field.
+ */
+export interface Tier2RecordMeta {
+  readonly scope_id?: string
+  readonly session_id?: string
+  readonly tenant_id?: string
+  readonly user_id?: string
+}
+
+/**
+ * Tier-2 recorder contract — `ctx.audit` satisfies this (P6b grilling Q4).
+ *
+ * ADR-0004 ruling 1 / #18: async (`Promise<string>` — the git recorder's
+ * commit is a subprocess call, and must not block the event loop). Raising is
+ * the recorder's statement that the write did NOT happen: the Tier-2 write
+ * paths restore the pre-write raw bytes and re-throw (see the module doc
+ * above). A recorder that raises therefore must leave its own index/HEAD
+ * untouched (the git recorder's own obligation — ADR-0004).
+ */
 export interface Tier2Recorder {
   recordTier2Write(
     toolName: string,
     payload: unknown,
-    opts?: {
-      readonly scope_id?: string
-      readonly session_id?: string
-      readonly tenant_id?: string
-      readonly user_id?: string
-    },
-  ): string
+    opts?: Tier2RecordMeta,
+  ): Promise<string>
+
+  /**
+   * Reserved batch slot (ADR-0004 ruling 3): coalesce the writes of one
+   * logical round (e.g. an `enrichAll*` pass over N definitions) into a
+   * single commit instead of N. Declared now so the contract is stable;
+   * **no implementation ships with #18** — the git recorder's batch support
+   * lands with the enrichment write-back ticket (#16). A recorder that does
+   * not support batching simply omits this method; every caller must treat
+   * it as optional and fall back to per-write `recordTier2Write` calls.
+   * @param meta - optional per-batch default scope/session/tenant/user,
+   *   inherited by every `record()` call in the batch unless overridden.
+   * @returns a `Tier2Batch` handle the caller stages writes onto.
+   */
+  beginBatch?(meta?: Tier2RecordMeta): Tier2Batch
+}
+
+/**
+ * A single-commit batch handle from `Tier2Recorder.beginBatch` (ADR-0004
+ * ruling 3; reserved slot — implementation lands with #16). `record` stages
+ * one logical write (same arguments as `recordTier2Write`) without
+ * committing; `end` commits everything staged so far as one commit; `abort`
+ * discards the batch and restores every staged file to its pre-batch state —
+ * the batch-level shape of the same guarantee `syncWriteDefinitions` gives a
+ * single table (ADR-0004 ruling 1).
+ */
+export interface Tier2Batch {
+  /** Stage one write into this batch (does not commit). */
+  record(toolName: string, payload: unknown, opts?: Tier2RecordMeta): void
+  /** Commit every staged write as one commit. */
+  end(): Promise<{ commit: string; files: number }>
+  /** Discard the batch: restore every staged file to its pre-batch state. */
+  abort(): Promise<void>
 }
 
 /** Tier-2 write options: the recorder (ctx.audit) and optional scope id. */
@@ -53,6 +115,19 @@ export interface Tier2Opts {
   /** ctx.audit (or a test double) — required; Tier-2 audit is non-disableable (D5 "不可关"). */
   readonly recorder: Tier2Recorder
   readonly scope_id?: string
+  /**
+   * ADR-0004 ruling 8: sha256 content fingerprint (hex) the caller expects
+   * the write target to currently carry — the hash of the raw bytes it last
+   * read. Checked against the actual on-disk bytes immediately before this
+   * write commits; a mismatch throws `StaleBaselineError` instead of
+   * writing, which is the single-process stand-in for "inside the lock"
+   * until the git recorder's repo-wide lock (#19) wraps the whole call. Omit
+   * for a create-only write — there is no prior baseline to go stale (#15
+   * decides which MCP tools require it). Not read by `syncWriteDefinitions`'s
+   * batch path: one `Tier2Opts` value backs a whole batch of tables, and a
+   * single hash has no sound per-table meaning there.
+   */
+  readonly expected_version?: string
 }
 
 // ── YAML dump (mirrors RBI _LiteralDumper: literal block |, sort_keys=False) ──
@@ -420,16 +495,103 @@ function findEventPath(semanticLayer: string, name: string): string | null {
   return null
 }
 
+// ── Tier-2 rollback + baseline freshness (ADR-0004 rulings 1 + 8; #18) ───
+/**
+ * Thrown by a Tier-2 write path when `Tier2Opts.expected_version` is given
+ * and does not match the sha256 of the bytes actually on disk at write time.
+ * A stale baseline, not a schema-validation failure (ADR-0004 ruling 8): the
+ * caller read the target, computed its basis, and the target has since
+ * changed underneath it. The write never lands when this throws — the
+ * caller should re-read the target and retry with a fresh `expected_version`.
+ */
+export class StaleBaselineError extends Error {}
+
+/** sha256 content fingerprint of raw text, hex-encoded (ADR-0004 ruling 8: the
+ * `version` a reader hands back is this hash of the bytes it actually read). */
+function sha256Hex(content: string): string {
+  return createHash('sha256').update(content, 'utf-8').digest('hex')
+}
+
+/**
+ * ADR-0004 ruling 8: when `expectedVersion` is given, compare it against the
+ * sha256 of `actualRaw` — the raw bytes on disk right now, read immediately
+ * before this write — and throw `StaleBaselineError` on mismatch. Checked at
+ * write time against the freshest read rather than trusting a value the
+ * caller computed earlier, which is the single-process stand-in for "inside
+ * the lock" until the git recorder's repo-wide lock (#19) wraps the call. A
+ * no-op when `expectedVersion` is undefined (the common, baseline-free case).
+ * @param target - the file path being written (for the error message only).
+ * @param expectedVersion - the caller's claimed sha256 baseline, or undefined to skip the check.
+ * @param actualRaw - the raw bytes actually on disk right now.
+ */
+function checkExpectedVersion(target: string, expectedVersion: string | undefined, actualRaw: string): void {
+  if (expectedVersion === undefined) return
+  const actual = sha256Hex(actualRaw)
+  if (actual !== expectedVersion) {
+    throw new StaleBaselineError(
+      `stale baseline for ${target}: expected_version=${expectedVersion} but the on-disk content hashes to ${actual} — re-read and retry`,
+    )
+  }
+}
+
+/**
+ * A target file's state immediately before a Tier-2 write, captured so a
+ * recorder failure can restore it exactly (ADR-0004 ruling 1): the literal
+ * pre-write bytes when the file already existed, or `existed: false` when
+ * this write would create it (rollback then deletes rather than restoring
+ * content out of nothing). Raw text, never parse-then-re-dump — a
+ * hand-written YAML file's comments live only in these bytes.
+ */
+interface RawSnapshot {
+  readonly existed: boolean
+  readonly raw: string
+}
+/**
+ * Capture `path`'s pre-write {@link RawSnapshot}.
+ * @param path - the file about to be written.
+ * @returns the pre-write snapshot (`existed: false, raw: ''` when `path` does not exist yet).
+ */
+function snapshotRaw(path: string): RawSnapshot {
+  if (!existsSync(path)) return { existed: false, raw: '' }
+  return { existed: true, raw: readFileSync(path, 'utf-8') }
+}
+/**
+ * Restore `path` to a pre-write {@link RawSnapshot}: atomically rewrite the
+ * captured raw bytes when the file existed before the write, or delete the
+ * file when the write created it. The statement a Tier-2 recorder failure
+ * makes is "the write did not happen" (ADR-0004 ruling 1 / GLOSSARY § Tier-2
+ * recorder) — after this call, disk is back at the pre-write state, so there
+ * is no third state (an unaudited file on disk while the caller's return
+ * value reports no write).
+ * @param path - the file to restore.
+ * @param snapshot - the pre-write snapshot captured by {@link snapshotRaw}.
+ */
+async function restoreRaw(path: string, snapshot: RawSnapshot): Promise<void> {
+  if (snapshot.existed) {
+    await writeFileAtomic(path, snapshot.raw, { mode: YAML_MODE })
+  } else {
+    await rm(path, { force: true })
+  }
+}
+
 // ── Writer (mirrors writer.py: validate-before-dump, atomic, invalidate) ──
 /** Error thrown by `writeTable` when `TableDefinitionSchema.safeParse` rejects the payload (unless `skipValidation` is set). */
 export class WriteValidationError extends Error {}
 /**
  * Validate-then-atomically-write a table YAML (mirrors writer.write_table),
- * invalidating caches on success.
+ * invalidating caches on success. The write primitive: Tier-2 paths compose
+ * it (`syncWriteDefinitions`), and a caller may demote this raw-edit surface
+ * to an audited write by passing `tier2` (ADR-0004 ruling 2) — the same
+ * atomic write-and-record path a Tier-2 call takes, snapshot-and-rollback
+ * included. Omitting `tier2` leaves behavior byte-for-byte unchanged: an
+ * unaudited write whose audit (if any) is the caller's responsibility.
  * @param semanticLayer - the semantic-layer directory path.
  * @param name - the table `table_name` (becomes the `<name>.yaml` filename).
  * @param data - the table payload; validated against `TableDefinitionSchema` unless skipped.
  * @param opts - `{ skipValidation: true }` skips schema validation (for pre-validated generators).
+ * @param tier2 - optional Tier-2 options; passed, this write takes the
+ *   audited write-and-record path (optional `expected_version` checked
+ *   first; a recorder failure restores the pre-write bytes and rethrows).
  * @returns the absolute path of the written `<name>.yaml` under `tables/`.
  */
 export async function writeTable(
@@ -437,6 +599,7 @@ export async function writeTable(
   name: string,
   data: unknown,
   opts: { skipValidation?: boolean } = {},
+  tier2?: Tier2Opts,
 ): Promise<string> {
   if (!opts.skipValidation) {
     const r = TableDefinitionSchema.safeParse(data)
@@ -444,8 +607,22 @@ export async function writeTable(
   }
   const tablesPath = join(semanticLayer, 'tables')
   const target = join(tablesPath, `${name}.yaml`)
+  if (tier2 === undefined) {
+    await atomicWrite(target, data)
+    invalidateCaches(semanticLayer)
+    return target
+  }
+  const before = snapshotRaw(target)
+  checkExpectedVersion(target, tier2.expected_version, before.raw)
   await atomicWrite(target, data)
   invalidateCaches(semanticLayer)
+  try {
+    await tier2.recorder.recordTier2Write('write_table', { table_name: name }, tier2.scope_id !== undefined ? { scope_id: tier2.scope_id } : {})
+  } catch (e) {
+    await restoreRaw(target, before)
+    invalidateCaches(semanticLayer)
+    throw e
+  }
   return target
 }
 /**
@@ -460,16 +637,24 @@ export type WriteEventYamlResult = { ok: true; path: string } | { ok: false; err
  * Raw-edit surface for event YAML: parse the content, verify its `name` matches,
  * then atomically write it to the discovered event path (or
  * `events/_suggested/<name>.yaml` when new). No schema validation — the write
- * IS the repair surface; `loadEvents` validates on read.
+ * IS the repair surface; `loadEvents` validates on read. The write primitive:
+ * a caller may demote this raw-edit surface to an audited write by passing
+ * `tier2` (ADR-0004 ruling 2) — the same atomic write-and-record path a
+ * Tier-2 call takes, snapshot-and-rollback included. Omitting `tier2` leaves
+ * behavior byte-for-byte unchanged.
  * @param semanticLayer - the semantic-layer directory path.
  * @param name - the event `name` the content must declare.
  * @param content - the raw YAML text to write verbatim.
+ * @param tier2 - optional Tier-2 options; passed, this write takes the
+ *   audited write-and-record path (optional `expected_version` checked
+ *   first; a recorder failure restores the pre-write bytes and rethrows).
  * @returns `{ ok: true, path }` on success, or `{ ok: false, error }` describing the parse/name-mismatch failure.
  */
 export async function writeEventYaml(
   semanticLayer: string,
   name: string,
   content: string,
+  tier2?: Tier2Opts,
 ): Promise<WriteEventYamlResult> {
   let defn: unknown
   try {
@@ -484,8 +669,22 @@ export async function writeEventYaml(
     return { ok: false, error: `name mismatch: YAML name=${String(yamlName)} vs event_name=${name}` }
   }
   const target = findEventPath(semanticLayer, name) ?? join(semanticLayer, 'events', '_suggested', `${name}.yaml`)
+  if (tier2 === undefined) {
+    await atomicWrite(target, content)
+    invalidateCaches(semanticLayer)
+    return { ok: true, path: target }
+  }
+  const before = snapshotRaw(target)
+  checkExpectedVersion(target, tier2.expected_version, before.raw)
   await atomicWrite(target, content)
   invalidateCaches(semanticLayer)
+  try {
+    await tier2.recorder.recordTier2Write('write_event_yaml', { event_name: name }, tier2.scope_id !== undefined ? { scope_id: tier2.scope_id } : {})
+  } catch (e) {
+    await restoreRaw(target, before)
+    invalidateCaches(semanticLayer)
+    throw e
+  }
   return { ok: true, path: target }
 }
 // Tier-2 per-scope persistent write: read-merge-validate-write + audit (mirrors writer.update_table_meta).
@@ -499,11 +698,17 @@ export async function writeEventYaml(
 export type UpdateTableMetaResult = { ok: true; table_name: string } | { ok: false; error: string }
 /**
  * Tier-2 per-scope write: read-merge-validate-write a single table's meta
- * updates and record the write via `opts.recorder` (D5 non-disableable audit).
+ * updates and record the write via `opts.recorder` (D5 non-disableable
+ * audit). ADR-0004 ruling 1 / #18: the pre-write raw bytes are snapshotted
+ * before the write lands, so a recorder failure can restore the file exactly
+ * (disk ends at the pre-write state, not a third unaudited-residue state)
+ * before the error propagates. ADR-0004 ruling 8: an optional
+ * `opts.expected_version` is checked against the on-disk content fingerprint
+ * before the write lands; a mismatch throws `StaleBaselineError` instead.
  * @param semanticLayer - the semantic-layer directory path.
  * @param name - the table `table_name` to update (must already exist on disk).
  * @param updates - the field overrides merged over the existing table YAML.
- * @param opts - the recorder + optional scope id used for the Tier-2 audit record.
+ * @param opts - the recorder + optional scope id + optional `expected_version` used for the Tier-2 audit record.
  * @returns `{ ok: true, table_name }` on success, or `{ ok: false, error }` when the table is missing/malformed or validation fails.
  */
 export async function updateTableMeta(
@@ -514,14 +719,22 @@ export async function updateTableMeta(
 ): Promise<UpdateTableMetaResult> {
   const tf = join(semanticLayer, 'tables', `${name}.yaml`)
   if (!existsSync(tf)) return { ok: false, error: `Table not found: ${name}` }
-  const data = readYaml(tf)
+  const before = snapshotRaw(tf)
+  checkExpectedVersion(tf, opts.expected_version, before.raw)
+  const data = yaml.load(before.raw)
   if (typeof data !== 'object' || data === null) return { ok: false, error: `Table malformed: ${name}` }
   const merged: Record<string, unknown> = { ...(data as Record<string, unknown>), ...updates }
   const r = TableDefinitionSchema.safeParse(merged)
   if (!r.success) return { ok: false, error: `Validation failed after update: ${r.error.message}` }
   await atomicWrite(tf, merged)
   invalidateCaches(semanticLayer)
-  opts.recorder.recordTier2Write('update_table_meta', { table_name: name, updates }, opts.scope_id !== undefined ? { scope_id: opts.scope_id } : {})
+  try {
+    await opts.recorder.recordTier2Write('update_table_meta', { table_name: name, updates }, opts.scope_id !== undefined ? { scope_id: opts.scope_id } : {})
+  } catch (e) {
+    await restoreRaw(tf, before)
+    invalidateCaches(semanticLayer)
+    throw e
+  }
   return { ok: true, table_name: name }
 }
 
@@ -545,11 +758,13 @@ export type UpdateEventMetaResult = { ok: true; event_name: string } | { ok: fal
 /**
  * Tier-2 per-scope write: read-merge-validate-write a single event's meta
  * updates and record the write via `opts.recorder` (D5 non-disableable audit).
- * Mirrors `updateTableMeta` for the event substrate (A13 TOCTOU fix).
+ * Mirrors `updateTableMeta` for the event substrate (A13 TOCTOU fix), including
+ * ADR-0004 ruling 1's pre-write raw-byte snapshot + recorder-failure rollback
+ * and ruling 8's optional `opts.expected_version` staleness check.
  * @param semanticLayer - the semantic-layer directory path.
  * @param name - the event `name` to update (must already exist on disk).
  * @param updates - the field overrides merged over the existing event YAML.
- * @param opts - the recorder + optional scope id used for the Tier-2 audit record.
+ * @param opts - the recorder + optional scope id + optional `expected_version` used for the Tier-2 audit record.
  * @returns `{ ok: true, event_name }` on success, or `{ ok: false, error }` when the event is missing/malformed or validation fails.
  */
 export async function updateEventMeta(
@@ -560,14 +775,22 @@ export async function updateEventMeta(
 ): Promise<UpdateEventMetaResult> {
   const ef = findEventPath(semanticLayer, name)
   if (ef === null) return { ok: false, error: `Event not found: ${name}` }
-  const data = readYaml(ef)
+  const before = snapshotRaw(ef)
+  checkExpectedVersion(ef, opts.expected_version, before.raw)
+  const data = yaml.load(before.raw)
   if (typeof data !== 'object' || data === null) return { ok: false, error: `Event malformed: ${name}` }
   const merged: Record<string, unknown> = { ...(data as Record<string, unknown>), ...updates }
   const r = EventDefinitionSchema.safeParse(merged)
   if (!r.success) return { ok: false, error: `Validation failed after update: ${r.error.message}` }
   await atomicWrite(ef, merged)
   invalidateCaches(semanticLayer)
-  opts.recorder.recordTier2Write('update_event_meta', { event_name: name, updates }, opts.scope_id !== undefined ? { scope_id: opts.scope_id } : {})
+  try {
+    await opts.recorder.recordTier2Write('update_event_meta', { event_name: name, updates }, opts.scope_id !== undefined ? { scope_id: opts.scope_id } : {})
+  } catch (e) {
+    await restoreRaw(ef, before)
+    invalidateCaches(semanticLayer)
+    throw e
+  }
   return { ok: true, event_name: name }
 }
 
@@ -690,12 +913,20 @@ export function mergeChangedYaml(existing: Record<string, unknown>, newMeta: Tab
  * Tier-2 batch sync-write: for each table meta, generate (or merge when an
  * existing entry is supplied) the table YAML and write it via `writeTable`,
  * recording each write through `opts.recorder` (D5 non-disableable audit).
- * Tables are independently fail-tolerant: a thrown write becomes an error
- * string rather than aborting the batch.
+ * Generation/validation failures stay independently fail-tolerant (collected
+ * into `errors`, batch continues) — unchanged. ADR-0004 ruling 1 / #18 changes
+ * the audit-failure branch: a recorder failure for the CURRENT table restores
+ * that table's pre-write raw bytes (deletes it when this write created it)
+ * and throws, aborting the rest of the batch — tables already written AND
+ * recorded earlier in this same call keep their commits (they are not rolled
+ * back; only the table whose audit just failed is). `opts.expected_version`
+ * is not read here — see the field's own doc on `Tier2Opts`.
  * @param semanticLayer - the semantic-layer directory path.
  * @param tableMetas - the table metas to write (metas with empty `table_name` are skipped).
  * @param opts - the recorder, optional dim-table-name set (generates DIM YAML), and optional existing-table map (merges).
  * @returns counts of `written`/`skipped` plus a per-table `errors` list.
+ * @throws the recorder's error when it raises for a table that already wrote
+ *   successfully — the batch aborts in place rather than collecting this into `errors` (ADR-0004 ruling 1).
  */
 export async function syncWriteDefinitions(
   semanticLayer: string,
@@ -716,6 +947,8 @@ export async function syncWriteDefinitions(
       skipped += 1
       continue
     }
+    const target = join(semanticLayer, 'tables', `${tname}.yaml`)
+    const before = snapshotRaw(target)
     try {
       let doc: Record<string, unknown>
       let isDim = false
@@ -732,11 +965,26 @@ export async function syncWriteDefinitions(
       // emit primary_key:[] / label_columns:[] that fails .superRefine on read.
       // DWS/merge keep skipValidation (generation pre-validates; DWS has no kind constraint).
       await writeTable(semanticLayer, tname, doc, { skipValidation: !isDim })
-      opts.recorder.recordTier2Write('sync_write_definitions', { table_name: tname }, opts.scope_id !== undefined ? { scope_id: opts.scope_id } : {})
-      written += 1
     } catch (e) {
+      // Generation/validation failure: nothing landed on disk (writeTable
+      // validates before it writes, and atomicWrite never touches the
+      // target on a thrown rename), so there is nothing to roll back here —
+      // collect and move on to the next table (unchanged batch semantics).
       errors.push(`${tname}: ${(e as Error).message}`)
+      continue
     }
+    try {
+      await opts.recorder.recordTier2Write('sync_write_definitions', { table_name: tname }, opts.scope_id !== undefined ? { scope_id: opts.scope_id } : {})
+    } catch (e) {
+      // ADR-0004 ruling 1 / #18: an audit failure rolls back ONLY this table
+      // (restores its pre-write bytes, or deletes it if this write created
+      // it) and aborts the batch by propagating — tables 1..N-1 already
+      // written AND recorded earlier in this loop keep their commits.
+      await restoreRaw(target, before)
+      invalidateCaches(semanticLayer)
+      throw e
+    }
+    written += 1
   }
   return { written, skipped, errors }
 }
