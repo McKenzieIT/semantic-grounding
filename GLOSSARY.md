@@ -435,6 +435,28 @@ file is allowed to" clause. The gate also pins the retirement itself: the subpat
 be absent from `exports`, absent from the tarball, and resolve to
 `ERR_PACKAGE_PATH_NOT_EXPORTED`.
 
+### end-to-end gate
+
+The behavioural counterpart to the [negation test](#negation-test) and [tarball
+acceptance](#tarball-acceptance): a scripted MCP client walks map #12's Destination
+loop — read grounding for a 问数 scenario, write back through the Tier-2 audited path,
+land the writes as corpus git commits, answer provenance from `git log -p --follow` —
+over the **real startup seams** (`parseServerConfig` → `startup()` → the same factory
+`serveStdio` calls), not the hand-built deps the unit suite uses (which is the point:
+248 tests prove the parts; this proves the assembled loop in its deployment shape,
+`autoEnrich` on and all). Enforced by `packages/mcp/scripts/check-e2e-loop.ts` —
+`pnpm e2e` at the package and the workspace root — wired as the third named gate.
+
+It asserts ADR-0005/0006's §Verification claims as one continuous story: the
+[two-commit shape](#git-recorder) (`enrich_on_write` residue), `stale_baseline`
+re-read-retry, idempotent no-commit paths, the [preserve-filter](#write-tier), work_id
+self-containment across a restart, the 2026-07-28 envelope markers over the real
+executable (`resultType` / `_meta.serverInfo`; `ttlMs` / `cacheScope` are SHOULD-level
+in the revision and only probed), and the LLM round with the client playing oracle —
+no real LLM needed (ADR-0006 ruling 7's gate dividend). The half it cannot cover is the
+real agent: which era the host opens in, tool-surface friction, write-delete loops.
+That is the dogfood's job, recorded in `docs/mcp-dogfood.md`.
+
 ---
 
 *If a term you want to use is not here, add it. If a term here conflicts with an
