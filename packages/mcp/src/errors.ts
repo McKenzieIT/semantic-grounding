@@ -86,6 +86,27 @@
  * NOT retryable-by-contract — the queue is the lock itself (ruling 7), so a timeout
  * means the corpus is genuinely contended and silently retrying would hide that.
  *
+ * ## `-31040..-31059` is reserved for #21, and allocates nothing
+ *
+ * ADR-0005's 2026-10-09 addendum (confirmed by #22's measurement) falsifies the premise
+ * that funded this segment table: `McpServer.registerTool`'s handler exceptions are
+ * caught by the SDK and turned into an `isError` **result**, with any `code` field
+ * discarded — only the low-level `server.server.setRequestHandler` seam passes a numeric
+ * code onto the wire. {@link toToolErrorResult} is this ticket's answer: carry the code
+ * *inside* the `isError` result's JSON payload instead of on the JSON-RPC envelope, which
+ * means a `-31xxx` value never actually reaches a client through `tools/call`, for either
+ * this file's codes or this segment's. Measuring what `apply_enrichment` /
+ * `run_enrichment` / `get_enrichment_work` can throw as a *whole-call* failure (as
+ * opposed to a per-item verdict — see {@link toToolErrorResult}'s own doc) turns up
+ * nothing enrichment-specific to code: a lock timeout, a commit failure, a dirty-tree
+ * refusal and a missing audit context are all generic Tier-2 write failures #19 already
+ * coded, and every per-item problem (`stale_baseline`, `unparseable`, a `work_id` that
+ * fails to decode) is ADR-0006 ruling 4's non-error payload data, not an exception. So
+ * this segment stays empty on purpose — the same outcome #22's addendum item 3 recorded
+ * for its own startup-only segment ("分配表的确认而非缺口" — a confirmation of the
+ * allocation table, not a gap). A future enrichment-specific failure that genuinely
+ * needs a code allocates from `-31040` up; nothing here claims one could never exist.
+ *
  * @module errors
  */
 import type { CallToolResult } from '@modelcontextprotocol/server'
@@ -387,23 +408,39 @@ export class DefinitionValidationError extends SgApplicationError {
 }
 
 /**
- * Convert a thrown error into the `isError` tool result that is the only way its
- * structured detail survives `registerTool`'s handler wrapper — see this module's
- * header for the measured reason a *thrown* {@link SgApplicationError} cannot do this
- * (the SDK's own catch keeps only `.message`). Every tool handler in `src/tools/` ends
- * with `catch (e) { return toToolErrorResult(e) }`.
+ * Map a thrown error onto a `tools/call` result, per ADR-0005's 2026-10-09 addendum
+ * (shared with #20, implemented independently here).
  *
- * `code`/`name`/`message`/`retryable`/`data` all travel inside `content[0].text` as a
- * JSON string — never on the JSON-RPC envelope's own `error.code` for a tool-layer
- * failure, which is the SDK's own idiom for `tools/call` (as opposed to prompts/
- * resources, which still get a real JSON-RPC error — this module's header). The
- * calling agent discriminates by parsing that JSON, not by reading `error.code`.
- * @param error - whatever a tool handler's try block caught.
- * @returns an `isError: true` result carrying the coded detail, when `error` is one of
- *   this surface's {@link SgApplicationError}s.
- * @throws the original `error`, unmodified, when it is **not** an `SgApplicationError`
- *   — an internal fault (a bug in this server) stays loud rather than being reported to
- *   the calling agent as if it were a condition the agent could act on.
+ * `McpServer.registerTool` is kept rather than dropped to the low-level
+ * `server.server.setRequestHandler` seam — the measured alternative — because the cost
+ * of leaving `registerTool` (schema validation, `tools/list` auto-registration) is a
+ * single `instanceof` check's width, paid once per tool, against the cost of hand-rolling
+ * every tool's dispatch and input validation. The trade this function actually makes is
+ * the OTHER option the addendum named: the error contract changes *shape*, not channel.
+ * A coded failure is not a JSON-RPC error response (that would need `setRequestHandler`);
+ * it is a normal `tools/call` **result** with `isError: true`, whose `content` carries the
+ * code/name/message/retryable/data as a JSON string instead of prose. An agent that wants
+ * to branch on `stale_baseline` parses `JSON.parse(result.content[0].text).code === -31002`
+ * rather than reading a JSON-RPC `error.code` that the SDK would have discarded anyway.
+ *
+ * Every tool handler in this package wraps its body `try { ... } catch (e) { return
+ * toToolErrorResult(e) }`. An error that is NOT an {@link SgApplicationError} — a bug in
+ * this server, not a condition the caller can act on — is rethrown rather than wrapped:
+ * the SDK's own handler-exception path still turns it into an `isError` result for the
+ * client (measurement 1 of ADR-0005's addendum applies regardless of what this function
+ * does), but it does so *without* this function pretending the fault was anticipated.
+ * Swallowing it here into a coded-looking shape would misrepresent an internal fault as
+ * part of the contract.
+ *
+ * This is distinct from `apply_enrichment`'s own **per-item** verdicts (`applied` /
+ * `idempotent` / `stale_baseline` / `unparseable`): those are normal, non-error payload
+ * data in a *successful* call's `results` array (ADR-0006 ruling 4) — one stale item
+ * does not make the whole batch an error, so it never reaches this function. This
+ * function is only for whole-call failures: a malformed batch, a lock timeout acquiring
+ * the corpus lock, a dirty worktree refusing the write.
+ * @param error - whatever the tool handler's body threw.
+ * @returns a `CallToolResult` with `isError: true` and the coded failure as JSON text.
+ * @throws the original error, unchanged, when it is not an {@link SgApplicationError}.
  */
 export function toToolErrorResult(error: unknown): CallToolResult {
   if (error instanceof SgApplicationError) {
@@ -421,5 +458,5 @@ export function toToolErrorResult(error: unknown): CallToolResult {
       }],
     }
   }
-  throw error // internal fault — stays loud, not masked as a tool result
+  throw error // internal fault — stays loud, not masked as an anticipated tool result
 }

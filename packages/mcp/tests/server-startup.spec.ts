@@ -192,8 +192,11 @@ describe('deployment refusals exit 78 and say nothing on stdout', () => {
 
 // ── Serving ──────────────────────────────────────────────────────────────
 
+/** Every default-registrar tool `tools/list` must carry (#21's three — #20's land alongside). */
+const ENRICHMENT_TOOL_NAMES = ['get_enrichment_work', 'apply_enrichment', 'run_enrichment']
+
 describe('serving', () => {
-  it('answers a 2026-07-28 tools/list with ADR-0005\'s fifteen intent tools, in the revision\'s result shape', () => {
+  it('answers a 2026-07-28 tools/list with all eighteen default-registrar tools (ADR-0005 fifteen + ADR-0006 three), in the revision\'s result shape', () => {
     const r = run(['--corpus', fixture.root, '--agent-id', 'analyst-bot'], { input: modernToolsList() })
     expect(r.code).toBe(EXIT.ok)
 
@@ -201,13 +204,14 @@ describe('serving', () => {
     expect(res).toBeDefined()
     const result = res?.['result'] as Record<string, unknown> | undefined
     // Zero tools was #22's own scope ("stdio transport 启动但零工具可用") — #20 landed
-    // ADR-0005's fifteen (the exact names/schemas are pinned in
-    // tests/intent-tools.spec.ts; this file's job is the protocol envelope, not the
-    // catalog). The point of asserting the list exists at all rather than the method
-    // 404ing: without an explicit `capabilities: { tools: {} }` the SDK answers
-    // -32601, which a client cannot tell apart from a broken server.
+    // ADR-0005's fifteen and #21 landed ADR-0006's three, so the default-registrar list
+    // is now all eighteen (the exact names/schemas are pinned in `tests/intent-tools*.spec.ts`
+    // and `tests/enrichment-tools.spec.ts`; this file's job is the protocol envelope, not the
+    // catalog). The point of asserting the list exists at all rather than the method 404ing:
+    // without an explicit `capabilities: { tools: {} }` the SDK answers -32601, which a client
+    // cannot tell apart from a broken server.
     const tools = result?.['tools'] as Array<{ name: string }> | undefined
-    expect(tools?.map(t => t.name).sort()).toEqual([...INTENT_TOOL_NAMES].sort())
+    expect(tools?.map(t => t.name).sort()).toEqual([...INTENT_TOOL_NAMES, ...ENRICHMENT_TOOL_NAMES].sort())
     // Revision markers the 2025-era shape does not carry. Their presence is what proves
     // `serveStdio` is wired rather than a hand-connected transport, which answers the
     // same bytes in the wrong era.
@@ -234,8 +238,9 @@ describe('serving', () => {
     const out = responses(r.stdout)
     expect(out).toHaveLength(2)
     expect((out[0]?.['result'] as Record<string, unknown>)?.['protocolVersion']).toBe('2025-11-25')
+    // Same default-registrar tool set as the modern-era test above (all eighteen).
     const legacyTools = (out[1]?.['result'] as Record<string, unknown>)?.['tools'] as Array<{ name: string }> | undefined
-    expect(legacyTools?.map(t => t.name).sort()).toEqual([...INTENT_TOOL_NAMES].sort())
+    expect(legacyTools?.map(t => t.name).sort()).toEqual([...INTENT_TOOL_NAMES, ...ENRICHMENT_TOOL_NAMES].sort())
     // No `-32601`: the regression this guards is reusing one McpServer across the
     // factory's two measured calls, which answers a legacy `initialize` "Method not found"
     // because the modern binding permanently mutates the instance.

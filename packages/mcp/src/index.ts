@@ -165,3 +165,6 @@ export {
   type CommitContext,
   type Derivation,
 } from './git/message.ts'
+
+// ── Enrichment tools (ADR-0006, #21) ─────────────────────────────────────
+export { registerEnrichmentTools } from './tools/enrichment.ts'

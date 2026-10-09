@@ -2,10 +2,11 @@
  * The stdio server: how a `SemanticGroundingCore` and its git recorder become an MCP
  * server ([#22](https://github.com/McKenzieIT/semantic-grounding/issues/22)).
  *
- * This module itself registers **no tools** — #20 (ADR-0005's fifteen intent tools) and
- * #21 (ADR-0006's enrichment tools) hook onto the {@link ToolRegistrar} seam below.
- * #20's fifteen are appended to {@link TOOL_REGISTRARS} from `./tools/index.ts`; #21's
- * three land the same way when that ticket lands.
+ * This module itself registers **no tools** — #20 (ADR-0005's fifteen intent
+ * tools, `./tools/index.ts`) and #21 (ADR-0006's three enrichment tools,
+ * `./tools/enrichment.ts`) both append to {@link TOOL_REGISTRARS} below.
+ * Before either landed, the server answered `tools/list` with an empty list —
+ * serving, with nothing to offer.
  *
  * Every shape here was settled by measuring SDK v2.3.1 rather than reading its docs, and
  * four of those measurements contradicted what the map had recorded. They are written up
@@ -55,11 +56,14 @@ import { serveStdio, type ServeStdioOptions, type StdioServerHandle } from '@mod
 import type { SemanticGroundingCore } from '@semantic-grounding/substrate'
 import type { ServerConfig } from './config.ts'
 import type { GitTier2Recorder } from './git/recorder.ts'
-// Value import (not `import type`): `TOOL_REGISTRARS` needs the real array at runtime.
-// Every tool file's own import of `ServerDeps`/`ToolRegistrar` back from this module is
-// `import type`-only (erased at compile time), so this does not create a runtime import
-// cycle — only `tools/index.ts` → this module's *types*, never the reverse at the value level.
+// Value import (not `import type`): `TOOL_REGISTRARS` needs the real arrays /
+// functions at runtime. Every tool file's own import of `ServerDeps` /
+// `ToolRegistrar` back from this module is `import type`-only (erased at
+// compile time), so this does not create a runtime import cycle — only
+// `tools/index.ts` / `tools/enrichment.ts` → this module's *types*, never the
+// reverse at the value level.
 import { INTENT_TOOL_REGISTRARS } from './tools/index.ts'
+import { registerEnrichmentTools } from './tools/enrichment.ts'
 
 /**
  * The MCP server's identity, as reported in `_meta.serverInfo`.
@@ -112,13 +116,13 @@ export type ToolRegistrar = (server: McpServer, deps: ServerDeps) => void
 /**
  * The registrars the executable installs, in order.
  *
- * Was empty by #22's own scope ("stdio transport 启动但零工具可用" was that ticket's
- * acceptance criterion). #20 appends ADR-0005's fifteen intent tools below
- * (`INTENT_TOOL_REGISTRARS`, from `./tools/index.ts`) — appending here was the whole
- * integration step the seam was built for. #21 appends ADR-0006's three enrichment
- * tools the same way when that ticket lands.
+ * #22 shipped this empty ("stdio transport 启动但零工具可用" was its acceptance
+ * criterion). #20 appends ADR-0005's fifteen intent tools (`INTENT_TOOL_REGISTRARS`,
+ * `./tools/index.ts`) and #21 appends ADR-0006's three enrichment tools
+ * (`registerEnrichmentTools`, `./tools/enrichment.ts`) — appending here was the
+ * whole integration step the seam was built for.
  */
-export const TOOL_REGISTRARS: readonly ToolRegistrar[] = [...INTENT_TOOL_REGISTRARS]
+export const TOOL_REGISTRARS: readonly ToolRegistrar[] = [...INTENT_TOOL_REGISTRARS, registerEnrichmentTools]
 
 /**
  * Build the factory `serveStdio` calls to get a server instance.

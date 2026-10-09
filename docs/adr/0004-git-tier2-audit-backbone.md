@@ -139,6 +139,25 @@ contended (ruling 7 made queuing *be* the lock), and retrying it silently would 
 > 逐请求信封数据，不是启动通道数据。两条的完整测量与对 #20 的后果见
 > **ADR-0005 的 2026-10-09 addendum**。
 
+**6. Ruling 3's `beginBatch` slot is implemented ([#21](https://github.com/McKenzieIT/semantic-grounding/issues/21)).**
+`GitTier2Recorder.beginBatch(meta?)` returns a `Tier2Batch` whose `record()` is a
+caller-counted bookkeeping hook (no independent "what is a round" concept for git to
+measure, so the caller's own call count *is* the `X-SG-Rounds` value) and whose `end()`
+pre-stages (`git add -A`) to learn the real file count *before* building the commit
+message, then delegates to the same `stageAndCommit` every non-batch write uses — one
+redundant `git add -A`, not a second commit path to keep in sync. The more consequential
+piece is `recordTier2Write`'s own new absorption branch: while a batch is open
+(`batchDepth > 0`, reentrant like the lock, for the same reason), every
+`Tier2Opts`-driven write that would normally commit on its own returns a cheap no-op
+instead. This is what lets `run_enrichment`'s MCP tool call the *unchanged* `#18`
+`discoverRelations` / `discoverEventRelations` / `discoverAltLabels` (still passing
+`tier2` exactly as before) inside one `beginBatch` window and get **one** commit instead
+of one per table/event — the enrichAll* family never learns batching exists; the
+recorder is the only thing that does. Full writeup, including two merge-correctness
+fixes `apply_enrichment` needed (a work_id's own round must not stale a sibling
+work_id's round on the same target; an agent re-suggesting an asset's own name must
+resolve to `idempotent`, not `applied`), is ADR-0006's 2026-10-09 addendum.
+
 One ruling the implementation declined to soften: a `recordTier2Write` arriving with no
 ambient audit context **throws** (`missing_audit_context`) rather than synthesizing a
 subject from the substrate payload. ADR-0005 ruling 8 rejected server-written summaries,
