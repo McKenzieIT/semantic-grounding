@@ -26,7 +26,8 @@
     "pretypecheck": "pnpm --filter @semantic-grounding/substrate run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "pretest": "pnpm --filter @semantic-grounding/substrate run build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "node scripts/check-e2e-loop.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.3.1",
