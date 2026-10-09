@@ -1,5 +1,6 @@
 .agents/
 .claude/
+.worktrees/
 node_modules/
 lib/
 *.tsbuildinfo
