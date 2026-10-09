@@ -76,6 +76,31 @@ QoderWork 详情页未见 protocolVersion 显示——记「未测」（`legacy:
 不阻塞）。**配置形态实测**：env-only 注册（SG_CORPUS/SG_AGENT_ID/SG_SCOPE，argv 零参数）
 ——#22 双通道设计的决定性输入在真实宿主上成立。
 
+**记录（写路径 + 副作用，2026-10-10）**：三写回全落，agent 自述与 git 对账一致：
+
+| commit | 动词 | Derivation / conf | 内容 |
+|---|---|---|---|
+| `756c9bb` | update_definition | agent / 0.8 | 补问数口径描述 |
+| `198d5be` | enrich_on_write | deterministic / 1 | hook 写回 dimension_refs + alt_labels（两 commit 形状活体） |
+| `d9ba1be` | add_relation | agent / 0.7 | **领域判断**：拒绝直连 `dim_com_recharge_info`（_di 表无 recharge_id 列，JOIN 不成立），改加 role_id→`dws_10000251_univ_role_tag_df` |
+| `f0badb5` | enrich_on_write | deterministic / 1 | add_relation 同样触发 hook |
+| （无 commit） | add_alias | — | 幂等 no-op：别名已被 hook 提前抽入，changed:false 零 commit |
+
+- **stale_baseline 回路活体闭环**：agent 原话「写操作改变了指纹，加关联前重新读一次拿最新 version」——重读重试在真宿主自主发生。
+- **身位分离**：四条 commit 全部 author=qoderwork-pilot / committer=semantic-grounding-mcp。
+- **X-SG-Client 缺席**：QoderWork 请求信封未带 clientInfo（optional 键）→ trailer 诚实缺席，符合设计（「没人说就是没有」，config.ts 同款语义）。
+- agent 一次「无意义循环」后自恢复；中途主动向用户交代副作用与改判理由（关联目标从礼包维表改为角色宽表）——审计 summary 与自述一致。
+
+**⚠️ 发现（tombstone fog 触发条件以广义形式命中）**：on-write hook 的 deterministic
+alt-labels 抽取（`enrichment.ts` `discoverAltLabelsDeterministic`：括引片段 + domains）
+把长分析型描述撕成「别名」——`_di` 表 alt_labels 从 3 条（氪金/充值/付费）涨到 28 条，
+20+ 条垃圾（`ds=20260720`、纯数字、`现金,cnt=384,amt=773500分`、整句结论）。且 **hook 在
+每次 update 类写都重触发**、抽取源是描述正文：remove_alias 清掉后，只要描述还在、下一次
+写就再抽回——**enrichment 轮与 agent 的写-删循环，alt_labels 变体**（fog 原文是 relation
+ref 变体）。规避顺序：先净描述（update 写干净文本，hook 无可抽）再清别名，顺序反了会在
+同一次写内即时回填。两个候选修法独立成立：①tombstone（agent 持久否决权，map #12 fog
+原文）；②substrate 抽取器质量护栏（长度/数字占比/含分隔符拒收）——收票时一轮问 graduate。
+
 ## 观察点（fog 的触发条件挂在这）
 
 - **写-删循环**：agent `remove_relation` 删掉机器推导的 ref 后，下一轮 enrichment 又推
