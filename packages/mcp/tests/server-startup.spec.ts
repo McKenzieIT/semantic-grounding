@@ -221,6 +221,54 @@ describe('serving', () => {
     })
   })
 
+  it('answers the hosts\' connect-time probes (prompts/resources) with empty lists, never -32601', () => {
+    // Measurement 5 (`src/server.ts`): hosts probe prompts/resources during capability
+    // discovery, and the SDK's eager capability wiring is tools-only — without explicit
+    // empty handlers both eras answered -32601, which QoderWork surfaced as a fatal
+    // "MCP error -32601: Method not found" during the #23 dogfood. "Empty" and "broken"
+    // must stay distinguishable. `ping` is deliberately not asserted here: modern-era
+    // ping answers -32601 on SDK v2.3.1 (era-router miss, unre-registerable from our
+    // side); legacy answers it — recorded, not fixed.
+    const probe = (id: number, method: string, modern: boolean): string =>
+      `${JSON.stringify({
+        jsonrpc: '2.0',
+        id,
+        method,
+        params: modern
+          ? {
+            _meta: {
+              'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+              'io.modelcontextprotocol/clientCapabilities': {},
+            },
+          }
+          : {},
+      })}\n`
+
+    for (const modern of [true, false]) {
+      const opening = modern
+        ? ''
+        : `${JSON.stringify({
+          jsonrpc: '2.0',
+          id: 90,
+          method: 'initialize',
+          params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'probe-host', version: '1.0' } },
+        })}\n`
+      const r = run(['--corpus', fixture.root, '--agent-id', 'probe-agent'], {
+        input: opening + probe(1, 'prompts/list', modern) + probe(2, 'resources/list', modern) + probe(3, 'resources/templates/list', modern),
+      })
+      expect(r.code).toBe(EXIT.ok)
+      const byId = new Map(responses(r.stdout).filter(m => m['id'] !== undefined).map(m => [m['id'] as number, m]))
+      const expectEmpty = (id: number, field: string): void => {
+        const msg = byId.get(id)
+        expect(msg?.['error']).toBeUndefined()
+        expect((msg?.['result'] as Record<string, unknown>)?.[field]).toEqual([])
+      }
+      expectEmpty(1, 'prompts')
+      expectEmpty(2, 'resources')
+      expectEmpty(3, 'resourceTemplates')
+    }
+  })
+
   it('also serves a 2025-era client (legacy: \'serve\')', () => {
     // The deciding input: the dogfood host is QoderWork and peer office agents, whose era
     // we cannot check from here, and SDK v2.3.1 still calls 2025-11-25 its latest.

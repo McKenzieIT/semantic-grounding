@@ -9,8 +9,8 @@
  * serving, with nothing to offer.
  *
  * Every shape here was settled by measuring SDK v2.3.1 rather than reading its docs, and
- * four of those measurements contradicted what the map had recorded. They are written up
- * on #22; the four that constrain *this file* are:
+ * five of those measurements contradicted what the map had recorded. They are written up
+ * on #22; the five that constrain *this file* are:
  *
  * **1. `serveStdio` is mandatory, and the alternative fails silently.** The obvious
  * wiring — `new McpServer(...).connect(new StdioServerTransport())` — does not error on a
@@ -48,6 +48,22 @@
  * on the first `registerTool`. A zero-tool server that omits it answers `tools/list` with
  * `-32601 Method not found` — indistinguishable, from the client side, from a broken
  * server. Declared unconditionally, it answers `{"tools":[]}`.
+ *
+ * **5. Declaring a capability wires handlers for `tools` only — the other probe methods
+ * must be registered by hand.** Measured during the #23 dogfood (QoderWork surfaced
+ * `MCP error -32601: Method not found` at connect): hosts probe `prompts/list` /
+ * `resources/list` / `resources/templates/list` as standard capability discovery, and
+ * this SDK's constructor-level eager wiring (`if (capabilities.tools)
+ * setToolRequestHandlers()`) has no prompts/resources counterpart — their list handlers
+ * are registered only by `registerPrompt` / `registerResource`, which this server never
+ * calls. The result: both eras answer all three probes `-32601`, which a host treats as
+ * a fatal connection error even though every *advertised* method works. The fix mirrors
+ * measurement 4's ruling: a server that has no prompts/resources still answers the probe
+ * with an **empty list**, because "empty" and "broken" must stay distinguishable. One
+ * method deliberately left alone: `ping` answers `-32601` in the modern era on this SDK
+ * (the low-level string handler exists but the era router misses it); it cannot be
+ * re-registered from here (`assertCanSetRequestHandler` throws on the duplicate), legacy
+ * era answers it fine, and no host behavior is known to depend on modern-era ping.
  *
  * @module server
  */
@@ -136,7 +152,26 @@ export function createServerFactory(
   registrars: readonly ToolRegistrar[] = TOOL_REGISTRARS,
 ): McpServerFactory {
   return () => {
-    const server = new McpServer(SERVER_INFO, { capabilities: { tools: {} } })
+    const server = new McpServer(SERVER_INFO, {
+      capabilities: {
+        tools: {},
+        // Declared empty with `listChanged: false` — this server never emits
+        // list-changed notifications for prompts/resources, and the honest capability
+        // is "an empty, unchanging list", not silence. Measurement 5 in this module's
+        // header: declaring alone wires nothing (the SDK's eager wiring is tools-only),
+        // so the empty handlers below are registered explicitly.
+        prompts: { listChanged: false },
+        resources: { listChanged: false },
+      },
+    })
+    // The connect-time probes a host sends during capability discovery. Handlers, not
+    // just declarations — see measurement 5. `resources/read` is deliberately NOT
+    // registered: with no resources there is nothing to read, and a `resources/read`
+    // call naming a nonexistent URI is a client bug worth a genuine error, unlike the
+    // list probes, which are a host's standard "what do you serve?" question.
+    server.server.setRequestHandler('prompts/list', () => ({ prompts: [] }))
+    server.server.setRequestHandler('resources/list', () => ({ resources: [] }))
+    server.server.setRequestHandler('resources/templates/list', () => ({ resourceTemplates: [] }))
     for (const register of registrars) register(server, deps)
     return server
   }
