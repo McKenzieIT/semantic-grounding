@@ -35,8 +35,30 @@
  * NOT retryable-by-contract — the queue is the lock itself (ruling 7), so a timeout
  * means the corpus is genuinely contended and silently retrying would hide that.
  *
+ * ## `-31040..-31059` is reserved for #21, and allocates nothing
+ *
+ * ADR-0005's 2026-10-09 addendum (confirmed by #22's measurement) falsifies the premise
+ * that funded this segment table: `McpServer.registerTool`'s handler exceptions are
+ * caught by the SDK and turned into an `isError` **result**, with any `code` field
+ * discarded — only the low-level `server.server.setRequestHandler` seam passes a numeric
+ * code onto the wire. {@link toToolErrorResult} is this ticket's answer: carry the code
+ * *inside* the `isError` result's JSON payload instead of on the JSON-RPC envelope, which
+ * means a `-31xxx` value never actually reaches a client through `tools/call`, for either
+ * this file's codes or this segment's. Measuring what `apply_enrichment` /
+ * `run_enrichment` / `get_enrichment_work` can throw as a *whole-call* failure (as
+ * opposed to a per-item verdict — see {@link toToolErrorResult}'s own doc) turns up
+ * nothing enrichment-specific to code: a lock timeout, a commit failure, a dirty-tree
+ * refusal and a missing audit context are all generic Tier-2 write failures #19 already
+ * coded, and every per-item problem (`stale_baseline`, `unparseable`, a `work_id` that
+ * fails to decode) is ADR-0006 ruling 4's non-error payload data, not an exception. So
+ * this segment stays empty on purpose — the same outcome #22's addendum item 3 recorded
+ * for its own startup-only segment ("分配表的确认而非缺口" — a confirmation of the
+ * allocation table, not a gap). A future enrichment-specific failure that genuinely
+ * needs a code allocates from `-31040` up; nothing here claims one could never exist.
+ *
  * @module errors
  */
+import type { CallToolResult } from '@modelcontextprotocol/server'
 
 /** The reserved JSON-RPC range application codes must avoid (MCP 2026-07-28). */
 export const JSONRPC_RESERVED_RANGE = { min: -32768, max: -32000 } as const
@@ -206,4 +228,58 @@ export class MissingAuditContextError extends SgApplicationError {
   constructor(message: string, data?: Readonly<Record<string, unknown>>) {
     super(GIT_AUDIT_ERROR_CODES.missing_audit_context, message, { ...data !== undefined ? { data } : {} })
   }
+}
+
+/**
+ * Map a thrown error onto a `tools/call` result, per ADR-0005's 2026-10-09 addendum
+ * (shared with #20, implemented independently here).
+ *
+ * `McpServer.registerTool` is kept rather than dropped to the low-level
+ * `server.server.setRequestHandler` seam — the measured alternative — because the cost
+ * of leaving `registerTool` (schema validation, `tools/list` auto-registration) is a
+ * single `instanceof` check's width, paid once per tool, against the cost of hand-rolling
+ * every tool's dispatch and input validation. The trade this function actually makes is
+ * the OTHER option the addendum named: the error contract changes *shape*, not channel.
+ * A coded failure is not a JSON-RPC error response (that would need `setRequestHandler`);
+ * it is a normal `tools/call` **result** with `isError: true`, whose `content` carries the
+ * code/name/message/retryable/data as a JSON string instead of prose. An agent that wants
+ * to branch on `stale_baseline` parses `JSON.parse(result.content[0].text).code === -31002`
+ * rather than reading a JSON-RPC `error.code` that the SDK would have discarded anyway.
+ *
+ * Every tool handler in this package wraps its body `try { ... } catch (e) { return
+ * toToolErrorResult(e) }`. An error that is NOT an {@link SgApplicationError} — a bug in
+ * this server, not a condition the caller can act on — is rethrown rather than wrapped:
+ * the SDK's own handler-exception path still turns it into an `isError` result for the
+ * client (measurement 1 of ADR-0005's addendum applies regardless of what this function
+ * does), but it does so *without* this function pretending the fault was anticipated.
+ * Swallowing it here into a coded-looking shape would misrepresent an internal fault as
+ * part of the contract.
+ *
+ * This is distinct from `apply_enrichment`'s own **per-item** verdicts (`applied` /
+ * `idempotent` / `stale_baseline` / `unparseable`): those are normal, non-error payload
+ * data in a *successful* call's `results` array (ADR-0006 ruling 4) — one stale item
+ * does not make the whole batch an error, so it never reaches this function. This
+ * function is only for whole-call failures: a malformed batch, a lock timeout acquiring
+ * the corpus lock, a dirty worktree refusing the write.
+ * @param error - whatever the tool handler's body threw.
+ * @returns a `CallToolResult` with `isError: true` and the coded failure as JSON text.
+ * @throws the original error, unchanged, when it is not an {@link SgApplicationError}.
+ */
+export function toToolErrorResult(error: unknown): CallToolResult {
+  if (error instanceof SgApplicationError) {
+    return {
+      isError: true,
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          code: error.code,
+          name: error.name,
+          message: error.message,
+          retryable: error.retryable,
+          data: error.data,
+        }),
+      }],
+    }
+  }
+  throw error // internal fault — stays loud, not masked as an anticipated tool result
 }

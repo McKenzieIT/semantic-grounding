@@ -476,3 +476,73 @@ describe('batch write accounting', () => {
     expect(subjects().filter(s => s.startsWith('create_definition'))).toHaveLength(3)
   })
 })
+
+// ── beginBatch (#21): N audited writes become one commit ────────────────
+
+describe('beginBatch: the reserved slot, implemented', () => {
+  it('coalesces discoverRelations\' per-table writes into one commit, with real Files/Rounds', async () => {
+    // This is exactly #21's run_enrichment compiling onto the unchanged discoverRelations
+    // (`tier2` passthrough shipped with #18) — the absorption lives entirely in this
+    // recorder, not in discoverRelations' own code.
+    const rec = recorder()
+    const res = await rec.runAudited({ ...CTX, tool: 'run_enrichment', target: 'all definitions' }, async () => {
+      const batch = rec.beginBatch()
+      const discovered = await core(rec).discoverRelations({ tier2: { recorder: rec } })
+      if (discovered.written > 0) batch.record('run_enrichment', { round: 'relation' })
+      return batch.end()
+    })
+    expect(res.changed).toBe(true)
+    // Only dws_order's dimension_refs changed — one file, one commit, not one per table.
+    expect(res.files).toBe(1)
+    expect(subjects().filter(s => s.startsWith('run_enrichment'))).toHaveLength(1)
+    expect(await rec.readTrailers(res.commit)).toMatchObject({ Files: '1', Rounds: '1', Derivation: 'agent' })
+  })
+
+  it('absorbs a recordTier2Write made while the batch is open — no commit until end()', async () => {
+    const rec = recorder()
+    const subjectsBefore = subjects().length
+    const res = await rec.runAudited(CTX, async () => {
+      const batch = rec.beginBatch()
+      await core(rec).updateTableMeta('dws_order', { description: 'via absorbed write' })
+      // The write already landed on disk (updateTableMeta's own atomicWrite), but no
+      // commit should exist for it yet — recordTier2Write deferred to this batch.
+      expect(subjects()).toHaveLength(subjectsBefore)
+      batch.record('apply_enrichment', { round: 'relation' })
+      return batch.end()
+    })
+    expect(res.changed).toBe(true)
+    expect(res.files).toBe(1)
+    expect(subjects()).toHaveLength(subjectsBefore + 1)
+  })
+
+  it('a batch that stages nothing makes no commit (ADR-0005 ruling 8 at batch granularity)', async () => {
+    const rec = recorder()
+    const subjectsBefore = subjects().length
+    const res = await rec.runAudited(CTX, async () => {
+      const batch = rec.beginBatch()
+      // No writes at all — e.g. every apply_enrichment item verdicted idempotent/stale.
+      return batch.end()
+    })
+    expect(res.changed).toBe(false)
+    expect(res.files).toBe(0)
+    expect(subjects()).toHaveLength(subjectsBefore)
+  })
+
+  it('abort() restores the worktree to the pre-batch HEAD, discarding every raw write made', async () => {
+    const rec = recorder()
+    const headBefore = fixtureGit(['rev-parse', 'HEAD'], fixture.root).trim()
+    await expect(rec.runAudited(CTX, async () => {
+      const batch = rec.beginBatch()
+      writeFileSync(join(fixture.root, 'tables', 'dws_order.yaml'), 'garbage: true\n', 'utf8')
+      await batch.abort()
+      throw new Error('simulated failure after a batch write — the batch must still be undone')
+    })).rejects.toThrow('simulated failure after a batch write')
+    expect(fixtureGit(['rev-parse', 'HEAD'], fixture.root).trim()).toBe(headBefore)
+    expect(fixtureGit(['status', '--porcelain'], fixture.root).trim()).toBe('')
+  })
+
+  it('throws MissingAuditContextError when called outside runAudited', () => {
+    const rec = recorder()
+    expect(() => rec.beginBatch()).toThrow(MissingAuditContextError)
+  })
+})

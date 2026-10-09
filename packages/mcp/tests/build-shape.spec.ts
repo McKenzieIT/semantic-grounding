@@ -46,6 +46,11 @@ describe('dependencies stay external', () => {
   it.each([
     ['@semantic-grounding/substrate', 'SemanticGroundingCore'],
     ['@modelcontextprotocol/server', 'McpServer'],
+    // #21: zod joined `dependencies` for the enrichment tools' input schemas
+    // (`tools/enrichment.ts`). tsdown's default "externalize `dependencies`" treatment
+    // (this file's own header note) applies to it the same as the other two — no
+    // `tsdown.config.ts` change was needed, which is exactly what this case proves.
+    ['zod', 'z'],
   ])('imports %s rather than bundling it', (specifier, _symbol) => {
     expect(emitted).toContain(`from "${specifier}"`)
   })
@@ -57,8 +62,7 @@ describe('dependencies stay external', () => {
     expect(emitted).not.toContain('registerInvalidationHook =')
   })
 
-  it('does not inline the MCP SDK or its zod dependency', () => {
+  it('does not inline the MCP SDK', () => {
     expect(emitted).toContain('from "@modelcontextprotocol/server/stdio"')
-    expect(emitted).not.toMatch(/from "zod/)
   })
 })

@@ -191,19 +191,25 @@ describe('deployment refusals exit 78 and say nothing on stdout', () => {
 
 // ── Serving ──────────────────────────────────────────────────────────────
 
+/** Every default-registrar tool `tools/list` must carry (#21's three — #20's land alongside). */
+const ENRICHMENT_TOOL_NAMES = ['get_enrichment_work', 'apply_enrichment', 'run_enrichment']
+
 describe('serving', () => {
-  it('answers a 2026-07-28 tools/list with an empty list and the revision\'s result shape', () => {
+  it('answers a 2026-07-28 tools/list with the default registrars\' tools and the revision\'s result shape', () => {
     const r = run(['--corpus', fixture.root, '--agent-id', 'analyst-bot'], { input: modernToolsList() })
     expect(r.code).toBe(EXIT.ok)
 
     const [res] = responses(r.stdout)
     expect(res).toBeDefined()
     const result = res?.['result'] as Record<string, unknown> | undefined
-    // Zero tools is this ticket's scope ("stdio transport 启动但零工具可用"). The point of
-    // asserting the list exists rather than the method 404ing: without an explicit
-    // `capabilities: { tools: {} }` the SDK answers -32601, which a client cannot tell
-    // apart from a broken server.
-    expect(result?.['tools']).toEqual([])
+    // Zero tools was #22's own scope ("stdio transport 启动但零工具可用"); #21 appended
+    // ADR-0006's three enrichment tools to the default `TOOL_REGISTRARS`, so the
+    // real-executable list is no longer empty. `arrayContaining` rather than an exact
+    // list — #20 appends ADR-0005's intent tools to the same array, and this test's own
+    // point is the result *shape* (resultType/_meta below), not an exact tool census.
+    expect(result?.['tools']).toEqual(
+      expect.arrayContaining(ENRICHMENT_TOOL_NAMES.map(name => expect.objectContaining({ name }))),
+    )
     // Revision markers the 2025-era shape does not carry. Their presence is what proves
     // `serveStdio` is wired rather than a hand-connected transport, which answers the
     // same bytes in the wrong era.
@@ -230,7 +236,10 @@ describe('serving', () => {
     const out = responses(r.stdout)
     expect(out).toHaveLength(2)
     expect((out[0]?.['result'] as Record<string, unknown>)?.['protocolVersion']).toBe('2025-11-25')
-    expect((out[1]?.['result'] as Record<string, unknown>)?.['tools']).toEqual([])
+    // Same default-registrar tool set as the modern-era test above (#21's three).
+    expect((out[1]?.['result'] as Record<string, unknown>)?.['tools']).toEqual(
+      expect.arrayContaining(ENRICHMENT_TOOL_NAMES.map(name => expect.objectContaining({ name }))),
+    )
     // No `-32601`: the regression this guards is reusing one McpServer across the
     // factory's two measured calls, which answers a legacy `initialize` "Method not found"
     // because the modern binding permanently mutates the instance.

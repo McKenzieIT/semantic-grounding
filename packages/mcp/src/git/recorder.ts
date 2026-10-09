@@ -66,7 +66,7 @@
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { StaleBaselineError } from '@semantic-grounding/substrate'
-import type { Tier2RecordMeta, Tier2Recorder } from '@semantic-grounding/substrate'
+import type { Tier2Batch, Tier2RecordMeta, Tier2Recorder } from '@semantic-grounding/substrate'
 import { CommitFailedError, MissingAuditContextError, PostureRefusedError, StaleBaselineRejection } from '../errors.ts'
 import { git, gitOut, gitTry } from './exec.ts'
 import { CorpusLock, type CorpusLockOptions } from './lock.ts'
@@ -119,6 +119,17 @@ export interface AuditContext {
   readonly confidence: number
   /** Per-call session id, overriding the configured one. */
   readonly sessionId?: string
+  /**
+   * Per-call client application name, overriding the configured one (#21, ADR-0005's
+   * 2026-10-09 addendum). `GitRecorderConfig.clientName` is a construction-time value
+   * #22 deliberately leaves unset, because measurement showed `clientInfo` is per-request
+   * envelope data (`extra.mcpReq.envelope[CLIENT_INFO_META_KEY]`), not a startup-channel
+   * value — the same reason {@link AuditContext.sessionId} exists alongside the
+   * construction-time `GitRecorderConfig.sessionId`. A tool handler reads the current
+   * request's envelope and passes it here; {@link GitTier2Recorder.runAudited}'s
+   * `commitContext` prefers it over the (normally absent) configured value.
+   */
+  readonly clientName?: string
   /** Files in this commit — batch callers only (#21). */
   readonly files?: number
   /** Enrichment rounds folded into this commit — batch callers only (#21). */
@@ -186,6 +197,14 @@ export class GitTier2Recorder implements Tier2Recorder {
   private current: AuditContext | undefined
   /** The accumulator for the innermost open `runAudited` window. */
   private window: AuditWindow | undefined
+  /**
+   * Set for the duration of an open `beginBatch` window — see `recordTier2Write`'s
+   * absorption branch and `beginBatch`'s own doc comment for why this exists. Not a
+   * boolean: depth, like the lock, so a (currently theoretical) nested `beginBatch`
+   * degrades to "still absorbed" rather than one `end()` turning absorption off while
+   * an outer batch is still open.
+   */
+  private batchDepth = 0
 
   /**
    * @param cfg - corpus root, agent identity, scope/session/client metadata, lock tuning.
@@ -307,6 +326,20 @@ export class GitTier2Recorder implements Tier2Recorder {
         { substrate_tool: toolName, payload_keys: payloadKeys(payload) },
       )
     }
+    if (this.batchDepth > 0) {
+      // Absorbed into the open `beginBatch` window (#21): this call's bytes are
+      // already on disk (the substrate write primitive wrote them before calling
+      // here, same as the non-batch path), and the batch's own `end()` captures
+      // everything currently dirty — including this write — as ONE commit via its own
+      // `git add -A`. Committing here too would either double-commit or (since there
+      // would be nothing left to stage) silently no-op while still looking like a
+      // completed write; neither is better than the honest no-op this is. This is what
+      // makes `discoverRelations({ tier2: { recorder } })` — unchanged since #18 —
+      // compose with `run_enrichment`'s single commit without either side knowing
+      // about the other: the enrichAll* family still believes it is doing N audited
+      // writes, and the recorder is the one that knows N of them are really one.
+      return this.head()
+    }
     const paths = await this.ready()
     const outcome = await this.lock.withLock(() => this.stageAndCommit(this.commitContext(ctx, opts), paths))
     if (outcome.changed && this.window !== undefined) {
@@ -314,6 +347,128 @@ export class GitTier2Recorder implements Tier2Recorder {
       this.window.files += outcome.files
     }
     return outcome.commit
+  }
+
+  /**
+   * Begin a batch: many logical writes recorded under one commit (ADR-0004 ruling 3's
+   * reserved slot, implemented here for #21). `enrichAll*` writing N definitions as N
+   * commits is the same "302 表 = 302 commit" log flood ruling 3 named, now reachable
+   * from `apply_enrichment` / `run_enrichment` instead of only the on-write hook (see
+   * the module header's residue-sweep section, which this generalizes).
+   *
+   * Must be called from inside {@link runAudited}'s `fn` — same requirement as
+   * `recordTier2Write`, and for the same reason: the ambient {@link AuditContext}
+   * published there is the only place `tool`/`target`/`summary`/`derivation`/
+   * `confidence` come from. A batch has exactly as much "intent" as a single write,
+   * just more files.
+   *
+   * ## Division of labor with the caller
+   *
+   * `record()` is a thin bookkeeping hook, not a staging primitive: the caller performs
+   * its own raw writes (`writeTable` / `writeEventYaml` **without** `tier2` — unaudited
+   * at that call, by design) and then tells the batch "one more logical write landed".
+   * Two things follow:
+   *
+   * - **`files` in the trailer comes from the real `git diff`, not from counting
+   *   `record()` calls.** The caller cannot know ahead of time how many *files* the
+   *   batch will touch — merging an LLM answer into existing refs may touch zero bytes
+   *   (ADR-0006's per-item `idempotent` verdict) — so `end()` runs its own `git add -A`
+   *   pre-check to learn the true count before the commit message is built, then
+   *   delegates the actual commit to the same {@link stageAndCommit} every non-batch
+   *   write uses (re-staging an already-fully-staged tree is a no-op, so this costs one
+   *   redundant `git add -A`, not a second commit attempt).
+   * - **`rounds` in the trailer is the number of `record()` calls, by the caller's own
+   *   definition of what counts as one.** Unlike files, git has no independent concept
+   *   of "a round" to measure, so this recorder trusts the caller: `apply_enrichment`
+   *   calls `record()` once per distinct work-item *kind* (`relation` / `alt_labels`)
+   *   actually applied; `run_enrichment` calls it once per deterministic sweep
+   *   performed. Both are faithful to ruling 3's "一轮 enrichment = 一次 commit" framing
+   *   without this recorder having to arbitrate what "一轮" means for either caller.
+   *
+   * ## Why `abort()` resets to HEAD rather than tracking per-file snapshots
+   *
+   * {@link assertCleanBeforeWrite} already guarantees the worktree was clean at the
+   * start of the enclosing `runAudited` window, which is the only place `beginBatch` can
+   * be called from. So anything dirty when `abort()` runs is this batch's doing in
+   * full, and `git reset --hard HEAD` + `git clean -fd` is a complete, correct undo —
+   * no per-file bookkeeping needed, unlike {@link rollbackStaged}'s path-by-path restore
+   * (which exists for the *single-write* rollback, where only one write's own files are
+   * known safe to touch and everything else on disk must be left alone).
+   * @param meta - optional per-batch scope/session default (`Tier2RecordMeta`), merged
+   *   the same way a single `recordTier2Write` call's `opts` would be.
+   * @returns a {@link Tier2Batch} handle; call `end()` or `abort()` exactly once.
+   * @throws MissingAuditContextError when called outside {@link runAudited}.
+   */
+  beginBatch(meta?: Tier2RecordMeta): Tier2Batch {
+    const ctx = this.current
+    if (ctx === undefined) {
+      throw new MissingAuditContextError(
+        'beginBatch reached the git recorder with no audit context: wrap the substrate call in GitTier2Recorder.runAudited({ tool, target, summary, derivation, confidence }, ...) — a batch needs the same intent a single write does, just for more files.',
+        { substrate_tool: 'beginBatch' },
+      )
+    }
+    const recorder = this
+    let recordCount = 0
+    let finished = false
+    // Opens the absorption window `recordTier2Write` checks (see its own doc comment):
+    // any Tier2Opts-aware write made between here and `end()`/`abort()` — including
+    // ones made through `discoverRelations` et al.'s existing, unchanged `tier2` plumbing
+    // — stops committing per call and defers to this batch's single commit instead.
+    this.batchDepth += 1
+    const closeBatch = (): void => {
+      if (finished) return
+      finished = true
+      this.batchDepth -= 1
+    }
+    return {
+      record(_toolName: string, _payload: unknown, _opts?: Tier2RecordMeta): void {
+        if (finished) throw new Error('Tier2Batch.record() called after end()/abort() — nothing left to stage this onto')
+        recordCount += 1
+      },
+      async end(): Promise<{ commit: string; files: number }> {
+        if (finished) throw new Error('Tier2Batch.end() called twice')
+        try {
+          return await recorder.lock.withLock(async () => {
+            const paths = await recorder.ready()
+            await git(['add', '-A'], { cwd: paths.toplevel })
+            const staged = await recorder.stagedPaths(paths.toplevel)
+            if (staged.length === 0) {
+              // Fully idempotent batch (ADR-0006: every item verdicted idempotent/
+              // stale_baseline/unparseable, or a deterministic sweep found nothing new
+              // to persist): no commit, matching ADR-0005 ruling 8's single-write rule.
+              return { commit: await recorder.head(), files: 0 }
+            }
+            const built = recorder.commitContext(ctx, meta)
+            const withCounts: CommitContext = { ...built, files: staged.length, rounds: recordCount }
+            const outcome = await recorder.stageAndCommit(withCounts, paths)
+            if (outcome.changed && recorder.window !== undefined) {
+              recorder.window.commits.push(outcome.commit)
+              recorder.window.files += outcome.files
+            }
+            return { commit: outcome.changed ? outcome.commit : await recorder.head(), files: outcome.files }
+          })
+        } finally {
+          // Closes the absorption window regardless of outcome: a failed commit has
+          // already rolled the worktree back (stageAndCommit's own CommitFailedError
+          // path), so there is nothing left for a later `recordTier2Write` to absorb
+          // into, and leaving `batchDepth` elevated would silently swallow the NEXT
+          // audited write's commit too.
+          closeBatch()
+        }
+      },
+      async abort(): Promise<void> {
+        if (finished) return
+        try {
+          await recorder.lock.withLock(async () => {
+            const paths = await recorder.ready()
+            await gitTry(['reset', '--hard', 'HEAD'], { cwd: paths.toplevel })
+            await gitTry(['clean', '-fd'], { cwd: paths.toplevel })
+          })
+        } finally {
+          closeBatch()
+        }
+      },
+    }
   }
 
   /**
@@ -327,6 +482,12 @@ export class GitTier2Recorder implements Tier2Recorder {
   private commitContext(ctx: AuditContext, opts?: Tier2RecordMeta): CommitContext {
     const scopeId = firstNonEmpty(opts?.scope_id, this.cfg.scopeId)
     const sessionId = firstNonEmpty(opts?.session_id, ctx.sessionId, this.cfg.sessionId)
+    // Per-call wins over construction-time, same precedence as session/scope above: a
+    // request's own clientInfo is the honest value (ADR-0005's 2026-10-09 addendum), and
+    // the construction-time `cfg.clientName` is #22's deliberately-unset fallback — kept
+    // only so a future host that DOES have a stable startup-channel client name (unlike
+    // stdio's per-request clientInfo) still has somewhere to put it.
+    const clientName = firstNonEmpty(ctx.clientName, this.cfg.clientName)
     return {
       tool: ctx.tool,
       target: ctx.target,
@@ -334,7 +495,7 @@ export class GitTier2Recorder implements Tier2Recorder {
       derivation: ctx.derivation,
       confidence: ctx.confidence,
       agentId: this.agentId,
-      ...this.cfg.clientName !== undefined ? { clientName: this.cfg.clientName } : {},
+      ...clientName !== undefined ? { clientName } : {},
       ...scopeId !== undefined ? { scopeId } : {},
       ...sessionId !== undefined ? { sessionId } : {},
       ...ctx.files !== undefined ? { files: ctx.files } : {},

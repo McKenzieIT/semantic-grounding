@@ -2,9 +2,11 @@
  * The stdio server: how a `SemanticGroundingCore` and its git recorder become an MCP
  * server ([#22](https://github.com/McKenzieIT/semantic-grounding/issues/22)).
  *
- * This module registers **no tools**. #20 (ADR-0005's intent tools) and #21 (ADR-0006's
- * enrichment tools) hook onto the {@link ToolRegistrar} seam below; until they land, the
- * server answers `tools/list` with an empty list — serving, with nothing to offer.
+ * This module itself registers **no tools** — #20 (ADR-0005's intent tools) and #21
+ * (ADR-0006's enrichment tools, appended to {@link TOOL_REGISTRARS} below) hook onto the
+ * {@link ToolRegistrar} seam. Before either landed, the server answered `tools/list`
+ * with an empty list — serving, with nothing to offer; #21's three enrichment tools are
+ * now in that list, and #20's intent tools land alongside.
  *
  * Every shape here was settled by measuring SDK v2.3.1 rather than reading its docs, and
  * four of those measurements contradicted what the map had recorded. They are written up
@@ -54,6 +56,7 @@ import { serveStdio, type ServeStdioOptions, type StdioServerHandle } from '@mod
 import type { SemanticGroundingCore } from '@semantic-grounding/substrate'
 import type { ServerConfig } from './config.ts'
 import type { GitTier2Recorder } from './git/recorder.ts'
+import { registerEnrichmentTools } from './tools/enrichment.ts'
 
 /**
  * The MCP server's identity, as reported in `_meta.serverInfo`.
@@ -106,11 +109,13 @@ export type ToolRegistrar = (server: McpServer, deps: ServerDeps) => void
 /**
  * The registrars the executable installs, in order.
  *
- * Empty by #22's own scope: the ticket is the skeleton, and "stdio transport 启动但零工具
- * 可用" is its acceptance criterion. #20 appends ADR-0005's eighteen-minus-three intent
- * tools and #21 the three enrichment tools; appending here is the whole integration step.
+ * #22 shipped this empty ("stdio transport 启动但零工具可用" was its acceptance
+ * criterion). #21 appends ADR-0006's three enrichment tools here — the whole
+ * integration step `tools/enrichment.ts`'s module doc describes. #20 appends
+ * ADR-0005's fifteen intent tools alongside; expect a trivial merge conflict on this
+ * one line when both branches land, not a sign either side did something wrong.
  */
-export const TOOL_REGISTRARS: readonly ToolRegistrar[] = []
+export const TOOL_REGISTRARS: readonly ToolRegistrar[] = [registerEnrichmentTools]
 
 /**
  * Build the factory `serveStdio` calls to get a server instance.

@@ -795,8 +795,13 @@ export async function discoverAltLabelsFor(
   return out
 }
 
-/** Build an AltLabelsTarget from a parsed TableDefinition. */
-function tableToAltLabelsTarget(def: TableDefinition): AltLabelsTarget {
+/**
+ * Build an AltLabelsTarget from a parsed TableDefinition. Exported (module-level only —
+ * not on the root barrel, ADR-0002/0003) so `enrichment-work.ts`'s work-listing can
+ * build the identical `AltLabelsTarget` the LLM round itself would, rather than a
+ * second, drifting projection of `TableDefinition` → prompt input.
+ */
+export function tableToAltLabelsTarget(def: TableDefinition): AltLabelsTarget {
   return {
     id: def.table_name,
     kind: 'table',
@@ -808,8 +813,9 @@ function tableToAltLabelsTarget(def: TableDefinition): AltLabelsTarget {
   }
 }
 
-/** Build an AltLabelsTarget from a parsed EventDefinition. */
-function eventToAltLabelsTarget(def: EventDefinition): AltLabelsTarget {
+/** Build an AltLabelsTarget from a parsed EventDefinition. Exported for the same reason as
+ * {@link tableToAltLabelsTarget}. */
+export function eventToAltLabelsTarget(def: EventDefinition): AltLabelsTarget {
   return {
     id: def.name,
     kind: 'event',

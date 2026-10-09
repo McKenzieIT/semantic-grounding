@@ -28,6 +28,26 @@
  *    module-level `writeTable`, so the hook does **not** re-enter the class's
  *    write path — that is what keeps it from recursing.
  *
+ * ## Enrichment's LLM half (ADR-0006, resolved 2026-10-09)
+ *
+ *  - `listEnrichmentWork(opts)` / `applyEnrichmentResults(results, recorder)` are the
+ *    agent-driven ask-answer loop the MCP management surface's `get_enrichment_work` /
+ *    `apply_enrichment` tools compile onto: a work item is a definition whose relation
+ *    or alt_labels array is still empty, offered as a self-contained
+ *    `{work_id, target, gap, prompt}` (the baseline fingerprint lives inside `work_id`,
+ *    so a server restart between the two calls orphans nothing). `setLlmCall`'s
+ *    in-process callback and this ask-answer pair are the same seam in two host
+ *    postures — dsh keeps using the former, the MCP host uses the latter, and neither
+ *    adds a name to this barrel (the pure prompt/parse/merge family stays in
+ *    `enrichment-work.ts`, same as `enrichment.ts`'s).
+ *  - `discoverRelations` / `discoverEventRelations` / `discoverAltLabels`'s existing
+ *    `tier2` parameter (#18) now also composes with a recorder's `beginBatch`: when
+ *    the `Tier2Recorder` passed in has an open batch (`GitTier2Recorder.beginBatch`,
+ *    #21), every table/event write these make lands in that one commit instead of one
+ *    commit per write — no change to these methods' own signatures or bodies, because
+ *    the absorption lives in the recorder, not here. `run_enrichment` is what opens
+ *    that batch before calling them.
+ *
  * ## Historical context (no longer describes this file)
  *
  * This started life as `packages/data/semantic-layer/` inside
@@ -74,6 +94,12 @@ import {
   enrichAllTablesAltLabels as enrichAllTablesAltLabelsFromLayer,
   type LlmCall,
 } from './enrichment.ts'
+// ADR-0006: the LLM half of enrichment's agent-driven ask-answer loop
+// (listEnrichmentWork / applyEnrichmentResults). The pure prompt-building,
+// work_id encode/decode, and lenient-merge logic stays in enrichment-work.ts
+// (internal, off the barrel — ADR-0002/0003); these two class methods are thin
+// wrappers, same split as discoverRelations wrapping enrichAllDwsTablesFromLayer.
+import { listEnrichmentWorkItems, applyEnrichmentResultsBatch, peekWorkIdTarget } from './enrichment-work.ts'
 import { DataSourceRegistry, type CorpusItem, type GraphNodeProjection } from './registry.ts'
 import { eventKindPlugin } from './kinds/event-kind.ts'
 import { tableKindPlugin } from './kinds/table-kind.ts'
@@ -889,6 +915,76 @@ export class SemanticGroundingCore {
     opts: { readonly tables?: readonly string[]; readonly events?: readonly string[]; readonly tier2?: Tier2Opts } = {},
   ): Promise<{ enriched: number; written: number; errors: string[] }> {
     return discoverAltLabelsFromLayer(this.semanticRoot, this.llmCall, opts.tables, opts.events, opts.tier2)
+  }
+
+  /**
+   * ADR-0006 ruling 3: list outstanding enrichment work — definitions whose relation
+   * or alt_labels array is still empty on disk, each offered as a self-contained work
+   * item `{work_id, target, gap, prompt}` an agent can answer with its own model and
+   * feed back to {@link applyEnrichmentResults}. Wraps `listEnrichmentWorkItems`
+   * (`enrichment-work.ts`); the prompt-building and work_id-encoding logic stays
+   * there, parallel to how `discoverRelations` wraps `enrichAllDwsTables`.
+   *
+   * A read, not a write: unlike this method's `discover*` siblings, there is no
+   * `tier2` parameter here at all, because {@link applyEnrichmentResults} — not this
+   * method — is where ADR-0006 ruling 4's commit happens. `get_enrichment_work` (the
+   * MCP tool compiling onto this method) is correspondingly a no-commit read tool.
+   * @param opts - optional `tables` / `events` name filters (omit or empty for the whole corpus).
+   * @returns the outstanding work items (table relation gaps, table alt_labels gaps,
+   *   event relation gaps, event alt_labels gaps, in that order).
+   */
+  async listEnrichmentWork(
+    opts: { readonly tables?: readonly string[]; readonly events?: readonly string[] } = {},
+  ): Promise<Array<{ readonly work_id: string; readonly target: string; readonly gap: string; readonly prompt: string }>> {
+    return listEnrichmentWorkItems(this.semanticRoot, opts)
+  }
+
+  /**
+   * ADR-0006 ruling 4: apply a batch of agent-supplied completions, each naming the
+   * work item it answers by its self-contained `work_id`. Wraps
+   * `applyEnrichmentResultsBatch` (`enrichment-work.ts`): in-lock per-item fingerprint
+   * re-verification against the baseline embedded in each `work_id`, lenient parse,
+   * curated-preserving merge (the same `mergeRefs` / `mergeAltLabels` the deterministic
+   * + LLM rounds already use), and a single `beginBatch` commit for the whole call —
+   * one stale or unparseable item never blocks the others (see each item's own
+   * `verdict`).
+   *
+   * `recorder` is **required**, unlike `discoverRelations`'s optional `tier2`: every
+   * write this method can make is driven by an agent's own completion, which is a
+   * Tier-2 write by construction (D5) — there is no legitimate unaudited caller for
+   * this method the way dsh's batch-seeding is for `discoverRelations`.
+   * @param results - the agent's `{work_id, text}` pairs, naming which work item each answers.
+   * @param recorder - the Tier-2 recorder driving the batch commit.
+   * @returns the per-item verdicts (`applied` / `idempotent` / `stale_baseline` /
+   *   `unparseable`), in input order.
+   */
+  async applyEnrichmentResults(
+    results: ReadonlyArray<{ readonly work_id: string; readonly text: string }>,
+    recorder: Tier2Recorder,
+  ): Promise<{
+    readonly results: ReadonlyArray<{
+      readonly work_id: string
+      readonly target: string
+      readonly round?: 'relation' | 'alt_labels'
+      readonly verdict: 'applied' | 'idempotent' | 'stale_baseline' | 'unparseable'
+      readonly detail: string
+    }>
+  }> {
+    return applyEnrichmentResultsBatch(this.semanticRoot, results, recorder)
+  }
+
+  /**
+   * Resolve a work_id's target name without applying anything (ADR-0005 ruling 1 /
+   * ADR-0006 ruling 5): the `apply_enrichment` MCP tool's commit subject needs the
+   * definition name *before* the audited write runs, and a `work_id` is otherwise
+   * opaque at that point. Does not re-verify the baseline fingerprint — that check is
+   * {@link applyEnrichmentResults}'s alone, via each item's own verdict; this is a
+   * cosmetic peek for a commit subject, not a correctness gate.
+   * @param work_id - a work_id, as issued by {@link listEnrichmentWork}.
+   * @returns the target name, or undefined when the work_id does not decode.
+   */
+  peekEnrichmentWorkTarget(work_id: string): string | undefined {
+    return peekWorkIdTarget(work_id)
   }
 
   /**
