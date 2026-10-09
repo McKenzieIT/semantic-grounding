@@ -77,3 +77,73 @@ identity from request credentials instead — a fresh effort, not an amendment h
 - Protocol constraints (error-code segments, clientInfo semantics): #14 research,
   `research/mcp-2026-07-28-spec` branch → `docs/research/mcp-2026-07-28-spec.md`
 - GLOSSARY: write tier, Tier-2 recorder, git recorder, D5 invariant, corpus
+
+## Update 2026-10-09 — the recorder is implemented ([#19](https://github.com/McKenzieIT/semantic-grounding/issues/19))
+
+Rulings 4–7, 9 and 10 plus ruling 6's four startup postures are implemented in
+`packages/mcp/src/git/` (`recorder.ts` / `lock.ts` / `posture.ts` / `identity.ts` /
+`message.ts`), with the substrate untouched — ruling 4 held end to end. Five things the
+ADR's text left open or got slightly wrong, each settled by measurement rather than
+argument:
+
+**1. One agent write can produce two commits.** `SemanticGroundingCore` runs its on-write
+enrichment hook *after* the Tier-2 record, and that hook calls `enrichAll*` **without**
+`Tier2Opts` (`autoEnrich` defaults to true). A probe on a corpus with a DIM whose primary
+key matches a DWS column showed `dimension_refs` landing on disk after the audit commit —
+unaudited residue, which would (a) be swept into the *next* write's `git add -A` and
+stamped `X-SG-Derivation: agent` over machine-derived content, and (b) make the next
+startup refuse on a dirty tree. The hook runs inside the lock, so the recorder commits
+that residue there as a **separate** commit carrying `X-SG-Derivation: deterministic` and
+`X-SG-Tool: enrich_on_write`. Never folded into the agent's commit: one trailer cannot
+honestly carry two derivations. This is a change to the audit history's *shape*, which
+ruling 10 says is the thing that cannot be changed later, hence recording it here.
+Ruling 3's `beginBatch` routing of `enrichAll*` (#21) is what makes it structural rather
+than swept; this keeps the invariant true until then.
+
+**2. Ruling 5's equality is between canonical paths, not strings.**
+`git rev-parse --show-toplevel` returns a fully resolved path, so a corpus configured
+through a symlink (`/tmp/...` → `/private/tmp/...`, the default on macOS) compares
+unequal as text while naming the same directory. A string comparison rejects legitimate
+corpora. Both sides are `realpath`'d.
+
+**3. Ruling 6 extends to every write, not just startup.** Ruling 5 deferred narrowing
+commits by pathspec, so the recorder stages with `git add -A` — which makes "the tree
+held nothing else" load-bearing at each write, not only at boot. A write over an
+already-dirty tree is refused for ruling 6's own reason ("人工手改不是数据丢失"):
+proceeding would commit an operator's uncommitted edit under the agent's name.
+
+**4. The lock is hand-rolled, and ruling 6 is why.** Ruling 7 left the implementation
+open with a vendor-first preference; expressiveness decided it. Distinguishing
+*dirty + dead owner* (recover) from *dirty + live owner* (refuse) requires the owner
+**pid** in the lock record. `proper-lockfile` judges staleness from mtime alone and
+records no owner, so it cannot express the branch ruling 6 is built on. The record is
+`{pid, host, agent_id, token, acquired_at, heartbeat_at}`, created with an atomic
+exclusive open, and it lives in `git rev-parse --absolute-git-dir` rather than a
+string-joined `<root>/.git` — identical in the ordinary case, correct when `.git` is a
+file (a linked worktree), and in both cases outside the tree git tracks, so the lock can
+never make the worktree dirty or be staged into an audit commit.
+
+**5. Application error codes are allocated.** ADR-0005 ruling 8 deferred the values to
+the implementation tickets; #14 established only that they must sit outside JSON-RPC's
+reserved `-32768..-32000`. The `-31xxx` space is sub-partitioned the way MCP partitioned
+its own reserved block: `-31000..-31019` git audit backbone (this ticket),
+`-31020..-31039` intent tool surface (#20), `-31040..-31059` enrichment tools (#21).
+Allocated so far: `lock_timeout` −31001, `stale_baseline` −31002, `commit_failed` −31003,
+`posture_refused` −31004, `identity_missing` −31005, `missing_audit_context` −31006. Only
+`stale_baseline` is marked retryable: a lock timeout means the corpus is genuinely
+contended (ruling 7 made queuing *be* the lock), and retrying it silently would hide that.
+
+One ruling the implementation declined to soften: a `recordTier2Write` arriving with no
+ambient audit context **throws** (`missing_audit_context`) rather than synthesizing a
+subject from the substrate payload. ADR-0005 ruling 8 rejected server-written summaries,
+and a commit whose stated basis is invented is worse than a loud wiring error. The
+exception is the derived-residue commit in item 1, where the basis genuinely is known to
+the server (the round, and the write that triggered it) — reporting, not fabrication.
+
+Verification as shipped: 92 tests in `packages/mcp/tests/`, including four real writer
+**processes** contending for one fixture corpus. That suite was checked against a
+neutered lock (`withLock` reduced to `fn()`) and the lost-update assertions fail, so they
+are measuring the lock rather than passing regardless. Commit failure is forced with a
+rejecting `pre-commit` hook, which also exercises the decision *not* to pass
+`--no-verify`: a hook that refuses a commit is a real audit failure and must roll the
+write back.
