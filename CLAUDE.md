@@ -30,13 +30,35 @@ enrichment 轮不再重断言 agent 已删内容（relation / alias 两变体全
 `~/sg-dogfood-corpus` 446 个受污染定义清干净 + 新 ADR/GLOSSARY + 门禁绿（含新增「删了不回灌」e2e 步）+
 **#24/#26 关票**。执行进图（覆盖 plan-only 默认）。真宿主 dogfood 复验在 Out of scope（机制正确性 CI
 可证，护栏假阴性离线全库 diff 覆盖面更宽）。七张子票：[#33](https://github.com/McKenzieIT/semantic-grounding/issues/33)
-护栏规则全库实测（prototype）→ [#35](https://github.com/McKenzieIT/semantic-grounding/issues/35) 护栏裁决；
-[#34](https://github.com/McKenzieIT/semantic-grounding/issues/34) 负知识 prior art（research，charting
-会话内已派子代理）+ #35 → [#36](https://github.com/McKenzieIT/semantic-grounding/issues/36) 领域语义与存储形状
+护栏规则全库实测（prototype，**已解**：766 定义 → 基线候选 4296；#26 原始 9 条规则 + cap24 杀 39.6%，
+补 5 条实测安全规则到 51.0%，**误杀实测为 0**〔需人眼过目 105 词无一真别名；`DAU`/`现金券` 存活〕；
+**否决集 ≈ 2103 条 / 全局去重 711 词**——已核事实 ⑧ 窄机制支可达且不需压实；作用域强双峰〔577 词
+81.2% 纯局部 vs 14 词承载 55.9% 出现量 → 两级作用域各管一头，corpus 级用例是具名词表枚举非正则模式〕；
+`partition-kv` 完全冗余、长度上限几乎不影响结果〔cap 12→50 仅动 0.8pp〕、规则「不抽自身 id 子串」实测否决；
+探针分支 `prototype/33-guardrail-rule-probe`，`out/report.html` 可拨规则）→
+[#35](https://github.com/McKenzieIT/semantic-grounding/issues/35) 护栏裁决；
+[#34](https://github.com/McKenzieIT/semantic-grounding/issues/34) 负知识 prior art（research，**已解**：
+定名推荐 **`suppression`**〔SARIF v2.1.0 OASIS §3.35，`kind:"external"` 规范原文即「再次出现即忽略」；
+SARIF 把 `suppressions` 与 `provenance` 分置两属性，与本仓 `origin` / `X-SG-Derivation` 刻意非对齐同构
+→ 倾向另立构件而非扩写 `origin`〕；`tombstone` 已被 DataHub/OpenMetadata 以存储层原义占用且语义不对
+〔后写覆盖、约 10 天后遗忘、为向副本传播删除而存在〕；存储形状 `inSource`/`external` 由 SARIF 标准化，
+第三条「根本不存」是数据目录主流，`external` 硬前置是**键**〔SARIF 指纹 / SKOS-XL 给标签铸 URI，即裸
+字符串 `alt_labels` 无逻辑身份的标准解〕；撤销普遍支持、**无一家压实**；**空白**：四家数据目录无一在机器
+写入权威状态**之后**建立持久否决〔闸门都在写入前〕，本仓 `enrichOnWrite`「先写后治」在先例里独特——
+可抄词汇与生命周期机械、抄不到形状；全文 `research/negative-knowledge-prior-art` 分支
+`docs/research/negative-knowledge-prior-art.md`）+ #35 →
+[#36](https://github.com/McKenzieIT/semantic-grounding/issues/36) 领域语义与存储形状
 → [#37](https://github.com/McKenzieIT/semantic-grounding/issues/37) 作用域/批量/工具面 →
 [#38](https://github.com/McKenzieIT/semantic-grounding/issues/38) 修落地 →
 [#39](https://github.com/McKenzieIT/semantic-grounding/issues/39) 语料清理 + 全库复测 + 关票。
-**注**：map #27 Notes 记的「子代理通道暂不可用」已过期，2026-10-10 实探已复通。
+**当前 frontier：#35（grilling，HITL）**，其余全被阻塞。
+**注 1**：map #27 Notes 记的「子代理通道暂不可用」已过期，2026-10-10 实探已复通。
+**注 2**（#33 更正的两处前提，下游票不要再按原文用）：① 语料是 321 表 + **446** events 而非 453
+——`events/` 是二级目录，453 个 YAML 里 7 个是 loader 跳过的 `_index.yaml`；map #32 验收口径 ② 已更正。
+② 验收口径原点名的 `GMV` / `T+1` **全库从来不是候选**（描述里是白文，不在括号/引号/`domains` 内），
+拿它们写假阴性守卫断言会是永真空断言，已从口径移除，守卫词表改用 `DAU` / `现金券`。
+③ `discoverAltLabelsDeterministic` 的 docstring 称确定性轮吃列注释，**实际不吃**（只吃 `description`
+或 `table_comment` + `domains`，列注释只在 LLM 轮 prompt 里）——#35 票面第 5 条原建立在此前提上，已在票内更正。
 
 **map #27（enrichment 工具维度语义与响应尺寸治理）已关闭**，Destination（维度过滤语义统一+
 work listing 尺寸治理+盲区钉死+#25 关票）经四张子票全解达成：
