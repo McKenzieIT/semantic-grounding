@@ -21,5 +21,13 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     include: ['tests/**/*.spec.ts'],
+    // ADR-0008's 1000-row cap test deliberately materializes 1200+ fixture
+    // definitions to force truncation; under the full suite's parallel worker
+    // contention that single test alone can run 3-4x slower than solo (measured
+    // ~750ms solo vs ~2.9s under full-suite load). The default 5000ms clips both
+    // it and unrelated files scheduled alongside it (e.g. service-wiring.spec.ts,
+    // ~300ms solo) — a global bump, not a per-test override, since the amplifier
+    // is suite-wide contention, not this one test being slow in isolation.
+    testTimeout: 20_000,
   },
 })

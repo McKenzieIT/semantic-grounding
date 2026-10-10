@@ -30,6 +30,12 @@
  *   catalog spec; a second copy here would be a maintenance surface with no new claim).
  * - **问数 read path** — the corpus cannot yet answer "订单表怎么关联店铺维表" (no join,
  *   no alias), which is the state that motivates the writes.
+ * - **Dimension filters (#31, ADR-0007)** — call-wide semantics on the real seams: the
+ *   coded `-31040` unknown-name door (both dimensions' unknowns, one round trip, zero
+ *   commits), an events-scoped run leaving the table side untouched, and a
+ *   tables-scoped run leaving the event side untouched — #25's 446-file spill, pinned
+ *   on an events-bearing corpus (the pre-#31 suite's fixture had no events, which is
+ *   exactly why the spill was invisible to it).
  * - **create + deterministic round** — `run_enrichment` absorbs N logical writes into
  *   one commit (Files/Rounds trailers) and empties the deterministic gaps from the work
  *   list (ADR-0006 ruling 6's honesty), after which the read path *can* answer the
@@ -42,9 +48,10 @@
  *   (ADR-0005 ruling 9's preserve-filter regression, riding a round that actually
  *   writes the target).
  * - **LLM half, self-oracle** — the CI client plays the oracle with canned completions
- *   (ADR-0006 ruling 7's gate dividend: no real LLM needed): a work_id issued before a
- *   full `startup()` restart still applies (self-containment), one stale item doesn't
- *   poison its batch, an all-nothing batch makes no commit.
+ *   (ADR-0006 ruling 7's gate dividend: no real LLM needed): the full index → prompts →
+ *   apply chain over ADR-0008's split (stale reported early at prompt-fetch time), a
+ *   work_id issued before a full `startup()` restart still applies (self-containment),
+ *   one stale item doesn't poison its batch, an all-nothing batch makes no commit.
  * - **Provenance** — `git log -p --follow` literally executed and asserted: author vs
  *   committer separation, all three Derivation classes, the alias line visible in the
  *   diff of the commit that added it.
@@ -66,6 +73,7 @@ import { parseServerConfig } from '../src/config.ts'
 import { startup } from '../src/main.ts'
 import { createServerFactory, SERVER_INFO } from '../src/server.ts'
 import { INTENT_TOOL_NAMES } from '../src/tools/index.ts'
+import { ENRICHMENT_TOOL_NAMES } from '../src/tools/enrichment.ts'
 import { buildServer } from '../tests/helpers/intent-tools-harness.ts'
 import { createFixtureCorpus, fixtureGit, fixtureTable, type FixtureCorpus } from '../tests/helpers/fixture-corpus.ts'
 import { connectInProcess, toolJson, type InProcessClient } from '../tests/helpers/inprocess-client.ts'
@@ -74,9 +82,9 @@ import { connectInProcess, toolJson, type InProcessClient } from '../tests/helpe
 const AGENT_ID = 'e2e-gate-agent'
 /** The client name sent per-request in the envelope — the X-SG-Client trailer's source. */
 const CLIENT_NAME = 'sg-e2e-gate'
-/** ADR-0006's three tools, the half the catalog spec doesn't already name. */
-const ENRICHMENT_TOOL_NAMES = ['get_enrichment_work', 'apply_enrichment', 'run_enrichment'] as const
-/** The full tool surface the gate must see: ADR-0005's fifteen + ADR-0006's three. */
+/** ADR-0006's three + ADR-0008's fourth (`get_enrichment_prompts`), from the
+ * registrar's own name constant — the same single-source rule `tools/index.ts`
+ * documents for `INTENT_TOOL_NAMES`. */
 const ALL_TOOL_NAMES = [...INTENT_TOOL_NAMES, ...ENRICHMENT_TOOL_NAMES]
 /** sha256 hex, the shape of every `version` / `expected_version`. */
 const SHA256 = /^[0-9a-f]{64}$/
@@ -200,7 +208,10 @@ async function boot(corpusRoot: string): Promise<Boot> {
 // ── The gate ─────────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const fixture = createFixtureCorpus() // withDim: dws_order + joinable dim_shop
+  // withDim + withEvents: dws_order + joinable dim_shop + pay_success (an event whose
+  // shop_id param joins dim_shop) — the events dimension has to be VISIBLE for the
+  // dimension-filter phase to prove a tables-scoped call does not sweep it.
+  const fixture = createFixtureCorpus({ withEvents: true })
   const root = fixture.root
   const head = (): string => fixtureGit(['rev-parse', 'HEAD'], root).trim()
   const commitCount = (): number => Number(fixtureGit(['rev-list', '--count', 'HEAD'], root).trim())
@@ -227,7 +238,7 @@ async function main(): Promise<void> {
     assert.equal(fixtureGit(['status', '--porcelain'], root).trim(), '', 'fixture must start clean')
 
     // ── Phase 1 — catalog over the wire ─────────────────────────────────────────────
-    step('tools/list: all eighteen tools (ADR-0005 fifteen + ADR-0006 three)')
+    step('tools/list: all nineteen tools (ADR-0005 fifteen + ADR-0006 three + ADR-0008 one)')
     {
       const listed = (await client.listTools()).result?.['tools'] as Array<{ name: string; description?: string; inputSchema?: { type?: string } }>
       assert.deepEqual(listed.map(t => t.name).sort(), [...ALL_TOOL_NAMES].sort(), 'exactly the ruled tool surface')
@@ -260,6 +271,59 @@ async function main(): Promise<void> {
       assert.deepEqual(related['relations'], [], 'no relations yet')
     }
 
+
+    // ── Phase 2.5 — dimension filters: call-wide, door-rejected (#31, ADR-0007) ────
+    step('dimension filter door: unknown names -> coded -31040, both dimensions listed, zero commits')
+    {
+      const before = commitCount()
+      const rejected = await callCodedError(client, 'run_enrichment', { tables: ['dws_nope'], events: ['evt_nope_a', 'evt_nope_b'] })
+      assert.equal(rejected.code, -31040, 'unknown_filter_name (the enrichment segment\'s first allocation)')
+      assert.equal(rejected.name, 'UnknownFilterNameError')
+      assert.equal(rejected.retryable, false)
+      assert.ok(rejected.message.includes('dws_nope') && rejected.message.includes('evt_nope_a, evt_nope_b'),
+        `the door lists BOTH dimensions' unknown names in one round trip: ${rejected.message}`)
+      assert.equal(commitCount(), before, 'the door fires before any scan — nothing committed')
+
+      const rejectedRead = await callCodedError(client, 'get_enrichment_work', { tables: ['dws_nope'] })
+      assert.equal(rejectedRead.code, -31040, 'the read side shares the door — no silently empty index for a typo')
+    }
+
+    step('run_enrichment(events:[...]) sweeps only the event; run_enrichment(tables:[...]) only the table')
+    {
+      // The mirror pair, each on the pristine corpus: the named leg writes exactly one
+      // file, the unnamed dimension is untouched on disk.
+      const before = commitCount()
+      const evRun = await call(client, 'run_enrichment', { events: ['pay_success'] })
+      assert.equal(evRun['changed'], true)
+      assert.equal(commitCount(), before + 1)
+      assert.equal((await trailersOf(fieldString(evRun, 'commit')))['Files'], '1', 'only events/biz/pay_success.yaml')
+      const orderAfterEvRun = (await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }))['definition'] as Record<string, unknown>
+      assert.deepEqual(orderAfterEvRun['dimension_refs'], [], 'the tables leg never ran — the #25 spill, inverted and pinned')
+      const evSubject = fixtureGit(['log', '-1', '--format=%s'], root).trim()
+      assert.ok(evSubject.startsWith('run_enrichment(1 event(s)):'), `subject names the dimension that ran: ${evSubject}`)
+      assert.ok(!evSubject.includes('table'), 'and never the one that did not')
+      const evSummary = (evRun['summary'] as Record<string, unknown>)['relation'] as Record<string, unknown>
+      assert.ok(evSummary['events'] !== undefined && evSummary['tables'] === undefined, 'the result reports only the legs that ran')
+
+      // The tables-scoped mirror on the still-gapped dws_order: the tables leg runs,
+      // the events leg does not — pay_success's alt_labels gap (which no deterministic
+      // round can fill) survives exactly as it was. #25's incident inverted and pinned:
+      // one named table, one file, the event side untouched.
+      const beforeT = commitCount()
+      const tRun = await call(client, 'run_enrichment', { tables: ['dws_order'] })
+      assert.equal(tRun['changed'], true)
+      assert.equal(commitCount(), beforeT + 1)
+      assert.equal((await trailersOf(fieldString(tRun, 'commit')))['Files'], '1', 'only tables/dws_order.yaml')
+      const evtAfter = (await call(client, 'get_definition', { kind: 'event', name: 'pay_success' }))['definition'] as Record<string, unknown>
+      assert.deepEqual(evtAfter['alt_labels'], [], 'the events dimension was out of the call — its gap is intact')
+      assert.ok(((evtAfter['external_refs'] as unknown[]) ?? []).length > 0, 'and the refs the events run DID fill are still there')
+      const tSubject = fixtureGit(['log', '-1', '--format=%s'], root).trim()
+      assert.ok(tSubject.startsWith('run_enrichment(1 table(s)):'), `subject names the dimension that ran: ${tSubject}`)
+      assert.ok(!tSubject.includes('event'), 'and never the one that did not')
+      const tSummary = (tRun['summary'] as Record<string, unknown>)['relation'] as Record<string, unknown>
+      assert.ok(tSummary['tables'] !== undefined && tSummary['events'] === undefined, 'the result reports only the legs that ran')
+    }
+
     // ── Phase 3 — create + deterministic round ──────────────────────────────────────
     step('create_definition(dws_pay_flow): one audited commit, no on-write hook')
     let payFlowCommit: string
@@ -288,12 +352,19 @@ async function main(): Promise<void> {
       assert.equal(run['changed'], true)
       assert.deepEqual(run['enrichment_health'], [], 'healthy round reports no failures inline')
       const runCommit = fieldString(run, 'commit')
-      assert.equal(commitCount(), before + 1, 'both DWS tables filled, ONE commit (beginBatch absorption)')
+      assert.equal(commitCount(), before + 1, 'ONE commit for the whole full sweep (beginBatch absorption)')
       const trailers = await trailersOf(runCommit)
       assert.equal(trailers['Tool'], 'run_enrichment')
       assert.equal(trailers['Derivation'], 'deterministic')
-      assert.equal(trailers['Files'], '2', 'dws_order.yaml + dws_pay_flow.yaml')
-      assert.equal(trailers['Rounds'], '1', 'one record() per round family — the table relation round')
+      // Phase 2.5 already filled dws_order and pay_success; {} sweeps everything, so
+      // this commit carries exactly the still-gapped file: dws_pay_flow.yaml. Rounds
+      // is leg-level, not file-level: the full sweep's events leg re-derives
+      // pay_success's already-correct external_refs (origin-aware replace recomputes
+      // the same refs, written+=1, but the bytes on disk do not change, so it never
+      // reaches Files) alongside the tables leg's genuine first-time dws_pay_flow
+      // join — two record() calls, one real file.
+      assert.equal(trailers['Files'], '1', 'dws_pay_flow.yaml — the only still-gapped definition')
+      assert.equal(trailers['Rounds'], '2', 'the table relation round (dws_pay_flow, new) + the event relation round (pay_success, re-derived no-op)')
 
       const work = (await call(client, 'get_enrichment_work', {}))['work'] as WorkItem[]
       assert.ok(work.every(w => !w.gap.startsWith('dimension_refs')), 'work list is honest: no deterministic-derivable gaps remain (ADR-0006 ruling 6)')
@@ -441,14 +512,31 @@ async function main(): Promise<void> {
     }
 
     // ── Phase 5 — the LLM half, self-oracle, across a real restart ──────────────────
-    step('issue LLM work, restart via a second startup(), apply the pre-restart work_id')
+    step('issue LLM work, walk the index → prompts → apply chain, restart via a second startup(), apply the pre-restart work_id')
     let dimShopStale: WorkItem
     {
-      const work = (await call(client, 'get_enrichment_work', {}))['work'] as WorkItem[]
+      const idx = await call(client, 'get_enrichment_work', {})
+      const work = idx['work'] as WorkItem[]
+      // ADR-0008's index half: rows are exactly {work_id, target, gap} — no prompt
+      // text rides the listing — with the size metadata at the content JSON's top level.
+      const sample = work[0] as Record<string, unknown> | undefined
+      assert.ok(sample !== undefined && Object.keys(sample).sort().join(',') === 'gap,target,work_id',
+        `index rows are gap/target/work_id only, got: ${JSON.stringify(sample)}`)
+      assert.equal(idx['total'], work.length, 'total at the content top level')
+      assert.equal(idx['truncated'], false, 'small corpus, no truncation')
+
       const payFlowItem = work.find(w => w.target === 'dws_pay_flow' && w.gap.startsWith('alt_labels'))
       assert.ok(payFlowItem !== undefined, 'dws_pay_flow has an alt_labels gap for the oracle to answer')
       dimShopStale = work.find(w => w.target === 'dim_shop' && w.gap.startsWith('alt_labels')) as WorkItem
       assert.ok(dimShopStale !== undefined, 'dim_shop has one too (it will go stale on purpose)')
+
+      // ADR-0008's prompt half: the question is a separate batched fetch, rebuilt from
+      // the current corpus — fetched here BEFORE the restart, applied after it, which
+      // double-proves nothing about the loop lives in server memory.
+      const promptRes = await call(client, 'get_enrichment_prompts', { work_ids: [payFlowItem.work_id] })
+      const prompts = promptRes['prompts'] as Array<{ target: string; verdict: string; prompt?: string }>
+      assert.deepEqual(prompts.map(p => [p.target, p.verdict]), [['dws_pay_flow', 'fresh']], 'a fresh work_id verdicts fresh')
+      assert.ok(prompts[0]?.prompt?.includes('dws_pay_flow') === true, 'the prompt is the actual question text')
 
       // "Restart": for a stateless server this is exactly a new process — a fresh
       // startup() over the same corpus, nothing carried over but the corpus and git.
@@ -481,6 +569,14 @@ async function main(): Promise<void> {
       const client2 = (active as Boot).client
       // dim_shop changes underneath its issued work_id — committed, so the tree stays clean.
       commitExternalEdit(fixture, 'dim_shop', { description: 'operator edit after issuance' })
+      // ADR-0008's early-stale ruling: the prompt fetch re-checks the same conditions
+      // apply will, so the agent learns "don't bother answering this one" BEFORE
+      // spending a completion on it. A malformed work_id gets the same lenient verdict.
+      const stalePrompts = (await call(client2, 'get_enrichment_prompts', { work_ids: [dimShopStale.work_id, 'not-a-work-id'] }))['prompts'] as Array<{ target: string; verdict: string; prompt?: string }>
+      assert.deepEqual(stalePrompts.map(p => [p.target, p.verdict, p.prompt === undefined]), [
+        ['dim_shop', 'stale_baseline', true],
+        ['(unknown)', 'stale_baseline', true],
+      ], 'stale and malformed work_ids report stale_baseline per item, prompt omitted')
       const work = (await call(client2, 'get_enrichment_work', {}))['work'] as WorkItem[]
       const fresh = work.find(w => w.target === 'dim_region' && w.gap.startsWith('alt_labels'))
       assert.ok(fresh !== undefined, 'dim_region still has its gap — fresh item for the same batch')

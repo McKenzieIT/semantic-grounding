@@ -18,11 +18,12 @@
  * |------------------|-----------------------------------------|
  * | `-31000..-31019` | git audit backbone — this file (#19)    |
  * | `-31020..-31039` | intent tool surface (#20, ADR-0005)     |
- * | `-31040..-31059` | enrichment tools (#21, ADR-0006)        |
+ * | `-31040..-31059` | enrichment tools (#21/#31, ADR-0006/0007)|
  *
  * Allocated so far in the `-31020..-31039` segment: `unsupported_update_field` −31020,
  * `definition_not_found` −31021, `definition_already_exists` −31022,
- * `suggestion_not_found` −31023, `validation_failed` −31024. `stale_baseline`,
+ * `suggestion_not_found` −31023, `validation_failed` −31024. In the `-31040..-31059`
+ * segment: `unknown_filter_name` −31040 (#31, ADR-0007). `stale_baseline`,
  * `lock_timeout`, `commit_failed`, `posture_refused` and `missing_audit_context` are
  * **not** re-allocated here — a tool-layer write surfaces #19's own codes unchanged
  * (`runAudited`/`recordTier2Write` already throw {@link SgApplicationError} subclasses
@@ -86,26 +87,31 @@
  * NOT retryable-by-contract — the queue is the lock itself (ruling 7), so a timeout
  * means the corpus is genuinely contended and silently retrying would hide that.
  *
- * ## `-31040..-31059` is reserved for #21, and allocates nothing
+ * ## `-31040..-31059` belongs to the enrichment tools (#21 → #31)
  *
  * ADR-0005's 2026-10-09 addendum (confirmed by #22's measurement) falsifies the premise
  * that funded this segment table: `McpServer.registerTool`'s handler exceptions are
  * caught by the SDK and turned into an `isError` **result**, with any `code` field
  * discarded — only the low-level `server.server.setRequestHandler` seam passes a numeric
  * code onto the wire. {@link toToolErrorResult} is this ticket's answer: carry the code
- * *inside* the `isError` result's JSON payload instead of on the JSON-RPC envelope, which
- * means a `-31xxx` value never actually reaches a client through `tools/call`, for either
- * this file's codes or this segment's. Measuring what `apply_enrichment` /
- * `run_enrichment` / `get_enrichment_work` can throw as a *whole-call* failure (as
- * opposed to a per-item verdict — see {@link toToolErrorResult}'s own doc) turns up
- * nothing enrichment-specific to code: a lock timeout, a commit failure, a dirty-tree
- * refusal and a missing audit context are all generic Tier-2 write failures #19 already
- * coded, and every per-item problem (`stale_baseline`, `unparseable`, a `work_id` that
- * fails to decode) is ADR-0006 ruling 4's non-error payload data, not an exception. So
- * this segment stays empty on purpose — the same outcome #22's addendum item 3 recorded
- * for its own startup-only segment ("分配表的确认而非缺口" — a confirmation of the
- * allocation table, not a gap). A future enrichment-specific failure that genuinely
- * needs a code allocates from `-31040` up; nothing here claims one could never exist.
+ * *inside* the `isError` result's JSON payload instead of on the JSON-RPC envelope,
+ * which means a `-31xxx` value never actually reaches a client through `tools/call`, for
+ * either this file's codes or this segment's. When #21 landed, measuring what
+ * `apply_enrichment` / `run_enrichment` / `get_enrichment_work` could throw as a
+ * *whole-call* failure (as opposed to a per-item verdict — see
+ * {@link toToolErrorResult}'s own doc) turned up nothing enrichment-specific to code:
+ * a lock timeout, a commit failure, a dirty-tree refusal and a missing audit context
+ * are all generic Tier-2 write failures #19 already coded, and every per-item problem
+ * (`stale_baseline`, `unparseable`, a `work_id` that fails to decode) is ADR-0006
+ * ruling 4's non-error payload data, not an exception. So the segment stayed empty —
+ * and ADR-0006's update §3 left a standing forward clause: "未来若出现真正
+ * enrichment-specific 的 whole-call 失败，从 `-31040` 起分配".
+ *
+ * #31 (ADR-0007) is that future: an unknown or empty dimension filter is rejected at
+ * the door, before any scan runs — a whole-call failure no generic segment codes, and
+ * the one class #25's dogfood showed is worth failing loudly (a `tables:["dws_py"]`
+ * typo silently returning an empty work list reads as "no gaps", a false negative).
+ * It allocates `unknown_filter_name: -31040` below; `-31041` up remain unallocated.
  *
  * @module errors
  */
@@ -163,6 +169,27 @@ export const INTENT_TOOL_ERROR_CODES = {
 
 /** The union of codes this module allocates for the intent tool surface. */
 export type IntentToolErrorCode = (typeof INTENT_TOOL_ERROR_CODES)[keyof typeof INTENT_TOOL_ERROR_CODES]
+
+/**
+ * Error codes owned by the enrichment tool surface (#21/#31), in the
+ * `-31040..-31059` segment documented in this module's header.
+ *
+ * #21 left the segment empty on purpose (every per-item problem is ADR-0006 ruling 4's
+ * non-error payload data; every whole-call failure was a generic Tier-2 condition #19
+ * already coded). #31 (ADR-0007) allocates its first — and so far only — code: the
+ * dimension-filter door rejection.
+ */
+export const ENRICHMENT_TOOL_ERROR_CODES = {
+  /**
+   * A `tables`/`events` dimension filter was empty or named definitions that do not
+   * exist in the corpus (ADR-0007). Rejected at the door, before any scan or write:
+   * not retryable by re-reading — the fix is a different call with corrected names.
+   */
+  unknown_filter_name: -31040,
+} as const
+
+/** The union of codes this module allocates for the enrichment tool surface. */
+export type EnrichmentToolErrorCode = (typeof ENRICHMENT_TOOL_ERROR_CODES)[keyof typeof ENRICHMENT_TOOL_ERROR_CODES]
 
 /**
  * Base class for errors that are part of this surface's contract — a condition the
@@ -404,6 +431,29 @@ export class DefinitionValidationError extends SgApplicationError {
    */
   constructor(message: string, data?: Readonly<Record<string, unknown>>) {
     super(INTENT_TOOL_ERROR_CODES.validation_failed, message, { ...data !== undefined ? { data } : {} })
+  }
+}
+
+/**
+ * A dimension filter (`tables` / `events`) named no definitions (empty array) or named
+ * definitions that do not exist in the corpus — ADR-0007's door rejection, carried as
+ * one coded whole-call failure so a typo'd `run_enrichment(tables:["dws_py"])` fails
+ * loudly instead of sweeping the *other* dimension at full width (#25's exact incident)
+ * or returning a silently-empty work list (its read-side twin).
+ *
+ * Constructed from the substrate's own `UnknownFilterNamesError` (thrown by the
+ * Core discovery/listing methods) at the tool boundary — the substrate owns *what is
+ * invalid*, this class owns the wire shape, the same split every other condition here
+ * follows. Not retryable: the remedy is a corrected call, not a re-read.
+ */
+export class UnknownFilterNameError extends SgApplicationError {
+  /**
+   * @param message - the substrate rejection's message (already lists every unknown name).
+   * @param data - structured detail: `unknown_tables`, `unknown_events` (empty arrays
+   *   for whichever dimension the rejection was not about).
+   */
+  constructor(message: string, data: Readonly<Record<string, unknown>> = {}) {
+    super(ENRICHMENT_TOOL_ERROR_CODES.unknown_filter_name, message, { data })
   }
 }
 
