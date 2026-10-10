@@ -449,7 +449,7 @@ describe('dimension-filter door (ADR-0007)', () => {
     await expect(core.listEnrichmentWork({ tables: ['dws_a', 'typo_1', 'typo_2'] }))
       .rejects.toThrowError(/typo_1, typo_2/)
     // The rejection names the unknowns, never the corpus's full name list.
-    const err = await core.listEnrichmentWork({ tables: ['typo_1'] }).catch(e => e as unknown as { message: string; unknownTables: string[] })
+    const err = await core.listEnrichmentWork({ tables: ['typo_1'] }).catch(e => e) as { message: string; unknownTables: string[] }
     expect(err.message).not.toContain('dws_a')
     expect(err.unknownTables).toEqual(['typo_1'])
   })
@@ -460,8 +460,8 @@ describe('dimension-filter door (ADR-0007)', () => {
     writeEventFixture(dir, eventDoc('pay_success', { shop_id: { type: 'string', description: '' } }))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
     const err = await core.listEnrichmentWork({ tables: ['nope_t'], events: ['nope_e1', 'nope_e2'] }).catch(
-      e => e as unknown as { message: string; unknownTables: string[]; unknownEvents: string[] },
-    )
+      e => e,
+    ) as { message: string; unknownTables: string[]; unknownEvents: string[] }
     expect(err.message).toContain('nope_t')
     expect(err.message).toContain('nope_e1, nope_e2')
     expect(err.unknownTables).toEqual(['nope_t'])
