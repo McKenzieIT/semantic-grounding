@@ -31,9 +31,12 @@ Issue 追踪在 GitHub（McKenzieIT/semantic-grounding），通过 `gh` CLI 操�
 `dimension filter`，落盘归 #31）、
 [MCP 大响应与分页惯例](https://github.com/McKenzieIT/semantic-grounding/issues/29)（research，chart 会话已解：
 `tools/call` 无协议级分页，生态收敛 = cap + `total`/`truncated` + 过滤缩围；附带发现 `structuredContent`
-在 SDK v2.3.1 真实存在，ADR-0005 addendum 待勘误）、[work listing 尺寸治理形状](https://github.com/McKenzieIT/semantic-grounding/issues/30)
-（grilling，blocked by #29——已关，现解锁）、[修落地](https://github.com/McKenzieIT/semantic-grounding/issues/31)（task，
-blocked by #30——#28 已关）。k11 清理归 #26、tombstone 归 #24（map #27 Out of scope 记录）。
+在 SDK v2.3.1 真实存在，勘误随 #31 落盘）、[work listing 尺寸治理形状](https://github.com/McKenzieIT/semantic-grounding/issues/30)
+（grilling，已解：**索引/题面分离**——listing 改索引形 `{work_id, target, gap}`（cap 1000 行）+ `total`/`truncated`
+走 content JSON 顶层、新增第 19 工具 `get_enrichment_prompts(work_ids≤10)` 按批取题面；折法=单次响应最坏 ≤
+半窗（200K 级）；翻页/top_k/structuredContent/保留内嵌〔triage 死胡同——缺口分布只有 listing 知道，猜名撞
+#28 coded error〕全否；新 ADR-0008 + GLOSSARY `enrichment work` 修订落 #31）、[修落地](https://github.com/McKenzieIT/semantic-grounding/issues/31)
+（task，frontier 唯一——三张前置票全关，blocked-by 已自动解除）。k11 清理归 #26、tombstone 归 #24（map #27 Out of scope 记录）。
 
 **map #12（MCP 管理面）已关闭**，Destination（agent 经 MCP 读 grounding、经 Tier-2 审计写回、
 `git log` 答 provenance）经两面验收：CI 第三道门禁 **`pnpm e2e`**（`packages/mcp/scripts/check-e2e-loop.ts`，
