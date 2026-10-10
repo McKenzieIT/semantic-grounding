@@ -22,8 +22,9 @@
  *
  * `GitRecorderConfig.clientName` is a construction-time value #22 deliberately leaves
  * unset, because `extra.mcpReq.envelope[CLIENT_INFO_META_KEY]` is per-request envelope
- * data that can change within one connection. Every write handler below reads it fresh
- * from `extra` and passes it as `AuditContext.clientName`, which `GitTier2Recorder`'s
+ * data that can change within one connection. The write handlers below get the fresh
+ * read for free through `auditedWrite` (`tools/audited.ts`), which reads the envelope
+ * per call and passes it as `AuditContext.clientName`, which `GitTier2Recorder`'s
  * `commitContext` prefers over the (normally absent) configured value.
  *
  * ## Dimension filters are call-wide (ADR-0007, #31)
@@ -53,19 +54,20 @@
  * ## Tool-by-tool shape (ADR-0006 rulings 4–6, ADR-0008)
  *
  * - **`get_enrichment_work`** — a read; no commit, no `AuditContext`, not run through
- *   `runAudited`. Its description tells the agent to call `run_enrichment` first,
+ *   the audit seam. Its description tells the agent to call `run_enrichment` first,
  *   which is a convention (ADR-0006's Consequences explicitly: "指引不是协议"), not
  *   something this tool can enforce.
  * - **`get_enrichment_prompts`** — a read; pure forwarding to
  *   `core.getEnrichmentPrompts`. Per-item lenient verdicts mirror the apply family: a
  *   stale or malformed work_id reports `stale_baseline` for itself alone, never a
  *   thrown error.
- * - **`apply_enrichment`** — a write; `runAudited` wraps `core.applyEnrichmentResults`,
- *   which opens its own `beginBatch` window (`enrichment-work.ts`) so N applied items
- *   land as one commit. `derivation` is hardcoded to `'llm'` here — ADR-0006 ruling 5
- *   gives this tool no `derivation` *parameter* to override in the first place, by
- *   design ("server 恒盖 Derivation: llm — 收自报开误报之门").
- * - **`run_enrichment`** — a write; `runAudited` wraps a `beginBatch` window spanning
+ * - **`apply_enrichment`** — a write; `auditedWrite` (the `runAudited` wrapper in
+ *   `tools/audited.ts`) drives `core.applyEnrichmentResults`, which opens its own
+ *   `beginBatch` window (`enrichment-work.ts`) so N applied items land as one commit.
+ *   `derivation` is hardcoded to `'llm'` here — ADR-0006 ruling 5 gives this tool no
+ *   `derivation` *parameter* to override in the first place, by design ("server 恒盖
+ *   Derivation: llm — 收自报开误报之门").
+ * - **`run_enrichment`** — a write; `auditedWrite` wraps a `beginBatch` window spanning
  *   the legs the adjudicated scope turned on (unchanged since #18 in every other
  *   respect). They still believe they are making N independently-audited writes;
  *   `GitTier2Recorder.recordTier2Write`'s absorption branch (triggered by the open
@@ -80,10 +82,11 @@
  * @module tools/enrichment
  */
 import { z } from 'zod'
-import { CLIENT_INFO_META_KEY, type CallToolResult, type ServerContext } from '@modelcontextprotocol/server'
+import type { CallToolResult } from '@modelcontextprotocol/server'
 import { assertKnownFilterNames, UnknownFilterNamesError } from '@semantic-grounding/substrate'
 import { toToolErrorResult, UnknownFilterNameError } from '../errors.ts'
 import type { ToolRegistrar } from '../server.ts'
+import { auditedWrite, enrichmentHealthAfter, toolSuccess } from './audited.ts'
 
 /** The enrichment family's four tool names (ADR-0006's three + ADR-0008's fourth). */
 export const ENRICHMENT_TOOL_NAMES = [
@@ -97,37 +100,6 @@ export const ENRICHMENT_TOOL_NAMES = [
  * prompts ≈ 83K tokens, comfortably inside half a de-facto 200K-token window while
  * leaving room for the answer and the rest of the session. */
 const PROMPT_BATCH_MAX = 10
-
-/**
- * Read the per-request client name from the 2026-07-28 envelope.
- *
- * Cast through `Record<string, unknown>` rather than typed property access: the SDK's
- * published `RequestMetaEnvelope` type carries no named properties (its real keys are
- * the `*_META_KEY` constants, read by bracket access, not dot access — a shape this
- * package cannot improve on by typing harder), and the SDK's own doc comment on
- * `CLIENT_INFO_META_KEY` says the value is self-reported and MUST NOT be relied on for
- * behavior or security decisions — so treating it as `unknown` and runtime-checking is
- * the materially correct position, not a workaround for a type that happens to be loose.
- * @param extra - the tool handler's second argument.
- * @returns the client's self-reported name, or undefined when absent, non-string, or malformed.
- */
-function clientNameFromEnvelope(extra: ServerContext): string | undefined {
-  const envelope = extra.mcpReq.envelope as Record<string, unknown> | undefined
-  const info = envelope?.[CLIENT_INFO_META_KEY]
-  if (typeof info !== 'object' || info === null) return undefined
-  const name = (info as Record<string, unknown>).name
-  return typeof name === 'string' && name.trim() !== '' ? name : undefined
-}
-
-/** Render a `CallToolResult` success payload as the SDK's `content: [{type:'text', text}]`
- * shape. (`structuredContent`/`outputSchema` exist and are wired in this SDK version —
- * SEP-2106, per #29's dist-source read, correcting the pre-#31 comment that called the
- * channel absent — but no tool here declares an output schema: ADR-0008 keeps response
- * metadata in the content JSON's top level, a channel every host already consumes.)
- * @param payload - the JSON-serializable response body. */
-function toolSuccess(payload: unknown): CallToolResult {
-  return { content: [{ type: 'text', text: JSON.stringify(payload) }] }
-}
 
 /** The `tables`/`events` dimension-filter pair `get_enrichment_work` and
  * `run_enrichment` accept, zod-validated. `min(1)` refuses an empty array at the door:
@@ -264,8 +236,9 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
         const subject = args.results.length === 1 && first !== undefined
           ? deps.core.peekEnrichmentWorkTarget(first.work_id) ?? first.work_id
           : `${args.results.length} targets`
-        const clientName = clientNameFromEnvelope(extra)
-        const audited = await deps.recorder.runAudited(
+        const audited = await auditedWrite(
+          deps,
+          extra,
           {
             tool: 'apply_enrichment',
             target: subject,
@@ -275,7 +248,6 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
             // is nothing to override, only something to decide once, here.
             derivation: 'llm',
             confidence: args.confidence,
-            ...clientName !== undefined ? { clientName } : {},
           },
           () => deps.core.applyEnrichmentResults(args.results, deps.recorder),
         )
@@ -283,7 +255,7 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
           results: audited.value.results,
           commit: audited.commit,
           changed: audited.changed,
-          enrichment_health: deps.core.getEnrichmentHealth(),
+          enrichment_health: enrichmentHealthAfter(deps, 'round'),
         })
       } catch (e) {
         return toToolErrorResult(e)
@@ -301,7 +273,6 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
     },
     async (args, extra) => {
       try {
-        const clientName = clientNameFromEnvelope(extra)
         // ADR-0007: one adjudication feeds the whole-call door, the leg gating, the
         // Core calls, AND the commit subject — the call and its audit trail cannot
         // disagree (the #25 finding was a subject that said "1 table(s)" over a
@@ -315,7 +286,9 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
         const full = scope.tables === undefined && scope.events === undefined
         const tablesOn = full || scope.tables !== undefined
         const eventsOn = full || scope.events !== undefined
-        const audited = await deps.recorder.runAudited(
+        const audited = await auditedWrite(
+          deps,
+          extra,
           {
             tool: 'run_enrichment',
             target: describeRunEnrichmentScope(scope),
@@ -326,7 +299,6 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
             // recorder.ts, not an agent's self-report.
             derivation: 'deterministic',
             confidence: 1,
-            ...clientName !== undefined ? { clientName } : {},
           },
           async () => {
             const batch = deps.recorder.beginBatch()
@@ -363,7 +335,7 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
         return toolSuccess({
           commit: audited.commit,
           changed: audited.changed,
-          enrichment_health: deps.core.getEnrichmentHealth(),
+          enrichment_health: enrichmentHealthAfter(deps, 'round'),
           summary: audited.value,
         })
       } catch (e) {
