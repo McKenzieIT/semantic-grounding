@@ -81,6 +81,15 @@ export interface FixtureCorpusOptions {
    * that a write leaves the tree clean with *no* derived commit.
    */
   readonly withDim?: boolean
+  /**
+   * Include one event whose `shop_id` param joins `dim_shop` (default false). The
+   * events dimension is what #25's incident was made of — a `tables` filter that
+   * silently swept 445 events — so the tests that pin call-wide dimension semantics
+   * (ADR-0007) build on a corpus where an event is visibly present to be (not)
+   * swept. Off by default because the pre-#31 suites' arithmetic (Files=N, work-list
+   * contents) was counted on an events-free corpus.
+   */
+  readonly withEvents?: boolean
   /** Run `git init` and commit a baseline (default true). False leaves a non-git directory. */
   readonly git?: boolean
   /** Commit the baseline after `git init` (default true). False leaves an unborn HEAD. */
@@ -121,12 +130,15 @@ export function fixtureGit(args: readonly string[], cwd: string): string {
  */
 export function createFixtureCorpus(opts: FixtureCorpusOptions = {}): FixtureCorpus {
   const withDim = opts.withDim ?? true
+  const withEvents = opts.withEvents ?? false
   const wantGit = opts.git ?? true
   const wantBaseline = opts.baselineCommit ?? true
 
   const root = mkdtempSync(join(tmpdir(), 'sg-corpus-'))
   mkdirSync(join(root, 'tables'), { recursive: true })
-  mkdirSync(join(root, 'events'), { recursive: true })
+  // Events live one domain-directory deep (`loadEvents` iterates domain dirs), the
+  // same shape `packages/substrate/tests/enrichment-work.spec.ts` writes.
+  mkdirSync(join(root, 'events', 'biz'), { recursive: true })
   writeFileSync(join(root, 'config.yaml'), dumpYaml({ scope_id: 'fixture' }), 'utf8')
 
   writeFileSync(
@@ -150,6 +162,28 @@ export function createFixtureCorpus(opts: FixtureCorpusOptions = {}): FixtureCor
         freshness: 'static_reference',
         columns: [col('shop_id', 'string', 'dimension'), col('shop_name', 'string', 'dimension')].map(c => ({ ...c, comment: '' })),
       })),
+      'utf8',
+    )
+  }
+  if (withEvents) {
+    // pay_success: `shop_id` param matches dim_shop's primary key, so the deterministic
+    // relation round has an event-side join to find (when the events leg is in the
+    // call). The description carries no parenthesized/quoted terms and no domains, so
+    // the deterministic alt_labels round finds nothing for it — its alt_labels gap
+    // survives every run, a stable LLM-half target.
+    writeFileSync(
+      join(root, 'events', 'biz', 'pay_success.yaml'),
+      dumpYaml({
+        name: 'pay_success',
+        event_filter: '',
+        description: '支付成功',
+        alt_labels: [],
+        domains: [],
+        params_fields: { shop_id: { type: 'string', description: '店铺ID' } },
+        metrics: {},
+        disambiguation: [],
+        external_refs: [],
+      }),
       'utf8',
     )
   }

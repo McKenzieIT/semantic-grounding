@@ -275,10 +275,19 @@ assert.equal(mod.registerInvalidationHook, undefined, 'registerInvalidationHook 
 // "stale, re-read and retry" apart from every other write failure. The two
 // new reserved-batch-slot types ('Tier2Batch', 'Tier2RecordMeta') are
 // type-only and so do not appear in this runtime list (see the note above).
+//
+// #31 (ADR-0007) added 'UnknownFilterNamesError' + 'assertKnownFilterNames':
+// the dimension-filter door — the Core discovery/listing methods throw the
+// error before any scan runs (a host needs instanceof to map it onto a coded
+// wire failure; StaleBaselineError precedent, evidence class (b)), and a
+// fan-out caller (the MCP host's run_enrichment, three discovery methods)
+// calls the guard once up front so the rejection lists BOTH dimensions'
+// unknown names, not just the first leg's.
 const EXPECTED_RUNTIME_NAMES = [
   'ConceptDefinitionSchema', 'DataSourceRegistry', 'DefinitionSnapshot', 'EventDefinitionSchema',
   'RelationGraph', 'SemanticGroundingCore', 'StaleBaselineError', 'TableDefinitionSchema',
-  'WriteValidationError', 'captureSnapshot', 'conceptKindPlugin', 'deriveMetricRelations', 'discard',
+  'UnknownFilterNamesError', 'WriteValidationError', 'assertKnownFilterNames', 'captureSnapshot',
+  'conceptKindPlugin', 'deriveMetricRelations', 'discard',
   'dumpYaml', 'eventKindPlugin', 'extractMetricsFromEvent', 'extractMetricsFromTable',
   'invalidateCaches', 'isValidId', 'listing', 'loadConcepts', 'loadConfig', 'loadEvents',
   'loadMetricDefinitions', 'loadPending', 'loadTables', 'projectMetricCorpusItem',
@@ -287,7 +296,7 @@ const EXPECTED_RUNTIME_NAMES = [
 ].sort()
 const names = Object.keys(mod).sort()
 assert.deepEqual(names, [...EXPECTED_RUNTIME_NAMES, 'default'].sort(),
-  'barrel runtime surface must equal the ADR-0003 allow-list (35 names + default), got: ' + names.join(', '))
+  'barrel runtime surface must equal the ADR-0003 allow-list (37 names + default), got: ' + names.join(', '))
 // Headline names that must STAY off the barrel (ADR-0002/0003: convention-
 // coupled, test utilities, internals). getCorpusVersion / registerInvalidationHook
 // / SemanticLayerService are asserted separately above and not repeated here.

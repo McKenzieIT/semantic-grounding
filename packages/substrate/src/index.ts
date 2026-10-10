@@ -190,6 +190,15 @@ export {
 // discoverRelations / discoverEventRelations / discoverAltLabels. LlmCall
 // stays: it types setLlmCall, one of the documented extension seams.
 export { type LlmCall } from './enrichment.ts'
+// #31 (ADR-0007): on the barrel for the same reason #18 put 'StaleBaselineError'
+// here (acceptance script's own evidence note) — the MCP host needs instanceof to
+// tell the dimension-filter door rejection apart from every other discovery failure
+// and map it onto its coded -31040 wire error, plus the one whole-call guard call
+// that makes a fan-out (run_enrichment's three discovery methods) report BOTH
+// dimensions' unknown names, not just the first leg's. ADR-0002 evidence class (b):
+// a confirmed host requirement (the MCP management surface). Error class and guard
+// only; the Core methods remain the public door for in-process hosts.
+export { UnknownFilterNamesError, assertKnownFilterNames } from './enrichment.ts'
 export {
   extractMetricsFromTable,
   extractMetricsFromEvent,
