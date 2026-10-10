@@ -173,15 +173,19 @@ export const TableFieldsSchema = updatableFieldsSchema(TableDefinitionSchema.sha
 /** `update_definition(kind: 'event', ...)`'s bounded `fields` schema. */
 export const EventFieldsSchema = updatableFieldsSchema(EventDefinitionSchema.shape, EVENT_IDENTITY_FIELDS)
 
-/** Array-reference field → the item-level tool pair that maintains it (ADR-0005 ruling 4's redirect), for tables. */
+/** Array-reference field → the item-level tool pair that maintains it (ADR-0005 ruling 4's redirect), for tables. The `suppressed_*` keys ride the same verbs (#38 / ADR-0010): a veto is born by remove and lifted by add, never written as a bare field. */
 export const TABLE_ARRAY_REF_REDIRECT: Readonly<Record<string, string>> = {
   alt_labels: 'add_alias / remove_alias',
   dimension_refs: 'add_relation / remove_relation',
+  suppressed_alt_labels: 'add_alias / remove_alias (vetoes are born by remove_*, lifted by add_* — never hand-written)',
+  suppressed_dimension_refs: 'add_relation / remove_relation (vetoes are born by remove_*, lifted by add_* — never hand-written)',
 }
 /** Array-reference field → the item-level tool pair that maintains it, for events. */
 export const EVENT_ARRAY_REF_REDIRECT: Readonly<Record<string, string>> = {
   alt_labels: 'add_alias / remove_alias',
   external_refs: 'add_relation / remove_relation',
+  suppressed_alt_labels: 'add_alias / remove_alias (vetoes are born by remove_*, lifted by add_* — never hand-written)',
+  suppressed_external_refs: 'add_relation / remove_relation (vetoes are born by remove_*, lifted by add_* — never hand-written)',
 }
 
 /**

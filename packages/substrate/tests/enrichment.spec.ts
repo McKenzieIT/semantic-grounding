@@ -50,6 +50,8 @@ function dws(over: Partial<TableDefinition> = {}): TableDefinition {
     freshness: '',
     alt_labels: [],
     dimension_refs: [],
+    suppressed_alt_labels: [],
+    suppressed_dimension_refs: [],
     ...over,
   }
 }
@@ -123,6 +125,14 @@ describe('mergeRefs', () => {
     expect(merged[0]!.derivation).toBe('curated by analyst') // legacy (undefined origin) not overridden
     expect(merged[0]!.origin).toBeUndefined()
     expect(merged[0]!.join_keys).toHaveLength(2) // join_keys still unioned
+  })
+
+  test('origin=undefined (curated, e.g. add_relation) with NO derivation yet is still not overridden by a lower-priority rediscovery (#38 "curated two-step dance" premise: the entry must stay curated through its own on-write hook, or no first-removal-without-veto is ever observable)', () => {
+    const curated = [{ dim_table: 'dim_s', join_keys: [{ dws_column: 'a', dim_column: 'a' }], derivation: '' }]
+    const det = [{ dim_table: 'dim_s', join_keys: [{ dws_column: 'a', dim_column: 'a' }], derivation: '确定性：a 与 dim_s 主键精确同名', origin: 'deterministic' as const }]
+    const merged = mergeRefs(curated, det)
+    expect(merged[0]!.origin).toBeUndefined()
+    expect(merged[0]!.derivation).toBe('')
   })
 
   test('origin=manual is not overridden by llm or deterministic', () => {
@@ -205,7 +215,7 @@ describe('enrichAllDwsTables', () => {
     const raw = dumpYaml(dws({ columns: [{ name: 'server_id', type: 'BIGINT', comment: '区服ID', role: 'dimension' }, { name: 'role_id', type: 'string', comment: '', role: 'dimension' }] }))
     writeFileSync(join(dir, 'tables', 'dws_pay_order_di.yaml'), raw)
     // a DIM to match
-    const dim = { table_name: 'dim_server', kind: 'dim', primary_key: ['server_id'], label_columns: ['server_name'], columns: [{ name: 'server_id', type: 'string', comment: '', role: 'dimension' }], metrics: {}, partitions: [], confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' }, domains: [], description: '', table_comment: '', granularity: '', engine: 'maxcompute', coverage: null, supersedes: [], disambiguation: null, primary_key_unique: null, alt_labels: [], duplicate_sample: [], freshness: '', dimension_refs: [] } as TableDefinition
+    const dim = { table_name: 'dim_server', kind: 'dim', primary_key: ['server_id'], label_columns: ['server_name'], columns: [{ name: 'server_id', type: 'string', comment: '', role: 'dimension' }], metrics: {}, partitions: [], confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' }, domains: [], description: '', table_comment: '', granularity: '', engine: 'maxcompute', coverage: null, supersedes: [], disambiguation: null, primary_key_unique: null, alt_labels: [], duplicate_sample: [], freshness: '', dimension_refs: [], suppressed_alt_labels: [], suppressed_dimension_refs: [] } as TableDefinition
     writeFileSync(join(dir, 'tables', 'dim_server.yaml'), dumpYaml(dim))
 
     const res = await enrichAllDwsTables(dir)
@@ -226,7 +236,7 @@ describe('enrichAllDwsTables', () => {
   })
 
   test('tables? filter enriches only the named DWS tables', async () => {
-    const dimDoc = { table_name: 'dim_s', kind: 'dim' as const, primary_key: ['server_id'], label_columns: ['s_name'], columns: [{ name: 'server_id', type: 'string', comment: '', role: 'dimension' }, { name: 's_name', type: 'string', comment: '', role: 'dimension' }], metrics: {}, partitions: [], confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' }, domains: [], description: '', table_comment: '', granularity: '', engine: 'maxcompute', coverage: null, supersedes: [], disambiguation: null, primary_key_unique: null, alt_labels: [], duplicate_sample: [], freshness: '', dimension_refs: [] } as TableDefinition
+    const dimDoc = { table_name: 'dim_s', kind: 'dim' as const, primary_key: ['server_id'], label_columns: ['s_name'], columns: [{ name: 'server_id', type: 'string', comment: '', role: 'dimension' }, { name: 's_name', type: 'string', comment: '', role: 'dimension' }], metrics: {}, partitions: [], confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' }, domains: [], description: '', table_comment: '', granularity: '', engine: 'maxcompute', coverage: null, supersedes: [], disambiguation: null, primary_key_unique: null, alt_labels: [], duplicate_sample: [], freshness: '', dimension_refs: [], suppressed_alt_labels: [], suppressed_dimension_refs: [] } as TableDefinition
     writeFileSync(join(dir, 'tables', 'dim_s.yaml'), dumpYaml(dimDoc))
     writeFileSync(join(dir, 'tables', 'dws_a.yaml'), dumpYaml(dws({ table_name: 'dws_a', columns: [{ name: 'server_id', type: 'string', comment: '', role: 'dimension' }] })))
     writeFileSync(join(dir, 'tables', 'dws_b.yaml'), dumpYaml(dws({ table_name: 'dws_b', columns: [{ name: 'server_id', type: 'string', comment: '', role: 'dimension' }] })))
@@ -239,7 +249,7 @@ describe('enrichAllDwsTables', () => {
   })
 
   test('mergeExisting=true preserves curated refs the deterministic round does not rediscover', async () => {
-    const dimServer = { table_name: 'dim_server', kind: 'dim' as const, primary_key: ['server_id'], label_columns: ['s_name'], columns: [{ name: 'server_id', type: 'string', comment: '', role: 'dimension' }, { name: 's_name', type: 'string', comment: '', role: 'dimension' }], metrics: {}, partitions: [], confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' }, domains: [], description: '', table_comment: '', granularity: '', engine: 'maxcompute', coverage: null, supersedes: [], disambiguation: null, primary_key_unique: null, alt_labels: [], duplicate_sample: [], freshness: '', dimension_refs: [] } as TableDefinition
+    const dimServer = { table_name: 'dim_server', kind: 'dim' as const, primary_key: ['server_id'], label_columns: ['s_name'], columns: [{ name: 'server_id', type: 'string', comment: '', role: 'dimension' }, { name: 's_name', type: 'string', comment: '', role: 'dimension' }], metrics: {}, partitions: [], confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' }, domains: [], description: '', table_comment: '', granularity: '', engine: 'maxcompute', coverage: null, supersedes: [], disambiguation: null, primary_key_unique: null, alt_labels: [], duplicate_sample: [], freshness: '', dimension_refs: [], suppressed_alt_labels: [], suppressed_dimension_refs: [] } as TableDefinition
     writeFileSync(join(dir, 'tables', 'dim_server.yaml'), dumpYaml(dimServer))
     const curated = { ...dws({ table_name: 'dws_pay', columns: [{ name: 'server_id', type: 'string', comment: '区服ID', role: 'dimension' }] }), dimension_refs: [{ dim_table: 'dim_other', join_keys: [{ dws_column: 'other_id', dim_column: 'other_id' }], derivation: 'curated by analyst' }] }
     writeFileSync(join(dir, 'tables', 'dws_pay.yaml'), dumpYaml(curated))
@@ -257,7 +267,7 @@ describe('enrichAllDwsTables', () => {
     // (the data-loss bug: agent re-discovery wipes curated joins). Origin-aware
     // replace must preserve manual + undefined (curated / legacy) and drop +
     // re-discover deterministic.
-    const dimServer = { table_name: 'dim_server', kind: 'dim' as const, primary_key: ['server_id'], label_columns: ['s_name'], columns: [{ name: 'server_id', type: 'string', comment: '', role: 'dimension' }, { name: 's_name', type: 'string', comment: '', role: 'dimension' }], metrics: {}, partitions: [], confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' }, domains: [], description: '', table_comment: '', granularity: '', engine: 'maxcompute', coverage: null, supersedes: [], disambiguation: null, primary_key_unique: null, alt_labels: [], duplicate_sample: [], freshness: '', dimension_refs: [] } as TableDefinition
+    const dimServer = { table_name: 'dim_server', kind: 'dim' as const, primary_key: ['server_id'], label_columns: ['s_name'], columns: [{ name: 'server_id', type: 'string', comment: '', role: 'dimension' }, { name: 's_name', type: 'string', comment: '', role: 'dimension' }], metrics: {}, partitions: [], confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' }, domains: [], description: '', table_comment: '', granularity: '', engine: 'maxcompute', coverage: null, supersedes: [], disambiguation: null, primary_key_unique: null, alt_labels: [], duplicate_sample: [], freshness: '', dimension_refs: [], suppressed_alt_labels: [], suppressed_dimension_refs: [] } as TableDefinition
     writeFileSync(join(dir, 'tables', 'dim_server.yaml'), dumpYaml(dimServer))
     const curated = {
       ...dws({ table_name: 'dws_pay', columns: [{ name: 'server_id', type: 'string', comment: '区服ID', role: 'dimension' }] }),
@@ -294,7 +304,7 @@ describe('enrichAllDwsTables', () => {
     // refs remain; manual + undefined (curated) existing refs are dropped. This
     // is the rare blow-away-rebuild case (deferred from GA-GT3 item 5);
     // default (preserveCurated=true) keeps the origin-aware behavior unchanged.
-    const dimServer = { table_name: 'dim_server', kind: 'dim' as const, primary_key: ['server_id'], label_columns: ['s_name'], columns: [{ name: 'server_id', type: 'string', comment: '', role: 'dimension' }, { name: 's_name', type: 'string', comment: '', role: 'dimension' }], metrics: {}, partitions: [], confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' }, domains: [], description: '', table_comment: '', granularity: '', engine: 'maxcompute', coverage: null, supersedes: [], disambiguation: null, primary_key_unique: null, alt_labels: [], duplicate_sample: [], freshness: '', dimension_refs: [] } as TableDefinition
+    const dimServer = { table_name: 'dim_server', kind: 'dim' as const, primary_key: ['server_id'], label_columns: ['s_name'], columns: [{ name: 'server_id', type: 'string', comment: '', role: 'dimension' }, { name: 's_name', type: 'string', comment: '', role: 'dimension' }], metrics: {}, partitions: [], confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' }, domains: [], description: '', table_comment: '', granularity: '', engine: 'maxcompute', coverage: null, supersedes: [], disambiguation: null, primary_key_unique: null, alt_labels: [], duplicate_sample: [], freshness: '', dimension_refs: [], suppressed_alt_labels: [], suppressed_dimension_refs: [] } as TableDefinition
     writeFileSync(join(dir, 'tables', 'dim_server.yaml'), dumpYaml(dimServer))
     const curated = {
       ...dws({ table_name: 'dws_pay', columns: [{ name: 'server_id', type: 'string', comment: '区服ID', role: 'dimension' }] }),

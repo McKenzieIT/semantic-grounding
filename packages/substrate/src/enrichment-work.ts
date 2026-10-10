@@ -69,7 +69,7 @@ import {
   EventDefinitionSchema,
   type DimensionRef,
 } from './types.ts'
-import { loadTables, loadEvents, writeTable, writeEventYaml, dumpYaml } from './io.ts'
+import { loadTables, loadEvents, writeTable, writeEventYaml, dumpYaml, loadSuppressions } from './io.ts'
 import type { Tier2Recorder } from './io.ts'
 import {
   buildDimInventory,
@@ -80,6 +80,8 @@ import {
   parseAltLabelsResponse,
   mergeRefs,
   mergeAltLabels,
+  aliasVetoSet,
+  relationVetoSet,
   tableToAltLabelsTarget,
   eventToAltLabelsTarget,
   assertKnownFilterNames,
@@ -474,10 +476,22 @@ function canonicalizeRefs(refs: readonly DimensionRef[]): string {
  * @returns `unparseable` (nothing usable in `text`), `idempotent` (parsed but no
  *   change), or `applied` (the new merged array to write).
  */
-function mergeRelationText(text: string, existing: readonly DimensionRef[]): MergeOutcome<DimensionRef[]> {
-  const added = parseLlmRefs(text)
-  if (added.length === 0) {
+function mergeRelationText(
+  text: string,
+  existing: readonly DimensionRef[],
+  suppressed: ReadonlySet<string>,
+): MergeOutcome<DimensionRef[]> {
+  const parsed = parseLlmRefs(text)
+  if (parsed.length === 0) {
     return { kind: 'unparseable', detail: 'no usable DIM relation found in the supplied text' }
+  }
+  // Suppression filter (ADR-0010): a vetoed `dim_table` is not re-asserted by an
+  // LLM answer either — a veto constrains enrichment rounds, "deterministic or LLM
+  // alike". An answer whose every relation is vetoed is idempotent (nothing new
+  // lands), not unparseable.
+  const added = suppressed.size === 0 ? parsed : parsed.filter(r => !suppressed.has(r.dim_table))
+  if (added.length === 0) {
+    return { kind: 'idempotent', detail: 'every parsed relation names a dim_table suppressed on this definition — re-asserting it via add_relation (or a hand edit) lifts the veto' }
   }
   const merged = mergeRefs(existing, added)
   if (canonicalizeRefs(merged) === canonicalizeRefs(existing)) {
@@ -512,6 +526,7 @@ function mergeAltLabelsText(
   existing: readonly string[],
   id: string,
   prefLabel: string | undefined,
+  suppressed: ReadonlySet<string>,
 ): MergeOutcome<string[]> {
   const added = parseAltLabelsResponse(text)
   if (added.length === 0) {
@@ -522,6 +537,9 @@ function mergeAltLabelsText(
     ...(prefLabel !== undefined ? [normalizeLabel(prefLabel)] : []),
     normalizeLabel(id),
   ])
+  // Suppression filter (ADR-0010): vetoed labels join the exclude set — an LLM
+  // answer may not re-assert what a veto retired, same as the deterministic round.
+  for (const k of suppressed) exclude.add(k)
   const uniqueAdded = added.filter(label => {
     const key = normalizeLabel(label)
     if (key === '' || exclude.has(key)) return false
@@ -529,7 +547,7 @@ function mergeAltLabelsText(
     return true
   })
   if (uniqueAdded.length === 0) {
-    return { kind: 'idempotent', detail: 'the parsed label(s) already match the existing alt_labels (or the definition\'s own name/pref_label)' }
+    return { kind: 'idempotent', detail: 'the parsed label(s) already match the existing alt_labels (or the definition\'s own name/pref_label), or are suppressed — re-adding via add_alias (or a hand edit) lifts a veto' }
   }
   const merged = mergeAltLabels(existing, uniqueAdded)
   return { kind: 'applied', detail: `added ${uniqueAdded.length} new alt_label(s)`, value: merged }
@@ -586,9 +604,12 @@ export async function applyOneEnrichmentResult(
     const parsed = TableDefinitionSchema.safeParse(row.raw)
     if (!parsed.success) return { ...base, verdict: 'stale_baseline', detail: `${target} no longer validates against the table schema` }
     const def = parsed.data
+    // Suppression sets (ADR-0010) — the apply path is the LLM round's write
+    // surface, gated exactly like the deterministic rounds.
+    const corpusVetoes = loadSuppressions(semanticLayer)
     const outcome = round === 'relation'
-      ? mergeRelationText(text, def.dimension_refs)
-      : mergeAltLabelsText(text, def.alt_labels, def.table_name, def.pref_label)
+      ? mergeRelationText(text, def.dimension_refs, relationVetoSet(def.suppressed_dimension_refs))
+      : mergeAltLabelsText(text, def.alt_labels, def.table_name, def.pref_label, aliasVetoSet(def.suppressed_alt_labels, corpusVetoes))
     if (outcome.kind !== 'applied') return { ...base, verdict: outcome.kind, detail: outcome.detail }
     const field = round === 'relation' ? 'dimension_refs' : 'alt_labels'
     await writeTable(semanticLayer, target, { ...row.raw, [field]: outcome.value })
@@ -601,9 +622,10 @@ export async function applyOneEnrichmentResult(
   const parsed = EventDefinitionSchema.safeParse(row.raw)
   if (!parsed.success) return { ...base, verdict: 'stale_baseline', detail: `${target} no longer validates against the event schema` }
   const def = parsed.data
+  const corpusVetoes = loadSuppressions(semanticLayer)
   const outcome = round === 'relation'
-    ? mergeRelationText(text, def.external_refs)
-    : mergeAltLabelsText(text, def.alt_labels, def.name, def.pref_label)
+    ? mergeRelationText(text, def.external_refs, relationVetoSet(def.suppressed_external_refs))
+    : mergeAltLabelsText(text, def.alt_labels, def.name, def.pref_label, aliasVetoSet(def.suppressed_alt_labels, corpusVetoes))
   if (outcome.kind !== 'applied') return { ...base, verdict: outcome.kind, detail: outcome.detail }
   const field = round === 'relation' ? 'external_refs' : 'alt_labels'
   const content = dumpYaml({ ...row.raw, [field]: outcome.value })

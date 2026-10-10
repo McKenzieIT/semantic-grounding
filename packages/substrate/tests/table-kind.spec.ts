@@ -22,6 +22,7 @@ function mkTable(dimension_refs: TableDefinition['dimension_refs']): TableDefini
     coverage: null, supersedes: [], disambiguation: null, kind: 'dws', primary_key: [],
     primary_key_unique: null, duplicate_sample: [], label_columns: [], freshness: '',
     dimension_refs,
+    suppressed_alt_labels: [], suppressed_dimension_refs: [],
   }
 }
 
