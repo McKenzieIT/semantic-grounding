@@ -23,20 +23,28 @@ Issue 追踪在 GitHub（McKenzieIT/semantic-grounding），通过 `gh` CLI 操�
 
 ### Active map
 
-**map #27（enrichment 工具维度语义与响应尺寸治理）进行中**——驱动
-[#25](https://github.com/McKenzieIT/semantic-grounding/issues/25) 修落地（执行进图，收口=门禁绿+关 #25）。
-四张子票：[过滤语义裁决](https://github.com/McKenzieIT/semantic-grounding/issues/28)（grilling，已解：call-wide——
+当前无进行中的 map。
+
+**map #27（enrichment 工具维度语义与响应尺寸治理）已关闭**，Destination（维度过滤语义统一+
+work listing 尺寸治理+盲区钉死+#25 关票）经四张子票全解达成：
+[过滤语义裁决](https://github.com/McKenzieIT/semantic-grounding/issues/28)（grilling，已解：call-wide——
 指定任一维即约束整个调用/未指定=不扫/`{}`=全量；空数组 zod `min(1)` 收死；未知名门口 coded error；
 语义落 Core 方法契约层，自由函数/on-write hook/dsh 零改动；subject 同源对账；新 ADR-0007 + 词条
-`dimension filter`，落盘归 #31）、
+`dimension filter`）、
 [MCP 大响应与分页惯例](https://github.com/McKenzieIT/semantic-grounding/issues/29)（research，chart 会话已解：
 `tools/call` 无协议级分页，生态收敛 = cap + `total`/`truncated` + 过滤缩围；附带发现 `structuredContent`
-在 SDK v2.3.1 真实存在，勘误随 #31 落盘）、[work listing 尺寸治理形状](https://github.com/McKenzieIT/semantic-grounding/issues/30)
+在 SDK v2.3.1 真实存在，ADR-0005 勘误已落盘）、[work listing 尺寸治理形状](https://github.com/McKenzieIT/semantic-grounding/issues/30)
 （grilling，已解：**索引/题面分离**——listing 改索引形 `{work_id, target, gap}`（cap 1000 行）+ `total`/`truncated`
 走 content JSON 顶层、新增第 19 工具 `get_enrichment_prompts(work_ids≤10)` 按批取题面；折法=单次响应最坏 ≤
 半窗（200K 级）；翻页/top_k/structuredContent/保留内嵌〔triage 死胡同——缺口分布只有 listing 知道，猜名撞
-#28 coded error〕全否；新 ADR-0008 + GLOSSARY `enrichment work` 修订落 #31）、[修落地](https://github.com/McKenzieIT/semantic-grounding/issues/31)
-（task，frontier 唯一——三张前置票全关，blocked-by 已自动解除）。k11 清理归 #26、tombstone 归 #24（map #27 Out of scope 记录）。
+#28 coded error〕全否；新 ADR-0008 + GLOSSARY `enrichment work` 修订）、
+[修落地](https://github.com/McKenzieIT/semantic-grounding/issues/31)（task，三票结论落代码：Core 契约层
+call-wide 过滤 + 索引/题面分离 + 第 19 工具 + events fixture 钉盲区 + e2e 扩步（19 工具）+ 工具 description
+重写 + ADR-0007/ADR-0008/ADR-0005 勘误；全量测试绿（368/368）+ `pnpm e2e` 绿（19/19），合入 main
+`1ba8b58`）。**[#25](https://github.com/McKenzieIT/semantic-grounding/issues/25) 关票**。k11 清理归 #26、
+tombstone 归 #24（map #27 Out of scope 记录）。附带发现（范围外，留痕于 #31 关票评论）：
+`enrichAllDwsTables`/`enrichAllEvents` 的 `written` 计数器统计调用次数非内容变化次数——substrate 既有
+行为，未来若需收紧另开票。
 
 **map #12（MCP 管理面）已关闭**，Destination（agent 经 MCP 读 grounding、经 Tier-2 审计写回、
 `git log` 答 provenance）经两面验收：CI 第三道门禁 **`pnpm e2e`**（`packages/mcp/scripts/check-e2e-loop.ts`，
