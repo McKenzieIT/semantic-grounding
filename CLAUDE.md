@@ -25,12 +25,15 @@ Issue 追踪在 GitHub（McKenzieIT/semantic-grounding），通过 `gh` CLI 操�
 
 **map #27（enrichment 工具维度语义与响应尺寸治理）进行中**——驱动
 [#25](https://github.com/McKenzieIT/semantic-grounding/issues/25) 修落地（执行进图，收口=门禁绿+关 #25）。
-四张子票：[过滤语义裁决](https://github.com/McKenzieIT/semantic-grounding/issues/28)（grilling）、
+四张子票：[过滤语义裁决](https://github.com/McKenzieIT/semantic-grounding/issues/28)（grilling，已解：call-wide——
+指定任一维即约束整个调用/未指定=不扫/`{}`=全量；空数组 zod `min(1)` 收死；未知名门口 coded error；
+语义落 Core 方法契约层，自由函数/on-write hook/dsh 零改动；subject 同源对账；新 ADR-0007 + 词条
+`dimension filter`，落盘归 #31）、
 [MCP 大响应与分页惯例](https://github.com/McKenzieIT/semantic-grounding/issues/29)（research，chart 会话已解：
 `tools/call` 无协议级分页，生态收敛 = cap + `total`/`truncated` + 过滤缩围；附带发现 `structuredContent`
 在 SDK v2.3.1 真实存在，ADR-0005 addendum 待勘误）、[work listing 尺寸治理形状](https://github.com/McKenzieIT/semantic-grounding/issues/30)
-（grilling，blocked by #29）、[修落地](https://github.com/McKenzieIT/semantic-grounding/issues/31)（task，
-blocked by #28、#30）。k11 清理归 #26、tombstone 归 #24（map #27 Out of scope 记录）。
+（grilling，blocked by #29——已关，现解锁）、[修落地](https://github.com/McKenzieIT/semantic-grounding/issues/31)（task，
+blocked by #30——#28 已关）。k11 清理归 #26、tombstone 归 #24（map #27 Out of scope 记录）。
 
 **map #12（MCP 管理面）已关闭**，Destination（agent 经 MCP 读 grounding、经 Tier-2 审计写回、
 `git log` 答 provenance）经两面验收：CI 第三道门禁 **`pnpm e2e`**（`packages/mcp/scripts/check-e2e-loop.ts`，
