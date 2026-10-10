@@ -398,10 +398,37 @@ function originAwareReplaceRefs(
   existing: readonly DimensionRef[],
   discovered: readonly DimensionRef[],
 ): DimensionRef[] {
-  return mergeRefs(
-    existing.filter(r => r.origin === 'manual' || r.origin == null),
-    discovered,
-  )
+  // Position-preserving, not delegated to mergeRefs: mergeRefs appends any
+  // dim_table missing from its baseline to the END of the result, so feeding
+  // it a curated-only baseline (dropping machine refs before the call) would
+  // make every refreshed machine ref jump to the tail even when its content
+  // is byte-identical to before — a spurious reorder-only diff that breaks
+  // sweep idempotency (two `discoverRelations` calls with nothing new to find
+  // must produce the same array, not just the same set). Walking `existing`
+  // once keeps curated refs verbatim in place and replaces each machine ref
+  // in its own slot (or drops it, if this round no longer rediscovers it);
+  // only a dim_table absent from `existing` altogether is new and goes to the end.
+  const cloneRef = (r: DimensionRef): DimensionRef => ({
+    dim_table: r.dim_table,
+    join_keys: r.join_keys.map(k => ({ ...k })),
+    derivation: r.derivation,
+    origin: r.origin,
+  })
+  const discoveredByTable = new Map(discovered.map(r => [r.dim_table, r]))
+  const result: DimensionRef[] = []
+  for (const r of existing) {
+    if (r.origin === 'manual' || r.origin == null) {
+      result.push(cloneRef(r))
+      continue
+    }
+    const fresh = discoveredByTable.get(r.dim_table)
+    if (fresh) result.push(cloneRef(fresh)) // else: stale machine ref, not rediscovered -> dropped
+  }
+  const existingTables = new Set(existing.map(r => r.dim_table))
+  for (const r of discovered) {
+    if (!existingTables.has(r.dim_table)) result.push(cloneRef(r))
+  }
+  return result
 }
 
 /**
