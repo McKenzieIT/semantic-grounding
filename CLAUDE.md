@@ -23,7 +23,14 @@ Issue 追踪在 GitHub（McKenzieIT/semantic-grounding），通过 `gh` CLI 操�
 
 ### Active map
 
-（无——map #12 已于 2026-10-10 收口。）
+**map #27（enrichment 工具维度语义与响应尺寸治理）进行中**——驱动
+[#25](https://github.com/McKenzieIT/semantic-grounding/issues/25) 修落地（执行进图，收口=门禁绿+关 #25）。
+四张子票：[过滤语义裁决](https://github.com/McKenzieIT/semantic-grounding/issues/28)（grilling）、
+[MCP 大响应与分页惯例](https://github.com/McKenzieIT/semantic-grounding/issues/29)（research，chart 会话已解：
+`tools/call` 无协议级分页，生态收敛 = cap + `total`/`truncated` + 过滤缩围；附带发现 `structuredContent`
+在 SDK v2.3.1 真实存在，ADR-0005 addendum 待勘误）、[work listing 尺寸治理形状](https://github.com/McKenzieIT/semantic-grounding/issues/30)
+（grilling，blocked by #29）、[修落地](https://github.com/McKenzieIT/semantic-grounding/issues/31)（task，
+blocked by #28、#30）。k11 清理归 #26、tombstone 归 #24（map #27 Out of scope 记录）。
 
 **map #12（MCP 管理面）已关闭**，Destination（agent 经 MCP 读 grounding、经 Tier-2 审计写回、
 `git log` 答 provenance）经两面验收：CI 第三道门禁 **`pnpm e2e`**（`packages/mcp/scripts/check-e2e-loop.ts`，
