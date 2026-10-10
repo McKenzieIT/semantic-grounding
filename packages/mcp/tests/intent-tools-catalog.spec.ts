@@ -156,24 +156,40 @@ describe('update_definition — ADR-0005 ruling 4', () => {
   })
 })
 
-describe('item-level tool schemas — ADR-0005 ruling 3', () => {
-  it('add_alias / remove_alias require kind, name, alias, and the full update-class common block', async () => {
-    for (const name of ['add_alias', 'remove_alias']) {
-      const tool = byName(await listTools(), name)
-      expect(tool.inputSchema.required?.slice().sort()).toEqual(
-        ['alias', 'confidence', 'derivation', 'expected_version', 'kind', 'name', 'summary'].sort(),
-      )
-    }
+describe('item-level tool schemas — ADR-0005 ruling 3 (reshaped by ADR-0010 / #38: remove_* takes arrays)', () => {
+  it('add_alias requires kind, name, alias, and the full update-class common block', async () => {
+    const tool = byName(await listTools(), 'add_alias')
+    expect(tool.inputSchema.required?.slice().sort()).toEqual(
+      ['alias', 'confidence', 'derivation', 'expected_version', 'kind', 'name', 'summary'].sort(),
+    )
   })
 
-  it('add_relation / remove_relation require a relation object (dim_table + join_keys), never origin or derivation on it', async () => {
-    for (const name of ['add_relation', 'remove_relation']) {
-      const tool = byName(await listTools(), name)
-      const relation = tool.inputSchema.properties?.['relation'] as { properties?: Record<string, unknown>; required?: readonly string[] }
-      expect(relation.required?.slice().sort()).toEqual(['dim_table', 'join_keys'])
-      expect(relation.properties).not.toHaveProperty('origin')
-      expect(relation.properties).not.toHaveProperty('derivation')
-    }
+  it('remove_alias requires kind, name, labels (a same-target batch, #37 §3), and the full update-class common block', async () => {
+    const tool = byName(await listTools(), 'remove_alias')
+    expect(tool.inputSchema.required?.slice().sort()).toEqual(
+      ['confidence', 'derivation', 'expected_version', 'kind', 'labels', 'name', 'summary'].sort(),
+    )
+    const labels = tool.inputSchema.properties?.['labels'] as { type?: string; minItems?: number }
+    expect(labels.type).toBe('array')
+    expect(labels.minItems).toBe(1)
+  })
+
+  it('add_relation requires a relation object (dim_table + join_keys), never origin or derivation on it', async () => {
+    const tool = byName(await listTools(), 'add_relation')
+    const relation = tool.inputSchema.properties?.['relation'] as { properties?: Record<string, unknown>; required?: readonly string[] }
+    expect(relation.required?.slice().sort()).toEqual(['dim_table', 'join_keys'])
+    expect(relation.properties).not.toHaveProperty('origin')
+    expect(relation.properties).not.toHaveProperty('derivation')
+  })
+
+  it('remove_relation requires an array of relation objects (relations, #37 §3), each dim_table + join_keys, never origin or derivation', async () => {
+    const tool = byName(await listTools(), 'remove_relation')
+    const relations = tool.inputSchema.properties?.['relations'] as { type?: string; minItems?: number; items?: { properties?: Record<string, unknown>; required?: readonly string[] } }
+    expect(relations.type).toBe('array')
+    expect(relations.minItems).toBe(1)
+    expect(relations.items?.required?.slice().sort()).toEqual(['dim_table', 'join_keys'])
+    expect(relations.items?.properties).not.toHaveProperty('origin')
+    expect(relations.items?.properties).not.toHaveProperty('derivation')
   })
 
   it('never exposes a whole-array replace parameter', async () => {
