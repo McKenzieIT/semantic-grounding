@@ -250,6 +250,39 @@ export function loadDomains(semanticLayer: string): Record<string, unknown> {
   }
 }
 
+/**
+ * Read the corpus-level suppression word list (`suppressions.yaml` at the layer
+ * root, #37 §4): a hand-edited `alt_labels: string[]` whose entries filter every
+ * definition's alias candidates ahead of merge, unioned with each definition's own
+ * `suppressed_alt_labels`. Lenient exactly like {@link loadDomains}: a missing,
+ * malformed, or wrongly-shaped file degrades to an empty set rather than throwing —
+ * the write path is the curated hand-edit, so there is no tooling to keep it honest.
+ * Keys are stored in the same normalized form alias vetoes use everywhere
+ * (lowercased + trimmed), so an uppercase entry in the YAML vetoes a lowercase
+ * candidate; non-string entries are dropped.
+ * @param semanticLayer - the semantic-layer directory path.
+ * @returns the normalized corpus-level veto keys (empty when absent/malformed).
+ */
+export function loadSuppressions(semanticLayer: string): ReadonlySet<string> {
+  const p = join(semanticLayer, 'suppressions.yaml')
+  if (!existsSync(p)) return new Set()
+  try {
+    const d = readYaml(p)
+    if (!isPlainObject(d)) return new Set()
+    const list = d.alt_labels
+    if (!Array.isArray(list)) return new Set()
+    const out = new Set<string>()
+    for (const entry of list) {
+      if (typeof entry !== 'string') continue
+      const key = entry.toLowerCase().trim()
+      if (key !== '') out.add(key)
+    }
+    return out
+  } catch {
+    return new Set()
+  }
+}
+
 /** A scanned event: its `name`, raw YAML dict, and the domain subdir it lived in (unvalidated). */
 export interface RawEvent {
   readonly name: string

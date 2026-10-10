@@ -215,6 +215,12 @@ export const EventDefinitionSchema = z.object({
   metrics: z.record(z.string(), MetricDefSchema).default({}),
   disambiguation: z.array(DisambiguationSchema).default([]),
   external_refs: z.array(DimensionRefSchema).default([]),
+  // Suppression keys (#36 / ADR-0010): negative knowledge, key-only (no per-item
+  // provenance — authorship is the git recorder's commit). Alias keys are the
+  // label's normalized form; relation keys are the `dim_table` name. These gate
+  // what enrichment rounds may re-assert; they are never projected into retrieval.
+  suppressed_alt_labels: z.array(z.string()).default([]),
+  suppressed_external_refs: z.array(z.string()).default([]),
   confirmation: ConfirmationSchema.default({ status: 'draft', confirmed_by: '', confirmed_at: '' }),
   coverage: CoverageDefSchema.nullable().default(null),
 }).loose()
@@ -286,6 +292,9 @@ export const TableDefinitionSchema = z.object({
     z.enum(['static_reference', 'T+1', '']).default(''),
   ),
   dimension_refs: z.array(DimensionRefSchema).default([]),
+  // Suppression keys (#36 / ADR-0010) — see EventDefinitionSchema's block comment.
+  suppressed_alt_labels: z.array(z.string()).default([]),
+  suppressed_dimension_refs: z.array(z.string()).default([]),
 }).loose().superRefine((t, ctx) => {
   if (t.kind === 'dim') {
     if (t.primary_key.length === 0) {
