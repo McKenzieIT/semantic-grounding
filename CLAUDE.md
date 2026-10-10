@@ -23,7 +23,20 @@ Issue 追踪在 GitHub（McKenzieIT/semantic-grounding），通过 `gh` CLI 操�
 
 ### Active map
 
-当前无进行中的 map。
+**map [#32](https://github.com/McKenzieIT/semantic-grounding/issues/32)（agent 持久否决权与抽取器护栏）**
+—— 驱动 [#24](https://github.com/McKenzieIT/semantic-grounding/issues/24)（tombstone）+
+[#26](https://github.com/McKenzieIT/semantic-grounding/issues/26)（抽取器护栏）修落地。Destination：
+enrichment 轮不再重断言 agent 已删内容（relation / alias 两变体全盖）+ 抽取器不再把描述碎片撕成别名 +
+`~/sg-dogfood-corpus` 446 个受污染定义清干净 + 新 ADR/GLOSSARY + 门禁绿（含新增「删了不回灌」e2e 步）+
+**#24/#26 关票**。执行进图（覆盖 plan-only 默认）。真宿主 dogfood 复验在 Out of scope（机制正确性 CI
+可证，护栏假阴性离线全库 diff 覆盖面更宽）。七张子票：[#33](https://github.com/McKenzieIT/semantic-grounding/issues/33)
+护栏规则全库实测（prototype）→ [#35](https://github.com/McKenzieIT/semantic-grounding/issues/35) 护栏裁决；
+[#34](https://github.com/McKenzieIT/semantic-grounding/issues/34) 负知识 prior art（research，charting
+会话内已派子代理）+ #35 → [#36](https://github.com/McKenzieIT/semantic-grounding/issues/36) 领域语义与存储形状
+→ [#37](https://github.com/McKenzieIT/semantic-grounding/issues/37) 作用域/批量/工具面 →
+[#38](https://github.com/McKenzieIT/semantic-grounding/issues/38) 修落地 →
+[#39](https://github.com/McKenzieIT/semantic-grounding/issues/39) 语料清理 + 全库复测 + 关票。
+**注**：map #27 Notes 记的「子代理通道暂不可用」已过期，2026-10-10 实探已复通。
 
 **map #27（enrichment 工具维度语义与响应尺寸治理）已关闭**，Destination（维度过滤语义统一+
 work listing 尺寸治理+盲区钉死+#25 关票）经四张子票全解达成：
