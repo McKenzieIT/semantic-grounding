@@ -1,19 +1,23 @@
 /**
  * Shared pieces for ADR-0005's fifteen intent tools: the common Tier-2 parameter block,
- * the `update_definition` bounded-fields schema builder, the `version` fingerprint
- * (ADR-0004 ruling 8), the per-call `clientInfo` reader, and the Tier-1 pending-queue
- * path.
+ * the `update_definition` bounded-fields schema builder, and the per-call `clientInfo`
+ * reader, plus the Tier-1 pending-queue path.
+ *
+ * The `version` fingerprint helpers this module used to carry
+ * (fingerprintTable/Concept/Event, findEventDomain) are retired: the read side of
+ * ADR-0004 ruling 8's contract now lives in the substrate (`definitionVersion`,
+ * `io.ts`, behind the Core class's `load*DefinitionWithVersion` methods), one
+ * implementation shared with the write-side `checkExpectedVersion` instead of a
+ * parallel copy that had already forked on hand-renamed event files.
  *
  * Nothing here registers a tool — see `read.ts` / `write.ts` / `items.ts` /
  * `suggestions.ts` for the registrars that import from this module.
  *
  * @module tools/shared
  */
-import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { CLIENT_INFO_META_KEY, type ServerContext } from '@modelcontextprotocol/server'
-import { EventDefinitionSchema, TableDefinitionSchema, loadEvents } from '@semantic-grounding/substrate'
+import { EventDefinitionSchema, TableDefinitionSchema } from '@semantic-grounding/substrate'
 import { z } from 'zod'
 import { DefinitionNotFoundError, DefinitionValidationError, UnsupportedUpdateFieldError } from '../errors.ts'
 import type { GitTier2Recorder } from '../git/recorder.ts'
@@ -235,80 +239,6 @@ export function assertUpdateOk(result: UpdateResult, kind: 'table' | 'event', na
     throw new DefinitionNotFoundError(result.error, { kind, name })
   }
   throw new DefinitionValidationError(result.error, { kind, name })
-}
-
-// ── `version`: the sha256 content fingerprint (ADR-0004 ruling 8) ──────────────────
-
-/**
- * @param content - the raw bytes a reader actually read.
- * @returns the sha256 hex fingerprint — identical to the one `checkExpectedVersion`
- *   (substrate `io.ts`, not on the public barrel) computes at write time, which is what
- *   makes a `get_definition` read-then-write round trip with `expected_version` work.
- */
-function sha256Hex(content: string): string {
-  return createHash('sha256').update(content, 'utf-8').digest('hex')
-}
-
-/**
- * The `version` fingerprint for a table definition: sha256 of the literal bytes at
- * `tables/<name>.yaml` — not a re-dump of the parsed object, which would not
- * byte-match (zod fills in defaults the file may not spell out). Exact and unambiguous:
- * `writeTable`/`updateTableMeta` compute the same path from the same two inputs.
- * @param root - the corpus root (`core.resolveScopeRoot()`).
- * @param name - the table's `table_name`.
- * @returns the hex fingerprint.
- */
-export function fingerprintTable(root: string, name: string): string {
-  return sha256Hex(readFileSync(join(root, 'tables', `${name}.yaml`), 'utf8'))
-}
-
-/**
- * The `version` fingerprint for a concept definition: sha256 of the literal bytes at
- * `concepts/<name>.yaml`. Concepts have no write path in v1 (ADR-0005 ruling 2), so no
- * tool ever checks this against an `expected_version` — it is reported for read
- * completeness and symmetry with table/event, not because a write consumes it today.
- * @param root - the corpus root.
- * @param name - the concept's `name`.
- * @returns the hex fingerprint.
- */
-export function fingerprintConcept(root: string, name: string): string {
-  return sha256Hex(readFileSync(join(root, 'concepts', `${name}.yaml`), 'utf8'))
-}
-
-/**
- * Find which `events/<domain>/` subdirectory holds an event, via the substrate's own
- * lenient scan (`loadEvents`, on the public barrel) — never a second, hand-rolled YAML
- * parse of this package's own.
- * @param root - the corpus root.
- * @param name - the event's `name`.
- * @returns the domain subdirectory name, or `undefined` when no event matches.
- */
-export function findEventDomain(root: string, name: string): string | undefined {
-  return loadEvents(root).find(e => e.name === name)?.domain
-}
-
-/**
- * The `version` fingerprint for an event definition: sha256 of the literal bytes at
- * `events/<domain>/<name>.yaml`.
- *
- * This is the one fingerprint that is not a single deterministic join: an event's
- * backing file is located by `findEventPath`'s *fast path* convention (filename equals
- * `<name>.yaml`), which is not on the public barrel. Every writer in this codebase
- * maintains that convention (`writeEventYaml` targets exactly this path for an existing
- * event, or `events/_suggested/<name>.yaml` for a new one), so this holds for every
- * machine-managed corpus. A corpus with a hand-renamed event file (the filename no
- * longer matching its own `name:` field) is a known, documented limitation: this throws
- * `ENOENT` — a loud internal fault (`toToolErrorResult` re-throws it, per this module's
- * header) rather than a silently wrong hash — and is flagged as Followup for whichever
- * ticket next touches read-path fingerprinting, rather than reproducing the substrate's
- * un-exported fallback scan here.
- * @param root - the corpus root.
- * @param name - the event's `name`.
- * @param domain - the domain subdirectory (from {@link findEventDomain}).
- * @returns the hex fingerprint.
- */
-export function fingerprintEvent(root: string, name: string, domain: string): string {
-  return sha256Hex(readFileSync(join(root, 'events', domain, `${name}.yaml`), 'utf8'))
 }
 
 // ── Per-call `clientInfo` (ADR-0005's 2026-10-09 addendum, second falsified premise) ─
