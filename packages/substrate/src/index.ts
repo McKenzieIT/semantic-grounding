@@ -82,6 +82,7 @@ import {
   loadTableDefinition as loadTableDefinitionFromLayer,
   loadRetrievalCorpus as loadRetrievalCorpusFromLayer,
   getCorpusVersion as getCorpusVersionFromLayer,
+  definitionVersion,
   type Tier2Recorder,
   type Tier2Opts,
 } from './io.ts'
@@ -1231,6 +1232,74 @@ export class SemanticGroundingCore {
    */
   loadConceptDefinition(name: string): import('./types.ts').ConceptDefinition | null {
     return loadConceptDefinitionFromLayer(this.semanticRoot, name)
+  }
+
+  /**
+   * ADR-0004 ruling 8's read side: `loadTableDefinition` plus the sha256
+   * content fingerprint of the exact file `updateTableMeta` / `writeTable`
+   * check an `expected_version` against (`definitionVersion` — one
+   * implementation serves both sides of the contract, which is the whole
+   * point: the read a caller hands back as `expected_version` and the write's
+   * staleness check can never disagree by construction). A read from this
+   * method followed by a write passing `version` back is the round trip
+   * ADR-0005's update-class tools are built on; `get_definition` (the MCP
+   * tool compiling onto this method) is its wire surface.
+   * @param name - the table `table_name` key to match.
+   * @param scopeId - GA-GT1 Phase 2: optional scope id; omit to use the active scope.
+   * @returns the parsed definition and its `version` fingerprint, or null when no table matches.
+   * @throws an internal error when the table loads but its backing file does
+   *   not resolve under `tables/` — a hand-renamed file, not a "not found";
+   *   stays loud rather than reporting a definition no write could target.
+   */
+  loadTableDefinitionWithVersion(name: string, scopeId?: string): { readonly definition: TableDefinition; readonly version: string } | null {
+    const definition = this.loadTableDefinition(name, scopeId)
+    if (definition === null) return null
+    const version = definitionVersion(this.resolveRoot(scopeId), 'table', name)
+    if (version === null) {
+      throw new Error(`table "${name}" loaded but its backing file could not be resolved under tables/ (non-conventional filename?)`)
+    }
+    return { definition, version }
+  }
+
+  /**
+   * ADR-0004 ruling 8's read side for events, parallel to
+   * {@link loadTableDefinitionWithVersion}: the fingerprint of the file
+   * `writeEventYaml` / `updateEventMeta` target, resolved via
+   * `findEventPath`'s name-matched scan (fallback included). The
+   * loaded-but-unresolvable branch is unreachable in practice for events —
+   * the loader and the path resolver match on the same `name` field — but
+   * stays loud anyway rather than reporting a definition no write could
+   * target; a hand-renamed event file fingerprints correctly here where the
+   * MCP layer's former filename-convention copy threw ENOENT.
+   * @param name - the event `name` key to match.
+   * @returns the parsed definition and its `version` fingerprint, or null when no event matches.
+   */
+  loadEventDefinitionWithVersion(name: string): { readonly definition: EventDefinition; readonly version: string } | null {
+    const definition = this.loadEventDefinition(name)
+    if (definition === null) return null
+    const version = definitionVersion(this.resolveRoot(), 'event', name)
+    if (version === null) {
+      throw new Error(`event "${name}" loaded but its backing file could not be resolved under events/ (non-conventional filename?)`)
+    }
+    return { definition, version }
+  }
+
+  /**
+   * ADR-0004 ruling 8's read side for concepts. Concepts have no write path
+   * in v1 (ADR-0005 ruling 2), so no write ever consumes this fingerprint —
+   * it is reported for read completeness and symmetry with table/event, the
+   * same stance the MCP read surface held before this method absorbed it.
+   * @param name - the concept `name` key to match.
+   * @returns the parsed definition and its `version` fingerprint, or null when no concept matches.
+   */
+  loadConceptDefinitionWithVersion(name: string): { readonly definition: import('./types.ts').ConceptDefinition; readonly version: string } | null {
+    const definition = this.loadConceptDefinition(name)
+    if (definition === null) return null
+    const version = definitionVersion(this.resolveRoot(), 'concept', name)
+    if (version === null) {
+      throw new Error(`concept "${name}" loaded but its backing file could not be resolved under concepts/ (non-conventional filename?)`)
+    }
+    return { definition, version }
   }
 
   /**

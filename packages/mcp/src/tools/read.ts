@@ -14,13 +14,7 @@ import type { GraphNodeProjection } from '@semantic-grounding/substrate'
 import { z } from 'zod'
 import { DefinitionNotFoundError, toToolErrorResult } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
-import {
-  ReadableKindSchema,
-  findEventDomain,
-  fingerprintConcept,
-  fingerprintEvent,
-  fingerprintTable,
-} from './shared.ts'
+import { ReadableKindSchema } from './shared.ts'
 
 /** The five read tool names, in ADR-0005's listing order. */
 export const READ_TOOL_NAMES = [
@@ -214,37 +208,32 @@ function registerGetDefinition(server: McpServer, deps: ServerDeps): void {
     },
     async (input) => {
       try {
-        const root = deps.core.resolveScopeRoot()
+        // One fingerprint implementation for both sides of ADR-0004 ruling 8's
+        // contract: each Core method resolves the very file the corresponding
+        // write path's staleness check hashes (the MCP layer's former parallel
+        // copy — filename-convention fingerprints plus a full-corpus
+        // `loadEvents` scan to locate one event's domain — is retired with
+        // this switch, and with it the hand-renamed-event-file ENOENT fork).
         if (input.kind === 'table') {
-          const definition = deps.core.loadTableDefinition(input.name)
-          if (definition === null) {
+          const res = deps.core.loadTableDefinitionWithVersion(input.name)
+          if (res === null) {
             throw new DefinitionNotFoundError(`no table named "${input.name}"`, { kind: 'table', name: input.name })
           }
-          const version = fingerprintTable(root, input.name)
-          return { content: [{ type: 'text', text: JSON.stringify({ kind: 'table', name: input.name, definition, version }) }] }
+          return { content: [{ type: 'text', text: JSON.stringify({ kind: 'table', name: input.name, definition: res.definition, version: res.version }) }] }
         }
         if (input.kind === 'event') {
-          const definition = deps.core.loadEventDefinition(input.name)
-          if (definition === null) {
+          const res = deps.core.loadEventDefinitionWithVersion(input.name)
+          if (res === null) {
             throw new DefinitionNotFoundError(`no event named "${input.name}"`, { kind: 'event', name: input.name })
           }
-          const domain = findEventDomain(root, input.name)
-          if (domain === undefined) {
-            // Loaded successfully above, so the event exists — but its backing file is
-            // not where the fast-path convention expects it (see fingerprintEvent's
-            // doc). A genuine internal inconsistency, not a "not found": stays loud.
-            throw new Error(`event "${input.name}" loaded but its backing file could not be located under events/*/ (non-conventional filename?)`)
-          }
-          const version = fingerprintEvent(root, input.name, domain)
-          return { content: [{ type: 'text', text: JSON.stringify({ kind: 'event', name: input.name, definition, version }) }] }
+          return { content: [{ type: 'text', text: JSON.stringify({ kind: 'event', name: input.name, definition: res.definition, version: res.version }) }] }
         }
         if (input.kind === 'concept') {
-          const definition = deps.core.loadConceptDefinition(input.name)
-          if (definition === null) {
+          const res = deps.core.loadConceptDefinitionWithVersion(input.name)
+          if (res === null) {
             throw new DefinitionNotFoundError(`no concept named "${input.name}"`, { kind: 'concept', name: input.name })
           }
-          const version = fingerprintConcept(root, input.name)
-          return { content: [{ type: 'text', text: JSON.stringify({ kind: 'concept', name: input.name, definition, version }) }] }
+          return { content: [{ type: 'text', text: JSON.stringify({ kind: 'concept', name: input.name, definition: res.definition, version: res.version }) }] }
         }
         // kind === 'metric': derived from a host table/event's inline `metrics:` block,
         // not a standalone file (metrics.ts / GLOSSARY § definition) — there is no raw

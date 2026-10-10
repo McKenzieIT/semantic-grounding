@@ -568,6 +568,40 @@ function checkExpectedVersion(target: string, expectedVersion: string | undefine
 }
 
 /**
+ * The read-side half of ADR-0004 ruling 8's fingerprint contract: the sha256 of
+ * a definition's **backing file's literal bytes**, resolved by the same path
+ * logic the write-side check uses — `checkExpectedVersion` hashes the bytes at
+ * exactly the path this function resolves (`tables/<name>.yaml` for a table,
+ * the file `writeEventYaml`/`updateEventMeta` would target for an event), which
+ * is what makes a `load*DefinitionWithVersion` read followed by an
+ * `expected_version` write round-trip. One implementation for both sides of the
+ * contract, on purpose: the MCP read path previously carried its own copy of
+ * this resolution (fingerprints by filename convention, an event's domain
+ * located via a full `loadEvents` scan) and the two had already diverged — a
+ * hand-renamed event file made the copy throw ENOENT while `findEventPath`'s
+ * fallback scan, used here, still resolves the very file the writer checks
+ * against. Concepts have no write path in v1 (ADR-0005 ruling 2), so their
+ * resolution is the filename convention for read completeness, mirroring the
+ * table layout.
+ * @param semanticLayer - the semantic-layer directory path.
+ * @param kind - which storage layout to resolve against.
+ * @param name - the table_name / event name / concept name.
+ * @returns the sha256 hex fingerprint of the resolved file's bytes, or null
+ *   when no backing file resolves for that name — the caller decides whether
+ *   null means "not found" or a loud internal inconsistency (a definition that
+ *   loads while its file does not resolve is the latter).
+ */
+export function definitionVersion(semanticLayer: string, kind: 'table' | 'event' | 'concept', name: string): string | null {
+  const target = kind === 'table'
+    ? join(semanticLayer, 'tables', `${name}.yaml`)
+    : kind === 'concept'
+      ? join(semanticLayer, 'concepts', `${name}.yaml`)
+      : findEventPath(semanticLayer, name)
+  if (target === null || !existsSync(target)) return null
+  return sha256Hex(readFileSync(target, 'utf-8'))
+}
+
+/**
  * A target file's state immediately before a Tier-2 write, captured so a
  * recorder failure can restore it exactly (ADR-0004 ruling 1): the literal
  * pre-write bytes when the file already existed, or `existed: false` when
