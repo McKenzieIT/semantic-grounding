@@ -1,0 +1,6 @@
+{
+  "name": "sg-guardrail-probe",
+  "private": true,
+  "type": "module",
+  "description": "PROTOTYPE, throwaway. Probe for semantic-grounding #33 (alt_labels guardrail rules)."
+}
