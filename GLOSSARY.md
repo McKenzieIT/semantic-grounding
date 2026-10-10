@@ -98,7 +98,43 @@ Under the [git recorder](#git-recorder) the answer lives in the commit, not the 
 a value and on what basis. YAML `origin` remains what it always was —
 [enrichment](#enrichment) merge-priority machinery (undefined = curated = preserved by
 rounds), not an authorship record. Two classes of concept in one neighborhood,
-deliberately not aligned (ADR-0005).
+deliberately not aligned (ADR-0005). The negative counterpart —
+[suppression](#suppression) — is a separate construct, not an `origin` value.
+
+### suppression (持久否决)
+
+Exists because enrichment is deterministic: remove a machine-derived alias and the
+next round re-derives it — the write-delete loop. A suppression is **negative
+knowledge** about a definition: a standing verdict that one specific candidate — an
+[alias](#alias) on this definition, or a [relation](#relation) from it to a DIM —
+must never be re-asserted by an [enrichment](#enrichment) round, deterministic or
+LLM alike. It is per-asset and per-candidate ("never again *for this definition*");
+a corpus-wide tier exists as a data path — a hand-edited word list at the corpus
+root whose entries filter every definition's candidates — with no tool verb of its
+own: corpus-wide veto needs the whole-corpus view an agent in conversation doesn't
+have, so its write path is the curated hand-edit, and a Tier-2 verb stays deferred
+until a live agent demonstrably needs one.
+
+The boundary it draws is machine rounds, not writers: an operator hand-adding a
+vetoed candidate back is a curated act with its own git history, not a violation.
+This is [provenance](#provenance)'s boundary seen from the other side — `origin`
+protects what is already asserted ("don't touch mine"), a suppression governs what
+may be re-asserted ("don't bring me this again") — two constructs, deliberately not
+one mechanism: SARIF v2.1.0 §3.35 separates `suppressions` from `provenance` on the
+same result the same way, as ADR-0005 separates YAML `origin` from
+`X-SG-Derivation`. A suppression is born by removal — deleting a machine-derivable
+alias or relation is itself the veto, because the write-delete loop is what it
+exists to stop — and dies by re-assertion: adding the word back lifts it. Both are
+ordinary audited writes; the veto carries no state of its own to transition.
+Storage is per-asset and key-only (a label's normalized form; a relation's DIM
+table): the veto carries no provenance of its own — who vetoed, when and why are
+answered by the [git recorder](#git-recorder)'s commit, like every other
+[Tier-2](#write-tier) write. The name *tombstone* was weighed and rejected: in data
+catalogs it is a storage-layer mechanism (later writes override it, it is forgotten
+on a timer, it exists to propagate deletes to replicas), while a suppression is a
+time-independent policy. No compaction or expiry — every catalog surveyed keeps
+vetoes for good, and this corpus's measured ceiling (~2.7 vetoes per definition) is
+far below any pressure that would justify one.
 
 ## Runtime architecture
 

@@ -121,3 +121,33 @@ era codec `projectCallToolResult`、`ToolSchema.outputSchema` 三处均确认该
 两处裁决拒绝旁路通道的理由从来不是「通道不存在」，而是宿主消费链路未经实测、ADR-0006 的宿主中立
 约束只依赖 `tools/call` 的最弱 client 形状——通道事实的更正不影响这些理由的有效性。本仓当前
 `toolSuccess` 只发 `content` 文本，行为不受本勘误影响。
+
+## Update 2026-10-10 — #38 落地：持久否决权（ADR-0010）+ 抽取器护栏收紧（ADR-0009）
+
+落 [#38](https://github.com/McKenzieIT/semantic-grounding/issues/38)。本 ADR 的 Consequences
+把 `remove_relation` 删 round 出身 ref 不持久的问题写成了一条带触发条件的 Followup——「agent 持久
+否决权（tombstone / 负知识）是新机制，v1 不做；触发条件：dogfood 中出现 agent 与 enrichment 轮的
+写-删循环时成票」。map #32 的 dogfood 踩中了这个条件：同一张表上 agent 连续 24 次删除同一个机器
+派生的 ref，每次都被下一轮 enrichment 重新加回，没有任何回执告诉 agent 这是徒劳的。**不是前提
+证伪，是触发条件已满足**——与上面两条 2026-10-09/2026-10-10 Update 不同性质，机制现在已经落地，
+分两张新 ADR 记录，原 Consequences 段落原文保留不改，指向如下。
+
+**1. 抽取器护栏收紧，先把问题规模缩小（[ADR-0009](./0009-extractor-guardrail.md)）。**
+`discoverAltLabelsDeterministic` 的候选生成规则从 9 条扩到 12 条常量谓词 + cap24，全库候选杀伤率
+从 39.6% 提到 51.0%，误杀实测 0。这一步先于否决权：护栏杀伤后存活的候选规模，才是否决权要扛的
+实测剩余量，不是未知上限。
+
+**2. 持久否决权（suppression）落地（[ADR-0010](./0010-persistent-suppression.md)）。**
+存储是 per-asset YAML 字段（`suppressed_alt_labels`/`suppressed_dimension_refs`/
+`suppressed_external_refs`），key-only、无条目级 provenance——否决记录本身不答谁/何时/为何，
+这些问题仍由 git commit 回答，与本 ADR 裁决 9 的 provenance-in-commit 哲学完全同构。表达面是
+**隐式**的：删除一条机器可再生内容本身就是否决的诞生动作，不需要新动词；撤销是 `add_*` 把词
+加回去，同样不需要新动词。工具面因此**零净新增**——15 个工具（本 ADR 原裁决数）经 #20/#21/#29
+一路演进到 19 个之后，第一次没有再长出新名字；`remove_alias`/`remove_relation` 的参数改数组
+（破坏性改形），响应新增逐项 `outcome`/`suppressed`/`reasserted` 与 `add_*` 的 `unsuppressed`，
+`update_definition` 的字段拒绝列表（本 ADR 裁决 4 的重定向机制）新增 3 个 `suppressed_*` 键。
+
+**门禁全绿**（分支 `fix/38-suppression-and-guardrail`）：substrate typecheck 0 错 / test 342
+passed（24 files，含新增 `guardrail.spec.ts` 20 + `suppression.spec.ts` 12）/ negation-test 过 /
+acceptance 过；mcp typecheck 0 错 / test 270 passed（17 files，`intent-tools-items.spec.ts` 覆盖
+扩容后仍全绿）；e2e 新增步骤覆盖「删除→否决→重新加回→解除否决」与「起落两步」两条序列。
