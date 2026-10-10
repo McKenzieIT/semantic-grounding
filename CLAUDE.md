@@ -36,7 +36,7 @@ enrichment 轮不再重断言 agent 已删内容（relation / alias 两变体全
 81.2% 纯局部 vs 14 词承载 55.9% 出现量 → 两级作用域各管一头，corpus 级用例是具名词表枚举非正则模式〕；
 `partition-kv` 完全冗余、长度上限几乎不影响结果〔cap 12→50 仅动 0.8pp〕、规则「不抽自身 id 子串」实测否决；
 探针分支 `prototype/33-guardrail-rule-probe`，`out/report.html` 可拨规则）→
-[#35](https://github.com/McKenzieIT/semantic-grounding/issues/35) 护栏裁决；
+[#35](https://github.com/McKenzieIT/semantic-grounding/issues/35) 护栏裁决（**已解**：**12 条谓词 + cap24** 杀 2193/4296=51.0%、误杀实测 0〔cap24 独杀 5 词全垃圾、corpus.ts 把 alt_labels 折进 BM25 ⇒ 杀确定性候选零召回损失，容忍线偏杀〕；全常量照 ADR-0008 裁决 4；**domains 显式旁路**、回灌归否决权；**LLM 轮不动**〔列注释唯一入口在彼、非 #26 故障面〕；假阴性守卫词表三钉 DAU/现金券/F 类词归 #38；否决集钉死 2103 条/711 词）；
 [#34](https://github.com/McKenzieIT/semantic-grounding/issues/34) 负知识 prior art（research，**已解**：
 定名推荐 **`suppression`**〔SARIF v2.1.0 OASIS §3.35，`kind:"external"` 规范原文即「再次出现即忽略」；
 SARIF 把 `suppressions` 与 `provenance` 分置两属性，与本仓 `origin` / `X-SG-Derivation` 刻意非对齐同构
@@ -47,11 +47,28 @@ SARIF 把 `suppressions` 与 `provenance` 分置两属性，与本仓 `origin` /
 写入权威状态**之后**建立持久否决〔闸门都在写入前〕，本仓 `enrichOnWrite`「先写后治」在先例里独特——
 可抄词汇与生命周期机械、抄不到形状；全文 `research/negative-knowledge-prior-art` 分支
 `docs/research/negative-knowledge-prior-art.md`）+ #35 →
-[#36](https://github.com/McKenzieIT/semantic-grounding/issues/36) 领域语义与存储形状
-→ [#37](https://github.com/McKenzieIT/semantic-grounding/issues/37) 作用域/批量/工具面 →
-[#38](https://github.com/McKenzieIT/semantic-grounding/issues/38) 修落地 →
+[#36](https://github.com/McKenzieIT/semantic-grounding/issues/36) 领域语义与存储形状（**已解**：**per-asset YAML
+字段** `suppressed_alt_labels`/`suppressed_dimension_refs`/`suppressed_external_refs`，key-only、authorship 归
+git commit；另立构件 **`suppression`**〔origin 是排序、suppression 是闸门，SARIF §3.35 同构〕，`tombstone` 出局；
+`alt_labels` 不对称维持不补平；**events day one 盖住**〔445/446 污染面在 events〕；只约束机器轮不约束人；corpus
+级作用域归 #37）→
+[#37](https://github.com/McKenzieIT/semantic-grounding/issues/37) 作用域/批量/工具面（grilling，**已解**：**全零新工具——工具面 19 不变、动词表零增量**；
+删除即否决〔关系按被删条目 origin 分流、别名恒记〕+ 回执教学闭环 `results[].suppressed/reasserted` + `unsuppressed` +
+ensure-absent〔删 absent 词也落否决〕+ 同目标数组批量〔双字段 overlay 天然一笔 commit **不需 beginBatch**、逐项 verdict、
+stale 整批错、跨目标不开工具〕+ corpus 词表 `suppressions.yaml`〔`alt_labels` 具名词表、lenient 读、过滤器并集、
+**写路径手改**——domain 词不动代码的唯一全库杀闸；与护栏边界 = 数据枚举 vs 代码模式〕+ `add_*` 同词即撤销
+〔key-only 无状态可迁移、SARIF 状态形出局；幂等判定跨两字段〕；GLOSSARY `suppression` 两处修订〔corpus 句改写 +
+生命周期句〕定稿在票内；权限/告警/跨目标批量/Tier-2 corpus 动词各带触发条件 Followup）→
+[#38](https://github.com/McKenzieIT/semantic-grounding/issues/38) 修落地（task，**已解**：护栏 12 谓词 + cap24
+落代码〔docstring 谎言、quote 配对缺陷顺手修〕；否决机制 per-asset 字段 + merge 家族合并前过滤 + corpus 级
+`suppressions.yaml`〔顺手修 `mergeRefs` 空派生回填覆盖 curated 基线的缺陷〕；MCP 工具面 `remove_*` 数组化 +
+逐项 verdict + `unsuppressed` + `update_definition` 否决键拒绝列表，工具数不变 19；`pnpm e2e` 新步「删了不
+回灌」+「起落两步」；新 ADR-0009 + ADR-0010，ADR-0005 Update 段指向两者（原文不改写）；GLOSSARY 新词条
+`suppression`；全量测试绿（substrate 342 + mcp 270）+ `pnpm e2e` 绿（17 步），合入 main `4d7748b`。**#24/#26
+关票留给 #39**，不在本票范围）→
 [#39](https://github.com/McKenzieIT/semantic-grounding/issues/39) 语料清理 + 全库复测 + 关票。
-**当前 frontier：#35（grilling，HITL）**，其余全被阻塞。
+**当前 frontier：#39（task，语料清理与护栏全库复测——#24/#26 关票；机制六张子票全解，#38 已合入 main
+`4d7748b` 并关票）**。
 **注 1**：map #27 Notes 记的「子代理通道暂不可用」已过期，2026-10-10 实探已复通。
 **注 2**（#33 更正的两处前提，下游票不要再按原文用）：① 语料是 321 表 + **446** events 而非 453
 ——`events/` 是二级目录，453 个 YAML 里 7 个是 loader 跳过的 `_index.yaml`；map #32 验收口径 ② 已更正。
