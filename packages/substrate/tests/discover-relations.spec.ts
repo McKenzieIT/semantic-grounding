@@ -22,6 +22,7 @@ const dimDoc = (name: string, pk: string): TableDefinition => ({
   metrics: {}, partitions: [], confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
   coverage: null, supersedes: [], disambiguation: null, kind: 'dim', primary_key: [pk], primary_key_unique: null,
   duplicate_sample: [], label_columns: [`${pk}_name`], freshness: 'static_reference', dimension_refs: [],
+  suppressed_alt_labels: [], suppressed_dimension_refs: [],
 })
 
 const dwsDoc = (name: string, cols: Array<{ name: string; comment?: string }>): TableDefinition => ({
@@ -31,6 +32,7 @@ const dwsDoc = (name: string, cols: Array<{ name: string; comment?: string }>): 
   metrics: {}, partitions: [], confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
   coverage: null, supersedes: [], disambiguation: null, kind: 'dws', primary_key: [], primary_key_unique: null,
   duplicate_sample: [], label_columns: [], freshness: '', dimension_refs: [],
+  suppressed_alt_labels: [], suppressed_dimension_refs: [],
 })
 
 function newLayer(...dws: Array<{ name: string; cols: Array<{ name: string; comment?: string }> }>): string {
@@ -158,6 +160,7 @@ describe('CL-18 Phase 2: discoverRelationsDeterministic excludeColumns', () => {
     coverage: null, supersedes: [], disambiguation: null, kind: 'dws', primary_key: [],
     primary_key_unique: null, duplicate_sample: [], label_columns: [], freshness: '',
     dimension_refs: [],
+    suppressed_alt_labels: [], suppressed_dimension_refs: [],
   })
 
   const mkDim = (name: string, pks: readonly string[]): DimInventoryEntry => ({

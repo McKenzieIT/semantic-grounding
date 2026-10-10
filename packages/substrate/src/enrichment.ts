@@ -136,7 +136,12 @@ export function mergeRefs(
           seen.add(key)
         }
       }
-      if (r.derivation && (!ex.derivation || originPriority(r.origin) > originPriority(ex.origin))) {
+      // The empty-derivation backfill (no note yet -> take whatever shows up)
+      // must not apply to a curated baseline (origin manual/undefined): that
+      // tier is already max-priority and its silence is the point (an agent
+      // asserted the join without writing a rationale), not a gap to fill.
+      const exCurated = ex.origin === 'manual' || ex.origin == null
+      if (r.derivation && (originPriority(r.origin) > originPriority(ex.origin) || (!ex.derivation && !exCurated))) {
         ex.derivation = r.derivation
         ex.origin = r.origin
       }
