@@ -112,7 +112,7 @@ describe('work_id self-containment', () => {
     // instance, constructed after the first has already gone out of scope. Nothing
     // about work_id depends on any state the first instance held.
     const issuer = new SemanticGroundingCore({ semanticRoot: dir })
-    const work = await issuer.listEnrichmentWork()
+    const { work } = await issuer.listEnrichmentWork()
     const item = work.find(w => w.target === 'dws_order' && w.gap.includes('alt_labels'))
     expect(item).toBeDefined()
 
@@ -135,7 +135,8 @@ describe('work_id self-containment', () => {
     dir = newLayer()
     writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }]))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const [item] = await core.listEnrichmentWork()
+    const { work } = await core.listEnrichmentWork()
+    const item = work[0]
     expect(item).toBeDefined()
     rmSync(join(dir, 'tables', 'dws_order.yaml'))
     const { recorder } = fakeRecorder()
@@ -147,7 +148,7 @@ describe('work_id self-containment', () => {
     dir = newLayer()
     writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }]))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const work = await core.listEnrichmentWork()
+    const { work } = await core.listEnrichmentWork()
     const item = work.find(w => w.gap.includes('alt_labels'))
     expect(item).toBeDefined()
 
@@ -165,7 +166,8 @@ describe('work_id self-containment', () => {
     dir = newLayer()
     writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }]))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const [item] = await core.listEnrichmentWork()
+    const { work } = await core.listEnrichmentWork()
+    const item = work[0]
     expect(core.peekEnrichmentWorkTarget(item!.work_id)).toBe('dws_order')
     expect(core.peekEnrichmentWorkTarget('garbage')).toBeUndefined()
   })
@@ -179,18 +181,19 @@ describe('listEnrichmentWork: gap detection', () => {
     writeTableFixture(dir, dimDoc('dim_shop', 'shop_id'))
     writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }]))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const work = await core.listEnrichmentWork()
+    const { work } = await core.listEnrichmentWork()
     const relationItem = work.find(w => w.target === 'dws_order' && w.gap.startsWith('dimension_refs'))
     expect(relationItem).toBeDefined()
-    expect(relationItem!.prompt).toContain('dws_order')
-    expect(relationItem!.prompt).toContain('dim_shop')
+    // ADR-0008: the row carries the gap, never the prompt — the prompt is a separate
+    // batched fetch (pinned in the getEnrichmentPrompts block below).
+    expect(Object.keys(relationItem!).sort()).toEqual(['gap', 'target', 'work_id'])
   })
 
   test('no DIM inventory at all suppresses relation work items entirely', async () => {
     dir = newLayer()
     writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }]))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const work = await core.listEnrichmentWork()
+    const { work } = await core.listEnrichmentWork()
     expect(work.some(w => w.gap.startsWith('dimension_refs'))).toBe(false)
   })
 
@@ -201,7 +204,7 @@ describe('listEnrichmentWork: gap detection', () => {
       dimension_refs: [{ dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }], derivation: 'curated', origin: 'manual' }],
     }))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const work = await core.listEnrichmentWork()
+    const { work } = await core.listEnrichmentWork()
     expect(work.some(w => w.target === 'dws_order' && w.gap.startsWith('dimension_refs'))).toBe(false)
   })
 
@@ -209,7 +212,7 @@ describe('listEnrichmentWork: gap detection', () => {
     dir = newLayer()
     writeTableFixture(dir, dimDoc('dim_shop', 'shop_id'))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const work = await core.listEnrichmentWork()
+    const { work } = await core.listEnrichmentWork()
     expect(work.some(w => w.target === 'dim_shop' && w.gap.startsWith('dimension_refs'))).toBe(false)
     // alt_labels gap still applies to a DIM table (mirrors enrichAllTablesAltLabels,
     // which does not filter by kind).
@@ -221,19 +224,35 @@ describe('listEnrichmentWork: gap detection', () => {
     writeTableFixture(dir, dimDoc('dim_shop', 'shop_id'))
     writeEventFixture(dir, eventDoc('pay_success', { shop_id: { type: 'string', description: '店铺ID' } }))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const work = await core.listEnrichmentWork()
+    const { work } = await core.listEnrichmentWork()
     expect(work.some(w => w.target === 'pay_success' && w.gap.startsWith('external_refs'))).toBe(true)
     expect(work.some(w => w.target === 'pay_success' && w.gap.startsWith('alt_labels'))).toBe(true)
   })
 
-  test('tables/events filters restrict the scan', async () => {
+  test('tables/events filters restrict the scan (call-wide, ADR-0007)', async () => {
     dir = newLayer()
+    writeTableFixture(dir, dimDoc('dim_shop', 'shop_id'))
     writeTableFixture(dir, dwsDoc('dws_a', [{ name: 'x' }]))
     writeTableFixture(dir, dwsDoc('dws_b', [{ name: 'x' }]))
+    writeEventFixture(dir, eventDoc('pay_success', { shop_id: { type: 'string', description: '店铺ID' } }))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const work = await core.listEnrichmentWork({ tables: ['dws_a'] })
-    expect(work.every(w => w.target === 'dws_a')).toBe(true)
-    expect(work.some(w => w.target === 'dws_b')).toBe(false)
+
+    // tables named -> ONLY those tables' gaps; the events dimension is out of the call.
+    const tablesOnly = await core.listEnrichmentWork({ tables: ['dws_a'] })
+    expect(tablesOnly.work.every(w => w.target === 'dws_a')).toBe(true)
+    expect(tablesOnly.work.some(w => w.target === 'pay_success')).toBe(false)
+    // events named -> the mirror: no table rows at all.
+    const eventsOnly = await core.listEnrichmentWork({ events: ['pay_success'] })
+    expect(eventsOnly.work.every(w => w.target === 'pay_success')).toBe(true)
+    expect(eventsOnly.work.some(w => w.target === 'dws_b')).toBe(false)
+    // both named -> both legs, each scoped.
+    const both = await core.listEnrichmentWork({ tables: ['dws_b'], events: ['pay_success'] })
+    expect(both.work.map(w => w.target).sort()).toEqual(['dws_b', 'dws_b', 'pay_success', 'pay_success'])
+    // {} (or no keys) is the one full-corpus shape.
+    const full = await core.listEnrichmentWork({})
+    expect(full.work.some(w => w.target === 'dws_a')).toBe(true)
+    expect(full.work.some(w => w.target === 'dws_b')).toBe(true)
+    expect(full.work.some(w => w.target === 'pay_success')).toBe(true)
   })
 
   test('every work_id is unique per target+round even when issued in the same call', async () => {
@@ -241,7 +260,7 @@ describe('listEnrichmentWork: gap detection', () => {
     writeTableFixture(dir, dimDoc('dim_shop', 'shop_id'))
     writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }]))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const work = await core.listEnrichmentWork()
+    const { work } = await core.listEnrichmentWork()
     const ids = new Set(work.map(w => w.work_id))
     expect(ids.size).toBe(work.length)
   })
@@ -255,7 +274,7 @@ describe('apply: the four verdicts', () => {
     writeTableFixture(dir, dimDoc('dim_shop', 'shop_id'))
     writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }]))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const work = await core.listEnrichmentWork()
+    const { work } = await core.listEnrichmentWork()
     const item = work.find(w => w.gap.startsWith('dimension_refs'))
     expect(item).toBeDefined()
     const text = JSON.stringify([{ dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }], derivation: 'llm says so' }])
@@ -272,7 +291,7 @@ describe('apply: the four verdicts', () => {
     dir = newLayer()
     writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }]))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const work = await core.listEnrichmentWork()
+    const { work } = await core.listEnrichmentWork()
     const item = work.find(w => w.gap.startsWith('alt_labels'))
     const { recorder } = fakeRecorder()
     const res = await core.applyEnrichmentResults([{ work_id: item!.work_id, text: 'not json at all' }], recorder)
@@ -284,7 +303,7 @@ describe('apply: the four verdicts', () => {
     dir = newLayer()
     writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }], { pref_label: '订单宽表' }))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const work = await core.listEnrichmentWork()
+    const { work } = await core.listEnrichmentWork()
     const item = work.find(w => w.gap.startsWith('alt_labels'))
     expect(item).toBeDefined()
     // The "model" suggests exactly the table's own name and its pref_label — both
@@ -299,7 +318,7 @@ describe('apply: the four verdicts', () => {
     dir = newLayer()
     writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }]))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const work = await core.listEnrichmentWork()
+    const { work } = await core.listEnrichmentWork()
     const item = work.find(w => w.gap.startsWith('alt_labels'))
     const { recorder } = fakeRecorder()
     const res = await core.applyEnrichmentResults([{ work_id: item!.work_id, text: '["订单宽表", "pay order"]' }], recorder)
@@ -312,7 +331,7 @@ describe('apply: the four verdicts', () => {
     writeTableFixture(dir, dimDoc('dim_shop', 'shop_id'))
     writeEventFixture(dir, eventDoc('pay_success', { shop_id: { type: 'string', description: '店铺ID' } }))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const work = await core.listEnrichmentWork()
+    const { work } = await core.listEnrichmentWork()
     const relationItem = work.find(w => w.target === 'pay_success' && w.gap.startsWith('external_refs'))
     const { recorder } = fakeRecorder()
     const text = JSON.stringify([{ dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }], derivation: 'x' }])
@@ -329,7 +348,7 @@ describe('apply: batch semantics', () => {
     writeTableFixture(dir, dwsDoc('dws_a', [{ name: 'x' }]))
     writeTableFixture(dir, dwsDoc('dws_b', [{ name: 'x' }]))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const work = await core.listEnrichmentWork()
+    const { work } = await core.listEnrichmentWork()
     const itemA = work.find(w => w.target === 'dws_a' && w.gap.startsWith('alt_labels'))
     const itemB = work.find(w => w.target === 'dws_b' && w.gap.startsWith('alt_labels'))
     expect(itemA).toBeDefined()
@@ -357,7 +376,7 @@ describe('apply: batch semantics', () => {
     dir = newLayer()
     writeTableFixture(dir, dwsDoc('dws_a', [{ name: 'x' }], { pref_label: 'A表' }))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const work = await core.listEnrichmentWork()
+    const { work } = await core.listEnrichmentWork()
     const item = work.find(w => w.target === 'dws_a' && w.gap.startsWith('alt_labels'))
     const { recorder, batchRecordCalls } = fakeRecorder()
     const res = await core.applyEnrichmentResults(
@@ -378,7 +397,7 @@ describe('apply: batch semantics', () => {
     writeTableFixture(dir, dwsDoc('dws_a', [{ name: 'shop_id' }]))
     writeTableFixture(dir, dwsDoc('dws_b', [{ name: 'shop_id' }]))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const work = await core.listEnrichmentWork()
+    const { work } = await core.listEnrichmentWork()
     const relA = work.find(w => w.target === 'dws_a' && w.gap.startsWith('dimension_refs'))!
     const relB = work.find(w => w.target === 'dws_b' && w.gap.startsWith('dimension_refs'))!
     const altA = work.find(w => w.target === 'dws_a' && w.gap.startsWith('alt_labels'))!
@@ -403,7 +422,7 @@ describe('apply: batch semantics', () => {
     dir = newLayer()
     writeTableFixture(dir, dwsDoc('dws_a', [{ name: 'x' }]))
     const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const work = await core.listEnrichmentWork()
+    const { work } = await core.listEnrichmentWork()
     const item = work.find(w => w.target === 'dws_a' && w.gap.startsWith('alt_labels'))!
     const directWrites: Array<{ tool: string; payload: unknown }> = []
     const minimalRecorder: Tier2Recorder = {
@@ -417,5 +436,171 @@ describe('apply: batch semantics', () => {
     expect(res.results[0]?.verdict).toBe('applied')
     expect(directWrites).toHaveLength(1)
     expect(directWrites[0]?.tool).toBe('apply_enrichment')
+  })
+})
+
+// ── ADR-0007: dimension-filter door (unknown names, empty arrays) ────────────────
+
+describe('dimension-filter door (ADR-0007)', () => {
+  test('an unknown table name is rejected before any scan, listing every unknown name', async () => {
+    dir = newLayer()
+    writeTableFixture(dir, dwsDoc('dws_a', [{ name: 'x' }]))
+    const core = new SemanticGroundingCore({ semanticRoot: dir })
+    await expect(core.listEnrichmentWork({ tables: ['dws_a', 'typo_1', 'typo_2'] }))
+      .rejects.toThrowError(/typo_1, typo_2/)
+    // The rejection names the unknowns, never the corpus's full name list.
+    const err = await core.listEnrichmentWork({ tables: ['typo_1'] }).catch(e => e as unknown as { message: string; unknownTables: string[] })
+    expect(err.message).not.toContain('dws_a')
+    expect(err.unknownTables).toEqual(['typo_1'])
+  })
+
+  test('an unknown event name is rejected the same way, and both dimensions report together', async () => {
+    dir = newLayer()
+    writeTableFixture(dir, dwsDoc('dws_a', [{ name: 'x' }]))
+    writeEventFixture(dir, eventDoc('pay_success', { shop_id: { type: 'string', description: '' } }))
+    const core = new SemanticGroundingCore({ semanticRoot: dir })
+    const err = await core.listEnrichmentWork({ tables: ['nope_t'], events: ['nope_e1', 'nope_e2'] }).catch(
+      e => e as unknown as { message: string; unknownTables: string[]; unknownEvents: string[] },
+    )
+    expect(err.message).toContain('nope_t')
+    expect(err.message).toContain('nope_e1, nope_e2')
+    expect(err.unknownTables).toEqual(['nope_t'])
+    expect(err.unknownEvents).toEqual(['nope_e1', 'nope_e2'])
+  })
+
+  test('an empty array is rejected — omitting the key is the only "dimension not in this call"', async () => {
+    dir = newLayer()
+    writeTableFixture(dir, dwsDoc('dws_a', [{ name: 'x' }]))
+    const core = new SemanticGroundingCore({ semanticRoot: dir })
+    await expect(core.listEnrichmentWork({ tables: [] })).rejects.toThrowError(/empty dimension filter/)
+    await expect(core.listEnrichmentWork({ events: [] })).rejects.toThrowError(/empty dimension filter/)
+    // The discovery methods carry the same door.
+    await expect(core.discoverRelations({ tables: [] })).rejects.toThrowError(/empty dimension filter/)
+    await expect(core.discoverEventRelations({ events: ['nope'] })).rejects.toThrowError(/nope/)
+    await expect(core.discoverAltLabels({ tables: ['nope'] })).rejects.toThrowError(/nope/)
+    // Nothing was written by any rejected call.
+    expect(readTableRaw(dir, 'dws_a').alt_labels).toEqual([])
+  })
+})
+
+// ── ADR-0007: discoverAltLabels call-wide pair reading ───────────────────────────
+
+describe('discoverAltLabels: call-wide legs (ADR-0007)', () => {
+  test('tables named -> only the tables leg runs; events keep their empty alt_labels', async () => {
+    dir = newLayer()
+    // Descriptions crafted so the deterministic round finds exactly one label each.
+    writeTableFixture(dir, dwsDoc('dws_a', [{ name: 'x' }], { description: '宽表（A表）' }))
+    writeEventFixture(dir, eventDoc('pay_success', { shop_id: { type: 'string', description: '' } }, { description: '支付（支付成功）' }))
+    const core = new SemanticGroundingCore({ semanticRoot: dir })
+    const res = await core.discoverAltLabels({ tables: ['dws_a'] })
+    expect(res.enriched).toBe(1)
+    expect(readTableRaw(dir, 'dws_a').alt_labels).toEqual(['A表'])
+    // The events leg never ran — pay_success is untouched on disk.
+    const evRaw = yaml.load(readFileSync(join(dir, 'events', 'biz', 'pay_success.yaml'), 'utf-8')) as Record<string, unknown>
+    expect(evRaw.alt_labels).toEqual([])
+  })
+
+  test('events named -> the mirror; {} -> both legs', async () => {
+    dir = newLayer()
+    writeTableFixture(dir, dwsDoc('dws_a', [{ name: 'x' }], { description: '宽表（A表）' }))
+    writeEventFixture(dir, eventDoc('pay_success', { shop_id: { type: 'string', description: '' } }, { description: '支付（支付成功）' }))
+    const core = new SemanticGroundingCore({ semanticRoot: dir })
+
+    const evOnly = await core.discoverAltLabels({ events: ['pay_success'] })
+    expect(evOnly.enriched).toBe(1)
+    expect(readTableRaw(dir, 'dws_a').alt_labels).toEqual([])
+
+    const full = await core.discoverAltLabels({})
+    expect(full.enriched).toBe(1) // dws_a gets its label; pay_success already has its own
+    expect(readTableRaw(dir, 'dws_a').alt_labels).toEqual(['A表'])
+  })
+})
+
+// ── ADR-0008: index shape, cap, and the prompt half ──────────────────────────────
+
+describe('getEnrichmentPrompts (ADR-0008)', () => {
+  test('a fresh work_id rebuilds its prompt from the current corpus', async () => {
+    dir = newLayer()
+    writeTableFixture(dir, dimDoc('dim_shop', 'shop_id'))
+    writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }]))
+    const core = new SemanticGroundingCore({ semanticRoot: dir })
+    const { work } = await core.listEnrichmentWork()
+    const relationItem = work.find(w => w.target === 'dws_order' && w.gap.startsWith('dimension_refs'))!
+    const prompts = await core.getEnrichmentPrompts([relationItem.work_id])
+    expect(prompts).toHaveLength(1)
+    expect(prompts[0]).toMatchObject({ work_id: relationItem.work_id, target: 'dws_order', round: 'relation', verdict: 'fresh' })
+    expect(prompts[0]?.prompt).toContain('dws_order')
+    expect(prompts[0]?.prompt).toContain('dim_shop')
+  })
+
+  test('an event alt_labels work_id gets its own prompt shape', async () => {
+    dir = newLayer()
+    writeEventFixture(dir, eventDoc('pay_success', { shop_id: { type: 'string', description: '店铺ID' } }))
+    const core = new SemanticGroundingCore({ semanticRoot: dir })
+    const { work } = await core.listEnrichmentWork()
+    const item = work.find(w => w.target === 'pay_success' && w.gap.startsWith('alt_labels'))!
+    const prompts = await core.getEnrichmentPrompts([item.work_id])
+    expect(prompts[0]?.verdict).toBe('fresh')
+    expect(prompts[0]?.prompt).toContain('pay_success')
+  })
+
+  test('stale is reported at fetch time under the same conditions apply checks', async () => {
+    dir = newLayer()
+    writeTableFixture(dir, dwsDoc('dws_a', [{ name: 'x' }]))
+    writeTableFixture(dir, dwsDoc('dws_b', [{ name: 'x' }]))
+    const core = new SemanticGroundingCore({ semanticRoot: dir })
+    const { work } = await core.listEnrichmentWork()
+    const itemA = work.find(w => w.target === 'dws_a' && w.gap.startsWith('alt_labels'))!
+    const itemB = work.find(w => w.target === 'dws_b' && w.gap.startsWith('alt_labels'))!
+
+    // dws_a changes underneath (target-changed staleness) and dws_b is deleted
+    // (target-gone staleness) between listing and prompt fetch.
+    writeTableFixture(dir, dwsDoc('dws_a', [{ name: 'x' }], { description: 'edited after listing' }))
+    rmSync(join(dir, 'tables', 'dws_b.yaml'))
+
+    const prompts = await core.getEnrichmentPrompts([itemA.work_id, itemB.work_id, 'garbage'])
+    expect(prompts[0]).toMatchObject({ target: 'dws_a', verdict: 'stale_baseline' })
+    expect(prompts[0]?.prompt).toBeUndefined()
+    expect(prompts[1]).toMatchObject({ target: 'dws_b', verdict: 'stale_baseline' })
+    expect(prompts[2]).toMatchObject({ target: '(unknown)', verdict: 'stale_baseline' })
+  })
+
+  test('a gap filled since listing stays fresh — managed fields are not in the fingerprint', async () => {
+    dir = newLayer()
+    writeTableFixture(dir, dimDoc('dim_shop', 'shop_id'))
+    writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }]))
+    const core = new SemanticGroundingCore({ semanticRoot: dir })
+    const { work } = await core.listEnrichmentWork()
+    const relationItem = work.find(w => w.target === 'dws_order' && w.gap.startsWith('dimension_refs'))!
+    // The deterministic round fills the gap after listing: dimension_refs moves, but
+    // the fingerprint (which strips the managed fields) does not — the question still
+    // stands, and apply's merge is additive.
+    await core.discoverRelations({ tables: ['dws_order'] })
+    const prompts = await core.getEnrichmentPrompts([relationItem.work_id])
+    expect(prompts[0]?.verdict).toBe('fresh')
+  })
+})
+
+describe('work index cap (ADR-0008)', () => {
+  test('the index caps at 1000 rows and reports total/truncated honestly', async () => {
+    dir = newLayer()
+    // 601 tables + 601 events -> 1202 rows total (each definition carries exactly one
+    // gap here: alt_labels; no DIM inventory, so no relation gaps).
+    for (let i = 0; i < 601; i++) writeTableFixture(dir, dwsDoc(`dws_bulk_${String(i).padStart(4, '0')}`, [{ name: 'x' }]))
+    for (let i = 0; i < 601; i++) writeEventFixture(dir, eventDoc(`evt_bulk_${String(i).padStart(4, '0')}`, {}))
+    const core = new SemanticGroundingCore({ semanticRoot: dir })
+    const idx = await core.listEnrichmentWork({})
+    expect(idx.total).toBe(1202)
+    expect(idx.truncated).toBe(true)
+    expect(idx.work).toHaveLength(1000)
+    // Catalog order: the cap keeps the FIRST 1000 rows — all 601 tables plus the
+    // first 399 events (directory-sorted), never a re-ordered or sampled subset.
+    expect(idx.work[0]?.target).toBe('dws_bulk_0000')
+    expect(idx.work.filter(w => w.target.startsWith('dws_'))).toHaveLength(601)
+    expect(idx.work[999]?.target.startsWith('evt_')).toBe(true)
+    // Under the cap: no truncation, total === rows.
+    const small = await core.listEnrichmentWork({ events: ['evt_bulk_0000'] })
+    expect(small).toMatchObject({ total: 1, truncated: false })
+    expect(small.work).toHaveLength(1)
   })
 })

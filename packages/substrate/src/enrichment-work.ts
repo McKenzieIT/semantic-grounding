@@ -1,9 +1,11 @@
 /**
  * The LLM half of enrichment, from the connecting agent's side of the ask-answer loop
- * (ADR-0006) — `listEnrichmentWorkItems` (the question) and `applyOneEnrichmentResult` /
- * `applyEnrichmentResultsBatch` (the answer), wrapping the existing `buildLlmPrompt` /
- * `parseLlmRefs` / `mergeRefs` family (and its `alt_labels` mirror) around a
- * self-contained `work_id`. `SemanticGroundingCore.listEnrichmentWork` /
+ * (ADR-0006) — `listEnrichmentWorkItems` (the index of outstanding gaps, ADR-0008),
+ * `fetchEnrichmentPrompts` (the question a row stands for, rebuilt from the current
+ * corpus), and `applyOneEnrichmentResult` / `applyEnrichmentResultsBatch` (the
+ * answer), wrapping the existing `buildLlmPrompt` / `parseLlmRefs` / `mergeRefs`
+ * family (and its `alt_labels` mirror) around a self-contained `work_id`.
+ * `SemanticGroundingCore.listEnrichmentWork` / `.getEnrichmentPrompts` /
  * `.applyEnrichmentResults` (`src/index.ts`) are thin wrappers over this module's
  * functions — the same split as `enrichAllDwsTables` (`enrichment.ts`) and
  * `core.discoverRelations`.
@@ -80,6 +82,8 @@ import {
   mergeAltLabels,
   tableToAltLabelsTarget,
   eventToAltLabelsTarget,
+  assertKnownFilterNames,
+  type DimInventoryEntry,
 } from './enrichment.ts'
 
 // ── work_id: self-contained identity ────────────────────────────────────
@@ -203,7 +207,22 @@ export function peekWorkIdTarget(workId: string): string | undefined {
 
 // ── get_enrichment_work: list outstanding gaps ──────────────────────────
 
-/** One unit of LLM-answerable enrichment work (ADR-0006 ruling 4). */
+/**
+ * The listing's hard row cap (ADR-0008): a code constant, not configuration — tuning
+ * it is an ADR revision, not a config change. The fold it encodes: one index response
+ * must fit comfortably inside half a de-facto 200K-token window (~68 tokens per row ×
+ * 1000 ≈ 68K), while the corpus the flagship dogfood runs on (k11, 321 tables + 258
+ * events) already needs 579 rows — a 500-row cap would truncate that triage listing.
+ */
+export const ENRICHMENT_WORK_INDEX_CAP = 1000
+
+/**
+ * One index row of outstanding enrichment work (ADR-0008's index/prompt split): the
+ * identity and the question's *subject*, never the prompt itself. A row is ~68 tokens
+ * (the 64-char `work_id` is most of it) against ~8.3K tokens for the prompt it stands
+ * for — triage wants the whole distribution at that cheap size, answering wants a
+ * narrow batch at the expensive one, and the two scales no longer share one response.
+ */
 export interface EnrichmentWorkItem {
   /** Self-contained identity: target + round + the fingerprint at issuance time. */
   readonly work_id: string
@@ -211,85 +230,201 @@ export interface EnrichmentWorkItem {
   readonly target: string
   /** What is missing, and on which field — see this module's header on "gap". */
   readonly gap: string
-  /** The LLM prompt `buildLlmPrompt` / `buildEventLlmPrompt` / `buildAltLabelsPrompt`
-   * builds for this target today — the question half of the ask-answer loop. */
-  readonly prompt: string
+}
+
+/** The index-shaped listing result (ADR-0008): capped rows plus the size metadata. */
+export interface EnrichmentWorkIndex {
+  /** The first {@link ENRICHMENT_WORK_INDEX_CAP} rows, in catalog order (tables then events). */
+  readonly work: readonly EnrichmentWorkItem[]
+  /** The full row count matching the filter, before the cap was applied. */
+  readonly total: number
+  /** `true` exactly when `total` exceeded the cap and rows were dropped. */
+  readonly truncated: boolean
 }
 
 /**
- * List outstanding enrichment work across the layer (or a `tables`/`events`-filtered
- * subset): definitions whose relation or alt_labels array is still empty on disk.
+ * List outstanding enrichment work across the layer as an index (ADR-0008): rows
+ * `{work_id, target, gap}` for definitions whose relation or alt_labels array is still
+ * empty on disk. The prompts those rows stand for are fetched separately, in batches,
+ * via {@link fetchEnrichmentPrompts}.
+ *
+ * Dimension-filter semantics are call-wide (ADR-0007): naming tables constrains the
+ * whole call and leaves the events dimension OUT of it (and vice versa); `{}` (or no
+ * keys) is the one full-corpus shape. Unknown or empty-array filters are rejected at
+ * the door via {@link assertKnownFilterNames} — before any scan.
  * @param semanticLayer - the semantic-layer directory path.
- * @param opts - optional `tables` / `events` name filters (omit or empty for the whole corpus).
- * @returns the outstanding work items — table relation gaps, table alt_labels gaps,
- *   event relation gaps, event alt_labels gaps, in that order.
+ * @param opts - the `{tables?, events?}` dimension filter (see ADR-0007).
+ * @returns the capped index plus `total`/`truncated`.
+ * @throws UnknownFilterNamesError when a named dimension filter is empty or names
+ *   definitions absent from the corpus.
  */
 export function listEnrichmentWorkItems(
   semanticLayer: string,
   opts: { readonly tables?: readonly string[]; readonly events?: readonly string[] } = {},
-): EnrichmentWorkItem[] {
-  const tableFilter = opts.tables !== undefined && opts.tables.length > 0 ? new Set(opts.tables) : undefined
-  const eventFilter = opts.events !== undefined && opts.events.length > 0 ? new Set(opts.events) : undefined
+): EnrichmentWorkIndex {
+  assertKnownFilterNames(semanticLayer, opts)
+  // ADR-0007's call-wide pair reading: an omitted dimension is OUT of the call unless
+  // both are omitted, in which case the call is the full corpus (`{}` = everything,
+  // ADR-0006's "run the full backfill first" escape hatch).
+  const bothOmitted = opts.tables === undefined && opts.events === undefined
+  const tablesOn = bothOmitted || opts.tables !== undefined
+  const eventsOn = bothOmitted || opts.events !== undefined
+  const tableFilter = opts.tables !== undefined ? new Set(opts.tables) : undefined
+  const eventFilter = opts.events !== undefined ? new Set(opts.events) : undefined
   // Built once: both the relation gap test (is there anything to even ask about?) and
   // every relation prompt need the same inventory `buildDimInventory` scans for.
   const dimInventory = buildDimInventory(semanticLayer)
   const items: EnrichmentWorkItem[] = []
 
-  for (const t of loadTables(semanticLayer)) {
-    if (tableFilter !== undefined && !tableFilter.has(t.table_name)) continue
-    const parsed = TableDefinitionSchema.safeParse(t.raw)
-    if (!parsed.success) continue // lenient scan, mirrors enrichAllDwsTables
-    const def = parsed.data
-    const baseline = fingerprint(t.raw)
+  if (tablesOn) {
+    for (const t of loadTables(semanticLayer)) {
+      if (tableFilter !== undefined && !tableFilter.has(t.table_name)) continue
+      const parsed = TableDefinitionSchema.safeParse(t.raw)
+      if (!parsed.success) continue // lenient scan, mirrors enrichAllDwsTables
+      const def = parsed.data
+      const baseline = fingerprint(t.raw)
 
-    // Relation gap: DIM tables have no dimension_refs field to speak of (enrichAllDwsTables
-    // skips them for the same reason), and with no DIM inventory at all there is nothing
-    // any round — deterministic or LLM — could find (mirrors enrichAllDwsTables's own
-    // "no DIM tables in scope" short-circuit).
-    if (def.kind !== 'dim' && dimInventory.length > 0 && def.dimension_refs.length === 0) {
-      items.push({
-        work_id: encodeWorkId({ k: 'table', r: 'relation', t: def.table_name, h: baseline }),
-        target: def.table_name,
-        gap: 'dimension_refs is empty: no DIM joins known for this DWS table',
-        prompt: buildLlmPrompt(def, dimInventory),
-      })
-    }
-    if (def.alt_labels.length === 0) {
-      items.push({
-        work_id: encodeWorkId({ k: 'table', r: 'alt_labels', t: def.table_name, h: baseline }),
-        target: def.table_name,
-        gap: 'alt_labels is empty: no alternate search labels known for this table',
-        prompt: buildAltLabelsPrompt(tableToAltLabelsTarget(def)),
-      })
-    }
-  }
-
-  for (const e of loadEvents(semanticLayer)) {
-    if (eventFilter !== undefined && !eventFilter.has(e.name)) continue
-    const parsed = EventDefinitionSchema.safeParse(e.raw)
-    if (!parsed.success) continue
-    const def = parsed.data
-    const baseline = fingerprint(e.raw)
-
-    if (dimInventory.length > 0 && def.external_refs.length === 0) {
-      items.push({
-        work_id: encodeWorkId({ k: 'event', r: 'relation', t: def.name, h: baseline }),
-        target: def.name,
-        gap: 'external_refs is empty: no DIM joins known for this event',
-        prompt: buildEventLlmPrompt(def, dimInventory),
-      })
-    }
-    if (def.alt_labels.length === 0) {
-      items.push({
-        work_id: encodeWorkId({ k: 'event', r: 'alt_labels', t: def.name, h: baseline }),
-        target: def.name,
-        gap: 'alt_labels is empty: no alternate search labels known for this event',
-        prompt: buildAltLabelsPrompt(eventToAltLabelsTarget(def)),
-      })
+      // Relation gap: DIM tables have no dimension_refs field to speak of (enrichAllDwsTables
+      // skips them for the same reason), and with no DIM inventory at all there is nothing
+      // any round — deterministic or LLM — could find (mirrors enrichAllDwsTables's own
+      // "no DIM tables in scope" short-circuit).
+      if (def.kind !== 'dim' && dimInventory.length > 0 && def.dimension_refs.length === 0) {
+        items.push({
+          work_id: encodeWorkId({ k: 'table', r: 'relation', t: def.table_name, h: baseline }),
+          target: def.table_name,
+          gap: 'dimension_refs is empty: no DIM joins known for this DWS table',
+        })
+      }
+      if (def.alt_labels.length === 0) {
+        items.push({
+          work_id: encodeWorkId({ k: 'table', r: 'alt_labels', t: def.table_name, h: baseline }),
+          target: def.table_name,
+          gap: 'alt_labels is empty: no alternate search labels known for this table',
+        })
+      }
     }
   }
 
-  return items
+  if (eventsOn) {
+    for (const e of loadEvents(semanticLayer)) {
+      if (eventFilter !== undefined && !eventFilter.has(e.name)) continue
+      const parsed = EventDefinitionSchema.safeParse(e.raw)
+      if (!parsed.success) continue
+      const def = parsed.data
+      const baseline = fingerprint(e.raw)
+
+      if (dimInventory.length > 0 && def.external_refs.length === 0) {
+        items.push({
+          work_id: encodeWorkId({ k: 'event', r: 'relation', t: def.name, h: baseline }),
+          target: def.name,
+          gap: 'external_refs is empty: no DIM joins known for this event',
+        })
+      }
+      if (def.alt_labels.length === 0) {
+        items.push({
+          work_id: encodeWorkId({ k: 'event', r: 'alt_labels', t: def.name, h: baseline }),
+          target: def.name,
+          gap: 'alt_labels is empty: no alternate search labels known for this event',
+        })
+      }
+    }
+  }
+
+  return {
+    work: items.length > ENRICHMENT_WORK_INDEX_CAP ? items.slice(0, ENRICHMENT_WORK_INDEX_CAP) : items,
+    total: items.length,
+    truncated: items.length > ENRICHMENT_WORK_INDEX_CAP,
+  }
+}
+
+// ── get_enrichment_prompts: fetch the questions a row stands for ────────
+
+/** One work_id's prompt outcome — lenient per item, mirroring the apply family below. */
+export interface EnrichmentPromptItem {
+  /** Echoes the input `work_id`, so the agent can match outcomes back to its own requests. */
+  readonly work_id: string
+  /** The target this work_id named, when decodable; `'(unknown)'` when it was not. */
+  readonly target: string
+  /** The round this work_id named, when decodable. */
+  readonly round?: WorkRound
+  /** `fresh` rebuilt the prompt; `stale_baseline` did not — same condition set, and the
+   * same re-fetch-and-retry remedy, as {@link applyOneEnrichmentResult}'s verdict. */
+  readonly verdict: 'fresh' | 'stale_baseline'
+  /** The rebuilt prompt — present exactly when `verdict` is `fresh`. */
+  readonly prompt?: string
+  /** One line explaining the verdict. */
+  readonly detail: string
+}
+
+/**
+ * Rebuild the prompts for a batch of work_ids against the **current** corpus
+ * (ADR-0008's prompt half of the index/prompt split — the listing stores only the
+ * fingerprint, so the question is always re-derived, never cached).
+ *
+ * Staleness is reported here, at fetch time, under the same conditions apply will
+ * later check (undecodable work_id, target gone, fingerprint mismatch, definition no
+ * longer schema-valid): a work_id failing any of them is guaranteed to verdict
+ * `stale_baseline` at apply, so answering its prompt is wasted work — reporting early
+ * lets the agent skip straight to re-fetching the work. A gap that was *filled* since
+ * listing (filling `dimension_refs`/`external_refs`/`alt_labels` does not move the
+ * fingerprint — they are stripped from it, see {@link fingerprint}) stays `fresh` on
+ * purpose: the question "what joins does this table have?" is not invalidated by
+ * having some answers already, and apply's merge is additive.
+ *
+ * Lenient per item like the apply family: a bad work_id is one `stale_baseline`
+ * outcome, never a thrown error, and never a poison pill for its batch siblings.
+ * @param semanticLayer - the semantic-layer directory path.
+ * @param workIds - the work_ids whose prompts to rebuild (the MCP tool caps a batch
+ *   at 10; this function processes whatever it is given — the cap is wire governance,
+ *   single-sourced in the tool's zod schema).
+ * @returns one outcome per input work_id, in input order.
+ */
+export function fetchEnrichmentPrompts(
+  semanticLayer: string,
+  workIds: readonly string[],
+): EnrichmentPromptItem[] {
+  // The DIM inventory is needed only by `relation` items; built lazily so an
+  // alt_labels-only batch never pays the full-tables scan.
+  let inventory: DimInventoryEntry[] | undefined
+  const dimInventory = (): readonly DimInventoryEntry[] => {
+    inventory ??= buildDimInventory(semanticLayer)
+    return inventory
+  }
+  return workIds.map(workId => {
+    const payload = decodeWorkId(workId)
+    if (payload === undefined) {
+      return {
+        work_id: workId,
+        target: '(unknown)',
+        verdict: 'stale_baseline',
+        detail: 'work_id could not be decoded (malformed, a schema version this server does not know, or not issued by this server) — call get_enrichment_work again and retry with a fresh work_id',
+      } as const
+    }
+    const { k: kind, r: round, t: target, h: baseline } = payload
+    const base = { work_id: workId, target, round } as const
+
+    if (kind === 'table') {
+      const row = loadTables(semanticLayer).find(x => x.table_name === target)
+      if (row === undefined) return { ...base, verdict: 'stale_baseline', detail: `table ${target} no longer exists in the corpus` }
+      if (fingerprint(row.raw) !== baseline) return { ...base, verdict: 'stale_baseline', detail: staleSinceIssuanceDetail(target) }
+      const parsed = TableDefinitionSchema.safeParse(row.raw)
+      if (!parsed.success) return { ...base, verdict: 'stale_baseline', detail: `${target} no longer validates against the table schema` }
+      const prompt = round === 'relation'
+        ? buildLlmPrompt(parsed.data, dimInventory())
+        : buildAltLabelsPrompt(tableToAltLabelsTarget(parsed.data))
+      return { ...base, verdict: 'fresh', prompt, detail: `prompt rebuilt from the current corpus for the ${round} round` }
+    }
+
+    const row = loadEvents(semanticLayer).find(x => x.name === target)
+    if (row === undefined) return { ...base, verdict: 'stale_baseline', detail: `event ${target} no longer exists in the corpus` }
+    if (fingerprint(row.raw) !== baseline) return { ...base, verdict: 'stale_baseline', detail: staleSinceIssuanceDetail(target) }
+    const parsed = EventDefinitionSchema.safeParse(row.raw)
+    if (!parsed.success) return { ...base, verdict: 'stale_baseline', detail: `${target} no longer validates against the event schema` }
+    const prompt = round === 'relation'
+      ? buildEventLlmPrompt(parsed.data, dimInventory())
+      : buildAltLabelsPrompt(eventToAltLabelsTarget(parsed.data))
+    return { ...base, verdict: 'fresh', prompt, detail: `prompt rebuilt from the current corpus for the ${round} round` }
+  })
 }
 
 // ── apply_enrichment: in-lock re-verification, lenient merge, write ─────

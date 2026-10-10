@@ -90,16 +90,21 @@ import { type CorpusVariant, type EventCorpusItem } from './corpus.ts'
 import {
   enrichAllDwsTables as enrichAllDwsTablesFromLayer,
   enrichAllEvents as enrichAllEventsFromLayer,
-  discoverAltLabels as discoverAltLabelsFromLayer,
+  enrichAllEventsAltLabels as enrichAllEventsAltLabelsFromLayer,
   enrichAllTablesAltLabels as enrichAllTablesAltLabelsFromLayer,
+  assertKnownFilterNames,
   type LlmCall,
 } from './enrichment.ts'
 // ADR-0006: the LLM half of enrichment's agent-driven ask-answer loop
-// (listEnrichmentWork / applyEnrichmentResults). The pure prompt-building,
-// work_id encode/decode, and lenient-merge logic stays in enrichment-work.ts
-// (internal, off the barrel — ADR-0002/0003); these two class methods are thin
-// wrappers, same split as discoverRelations wrapping enrichAllDwsTablesFromLayer.
-import { listEnrichmentWorkItems, applyEnrichmentResultsBatch, peekWorkIdTarget } from './enrichment-work.ts'
+// (listEnrichmentWork / getEnrichmentPrompts / applyEnrichmentResults). The pure
+// prompt-building, work_id encode/decode, and lenient-merge logic stays in
+// enrichment-work.ts (internal, off the barrel — ADR-0002/0003); these class
+// methods are thin wrappers, same split as discoverRelations wrapping
+// enrichAllDwsTablesFromLayer. (The free `discoverAltLabels` combined wrapper is no
+// longer called from here: ADR-0007's call-wide pair reading needs per-leg calls so
+// an omitted dimension can be OUT of the call, which the combined wrapper's
+// omit=everything contract cannot express — its own contract is unchanged.)
+import { listEnrichmentWorkItems, fetchEnrichmentPrompts, applyEnrichmentResultsBatch, peekWorkIdTarget } from './enrichment-work.ts'
 import { DataSourceRegistry, type CorpusItem, type GraphNodeProjection } from './registry.ts'
 import { eventKindPlugin } from './kinds/event-kind.ts'
 import { tableKindPlugin } from './kinds/table-kind.ts'
@@ -846,12 +851,23 @@ export class SemanticGroundingCore {
    * this explicit enrichment round becomes an audited write (one commit per
    * table until a recorder's `beginBatch` is wired through — #16); omitted,
    * unchanged unaudited behavior.
+   *
+   * ADR-0007's door: a present `tables` filter must be non-empty and name only
+   * tables that exist, checked before any scan or write (the free function this
+   * wraps keeps its own omit/empty-means-everything contract for the on-write hook
+   * and in-process hosts).
    * @param opts - optional `tables` filter + `preserveCurated` toggle (default true) + optional `tier2`.
    * @returns `enriched` (DWS gaining >=1 ref) + `written` (DWS updated) + per-table `errors`.
+   * @throws UnknownFilterNamesError when `tables` is empty or names tables absent
+   *   from the corpus.
    */
   async discoverRelations(
     opts: { readonly tables?: readonly string[]; readonly preserveCurated?: boolean; readonly tier2?: Tier2Opts } = {},
   ): Promise<{ enriched: number; written: number; errors: string[]; note?: string }> {
+    // ADR-0007's door: a present `tables` filter must name at least one existing table,
+    // rejected before any scan/write runs (the MCP handler only calls this method with
+    // the tables dimension on — see `tools/enrichment.ts`'s gating).
+    if (opts.tables !== undefined) assertKnownFilterNames(this.semanticRoot, { tables: opts.tables })
     // CL-18 Phase 2: forward the partition-column exclude set so ds/pt/dt
     // partition-column PK matches do not generate noise JOIN relations.
     // GA-GT3-5b: forward preserveCurated (default true = origin-aware replace;
@@ -888,12 +904,20 @@ export class SemanticGroundingCore {
    *
    * `tier2` (#18): optional Tier-2 options forwarded to `enrichAllEvents`,
    * parallel to `discoverRelations`'s `tier2`.
+   *
+   * ADR-0007's door, parallel to `discoverRelations`'s: a present `events` filter
+   * must be non-empty and name only events that exist, checked before any scan.
    * @param opts - optional `events` filter + `preserveCurated` toggle (default true) + optional `tier2`.
    * @returns `enriched` (events gaining >=1 ref) + `written` (events updated) + per-event `errors`.
+   * @throws UnknownFilterNamesError when `events` is empty or names events absent
+   *   from the corpus.
    */
   async discoverEventRelations(
     opts: { readonly events?: readonly string[]; readonly preserveCurated?: boolean; readonly tier2?: Tier2Opts } = {},
   ): Promise<{ enriched: number; written: number; errors: string[]; note?: string }> {
+    // ADR-0007's door, parallel to discoverRelations's: a present `events` filter must
+    // name at least one existing event, rejected before any scan/write.
+    if (opts.events !== undefined) assertKnownFilterNames(this.semanticRoot, { events: opts.events })
     // GA-GT3-5b: forward preserveCurated (default true = origin-aware replace;
     // false = raw full-replace escape-hatch; parallel to discoverRelations).
     return enrichAllEventsFromLayer(this.semanticRoot, this.llmCall, opts.events, false, undefined, opts.preserveCurated ?? true, opts.tier2)
@@ -905,38 +929,113 @@ export class SemanticGroundingCore {
    * domains + optional LLM semantic suggestions. Merges with existing labels
    * (never removes curated aliases).
    *
-   * `tier2` (#18): optional Tier-2 options forwarded to `discoverAltLabels`
-   * (the substrate function), which passes it on to both the table and event
-   * alt_labels write-back rounds.
-   * @param opts - optional filters: `tables` (table_names) and/or `events` (event names); optional `tier2`.
-   * @returns combined `enriched` + `written` + `errors` across tables and events.
+   * ADR-0007 (call-wide dimension filter): naming `tables` puts ONLY the tables leg in
+   * this call (events are not scanned), naming `events` the mirror, and omitting both
+   * is the full corpus — the same semantics `run_enrichment` / `get_enrichment_work`
+   * expose on the wire. A named dimension must be non-empty and name only existing
+   * definitions, checked at the door before any scan.
+   *
+   * `tier2` (#18): optional Tier-2 options forwarded to both leg functions.
+   * @param opts - optional dimension filters: `tables` (table_names) and/or `events`
+   *   (event names), read call-wide; optional `tier2`.
+   * @returns combined `enriched` + `written` + `errors` across the legs that ran.
+   * @throws UnknownFilterNamesError when a named dimension filter is empty or names
+   *   definitions absent from the corpus.
    */
   async discoverAltLabels(
     opts: { readonly tables?: readonly string[]; readonly events?: readonly string[]; readonly tier2?: Tier2Opts } = {},
   ): Promise<{ enriched: number; written: number; errors: string[] }> {
-    return discoverAltLabelsFromLayer(this.semanticRoot, this.llmCall, opts.tables, opts.events, opts.tier2)
+    // ADR-0007's door for whichever dimensions the call named.
+    assertKnownFilterNames(this.semanticRoot, {
+      ...opts.tables !== undefined ? { tables: opts.tables } : {},
+      ...opts.events !== undefined ? { events: opts.events } : {},
+    })
+    // ADR-0007's call-wide pair reading, on the two per-leg free functions rather than
+    // the combined `discoverAltLabels` wrapper: an omitted dimension is OUT of the call
+    // unless both are omitted, in which case the call is the full corpus. The free
+    // functions' own omit/empty-means-everything contracts are untouched (the on-write
+    // hook and `{}` full-backfill callers keep relying on them) — this method is where
+    // the narrower Core-layer semantics live.
+    const bothOmitted = opts.tables === undefined && opts.events === undefined
+    const tableRes = bothOmitted || opts.tables !== undefined
+      ? await enrichAllTablesAltLabelsFromLayer(this.semanticRoot, this.llmCall, opts.tables, opts.tier2)
+      : { enriched: 0, written: 0, errors: [] as string[] }
+    const eventRes = bothOmitted || opts.events !== undefined
+      ? await enrichAllEventsAltLabelsFromLayer(this.semanticRoot, this.llmCall, opts.events, opts.tier2)
+      : { enriched: 0, written: 0, errors: [] as string[] }
+    return {
+      enriched: tableRes.enriched + eventRes.enriched,
+      written: tableRes.written + eventRes.written,
+      errors: [...tableRes.errors, ...eventRes.errors],
+    }
   }
 
   /**
-   * ADR-0006 ruling 3: list outstanding enrichment work — definitions whose relation
-   * or alt_labels array is still empty on disk, each offered as a self-contained work
-   * item `{work_id, target, gap, prompt}` an agent can answer with its own model and
-   * feed back to {@link applyEnrichmentResults}. Wraps `listEnrichmentWorkItems`
-   * (`enrichment-work.ts`); the prompt-building and work_id-encoding logic stays
-   * there, parallel to how `discoverRelations` wraps `enrichAllDwsTables`.
+   * ADR-0006 ruling 3 (index shape revised by ADR-0008): list outstanding enrichment
+   * work — definitions whose relation or alt_labels array is still empty on disk — as
+   * an **index** of `{work_id, target, gap}` rows, capped at 1000 with `total` /
+   * `truncated` alongside. The prompt a row stands for is NOT in the row: fetch it in
+   * batches via {@link getEnrichmentPrompts}, then answer via
+   * {@link applyEnrichmentResults}. Wraps `listEnrichmentWorkItems`
+   * (`enrichment-work.ts`); the work_id-encoding logic stays there, parallel to how
+   * `discoverRelations` wraps `enrichAllDwsTables`.
+   *
+   * ADR-0007 (call-wide dimension filter): naming `tables` lists ONLY those tables'
+   * gaps (events are out of the call), naming `events` the mirror, omitting both lists
+   * the whole corpus. A named dimension must be non-empty and name only existing
+   * definitions, checked at the door before any scan.
    *
    * A read, not a write: unlike this method's `discover*` siblings, there is no
    * `tier2` parameter here at all, because {@link applyEnrichmentResults} — not this
    * method — is where ADR-0006 ruling 4's commit happens. `get_enrichment_work` (the
    * MCP tool compiling onto this method) is correspondingly a no-commit read tool.
-   * @param opts - optional `tables` / `events` name filters (omit or empty for the whole corpus).
-   * @returns the outstanding work items (table relation gaps, table alt_labels gaps,
-   *   event relation gaps, event alt_labels gaps, in that order).
+   * @param opts - the `{tables?, events?}` dimension filter, read call-wide.
+   * @returns `{work, total, truncated}` — the capped index rows plus the size metadata.
+   * @throws UnknownFilterNamesError when a named dimension filter is empty or names
+   *   definitions absent from the corpus.
    */
   async listEnrichmentWork(
     opts: { readonly tables?: readonly string[]; readonly events?: readonly string[] } = {},
-  ): Promise<Array<{ readonly work_id: string; readonly target: string; readonly gap: string; readonly prompt: string }>> {
+  ): Promise<{
+    readonly work: ReadonlyArray<{ readonly work_id: string; readonly target: string; readonly gap: string }>
+    readonly total: number
+    readonly truncated: boolean
+  }> {
     return listEnrichmentWorkItems(this.semanticRoot, opts)
+  }
+
+  /**
+   * ADR-0008's prompt half of the index/prompt split: rebuild, against the **current**
+   * corpus, the prompts a batch of work_ids stand for. The listing stores only the
+   * target's fingerprint, so the question is always re-derived — never a cached string
+   * that could predate corpus changes.
+   *
+   * Lenient per item, mirroring {@link applyEnrichmentResults}'s verdict family: an
+   * undecodable work_id, a target that no longer exists, or a fingerprint mismatch
+   * (the target changed since the work was listed) verdicts `stale_baseline` for that
+   * item alone — with the same re-fetch-and-retry remedy apply would give — and never
+   * poisons its batch siblings. Reporting staleness at fetch time is deliberate: an
+   * item failing any of those conditions is guaranteed to verdict `stale_baseline` at
+   * apply too, so answering its prompt is wasted work.
+   *
+   * A read, not a write: no `tier2`, no commit — `get_enrichment_prompts` (the MCP
+   * tool compiling onto this method) caps a batch at 10 work_ids at its zod schema;
+   * this method itself processes whatever it is given.
+   * @param workIds - the work_ids whose prompts to fetch (in input order).
+   * @returns one `{work_id, target, round?, verdict, prompt?, detail}` outcome per
+   *   input, `prompt` present exactly when `verdict` is `'fresh'`.
+   */
+  async getEnrichmentPrompts(
+    workIds: ReadonlyArray<string>,
+  ): Promise<ReadonlyArray<{
+    readonly work_id: string
+    readonly target: string
+    readonly round?: 'relation' | 'alt_labels'
+    readonly verdict: 'fresh' | 'stale_baseline'
+    readonly prompt?: string
+    readonly detail: string
+  }>> {
+    return fetchEnrichmentPrompts(this.semanticRoot, workIds)
   }
 
   /**
