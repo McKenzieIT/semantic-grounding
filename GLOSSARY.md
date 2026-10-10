@@ -335,18 +335,53 @@ commit failure throws by construction. A deliberately fail-silent recorder (dsh'
 `ctx.audit`) remains a visible host choice — the substrate cannot force a recorder to
 be honest, only make honesty the contract.
 
+### dimension filter
+
+The `tables`/`events` parameter pair `get_enrichment_work` and `run_enrichment` accept
+(enforced identically by the four Core methods beneath them —
+`discoverRelations` / `discoverEventRelations` / `discoverAltLabels` /
+`listEnrichmentWork`). Naming either array constrains the **whole call** to that
+dimension; the other, left unnamed, is **out of the call** — not swept at all. Naming
+neither (`{}`) is the one full-corpus shape, carrying forward
+[enrichment](#enrichment)'s "run a full sweep first" guidance (ADR-0006). An empty
+array is rejected at the door (zod `min(1)`): the only way to say "this dimension is
+not in this call" is to omit the key — an empty array previously fell through to a
+`length > 0` check one layer down and meant the opposite (full sweep), which is
+exactly the silent-full-sweep ambiguity that
+[#25](https://github.com/McKenzieIT/semantic-grounding/issues/25) surfaced. Naming an
+unknown table/event name is also rejected at the door, before any scan — the error
+lists every unknown name across both dimensions, never the corpus's full name list
+(ADR-0007).
+
+Distinct from [scope](#scope): scope selects which definitions and relations an
+entire core instance can see, wired once at the runtime level; a dimension filter
+narrows a *single call*'s sweep within whatever scope is already wired, and carries
+no state between calls. The two names were chosen apart deliberately so a filter is
+never mistaken for a second, call-level scope mechanism.
+
 ### enrichment work
 
 A unit of enrichment the substrate could not complete on its own: a definition with
 a gap that survived the deterministic round (missing `alt_labels` / `dimension_refs`),
-offered for completion as a self-contained work item — target, gap kind, prompt, and
-the content fingerprint of the target at issue time. The LLM half of enrichment made
+offered for completion as a self-contained unit. The LLM half of enrichment made
 exchangeable: under the [MCP management surface](#write-tier) the connecting agent
-pulls work items, supplies completions with its own model, and returns them for an
-audited merge (ADR-0006); an in-process host supplies the same completions through
-the injected callback instead. The fingerprint makes "the target changed since this
-work was issued" detectable at apply time — a stale item is reported, never blindly
-merged.
+lists outstanding work, fetches completions with its own model, and returns them for
+an audited merge (ADR-0006); an in-process host supplies the same completions through
+the injected callback instead.
+
+The listing and the question text are two different sizes of the same fact, and
+ADR-0008 splits them into two tools rather than one. `get_enrichment_work` (scopable
+by a [dimension filter](#dimension-filter)) returns an **index** row per item —
+`work_id`, `target`, `gap`, nothing else — cheap enough (~70 tokens) to list a whole
+corpus's outstanding work in one call (capped at 1000 rows, with `total`/`truncated`
+reported honestly rather than silently dropping the tail).
+`get_enrichment_prompts(work_ids)` takes a small batch (≤10) of index rows an agent
+has triaged and rebuilds the actual prompt text for each against the **current**
+corpus. `work_id` embeds only a content fingerprint, never the prompt itself, so this
+fetch — like apply — can report a target as `stale_baseline` if it changed since
+listing. The fingerprint is what makes "the target changed since this work was
+issued" detectable at both fetch and apply time — a stale item is reported, never
+blindly answered against or merged into.
 
 ### enrichment health
 

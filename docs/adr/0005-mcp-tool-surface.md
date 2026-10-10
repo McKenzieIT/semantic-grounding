@@ -101,3 +101,23 @@ clientCapabilities）。
 transport 连接**之前**，表现为进程退出码（`64` EX_USAGE / `78` EX_CONFIG），永不上线；所以
 `config.ts` 的 `ConfigError` 故意**不**继承 `SgApplicationError`（那个基类的存在理由就是携带上线
 的码值）。分段表保持 #19 / #20 / #21 三段不变。
+
+## Update 2026-10-10 — #29 勘误：`structuredContent`/`outputSchema` 在 SDK v2.3.1 真实存在
+
+落 [#31](https://github.com/McKenzieIT/semantic-grounding/issues/31)（map #27 执行票）时，研究票
+[#29](https://github.com/McKenzieIT/semantic-grounding/issues/29)（喂 #30 的尺寸治理裁决）对 SDK
+v2.3.1 dist 源码做了针对性探针，产出一条与此前操作性前提相抵触的实测事实。**不是新裁决，是前提
+证伪**——与上一条 2026-10-09 Update 同一性质，记在这里是因为任何想用 `structuredContent`/
+`outputSchema` 作元数据旁路的未来票都会先读本 ADR 的既往记录。
+
+**`structuredContent` / `outputSchema` 在本 SDK era 真实存在且接线。** 本 ADR 与 ADR-0006 此前
+对错误通道、响应契约的讨论（包括上一条 2026-10-09 Update 第 1 条对 `registerTool` 处理器输出的
+分析）只枚举了 `content`/`isError` 两个字段，隐含了「`CallToolResult` 没有其他可用字段」的操作
+性前提——这条前提是错的。实测（SDK v2.3.1 dist 源码一手）：SEP-2106 §4.3 的 text-fallback 条款、
+era codec `projectCallToolResult`、`ToolSchema.outputSchema` 三处均确认该通道存在并接线。
+
+**不改变裁决 8（响应契约统一 `{commit, changed, enrichment_health?}`，走 content JSON）**，也不
+改变 ADR-0008（#31 新增，enrichment work 响应尺寸治理）裁决 2 的「元数据走 content JSON 顶层」。
+两处裁决拒绝旁路通道的理由从来不是「通道不存在」，而是宿主消费链路未经实测、ADR-0006 的宿主中立
+约束只依赖 `tools/call` 的最弱 client 形状——通道事实的更正不影响这些理由的有效性。本仓当前
+`toolSuccess` 只发 `content` 文本，行为不受本勘误影响。
