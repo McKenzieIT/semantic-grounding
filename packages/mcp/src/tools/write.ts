@@ -2,14 +2,17 @@
  * ADR-0005's two definition-level write tools: `create_definition` and
  * `update_definition`.
  *
- * Both are Tier-2, both drive `GitTier2Recorder.runAudited` (never call a substrate
- * write function directly — the lock has to wrap the call, and a contextless write is
- * refused, per `git/recorder.ts`'s module doc). `create_definition` compiles to the
- * raw-edit primitives `writeTable` / `writeEventYaml` with a recorder passed on every
- * call (ADR-0004 ruling 2, ADR-0005 ruling 5 — the recorder is mandatory, not optional);
- * `update_definition` compiles to `core.updateTableMeta` / `core.updateEventMeta`, which
- * is what gives it the on-write enrichment hook `create_definition` deliberately does
- * not get (see this file's `create_definition` section).
+ * Both are Tier-2, both drive the audit seam through `auditedWrite`
+ * (`tools/audited.ts` wraps `GitTier2Recorder.runAudited` — never call a
+ * substrate write function directly: the lock has to wrap the call, and a
+ * contextless write is refused, per `git/recorder.ts`'s module doc).
+ * `create_definition` compiles to the raw-edit primitives `writeTable` /
+ * `writeEventYaml` with a recorder passed on every call (ADR-0004 ruling 2,
+ * ADR-0005 ruling 5 — the recorder is mandatory, not optional);
+ * `update_definition` compiles to `core.updateTableMeta` / `core.updateEventMeta`
+ * via `applyFieldUpdate`, which is what gives it the on-write enrichment hook
+ * `create_definition` deliberately does not get (see this file's
+ * `create_definition` section).
  *
  * @module tools/write
  */
@@ -18,6 +21,7 @@ import { EventDefinitionSchema, TableDefinitionSchema, dumpYaml, writeEventYaml,
 import { z } from 'zod'
 import { DefinitionAlreadyExistsError, toToolErrorResult } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
+import { applyFieldUpdate, auditedWrite, enrichmentHealthAfter, toolSuccess } from './audited.ts'
 import {
   CREATE_COMMON_FIELDS,
   EVENT_ARRAY_REF_REDIRECT,
@@ -27,7 +31,6 @@ import {
   UPDATE_COMMON_FIELDS,
   assertNoRedirectedFields,
   assertUpdateOk,
-  clientNameFromEnvelope,
 } from './shared.ts'
 
 /** The two definition-level write tool names. */
@@ -63,7 +66,6 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
     },
     async (input, ctx: ServerContext) => {
       try {
-        const clientName = clientNameFromEnvelope(ctx)
         const root = deps.core.resolveScopeRoot()
 
         if (input.kind === 'table') {
@@ -71,33 +73,23 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
           if (deps.core.loadTableDefinition(name) !== null) {
             throw new DefinitionAlreadyExistsError(`table "${name}" already exists — use update_definition to change it`, { kind: 'table', name })
           }
-          const res = await deps.recorder.runAudited(
-            {
-              tool: 'create_definition',
-              target: name,
-              summary: input.summary,
-              derivation: input.derivation,
-              confidence: input.confidence,
-              ...clientName !== undefined ? { clientName } : {},
-            },
+          const res = await auditedWrite(
+            deps,
+            ctx,
+            { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
             () => writeTable(root, name, input.table, {}, { recorder: deps.recorder }),
           )
-          return { content: [{ type: 'text', text: JSON.stringify({ commit: res.commit, changed: res.changed }) }] }
+          return toolSuccess({ commit: res.commit, changed: res.changed })
         }
 
         const name = input.event.name
         if (deps.core.loadEventDefinition(name) !== null) {
           throw new DefinitionAlreadyExistsError(`event "${name}" already exists — use update_definition to change it`, { kind: 'event', name })
         }
-        const res = await deps.recorder.runAudited(
-          {
-            tool: 'create_definition',
-            target: name,
-            summary: input.summary,
-            derivation: input.derivation,
-            confidence: input.confidence,
-            ...clientName !== undefined ? { clientName } : {},
-          },
+        const res = await auditedWrite(
+          deps,
+          ctx,
+          { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
           async () => {
             const written = await writeEventYaml(root, name, dumpYaml(input.event), { recorder: deps.recorder })
             if (!written.ok) {
@@ -109,7 +101,7 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
             return written
           },
         )
-        return { content: [{ type: 'text', text: JSON.stringify({ commit: res.commit, changed: res.changed }) }] }
+        return toolSuccess({ commit: res.commit, changed: res.changed })
       } catch (e) {
         return toToolErrorResult(e)
       }
@@ -135,41 +127,20 @@ function registerUpdateDefinition(server: McpServer, deps: ServerDeps): void {
     },
     async (input, ctx: ServerContext) => {
       try {
-        const clientName = clientNameFromEnvelope(ctx)
-        const auditCtx = {
-          tool: 'update_definition',
-          target: input.name,
-          summary: input.summary,
-          derivation: input.derivation,
-          confidence: input.confidence,
-          ...clientName !== undefined ? { clientName } : {},
-        }
-
-        if (input.kind === 'table') {
-          assertNoRedirectedFields(input.fields, TABLE_ARRAY_REF_REDIRECT)
-          const res = await deps.recorder.runAudited(
-            auditCtx,
-            () => deps.core.updateTableMeta(input.name, input.fields, { expected_version: input.expected_version }),
-          )
-          assertUpdateOk(res.value, 'table', input.name)
-          const enrichment_health = deps.core.getEnrichmentHealth()
-          return { content: [{ type: 'text', text: JSON.stringify({ commit: res.commit, changed: res.changed, enrichment_health }) }] }
-        }
-
-        assertNoRedirectedFields(input.fields, EVENT_ARRAY_REF_REDIRECT)
-        const res = await deps.recorder.runAudited(
-          auditCtx,
-          () => deps.core.updateEventMeta(input.name, input.fields, { expected_version: input.expected_version }),
+        assertNoRedirectedFields(input.fields, input.kind === 'table' ? TABLE_ARRAY_REF_REDIRECT : EVENT_ARRAY_REF_REDIRECT)
+        const res = await auditedWrite(
+          deps,
+          ctx,
+          { tool: 'update_definition', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
+          () => applyFieldUpdate(deps, input.kind, input.name, input.fields, input.expected_version),
         )
-        assertUpdateOk(res.value, 'event', input.name)
-        // No `enrichment_health` here, on purpose: `core.updateEventMeta` does not call
-        // `enrichOnWrite` at all (the Core class's own doc on `discoverEventRelations` —
-        // "no Service-level event-write path existed before updateEventMeta... the hook
-        // lands with a future syncWriteEvents/updateEventMeta Service method", a gap
-        // #18 closed for the write but not yet the hook). `getEnrichmentHealth()` would
-        // only report whatever an unrelated *table* write before this one left behind —
-        // inlining that here would misattribute it to this event update.
-        return { content: [{ type: 'text', text: JSON.stringify({ commit: res.commit, changed: res.changed }) }] }
+        assertUpdateOk(res.value, input.kind, input.name)
+        // `enrichment_health` rides the kind asymmetry `enrichmentHealthAfter` owns:
+        // a table update ran the on-write hook and reports; an event update has no
+        // hook, and inlining `getEnrichmentHealth()` here would only report whatever
+        // an earlier table write left behind — misattributed — so the key stays
+        // absent for events (`undefined` is dropped by JSON serialization).
+        return toolSuccess({ commit: res.commit, changed: res.changed, enrichment_health: enrichmentHealthAfter(deps, input.kind) })
       } catch (e) {
         return toToolErrorResult(e)
       }

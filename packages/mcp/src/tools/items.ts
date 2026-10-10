@@ -3,8 +3,8 @@
  * `remove_relation`.
  *
  * All four remain the read-modify-write ruling 3 asks for: read the current array fresh
- * *inside* `runAudited`'s lock (never from a value computed before the call), compute
- * the new array, hand the whole array to `core.updateTableMeta` / `updateEventMeta` as
+ * *inside* the audit seam's lock (never from a value computed before the call), compute
+ * the new array, hand the whole array to `core.updateTableMeta` / `core.updateEventMeta` as
  * a single-field overlay. None ever replaces the array wholesale from stale state —
  * the read and the write are one lock-protected step, mirroring
  * `tests/helpers/concurrent-writer.ts`'s own pattern exactly (the lost-update shape
@@ -30,12 +30,12 @@ import { loadEvents, loadTables } from '@semantic-grounding/substrate'
 import { z } from 'zod'
 import { DefinitionNotFoundError, toToolErrorResult } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
+import { applyFieldUpdate, auditedWrite, enrichmentHealthAfter, toolSuccess } from './audited.ts'
 import {
   RelationRefInputSchema,
   UPDATE_COMMON_FIELDS,
   WritableKindSchema,
   assertUpdateOk,
-  clientNameFromEnvelope,
   type RelationRefInput,
 } from './shared.ts'
 
@@ -116,44 +116,6 @@ function suppressionFieldName(kind: Kind, content: 'alt_labels' | 'relation'): '
 /** The field `dimension_refs` (table) / `external_refs` (event) is called on each kind. */
 function relationFieldName(kind: Kind): 'dimension_refs' | 'external_refs' {
   return kind === 'table' ? 'dimension_refs' : 'external_refs'
-}
-
-/** The shape every item tool needs back — success-field name (`table_name`/`event_name`) dropped, since none of them read it. */
-type ApplyResult = { readonly ok: true } | { readonly ok: false; readonly error: string }
-
-/**
- * Apply one field overlay via `updateTableMeta` / `updateEventMeta`, dispatched by
- * `kind`, with an explicit return type.
- *
- * Not a bare `kind === 'table' ? core.updateTableMeta(...) : core.updateEventMeta(...)`
- * inline inside `runAudited`'s `fn`: measured — `UpdateTableMetaResult` and
- * `UpdateEventMetaResult` differ only in their success branch's field name
- * (`table_name` vs `event_name`), and TypeScript infers `runAudited<T>`'s `T` from
- * whichever branch it resolves first, then rejects the other branch against that fixed
- * `T`. An explicitly-typed wrapper (dropping the field neither branch's caller reads)
- * sidesteps the inference order entirely, rather than annotating every call site.
- * @param deps - the process-wide dependencies.
- * @param kind - which Tier-2 method to call.
- * @param name - the table_name / event name.
- * @param updates - the dual-field overlay (`{ alt_labels: [...] }` plus optionally the
- *   `suppressed_*` array — included only when it changed or already exists on disk,
- *   so a veto-free call never introduces the key).
- * @param expectedVersion - the caller's baseline fingerprint.
- * @returns `{ok:true}` on success, or `{ok:false, error}` — never throws for a normal validation/not-found outcome.
- */
-async function applyFieldUpdate(
-  deps: ServerDeps,
-  kind: Kind,
-  name: string,
-  updates: Readonly<Record<string, unknown>>,
-  expectedVersion: string,
-): Promise<ApplyResult> {
-  if (kind === 'table') {
-    const res = await deps.core.updateTableMeta(name, updates, { expected_version: expectedVersion })
-    return res.ok ? { ok: true } : res
-  }
-  const res = await deps.core.updateEventMeta(name, updates, { expected_version: expectedVersion })
-  return res.ok ? { ok: true } : res
 }
 
 /**
@@ -242,17 +204,11 @@ function registerAddAlias(server: McpServer, deps: ServerDeps): void {
     },
     async (input, ctx: ServerContext) => {
       try {
-        const clientName = clientNameFromEnvelope(ctx)
         const root = deps.core.resolveScopeRoot()
-        const res = await deps.recorder.runAudited(
-          {
-            tool: 'add_alias',
-            target: input.name,
-            summary: input.summary,
-            derivation: input.derivation,
-            confidence: input.confidence,
-            ...clientName !== undefined ? { clientName } : {},
-          },
+        const res = await auditedWrite(
+          deps,
+          ctx,
+          { tool: 'add_alias', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
           async () => {
             const raw = readRawDefinition(root, input.kind, input.name)
             const existing = stringArrayField(raw, 'alt_labels')
@@ -273,10 +229,9 @@ function registerAddAlias(server: McpServer, deps: ServerDeps): void {
           },
         )
         assertUpdateOk(res.value.apply, input.kind, input.name)
-        const enrichment_health = input.kind === 'table' ? deps.core.getEnrichmentHealth() : undefined
-        const body = itemResponseBase(res, enrichment_health)
+        const body = itemResponseBase(res, enrichmentHealthAfter(deps, input.kind))
         if (res.value.unsuppressed.length > 0) body['unsuppressed'] = res.value.unsuppressed
-        return { content: [{ type: 'text', text: JSON.stringify(body) }] }
+        return toolSuccess(body)
       } catch (e) {
         return toToolErrorResult(e)
       }
@@ -295,17 +250,11 @@ function registerRemoveAlias(server: McpServer, deps: ServerDeps): void {
     },
     async (input, ctx: ServerContext) => {
       try {
-        const clientName = clientNameFromEnvelope(ctx)
         const root = deps.core.resolveScopeRoot()
-        const res = await deps.recorder.runAudited(
-          {
-            tool: 'remove_alias',
-            target: input.name,
-            summary: input.summary,
-            derivation: input.derivation,
-            confidence: input.confidence,
-            ...clientName !== undefined ? { clientName } : {},
-          },
+        const res = await auditedWrite(
+          deps,
+          ctx,
+          { tool: 'remove_alias', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
           async () => {
             const raw = readRawDefinition(root, input.kind, input.name)
             const existing = stringArrayField(raw, 'alt_labels')
@@ -342,10 +291,9 @@ function registerRemoveAlias(server: McpServer, deps: ServerDeps): void {
           },
         )
         assertUpdateOk(res.value.apply, input.kind, input.name)
-        const enrichment_health = input.kind === 'table' ? deps.core.getEnrichmentHealth() : undefined
-        const body = itemResponseBase(res, enrichment_health)
+        const body = itemResponseBase(res, enrichmentHealthAfter(deps, input.kind))
         body['results'] = res.value.results
-        return { content: [{ type: 'text', text: JSON.stringify(body) }] }
+        return toolSuccess(body)
       } catch (e) {
         return toToolErrorResult(e)
       }
@@ -364,19 +312,13 @@ function registerAddRelation(server: McpServer, deps: ServerDeps): void {
     },
     async (input, ctx: ServerContext) => {
       try {
-        const clientName = clientNameFromEnvelope(ctx)
         const root = deps.core.resolveScopeRoot()
         const field = relationFieldName(input.kind)
         const supField = suppressionFieldName(input.kind, 'relation')
-        const res = await deps.recorder.runAudited(
-          {
-            tool: 'add_relation',
-            target: input.name,
-            summary: input.summary,
-            derivation: input.derivation,
-            confidence: input.confidence,
-            ...clientName !== undefined ? { clientName } : {},
-          },
+        const res = await auditedWrite(
+          deps,
+          ctx,
+          { tool: 'add_relation', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
           async () => {
             if (input.kind === 'table' && deps.core.loadTableDefinition(input.relation.dim_table) === null) {
               throw new DefinitionNotFoundError(
@@ -401,10 +343,9 @@ function registerAddRelation(server: McpServer, deps: ServerDeps): void {
           },
         )
         assertUpdateOk(res.value.apply, input.kind, input.name)
-        const enrichment_health = input.kind === 'table' ? deps.core.getEnrichmentHealth() : undefined
-        const body = itemResponseBase(res, enrichment_health)
+        const body = itemResponseBase(res, enrichmentHealthAfter(deps, input.kind))
         if (res.value.unsuppressed.length > 0) body['unsuppressed'] = res.value.unsuppressed
-        return { content: [{ type: 'text', text: JSON.stringify(body) }] }
+        return toolSuccess(body)
       } catch (e) {
         return toToolErrorResult(e)
       }
@@ -423,19 +364,13 @@ function registerRemoveRelation(server: McpServer, deps: ServerDeps): void {
     },
     async (input, ctx: ServerContext) => {
       try {
-        const clientName = clientNameFromEnvelope(ctx)
         const root = deps.core.resolveScopeRoot()
         const field = relationFieldName(input.kind)
         const supField = suppressionFieldName(input.kind, 'relation')
-        const res = await deps.recorder.runAudited(
-          {
-            tool: 'remove_relation',
-            target: input.name,
-            summary: input.summary,
-            derivation: input.derivation,
-            confidence: input.confidence,
-            ...clientName !== undefined ? { clientName } : {},
-          },
+        const res = await auditedWrite(
+          deps,
+          ctx,
+          { tool: 'remove_relation', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
           async () => {
             const raw = readRawDefinition(root, input.kind, input.name)
             const existing = objectArrayField(raw, field)
@@ -479,10 +414,9 @@ function registerRemoveRelation(server: McpServer, deps: ServerDeps): void {
           },
         )
         assertUpdateOk(res.value.apply, input.kind, input.name)
-        const enrichment_health = input.kind === 'table' ? deps.core.getEnrichmentHealth() : undefined
-        const body = itemResponseBase(res, enrichment_health)
+        const body = itemResponseBase(res, enrichmentHealthAfter(deps, input.kind))
         body['results'] = res.value.results
-        return { content: [{ type: 'text', text: JSON.stringify(body) }] }
+        return toolSuccess(body)
       } catch (e) {
         return toToolErrorResult(e)
       }
