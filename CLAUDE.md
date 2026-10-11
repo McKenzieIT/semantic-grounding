@@ -23,7 +23,16 @@ Issue 追踪在 GitHub（McKenzieIT/semantic-grounding），通过 `gh` CLI 操�
 
 ### Active map
 
-**无活跃 map** —— 所有 map 已关闭。
+**map [#40](https://github.com/McKenzieIT/semantic-grounding/issues/40)（MCP 管理面的 scope 能力边界与初始化路径）进行中**——回答两个问题：(1) 如何设计通过 MCP 初始化新 scope 的能力；(2) 如何优化当前 MCP 能力，MCP 即 harness 是否有意义。五张子票：
+[能力边界](https://github.com/McKenzieIT/semantic-grounding/issues/42)（grilling，已解：MCP 管 scope 知识层+注册层、不管基础设施执行；MCP 非 harness）、
+[需求场景](https://github.com/McKenzieIT/semantic-grounding/issues/43)（research，已解：三层模型——基础设施/注册表/运行时；substrate 已就绪但 MCP 未接 `setScopeRegistry()`）、
+[一进程一 scope 松绑](https://github.com/McKenzieIT/semantic-grounding/issues/44)（grilling，已解：server 绑注册表不绑目录，`--corpus` 可选〔此条与「注册表在 git dir 内」经 #45 supersede〕；scope↔目录双向 1:1；三层隔离防线——读盖戳/写断言/切换 digest；trailer 从 registry identity 派生）、
+[具体设计方案](https://github.com/McKenzieIT/semantic-grounding/issues/45)（grilling，已解：**四裁决**+9 设计常数——①**入口快照绑定**〔前置实测：SDK v2.3.1 同连接请求**不串行**，源码+行为双证；handler 入口同步解析绑定快照，switch=原子指针置换，per-scope 实例切走不 dispose〕②**统一注册表** `~/.semantic-grounding/scopes.yaml`〔`--registry`/`SG_REGISTRY` 覆盖·测试隔离、文件锁+原子写、`active:`=下一进程缺省〕③**删除 `--corpus`**〔无用户清断，引导唯一门=`register_scope`，flag 面收敛 `--agent-id`/`--scope`/`--registry`/`--lock-timeout-ms`，posture 移至 register/switch/`--scope` 三时机 fail-fast〕④**trailer 恒由 registry identity 派生**；错误段 `-31060..-31065`；substrate **零改动**（per-scope core，`setScopeRegistry` 不调用）；工具面 19→24；ADR-0011 草案全文在 resolution、落盘归执行 effort）、
+[语义层内容冷启动](https://github.com/McKenzieIT/semantic-grounding/issues/46)（grilling，**唯一 frontier**：种子来源（agent 作者/批量导入/跨 corpus 复制）、批量写路径（syncWriteDefinitions+beginBatch 未暴露）、导入 provenance 语义、scaffold 产物深度接缝——#45 常数 9 已裁壳边界+`next_steps` 一行，#46 落地时向其对齐；#46 解后 map 关闭，Destination=设计产出，执行另起 fresh effort）。
+
+**map [#47](https://github.com/McKenzieIT/semantic-grounding/issues/47)（item 写语义沉进 Core——suppression 写半边回家）进行中**——Destination：四个 item 级写工具的领域语义（双字段覆盖、否决并集/撤销、ensure-absent、origin 路由、锁内重读判 `reasserted`、关系同一性、`normalizeLabel` 键归一化）从 MCP 工具层沉进 Core 方法契约层；工具恢复 ADR-0005 本意的薄包装（schema + `runAudited` + 转发）；写-删循环两半（写侧语义/读侧轮次过滤）同包同 interface 测试。来源 2026-10-11 架构走查（证据 file:line 全记 map Notes：`normalizeLabel` 三份漂移风险〔enrichment.ts:898 / enrichment-work.ts:506 / mcp items.ts:60〕、items.ts 各约 100 行/工具的否决政策建立在 `updateTableMeta` 浅覆盖接口上）。两张子票：
+[接口裁决](https://github.com/McKenzieIT/semantic-grounding/issues/48)（grilling，**frontier**：方法签名家族/verdict 形状、recorder 参数〔`applyEnrichmentResults` 先例〕vs `runAudited` ambient context——两方向对 ADR-0005 ruling 3 相容性论证都要落记录、enrichment_health 归属、测试迁移面、run_enrichment 编排对称化〔与 `Core.discoverAltLabels` 的 call-wide 裁决重复，走查候选 4〕同票与否+ADR-0007 同源 subject 保持）、
+[落地](https://github.com/McKenzieIT/semantic-grounding/issues/49)（task，blocked by #48；验收=#47 Destination 双面+四道门）。两张前置已 2026-10-11 落 main（未 push）：`52691c7` 工具层 audited-call 深模块（8 写 handler 仪式收敛进 `tools/audited.ts`、`clientNameFromEnvelope` 全包唯一份）、`f73cd78` version 指纹收进 Core 读路径（`io.ts` `definitionVersion`+Core 三 `*WithVersion` 方法、shared.ts 指纹四函数退役、手改名 event 文件 ENOENT 分叉消失、新 spec `version-roundtrip.spec.ts`）；门禁全绿（typecheck 双包 / substrate+mcp 全量单测 / acceptance barrel 零改动 / e2e 17 步）。
 
 **map [#32](https://github.com/McKenzieIT/semantic-grounding/issues/32)（agent 持久否决权与抽取器护栏）已关闭**，Destination（持久否决权成立 + 抽取器护栏落地 + 语料清理 + #24/#26 关票）经七张子票全解达成：
 [护栏规则全库实测](https://github.com/McKenzieIT/semantic-grounding/issues/33)（prototype，已解：766 定义 → 基线候选 4296；12 谓词 + cap24 杀 51.0%，误杀 0）、
