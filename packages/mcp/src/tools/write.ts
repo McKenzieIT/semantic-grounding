@@ -7,12 +7,14 @@
  * substrate write function directly: the lock has to wrap the call, and a
  * contextless write is refused, per `git/recorder.ts`'s module doc).
  * `create_definition` compiles to the raw-edit primitives `writeTable` /
- * `writeEventYaml` with a recorder passed on every call (ADR-0004 ruling 2,
- * ADR-0005 ruling 5 — the recorder is mandatory, not optional);
- * `update_definition` compiles to `core.updateTableMeta` / `core.updateEventMeta`
- * via `applyFieldUpdate`, which is what gives it the on-write enrichment hook
- * `create_definition` deliberately does not get (see this file's
- * `create_definition` section).
+ * `writeEventYaml` / `core.writeConceptYaml` with a recorder passed on every
+ * call (ADR-0004 ruling 2, ADR-0005 ruling 5 — the recorder is mandatory, not
+ * optional); `update_definition` compiles to `core.updateTableMeta` /
+ * `core.updateEventMeta` / `core.updateConceptMeta` via `applyFieldUpdate`,
+ * which is what gives it the on-write enrichment hook `create_definition`
+ * deliberately does not get (see this file's `create_definition` section —
+ * and concepts get no hook on either verb: they have no enrichment rounds,
+ * ADR-0012).
  *
  * @module tools/write
  */
@@ -24,6 +26,9 @@ import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { applyFieldUpdate, auditedWrite, enrichmentHealthAfter, toolSuccess } from './audited.ts'
 import {
   CREATE_COMMON_FIELDS,
+  CONCEPT_ARRAY_REF_REDIRECT,
+  ConceptCreatePayloadSchema,
+  ConceptFieldsSchema,
   EVENT_ARRAY_REF_REDIRECT,
   EventFieldsSchema,
   TABLE_ARRAY_REF_REDIRECT,
@@ -41,6 +46,7 @@ export const WRITE_TOOL_NAMES = ['create_definition', 'update_definition'] as co
 const CreateDefinitionInputSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('table'), table: TableDefinitionSchema, ...CREATE_COMMON_FIELDS }),
   z.object({ kind: z.literal('event'), event: EventDefinitionSchema, ...CREATE_COMMON_FIELDS }),
+  z.object({ kind: z.literal('concept'), concept: ConceptCreatePayloadSchema, ...CREATE_COMMON_FIELDS }),
 ])
 
 /**
@@ -61,7 +67,7 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
     'create_definition',
     {
       title: 'Create a definition',
-      description: 'Create a new table or event from a complete, schema-valid definition. Refuses if the name already exists (use update_definition instead). The recorder is mandatory — every create_definition call is an audited commit.',
+      description: 'Create a new table, event, or concept from a complete, schema-valid definition. Concepts are the knowledge-graph ontology/entity layer: register a domain term that maps to no single asset as kind:"concept" (name + description + pref_label/alt_labels + free-form `properties`); an asset term lands as a table/event (and may mount concepts later via update_definition fields.domains). Refuses if the name already exists (use update_definition instead). The recorder is mandatory — every create_definition call is an audited commit.',
       inputSchema: CreateDefinitionInputSchema,
     },
     async (input, ctx: ServerContext) => {
@@ -78,6 +84,24 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
             ctx,
             { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
             () => writeTable(root, name, input.table, {}, { recorder: deps.recorder }),
+          )
+          return toolSuccess({ commit: res.commit, changed: res.changed })
+        }
+
+        if (input.kind === 'concept') {
+          // The concept write path (ADR-0012): same refusal, same audit seam,
+          // one deliberate difference from the table branch — no existence
+          // race to note, because concepts have no on-write enrichment hook
+          // anywhere downstream (no rounds exist to ask for one).
+          const name = input.concept.name
+          if (deps.core.loadConceptDefinition(name) !== null) {
+            throw new DefinitionAlreadyExistsError(`concept "${name}" already exists — use update_definition to change it`, { kind: 'concept', name })
+          }
+          const res = await auditedWrite(
+            deps,
+            ctx,
+            { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
+            () => deps.core.writeConceptYaml(name, input.concept),
           )
           return toolSuccess({ commit: res.commit, changed: res.changed })
         }
@@ -114,6 +138,7 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
 const UpdateDefinitionInputSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('table'), name: z.string().min(1), fields: TableFieldsSchema, ...UPDATE_COMMON_FIELDS }),
   z.object({ kind: z.literal('event'), name: z.string().min(1), fields: EventFieldsSchema, ...UPDATE_COMMON_FIELDS }),
+  z.object({ kind: z.literal('concept'), name: z.string().min(1), fields: ConceptFieldsSchema, ...UPDATE_COMMON_FIELDS }),
 ])
 
 /** Registers `update_definition`. */
@@ -122,12 +147,15 @@ function registerUpdateDefinition(server: McpServer, deps: ServerDeps): void {
     'update_definition',
     {
       title: 'Update a definition',
-      description: 'Shallow-merge scalar/object fields onto an existing table or event. Rejects identity fields (table_name/name/kind) and array-reference fields (alt_labels/dimension_refs/external_refs) — use add_alias/remove_alias/add_relation/remove_relation for those. Requires expected_version (from get_definition); a stale baseline is rejected for re-read-and-retry.',
+      description: 'Shallow-merge scalar/object fields onto an existing table, event, or concept. Rejects identity fields (table_name/name/kind) and array-reference fields — tables/events: alt_labels/dimension_refs/external_refs; concepts: alt_labels/related_refs — use add_alias/remove_alias/add_relation/remove_relation for those. Concept fields: description, pref_label, properties (free-form entity attributes); a table mounts a concept via fields.domains. Requires expected_version (from get_definition); a stale baseline is rejected for re-read-and-retry.',
       inputSchema: UpdateDefinitionInputSchema,
     },
     async (input, ctx: ServerContext) => {
       try {
-        assertNoRedirectedFields(input.fields, input.kind === 'table' ? TABLE_ARRAY_REF_REDIRECT : EVENT_ARRAY_REF_REDIRECT)
+        assertNoRedirectedFields(
+          input.fields,
+          input.kind === 'table' ? TABLE_ARRAY_REF_REDIRECT : input.kind === 'event' ? EVENT_ARRAY_REF_REDIRECT : CONCEPT_ARRAY_REF_REDIRECT,
+        )
         const res = await auditedWrite(
           deps,
           ctx,
@@ -137,9 +165,10 @@ function registerUpdateDefinition(server: McpServer, deps: ServerDeps): void {
         assertUpdateOk(res.value, input.kind, input.name)
         // `enrichment_health` rides the kind asymmetry `enrichmentHealthAfter` owns:
         // a table update ran the on-write hook and reports; an event update has no
-        // hook, and inlining `getEnrichmentHealth()` here would only report whatever
-        // an earlier table write left behind — misattributed — so the key stays
-        // absent for events (`undefined` is dropped by JSON serialization).
+        // hook, and a concept update has no rounds at all — for either, inlining
+        // `getEnrichmentHealth()` here would only report whatever an earlier table
+        // write left behind — misattributed — so the key stays absent for both
+        // (`undefined` is dropped by JSON serialization).
         return toolSuccess({ commit: res.commit, changed: res.changed, enrichment_health: enrichmentHealthAfter(deps, input.kind) })
       } catch (e) {
         return toToolErrorResult(e)

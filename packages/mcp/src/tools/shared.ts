@@ -17,7 +17,7 @@
  */
 import { join } from 'node:path'
 import { CLIENT_INFO_META_KEY, type ServerContext } from '@modelcontextprotocol/server'
-import { EventDefinitionSchema, TableDefinitionSchema } from '@semantic-grounding/substrate'
+import { ConceptDefinitionSchema, EventDefinitionSchema, TableDefinitionSchema } from '@semantic-grounding/substrate'
 import { z } from 'zod'
 import { DefinitionNotFoundError, DefinitionValidationError, UnsupportedUpdateFieldError } from '../errors.ts'
 import type { GitTier2Recorder } from '../git/recorder.ts'
@@ -70,11 +70,39 @@ export const UPDATE_COMMON_FIELDS = {
 
 // ── Kind discriminants ───────────────────────────────────────────────────────────────
 
-/** The two kinds a tool may write (ADR-0005 ruling 2 and ruling 5: concept/metric have no write path in v1). */
-export const WritableKindSchema = z.enum(['table', 'event'])
+/**
+ * The kinds a definition-level tool may write. ADR-0005 ruling 2 excluded
+ * concept from every write path in v1; ADR-0012 (#46 R3) superseded that for
+ * concepts — `create_definition`/`update_definition` accept `kind:'concept'`
+ * (the trajectory-driven cold start registers domain terms that map to no
+ * single asset). **metric stays excluded**: an inline `metrics:` block is a
+ * derived read-only view with no backing file and no fingerprint.
+ */
+export const WritableKindSchema = z.enum(['table', 'event', 'concept'])
 
 /** The four kinds `get_definition` / `search_definitions` may read — every registered built-in kind. */
 export const ReadableKindSchema = z.enum(['table', 'event', 'concept', 'metric'])
+
+/**
+ * The kinds `add_alias` / `remove_alias` accept (ADR-0012 #46 R3's 枚举拆分:
+ * the alias pair gets its own enum so it evolves independently of the
+ * definition-level and relation surfaces). Concepts joined at the same time
+ * the concept write path opened — alias semantics are isomorphic across all
+ * three kinds (dual-field overlay, remove-is-veto, add-is-lift).
+ */
+export const AliasKindSchema = z.enum(['table', 'event', 'concept'])
+
+/** The kinds `add_relation` / `remove_relation` may take as their SUBJECT. */
+export const RelationSubjectKindSchema = z.enum(['table', 'event', 'concept'])
+
+/**
+ * The kinds a relation target may take. Q4(b) (#52) extended the target beyond
+ * tables: a relation may now point at a concept. The legal subject×target
+ * combinations are table/event→table (the historical join), concept→concept,
+ * concept→table, and table→concept — event→concept is refused in the Core
+ * (not one of Q4(b)'s three edges).
+ */
+export const RelationTargetKindSchema = z.enum(['table', 'concept'])
 
 // ── `add_relation` / `remove_relation` item shape ────────────────────────────────────
 
@@ -85,19 +113,37 @@ export const JoinKeyInputSchema = z.object({
 })
 
 /**
- * The relation an agent asserts, as `add_relation` / `remove_relation` accept it.
+ * The relation an agent asserts, as `add_relation` / `remove_relation` accept
+ * it — one of two shapes (a union, not a discriminated union: the historical
+ * join shape carries no discriminator key and must keep accepting byte-old
+ * callers):
  *
- * Deliberately missing two fields `DimensionRefSchema` has: `origin` (tool writes omit
- * it — ADR-0005 ruling 9, so the merge-priority machinery treats an agent-asserted ref
- * as curated and `enrichAll*`'s preserve-filter never overwrites it) and `derivation`
- * (ruling 10 — that field is a free-text join-basis note, a different concept from the
- * same-named trailer category above, and exposing both under one name is the
- * confusion ruling 10 refused; the agent's basis for the join belongs in `summary`).
+ * 1. A **join** (`dim_table` + `join_keys`) — the historical shape, for a
+ * table or event subject pointing at a DIM table.
+ *
+ * 2. A **concept-side edge** (`target_kind` + `name`) — Q4(b) (#52): no join
+ * semantics, for concept→concept, concept→table, and table→concept edges.
+ *
+ * Both shapes deliberately miss two fields `DimensionRefSchema` has: `origin`
+ * (tool writes omit it — ADR-0005 ruling 9, so the merge-priority machinery
+ * treats an agent-asserted ref as curated and `enrichAll*`'s preserve-filter
+ * never overwrites it) and `derivation` (ruling 10 — that field is a
+ * free-text join-basis note, a different concept from the same-named trailer
+ * category above, and exposing both under one name is the confusion ruling 10
+ * refused; the agent's basis for the relation belongs in `summary`).
  */
-export const RelationRefInputSchema = z.object({
+export const JoinRelationInputSchema = z.object({
   dim_table: z.string().min(1),
   join_keys: z.array(JoinKeyInputSchema).min(1),
 })
+
+/** One concept-side edge: the target's kind + its bare name (Q4(b)). */
+export const ConceptEdgeInputSchema = z.object({
+  target_kind: RelationTargetKindSchema,
+  name: z.string().min(1),
+})
+
+export const RelationRefInputSchema = z.union([JoinRelationInputSchema, ConceptEdgeInputSchema])
 /** Parsed shape of {@link RelationRefInputSchema}. */
 export type RelationRefInput = z.infer<typeof RelationRefInputSchema>
 
@@ -191,6 +237,53 @@ export const EVENT_ARRAY_REF_REDIRECT: Readonly<Record<string, string>> = {
   suppressed_alt_labels: 'add_alias / remove_alias (vetoes are born by remove_*, lifted by add_* — never hand-written)',
   suppressed_external_refs: 'add_relation / remove_relation (vetoes are born by remove_*, lifted by add_* — never hand-written)',
 }
+/** Array-reference field → the item-level tool pair that maintains it, for concepts
+ * (ADR-0012 #46 R3 伴生点 1). Concepts have no dimension_refs/external_refs — their
+ * declared edges live in `related_refs`, maintained by the same relation pair with a
+ * `target_kind`-carrying shape (Q4(b)). */
+export const CONCEPT_ARRAY_REF_REDIRECT: Readonly<Record<string, string>> = {
+  alt_labels: 'add_alias / remove_alias',
+  related_refs: 'add_relation / remove_relation (concept-side edges: {target_kind, name})',
+  suppressed_alt_labels: 'add_alias / remove_alias (vetoes are born by remove_*, lifted by add_* — never hand-written)',
+  suppressed_related_refs: 'add_relation / remove_relation (vetoes are born by remove_*, lifted by add_* — never hand-written)',
+}
+
+// ── `create_definition(kind:'concept')`'s payload + `update_definition`'s fields ─────
+
+/**
+ * `create_definition(kind:'concept')`'s payload — the R3 full-payload shape plus
+ * Q4(b)'s `properties`. Strict on purpose (ADR-0012's constant: tool inputs are
+ * bounded by the kind's declared fields — `.loose()` is corpus compatibility, the
+ * tool face rejects stray keys), and it deliberately omits `related_refs` /
+ * `suppressed_*`: edges are item-level verbs (add_relation), exactly as for
+ * tables/events, so they are absent here rather than redirected — a stray key is
+ * a typo zod answers. `description` is required where the substrate schema
+ * defaults it to `''`: a concept with no description carries nothing the
+ * trajectory-driven cold start registered it FOR (the term's meaning), and the
+ * search index would see a bare name.
+ */
+export const ConceptCreatePayloadSchema = z.object({
+  name: z.string().min(1),
+  description: z.string().min(1),
+  pref_label: z.string().optional(),
+  alt_labels: z.array(z.string()).default([]),
+  properties: z.record(z.string(), z.unknown()).default({}),
+}).strict()
+/** Parsed shape of {@link ConceptCreatePayloadSchema}. */
+export type ConceptCreatePayload = z.infer<typeof ConceptCreatePayloadSchema>
+
+/** Concept identity fields `update_definition` omits entirely (ADR-0005 ruling 4). */
+const CONCEPT_IDENTITY_FIELDS = new Set(['name'])
+
+/**
+ * `update_definition(kind: 'concept', ...)`'s bounded `fields` schema — derived
+ * from `ConceptDefinitionSchema.shape − {name}` the same way the table/event
+ * fields schemas are (ADR-0005 ruling 4's one-source-of-truth rule), which
+ * after Q4(b) yields: `description`, `pref_label`, `properties` (the free-form
+ * entity attributes are a passthrough update field), plus the array-reference
+ * keys the handler redirects (`alt_labels`, `related_refs`, `suppressed_*`).
+ */
+export const ConceptFieldsSchema = updatableFieldsSchema(ConceptDefinitionSchema.shape, CONCEPT_IDENTITY_FIELDS)
 
 /**
  * Reject an array-reference field, pointing at the item-level tool that maintains it.
@@ -221,21 +314,23 @@ export function assertNoRedirectedFields(fields: Readonly<Record<string, unknown
 type UpdateResult = { readonly ok: true } | { readonly ok: false; readonly error: string }
 
 /**
- * Turn `updateTableMeta` / `updateEventMeta`'s non-throwing `{ok:false, error}` into
- * the right coded error — the substrate reports two genuinely different conditions
- * through that one string field, and ADR-0005 ruling 8 asks both to be discriminable.
- * @param result - whatever `core.updateTableMeta` / `core.updateEventMeta` resolved to.
+ * Turn `updateTableMeta` / `updateEventMeta` / `updateConceptMeta`'s
+ * non-throwing `{ok:false, error}` into the right coded error — the substrate
+ * reports two genuinely different conditions through that one string field,
+ * and ADR-0005 ruling 8 asks both to be discriminable.
+ * @param result - whatever `core.updateTableMeta` / `core.updateEventMeta` / `core.updateConceptMeta` resolved to.
  * @param kind - which kind was being updated (for the error's structured `data`).
- * @param name - the table_name / event name being updated.
+ * @param name - the table_name / event / concept name being updated.
  * @throws DefinitionNotFoundError when the substrate's message starts with
- *   `"Table not found"` / `"Event not found"` (the target vanished between this tool's
- *   own checks and the lock-protected write — see `write.ts` / `items.ts`).
+ *   `"Table not found"` / `"Event not found"` / `"Concept not found"` (the
+ *   target vanished between this tool's own checks and the lock-protected
+ *   write — see `write.ts` / `items.ts`).
  * @throws DefinitionValidationError for every other failure message (the merged
  *   document failed the kind's full schema).
  */
-export function assertUpdateOk(result: UpdateResult, kind: 'table' | 'event', name: string): void {
+export function assertUpdateOk(result: UpdateResult, kind: 'table' | 'event' | 'concept', name: string): void {
   if (result.ok) return
-  if (result.error.startsWith('Table not found') || result.error.startsWith('Event not found')) {
+  if (result.error.startsWith('Table not found') || result.error.startsWith('Event not found') || result.error.startsWith('Concept not found')) {
     throw new DefinitionNotFoundError(result.error, { kind, name })
   }
   throw new DefinitionValidationError(result.error, { kind, name })

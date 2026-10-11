@@ -341,15 +341,59 @@ export type TableMeta = z.infer<typeof TableMetaSchema>
 
 // ── ConceptDefinition (CL-2: domain/concept as graph node) ──────────────
 /**
+ * Zod schema for one declared concept-side relation edge (#52 / ADR-0012
+ * Q4(b) Update). Concepts are the entity layer of the knowledge graph, so
+ * unlike tables/events their edges carry no join semantics — identity is
+ * structural: `target_kind` + `target`. `target` is a bare table name for
+ * `table` targets and a bare concept name for `concept` targets; the kind
+ * plugin resolves the graph id (`concept:<name>`) so the storage form stays
+ * human-readable YAML.
+ *
+ * `origin` / `derivation` mirror `DimensionRefSchema`'s pair (merge priority /
+ * free-text basis); tool writes omit both, so an agent-asserted edge is
+ * curated (ADR-0005 rulings 9–10, same as table/event refs).
+ */
+export const RelatedRefSchema = z.object({
+  target_kind: z.enum(['table', 'concept']),
+  target: z.string(),
+  derivation: z.string().default(''),
+  origin: z.enum(['deterministic', 'llm', 'manual']).optional(),
+}).loose()
+/** Inferred type of {@link RelatedRefSchema}. */
+export type RelatedRef = z.infer<typeof RelatedRefSchema>
+
+/**
  * Zod schema for a concept definition (CL-2: first-class entity in concepts/ dir).
  * Concepts represent semantic domains as explicit graph nodes; asset.domains
  * values are validated against concept names at load time.
+ *
+ * ADR-0012 (#46 R3) opened the concept write path: `create_definition(kind:
+ * 'concept')` writes this shape via `writeConceptYaml`; `alt_labels` /
+ * `suppressed_alt_labels` ride the item-level alias tools exactly as for
+ * tables/events (suppression is isomorphic — remove is the veto, add is the
+ * lift). The Q4(b) Update (#52) added two fields beyond the R3 payload:
+ * `properties` (free-form entity attributes — the game-knowledge-graph
+ * entity layer; deliberately unvalidated until a second real product needs
+ * strong schema) and `related_refs` / `suppressed_related_refs` (declared
+ * concept-side edges — concept→concept and concept→table from the concept's
+ * own side; a table→concept declaration made through `add_relation(kind:
+ * 'table', target_kind:'concept')` lands in the TARGET concept's
+ * `related_refs`, the single storage home for every declared concept edge).
  */
 export const ConceptDefinitionSchema = z.object({
   name: z.string(),
   description: z.string().default(''),
   pref_label: z.string().optional(),
   alt_labels: z.array(z.string()).default([]),
+  // Q4(b): free-form entity attributes. Not validated, not enriched (concepts
+  // have no enrichment rounds); indexed for search by the concept kind plugin.
+  properties: z.record(z.string(), z.unknown()).default({}),
+  // Q4(b): declared entity-layer edges. Veto keys pair them exactly as
+  // dimension_refs pair suppressed_dimension_refs — the key is the resolved
+  // target id (`concept:<name>` / bare table name).
+  related_refs: z.array(RelatedRefSchema).default([]),
+  suppressed_alt_labels: z.array(z.string()).default([]),
+  suppressed_related_refs: z.array(z.string()).default([]),
 }).loose()
 /** Inferred type of {@link ConceptDefinitionSchema}. */
 export type ConceptDefinition = z.infer<typeof ConceptDefinitionSchema>

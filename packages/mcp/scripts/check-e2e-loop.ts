@@ -671,6 +671,119 @@ async function main(): Promise<void> {
       assert.deepEqual(relifted['unsuppressed'], ['dim_channel'])
     }
 
+    // ── Phase 4.5 — the concept write path (ADR-0012 / Q4(b)) ───────────────────────
+    step('create_definition(kind:concept) ×2, properties round-trip, concept-edge storage-home asymmetry, read path hits concept: nodes')
+    {
+      const created1 = await call(client, 'create_definition', {
+        kind: 'concept',
+        concept: { name: '订单生命周期', description: '订单从下单到完成的生命周期阶段', properties: { domain: '交易' } },
+        ...tier2('新概念：订单生命周期', 0.9),
+      })
+      assert.equal(created1['changed'], true)
+      assert.match(fieldString(created1, 'commit'), /^[0-9a-f]{40}$/)
+
+      const created2 = await call(client, 'create_definition', {
+        kind: 'concept',
+        concept: { name: '渠道', description: '订单来源渠道的实体概念' },
+        ...tier2('新概念：渠道', 0.9),
+      })
+      assert.equal(created2['changed'], true)
+
+      const lifecycle = (await call(client, 'get_definition', { kind: 'concept', name: '订单生命周期' }))['definition'] as Record<string, unknown>
+      assert.deepEqual(lifecycle['properties'], { domain: '交易' }, 'Q4(b) properties round-trip through create_definition')
+
+      // Storage-home asymmetry, live and over the wire: a TABLE subject's
+      // CONCEPT-target edge is written to the target concept's own file — tables
+      // have no edge field at all — so the baseline this write races against is
+      // 订单生命周期's fingerprint, never dws_order's own. Prove the wrong
+      // baseline really is wrong before proving the right one works.
+      const dwsOrderVersion = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
+      const wrongBaseline = await callCodedError(client, 'add_relation', {
+        kind: 'table', name: 'dws_order',
+        relation: { target_kind: 'concept', name: '订单生命周期' },
+        expected_version: dwsOrderVersion, // dws_order's OWN fingerprint — the wrong file for this write
+        ...tier2('table→concept 边，故意传错 baseline', 0.8),
+      })
+      assert.equal(wrongBaseline.code, -31002, 'stale_baseline — dws_order\'s fingerprint never matches the concept file this write actually touches')
+      assert.equal(wrongBaseline.name, 'StaleBaselineRejection')
+      assert.equal(wrongBaseline.retryable, true)
+
+      const lifecycleV1 = fieldString(await call(client, 'get_definition', { kind: 'concept', name: '订单生命周期' }), 'version')
+      const tableToConcept = await call(client, 'add_relation', {
+        kind: 'table', name: 'dws_order',
+        relation: { target_kind: 'concept', name: '订单生命周期' },
+        expected_version: lifecycleV1, // the TARGET concept's fingerprint — the right file
+        ...tier2('table→concept 边：dws_order 归属订单生命周期', 0.8),
+      })
+      assert.equal(tableToConcept['changed'], true)
+      const afterTableEdge = (await call(client, 'get_definition', { kind: 'concept', name: '订单生命周期' }))['definition'] as Record<string, unknown>
+      const lifecycleRefs1 = afterTableEdge['related_refs'] as Array<{ target_kind: string; target: string }>
+      assert.ok(lifecycleRefs1.some(r => r.target_kind === 'table' && r.target === 'dws_order'), 'the edge landed on the CONCEPT file, not on dws_order')
+      const dwsOrderAfter = (await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }))['definition'] as Record<string, unknown>
+      assert.equal(dwsOrderAfter['related_refs'], undefined, 'tables have no edge field at all — nothing to find there')
+
+      // concept→concept and concept→table: no asymmetry when the subject already
+      // owns the file — both land on the SUBJECT concept itself.
+      const lifecycleV2 = fieldString(await call(client, 'get_definition', { kind: 'concept', name: '订单生命周期' }), 'version')
+      const conceptToConcept = await call(client, 'add_relation', {
+        kind: 'concept', name: '订单生命周期',
+        relation: { target_kind: 'concept', name: '渠道' },
+        expected_version: lifecycleV2,
+        ...tier2('concept→concept 边：订单生命周期 关联 渠道', 0.8),
+      })
+      assert.equal(conceptToConcept['changed'], true)
+
+      const channelV1 = fieldString(await call(client, 'get_definition', { kind: 'concept', name: '渠道' }), 'version')
+      const conceptToTable = await call(client, 'add_relation', {
+        kind: 'concept', name: '渠道',
+        relation: { target_kind: 'table', name: 'dws_pay_flow' },
+        expected_version: channelV1,
+        ...tier2('concept→table 边：渠道 关联 dws_pay_flow', 0.8),
+      })
+      assert.equal(conceptToTable['changed'], true)
+
+      // Clean removal, no two-step dance: concepts have no on-write enrichment
+      // hook, so a curated edge's removal is final on the FIRST call — contrast
+      // with the table/event suppression dance two phases up.
+      const channelV2 = fieldString(await call(client, 'get_definition', { kind: 'concept', name: '渠道' }), 'version')
+      const removed = await call(client, 'remove_relation', {
+        kind: 'concept', name: '渠道',
+        relations: [{ target_kind: 'table', name: 'dws_pay_flow' }],
+        expected_version: channelV2,
+        ...tier2('移除 concept→table 边', 0.7),
+      })
+      assert.deepEqual(removed['results'] as RemoveVerdict[], [{ key: 'dws_pay_flow', outcome: 'removed', suppressed: false, reasserted: false }],
+        'curated concept-edge removal is clean and final on the first call — no on-write hook to bring it back')
+
+      // add_alias / resolve_alias on a concept — AliasKindSchema parity, live.
+      const lifecycleV3 = fieldString(await call(client, 'get_definition', { kind: 'concept', name: '订单生命周期' }), 'version')
+      const aliasAdded = await call(client, 'add_alias', {
+        kind: 'concept', name: '订单生命周期', alias: '订单周期',
+        expected_version: lifecycleV3,
+        ...tier2('概念别名：订单周期', 0.85),
+      })
+      assert.equal(aliasAdded['changed'], true)
+      const aliasResolved = await call(client, 'resolve_alias', { term: '订单周期' })
+      assert.ok(((aliasResolved['node_ids'] as string[]) ?? []).includes('concept:订单生命周期'), 'the alias resolves to the concept\'s graph id')
+
+      // ADR-0012's own Verification bar: the read path hits a `concept:` node.
+      const searchHit = await call(client, 'search_definitions', { query: '订单生命周期' })
+      const hits = searchHit['hits'] as Array<{ id: string; kind: string }>
+      assert.ok(hits.some(h => h.id === 'concept:订单生命周期' && h.kind === 'concept'), `search_definitions ranks the concept: ${JSON.stringify(hits)}`)
+
+      const relatedFromConcept = await call(client, 'get_relations', { target: 'concept:订单生命周期' })
+      const relEdges = relatedFromConcept['relations'] as Array<{ type: string; targetId: string }>
+      assert.ok(relEdges.some(r => r.type === 'related_to' && r.targetId === 'concept:渠道'), 'get_relations walks the concept→concept edge')
+      assert.ok(relEdges.some(r => r.type === 'related_to' && r.targetId === 'dws_order'), 'get_relations walks the table→concept edge too (bare table id, no prefix)')
+
+      // get_join_path's BFS only ever walks `joins`-type edges (relation-graph.ts) —
+      // a concept's own edges project as `related_to` (CL-2's taxonomy layer, not a
+      // join graph), so a concept endpoint is handled cleanly (found:false, never an
+      // error, and never a false positive).
+      const joinFromConcept = await call(client, 'get_join_path', { from: 'concept:订单生命周期', to: 'dim_shop' })
+      assert.equal(joinFromConcept['found'], false, 'concept edges are related_to, not joins — get_join_path correctly reports unreachable rather than erroring')
+    }
+
     // ── Phase 5 — the LLM half, self-oracle, across a real restart ──────────────────
     step('issue LLM work, walk the index → prompts → apply chain, restart via a second startup(), apply the pre-restart work_id')
     let dimShopStale: WorkItem

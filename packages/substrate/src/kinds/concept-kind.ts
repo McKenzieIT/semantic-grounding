@@ -32,6 +32,16 @@ export const conceptKindPlugin: DataSourceKindPlugin<ConceptDefinition> = {
     if (def.description) parts.push(def.description)
     if (def.pref_label) parts.push(def.pref_label)
     for (const s of def.alt_labels) parts.push(s)
+    // Q4(b): free-form entity attributes join the indexed text — both their
+    // keys and their primitive values, so a game term living only inside
+    // `properties` (say an item's `rarity: 传说`) is still searchable. Objects
+    // and arrays contribute nothing (a JSON blob in the index is noise, not
+    // recall); nested terms belong in alt_labels or their own concept.
+    for (const [key, value] of Object.entries(def.properties ?? {})) {
+      parts.push(key)
+      if (typeof value === 'string' && value !== '') parts.push(value)
+      else if (typeof value === 'number' || typeof value === 'boolean') parts.push(String(value))
+    }
     return {
       id: `concept:${def.name}`,
       description: parts.join(' '),
@@ -46,11 +56,31 @@ export const conceptKindPlugin: DataSourceKindPlugin<ConceptDefinition> = {
     if (def.alt_labels.length > 0) {
       lines.push(`Aliases: ${def.alt_labels.join(', ')}`)
     }
+    const props = Object.entries(def.properties ?? {})
+    if (props.length > 0) {
+      lines.push(`Properties: ${props.map(([k, v]) => `${k}=${typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v)}`).join(', ')}`)
+    }
     return lines.join('\n')
   },
 
-  relations(_def): RelationDef[] {
-    return []
+  // Q4(b) Update: concepts are the entity layer, not just the taxonomy — a
+  // concept's own `related_refs` are declared entity-graph edges (concept→
+  // concept, concept→table), projected as `related_to` with no join
+  // condition. Asset-derived membership edges (asset.domains → this concept)
+  // keep flowing through `grouping` below; the two sources can both produce a
+  // related_to edge to the same node, which is redundant adjacency, not a
+  // conflict — both claims are curated and the graph takes unions.
+  relations(def): RelationDef[] {
+    if (def.related_refs.length === 0) return []
+    const out: RelationDef[] = []
+    for (const ref of def.related_refs) {
+      out.push({
+        type: 'related_to' as const,
+        target: ref.target_kind === 'concept' ? `concept:${ref.target}` : ref.target,
+        ...(ref.derivation ? { description: ref.derivation } : {}),
+      })
+    }
+    return out
   },
 
   toGraphNode(def): GraphNodeProjection {

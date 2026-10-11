@@ -90,9 +90,119 @@ test('conceptKindPlugin — toPromptContext formats for model', () => {
   expect(ctx).toContain('Aliases: guild, social')
 })
 
-test('conceptKindPlugin — relations returns empty array', () => {
+test('conceptKindPlugin — relations returns empty array when related_refs is empty', () => {
   const def = ConceptDefinitionSchema.parse({ name: 'test' })
   expect(conceptKindPlugin.relations(def)).toEqual([])
+})
+
+// ── Q4(b): properties ────────────────────────────────────────────────────
+
+test('ConceptDefinitionSchema — properties defaults to {} and accepts free-form data', () => {
+  const bare = ConceptDefinitionSchema.parse({ name: 'test' })
+  expect(bare.properties).toEqual({})
+  const withProps = ConceptDefinitionSchema.parse({
+    name: '装备',
+    properties: { rarity: '传说', level_cap: 60, tradeable: false, nested: { a: 1 } },
+  })
+  expect(withProps.properties).toEqual({ rarity: '传说', level_cap: 60, tradeable: false, nested: { a: 1 } })
+})
+
+test('conceptKindPlugin — toCorpusItem indexes properties keys and primitive values', () => {
+  const def = ConceptDefinitionSchema.parse({
+    name: '装备',
+    properties: { rarity: '传说', level_cap: 60, tradeable: false },
+  })
+  const item = conceptKindPlugin.toCorpusItem(def)
+  expect(item!.description).toContain('rarity')
+  expect(item!.description).toContain('传说')
+  expect(item!.description).toContain('level_cap')
+  expect(item!.description).toContain('60')
+  expect(item!.description).toContain('tradeable')
+  expect(item!.description).toContain('false')
+})
+
+test('conceptKindPlugin — toCorpusItem excludes object/array property values as index noise (keys still indexed)', () => {
+  const def = ConceptDefinitionSchema.parse({
+    name: '装备',
+    properties: { tags: ['pvp', 'raid'], meta: { source: 'design-doc' }, rarity: '传说' },
+  })
+  const item = conceptKindPlugin.toCorpusItem(def)
+  expect(item!.description).toContain('tags')
+  expect(item!.description).toContain('meta')
+  expect(item!.description).not.toContain('pvp')
+  expect(item!.description).not.toContain('raid')
+  expect(item!.description).not.toContain('design-doc')
+})
+
+test('conceptKindPlugin — toCorpusItem skips an empty-string property value', () => {
+  const def = ConceptDefinitionSchema.parse({ name: '装备', properties: { note: '' } })
+  const item = conceptKindPlugin.toCorpusItem(def)
+  // The key is still indexed; only the empty value contributes nothing extra.
+  expect(item!.description).toContain('note')
+})
+
+test('conceptKindPlugin — toPromptContext adds a Properties line when properties is non-empty', () => {
+  const def = ConceptDefinitionSchema.parse({ name: '装备', properties: { rarity: '传说', level_cap: 60 } })
+  const ctx = conceptKindPlugin.toPromptContext(def)
+  expect(ctx).toContain('Properties: rarity=传说, level_cap=60')
+})
+
+test('conceptKindPlugin — toPromptContext omits the Properties line when properties is empty', () => {
+  const def = ConceptDefinitionSchema.parse({ name: '装备' })
+  const ctx = conceptKindPlugin.toPromptContext(def)
+  expect(ctx).not.toContain('Properties:')
+})
+
+test('conceptKindPlugin — toPromptContext stringifies an object property value as JSON', () => {
+  const def = ConceptDefinitionSchema.parse({ name: '装备', properties: { meta: { source: 'design-doc' } } })
+  const ctx = conceptKindPlugin.toPromptContext(def)
+  expect(ctx).toContain('Properties: meta={"source":"design-doc"}')
+})
+
+// ── Q4(b): relations() projects declared related_refs ──────────────────────
+
+test('conceptKindPlugin — relations projects a concept→concept related_ref with the concept: prefix', () => {
+  const def = ConceptDefinitionSchema.parse({
+    name: '付费经济',
+    related_refs: [{ target_kind: 'concept', target: '用户生命周期' }],
+  })
+  expect(conceptKindPlugin.relations(def)).toEqual([
+    { type: 'related_to', target: 'concept:用户生命周期' },
+  ])
+})
+
+test('conceptKindPlugin — relations projects a concept→table related_ref with the bare table name', () => {
+  const def = ConceptDefinitionSchema.parse({
+    name: '付费经济',
+    related_refs: [{ target_kind: 'table', target: 'dws_pay' }],
+  })
+  expect(conceptKindPlugin.relations(def)).toEqual([
+    { type: 'related_to', target: 'dws_pay' },
+  ])
+})
+
+test('conceptKindPlugin — relations carries derivation through as description when present', () => {
+  const def = ConceptDefinitionSchema.parse({
+    name: '付费经济',
+    related_refs: [{ target_kind: 'concept', target: '用户生命周期', derivation: '付费转化率依赖生命周期阶段' }],
+  })
+  expect(conceptKindPlugin.relations(def)).toEqual([
+    { type: 'related_to', target: 'concept:用户生命周期', description: '付费转化率依赖生命周期阶段' },
+  ])
+})
+
+test('conceptKindPlugin — relations projects every declared edge in a multi-edge concept', () => {
+  const def = ConceptDefinitionSchema.parse({
+    name: '付费经济',
+    related_refs: [
+      { target_kind: 'concept', target: '用户生命周期' },
+      { target_kind: 'table', target: 'dws_pay' },
+    ],
+  })
+  expect(conceptKindPlugin.relations(def)).toEqual([
+    { type: 'related_to', target: 'concept:用户生命周期' },
+    { type: 'related_to', target: 'dws_pay' },
+  ])
 })
 
 test('conceptKindPlugin — toGraphNode projects a concept:-prefixed node (W27)', () => {

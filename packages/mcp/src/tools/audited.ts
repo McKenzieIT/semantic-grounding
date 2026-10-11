@@ -96,8 +96,11 @@ export async function auditedWrite<T>(
  * The one home for "did this write path run the on-write enrichment hook":
  * `'table'` did (`updateTableMeta`/`syncWrite` call `enrichOnWrite`), `'event'`
  * did not (`updateEventMeta` has no hook — deferred, see the Core class's own
- * note on `discoverEventRelations`), `'round'` always did
- * (`apply_enrichment`/`run_enrichment` enrich by definition).
+ * note on `discoverEventRelations`), `'concept'` did not either — concepts
+ * have no enrichment rounds at all (ADR-0012 / #46 measured 'concept'
+ * zero-hit in enrichment*.ts; reporting health for a concept write would be
+ * the exact misattribution the event branch already refuses), and `'round'`
+ * always did (`apply_enrichment`/`run_enrichment` enrich by definition).
  *
  * This used to be a `kind === 'table' ?` ternary copy-pasted across five
  * handlers. Reporting health for an *event* write would misattribute whatever
@@ -111,9 +114,9 @@ export async function auditedWrite<T>(
  */
 export function enrichmentHealthAfter(
   deps: ServerDeps,
-  writePath: 'table' | 'event' | 'round',
+  writePath: 'table' | 'event' | 'concept' | 'round',
 ): readonly EnrichmentHealthEntry[] | undefined {
-  if (writePath === 'event') return undefined
+  if (writePath === 'event' || writePath === 'concept') return undefined
   return deps.core.getEnrichmentHealth()
 }
 
@@ -135,8 +138,8 @@ export function toolSuccess(payload: unknown): CallToolResult {
 type ApplyResult = { readonly ok: true } | { readonly ok: false; readonly error: string }
 
 /**
- * Apply one field overlay via `updateTableMeta` / `updateEventMeta`, dispatched
- * by `kind`, with an explicit return type.
+ * Apply one field overlay via `updateTableMeta` / `updateEventMeta` /
+ * `updateConceptMeta`, dispatched by `kind`, with an explicit return type.
  *
  * Not a bare `kind === 'table' ? core.updateTableMeta(...) : core.updateEventMeta(...)`
  * inline inside the audit seam's `fn`: measured — `UpdateTableMetaResult` and
@@ -148,7 +151,7 @@ type ApplyResult = { readonly ok: true } | { readonly ok: false; readonly error:
  * rather than annotating every call site.
  * @param deps - the process-wide dependencies.
  * @param kind - which Tier-2 method to call.
- * @param name - the table_name / event name.
+ * @param name - the table_name / event / concept name.
  * @param updates - the field overlay to shallow-merge over the existing YAML.
  * @param expectedVersion - the caller's baseline fingerprint
  *   (`expected_version`, checked inside the lock by the write path).
@@ -157,7 +160,7 @@ type ApplyResult = { readonly ok: true } | { readonly ok: false; readonly error:
  */
 export async function applyFieldUpdate(
   deps: ServerDeps,
-  kind: 'table' | 'event',
+  kind: 'table' | 'event' | 'concept',
   name: string,
   updates: Readonly<Record<string, unknown>>,
   expectedVersion: string,
@@ -166,6 +169,10 @@ export async function applyFieldUpdate(
     const res = await deps.core.updateTableMeta(name, updates, { expected_version: expectedVersion })
     return res.ok ? { ok: true } : res
   }
-  const res = await deps.core.updateEventMeta(name, updates, { expected_version: expectedVersion })
+  if (kind === 'event') {
+    const res = await deps.core.updateEventMeta(name, updates, { expected_version: expectedVersion })
+    return res.ok ? { ok: true } : res
+  }
+  const res = await deps.core.updateConceptMeta(name, updates, { expected_version: expectedVersion })
   return res.ok ? { ok: true } : res
 }
