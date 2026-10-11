@@ -9,7 +9,11 @@
  * ## Why a module, not a convention
  *
  * Eight call sites is eight chances to get the ceremony subtly wrong, and the
- * ceremony is where the load-bearing facts live: `clientInfo` is per-request
+ * ceremony is where the load-bearing facts live: the **entry snapshot** is
+ * resolved synchronously before any `await` and threaded through everything
+ * else (ADR-0011 ruling 1 — a handler that straddles a `switch_scope` serves
+ * the scope it bound at entry: writes land in that repo with that identity's
+ * trailers, and the response carries that stamp); `clientInfo` is per-request
  * envelope data under the 2026-07-28 revision — read fresh inside every
  * handler, never cached at registration or construction time (ADR-0005's
  * 2026-10-09 addendum); `summary`/`derivation`/`confidence` are
@@ -17,12 +21,10 @@
  * recorder refuses a contextless write rather than inventing one); and the
  * lock has to wrap the substrate call, which is why `runAudited` — not
  * `recordTier2Write` — is the seam everything drives (ADR-0004's 2026-10-09
- * update). Collapsing the ceremony here is also where map #40's entry
- * snapshot binding is meant to land: when a handler must resolve the
- * per-request scope snapshot before touching the core (#45's 入口快照绑定),
- * this is the one place the tool layer feels it — the handlers themselves keep
- * compiling intent + payload and stay oblivious to which core instance served
- * the call.
+ * update). #45 ruled this module the one place the tool layer feels the
+ * snapshot binding: handlers resolve `deps.bindings.requireSnapshot()` once
+ * at entry, hand it to {@link auditedWrite}, and stay oblivious to *which*
+ * core instance served the call.
  *
  * ## `enrichment_health` has exactly one home
  *
@@ -39,9 +41,10 @@
  */
 import type { CallToolResult, ServerContext } from '@modelcontextprotocol/server'
 import type { EnrichmentHealthEntry } from '@semantic-grounding/substrate'
-import type { ServerDeps } from '../server.ts'
+import type { ScopeBinding } from '../binding.ts'
 import type { Derivation } from '../git/message.ts'
 import type { AuditedResult } from '../git/recorder.ts'
+import { ScopeMismatchError } from '../errors.ts'
 import { clientNameFromEnvelope } from './shared.ts'
 
 /**
@@ -71,7 +74,11 @@ export interface AuditIntent {
  * whose lock wraps the substrate call. Callers never touch
  * `recordTier2Write` directly: a write arriving without an ambient context is
  * refused rather than given an invented summary (`git/recorder.ts`).
- * @param deps - the process-wide dependencies (`recorder` is the seam).
+ * Takes the **entry snapshot**, not `ServerDeps`: the binding was resolved
+ * synchronously at the handler's entry (ADR-0011 ruling 1), and this seam
+ * runs against exactly that scope's recorder — a `switch_scope` racing the
+ * call cannot redirect the write.
+ * @param snap - the entry snapshot the calling handler resolved.
  * @param ctx - the handler's second callback parameter; the envelope is read
  *   fresh here, per call, per ADR-0005's 2026-10-09 addendum.
  * @param intent - what only the calling tool knows.
@@ -80,16 +87,48 @@ export interface AuditIntent {
  * @returns the recorder's `{commit, changed, value}` for the response body.
  */
 export async function auditedWrite<T>(
-  deps: ServerDeps,
+  snap: ScopeBinding,
   ctx: ServerContext,
   intent: AuditIntent,
   fn: () => Promise<T>,
 ): Promise<AuditedResult<T>> {
   const clientName = clientNameFromEnvelope(ctx)
-  return deps.recorder.runAudited(
+  return snap.recorder.runAudited(
     { ...intent, ...clientName !== undefined ? { clientName } : {} },
     fn,
   )
+}
+
+/**
+ * The write assertion of ADR-0011's three-layer defense: the 8 commit-class
+ * tools carry a required `scope_id`, compared **synchronously at handler
+ * entry** against the snapshot — an agent that read scope A, watched a switch
+ * to B, and then wrote asserting A must be refused (the request arrived after
+ * the switch; the truth is B).
+ * @param snap - the entry snapshot.
+ * @param assertedScopeId - the caller's `scope_id` argument.
+ * @throws ScopeMismatchError when the assertion names a scope that is not the
+ *   snapshot's.
+ */
+export function assertScopeMatch(snap: ScopeBinding, assertedScopeId: string): void {
+  if (assertedScopeId !== snap.scopeId) {
+    throw new ScopeMismatchError(
+      `scope_id "${assertedScopeId}" does not match the active scope "${snap.scopeId}" this call bound at entry — the switch happened after your read; re-read under the new scope or switch back`,
+      { asserted_scope_id: assertedScopeId, active_scope_id: snap.scopeId, remedy: 'switch_scope to the scope you meant, or update the assertion to the active scope' },
+    )
+  }
+}
+
+/**
+ * The response stamp every definition tool inlines at its payload's top level
+ * (`scope: {id, root}`, ADR-0011's stamp layer): self-describing responses, so
+ * a straddled response arriving after a switch still says which scope served
+ * it. Derived from the snapshot, never from live state.
+ * @param snap - the entry snapshot.
+ * @returns `{id, root}` for the response body.
+ */
+export function scopeStamp(snap: ScopeBinding): Readonly<{ id: string; root: string }> {
+  return { id: snap.scopeId, root: snap.semanticRoot }
 }
 
 /**
@@ -110,11 +149,11 @@ export async function auditedWrite<T>(
  *   has no hook — a response key that must stay absent, never an empty array.
  */
 export function enrichmentHealthAfter(
-  deps: ServerDeps,
+  snap: ScopeBinding,
   writePath: 'table' | 'event' | 'round',
 ): readonly EnrichmentHealthEntry[] | undefined {
   if (writePath === 'event') return undefined
-  return deps.core.getEnrichmentHealth()
+  return snap.core.getEnrichmentHealth()
 }
 
 /**
@@ -156,16 +195,16 @@ type ApplyResult = { readonly ok: true } | { readonly ok: false; readonly error:
  *   normal validation/not-found outcome.
  */
 export async function applyFieldUpdate(
-  deps: ServerDeps,
+  snap: ScopeBinding,
   kind: 'table' | 'event',
   name: string,
   updates: Readonly<Record<string, unknown>>,
   expectedVersion: string,
 ): Promise<ApplyResult> {
   if (kind === 'table') {
-    const res = await deps.core.updateTableMeta(name, updates, { expected_version: expectedVersion })
+    const res = await snap.core.updateTableMeta(name, updates, { expected_version: expectedVersion })
     return res.ok ? { ok: true } : res
   }
-  const res = await deps.core.updateEventMeta(name, updates, { expected_version: expectedVersion })
+  const res = await snap.core.updateEventMeta(name, updates, { expected_version: expectedVersion })
   return res.ok ? { ok: true } : res
 }

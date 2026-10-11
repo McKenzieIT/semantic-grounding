@@ -19,11 +19,17 @@
  * | `-31000..-31019` | git audit backbone — this file (#19)    |
  * | `-31020..-31039` | intent tool surface (#20, ADR-0005)     |
  * | `-31040..-31059` | enrichment tools (#21/#31, ADR-0006/0007)|
+ * | `-31060..-31065` | scope management (#51, ADR-0011)        |
  *
  * Allocated so far in the `-31020..-31039` segment: `unsupported_update_field` −31020,
  * `definition_not_found` −31021, `definition_already_exists` −31022,
  * `suggestion_not_found` −31023, `validation_failed` −31024. In the `-31040..-31059`
- * segment: `unknown_filter_name` −31040 (#31, ADR-0007). `stale_baseline`,
+ * segment: `unknown_filter_name` −31040 (#31, ADR-0007). The `-31060..-31065` segment is
+ * ADR-0011's scope surface, all six allocated at once (#51): `no_active_scope` −31060,
+ * `scope_not_found` −31061, `scope_id_conflict` −31062, `scope_path_conflict` −31063,
+ * `scope_mismatch` −31064, `scope_unloadable` −31065. A `register_scope` posture failure
+ * reuses #19's `posture_refused` (−31004) rather than taking a segment code — one
+ * condition, one number. `stale_baseline`,
  * `lock_timeout`, `commit_failed`, `posture_refused` and `missing_audit_context` are
  * **not** re-allocated here — a tool-layer write surfaces #19's own codes unchanged
  * (`runAudited`/`recordTier2Write` already throw {@link SgApplicationError} subclasses
@@ -454,6 +460,76 @@ export class UnknownFilterNameError extends SgApplicationError {
    */
   constructor(message: string, data: Readonly<Record<string, unknown>> = {}) {
     super(ENRICHMENT_TOOL_ERROR_CODES.unknown_filter_name, message, { data })
+  }
+}
+
+// ── The scope management surface's `-31060..-31065` segment (#51, ADR-0011) ──────────
+
+/**
+ * Application error codes for the scope management surface, allocated as one segment
+ * per ADR-0011 ruling 7 (`-31060..-31065`, six codes, one condition each).
+ *
+ * `posture_refused` (−31004) is deliberately absent: a `register_scope`/`switch_scope`
+ * posture failure is the same condition #19 already codes, and the segment's own rule —
+ * one condition, one number — keeps it out of here.
+ */
+export const SCOPE_TOOL_ERROR_CODES = {
+  /** A definition tool was called with no active scope; the remedy names `switch_scope`. */
+  no_active_scope: -31060,
+  /** `switch_scope`/`get_scope`/`--scope` named an id the registry has never seen. */
+  scope_not_found: -31061,
+  /** `register_scope` used an id already bound to a different path. */
+  scope_id_conflict: -31062,
+  /** `register_scope` used a path already bound to a different id. */
+  scope_path_conflict: -31063,
+  /** A write's `scope_id` assertion disagrees with the snapshot the handler bound at entry. */
+  scope_mismatch: -31064,
+  /** The scope passed posture but its corpus failed to load. */
+  scope_unloadable: -31065,
+} as const
+
+/** The union of codes this module allocates for the scope management surface. */
+export type ScopeToolErrorCode = (typeof SCOPE_TOOL_ERROR_CODES)[keyof typeof SCOPE_TOOL_ERROR_CODES]
+
+/** A definition tool ran with no active scope — ADR-0011's first door of the three-layer defense. */
+export class NoActiveScopeError extends SgApplicationError {
+  constructor(message: string, data: Readonly<Record<string, unknown>> = {}) {
+    super(SCOPE_TOOL_ERROR_CODES.no_active_scope, message, { data })
+  }
+}
+
+/** A scope id the registry has never registered; the remedy points at `register_scope`. */
+export class ScopeNotFoundError extends SgApplicationError {
+  constructor(message: string, data: Readonly<Record<string, unknown>> = {}) {
+    super(SCOPE_TOOL_ERROR_CODES.scope_not_found, message, { data })
+  }
+}
+
+/** The id is already bound to a different path (1:1 both directions, ADR-0011 ruling on the registry). */
+export class ScopeIdConflictError extends SgApplicationError {
+  constructor(message: string, data: Readonly<Record<string, unknown>> = {}) {
+    super(SCOPE_TOOL_ERROR_CODES.scope_id_conflict, message, { data })
+  }
+}
+
+/** The path is already bound to a different id — the 1:1 check's other half. */
+export class ScopePathConflictError extends SgApplicationError {
+  constructor(message: string, data: Readonly<Record<string, unknown>> = {}) {
+    super(SCOPE_TOOL_ERROR_CODES.scope_path_conflict, message, { data })
+  }
+}
+
+/** A write asserted a `scope_id` that is not the one its handler bound at entry (ADR-0011's write assertion). */
+export class ScopeMismatchError extends SgApplicationError {
+  constructor(message: string, data: Readonly<Record<string, unknown>> = {}) {
+    super(SCOPE_TOOL_ERROR_CODES.scope_mismatch, message, { data })
+  }
+}
+
+/** Posture passed but the corpus did not load — the registry stays unwritten / the switch does not happen. */
+export class ScopeUnloadableError extends SgApplicationError {
+  constructor(message: string, data: Readonly<Record<string, unknown>> = {}) {
+    super(SCOPE_TOOL_ERROR_CODES.scope_unloadable, message, { data })
   }
 }
 

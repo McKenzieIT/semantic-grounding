@@ -10,10 +10,11 @@
  * @module tools/read
  */
 import type { McpServer } from '@modelcontextprotocol/server'
-import type { GraphNodeProjection } from '@semantic-grounding/substrate'
+import type { GraphNodeProjection, SemanticGroundingCore } from '@semantic-grounding/substrate'
 import { z } from 'zod'
 import { DefinitionNotFoundError, toToolErrorResult } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
+import { scopeStamp } from './audited.ts'
 import { ReadableKindSchema } from './shared.ts'
 
 /** The five read tool names, in ADR-0005's listing order. */
@@ -135,14 +136,14 @@ export function rankDefinitions(query: string, candidates: readonly SearchCandid
  * and the original definition as `payload`). Both are synchronous reads over the same
  * on-disk state with no `await` between them, so the two calls cannot observe different
  * writes — safe to zip by id without a staleness race.
- * @param deps - the process-wide dependencies.
+ * @param core - the entry snapshot's core (which corpus to project).
  * @returns every candidate the registry currently projects.
  */
-function buildCandidates(deps: ServerDeps): SearchCandidate[] {
+function buildCandidates(core: SemanticGroundingCore): SearchCandidate[] {
   const nodesById = new Map<string, GraphNodeProjection>(
-    deps.core.projectGraphNodes({ includeDerived: true }).map(n => [n.id, n]),
+    core.projectGraphNodes({ includeDerived: true }).map(n => [n.id, n]),
   )
-  const items = deps.core.loadRetrievalCorpusAll()
+  const items = core.loadRetrievalCorpusAll()
   const out: SearchCandidate[] = []
   for (const item of items) {
     const node = nodesById.get(item.id)
@@ -178,10 +179,11 @@ function registerSearchDefinitions(server: McpServer, deps: ServerDeps): void {
     },
     async (input) => {
       try {
+        const snap = deps.bindings.requireSnapshot()
         const kindFilter = input.kinds !== undefined ? new Set<string>(input.kinds) : undefined
-        const candidates = buildCandidates(deps).filter(c => kindFilter === undefined || kindFilter.has(c.kind))
+        const candidates = buildCandidates(snap.core).filter(c => kindFilter === undefined || kindFilter.has(c.kind))
         const hits = rankDefinitions(input.query, candidates, input.top_k ?? 10)
-        return { content: [{ type: 'text', text: JSON.stringify({ hits }) }] }
+        return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), hits }) }] }
       } catch (e) {
         return toToolErrorResult(e)
       }
@@ -208,6 +210,7 @@ function registerGetDefinition(server: McpServer, deps: ServerDeps): void {
     },
     async (input) => {
       try {
+        const snap = deps.bindings.requireSnapshot()
         // One fingerprint implementation for both sides of ADR-0004 ruling 8's
         // contract: each Core method resolves the very file the corresponding
         // write path's staleness check hashes (the MCP layer's former parallel
@@ -215,34 +218,34 @@ function registerGetDefinition(server: McpServer, deps: ServerDeps): void {
         // `loadEvents` scan to locate one event's domain — is retired with
         // this switch, and with it the hand-renamed-event-file ENOENT fork).
         if (input.kind === 'table') {
-          const res = deps.core.loadTableDefinitionWithVersion(input.name)
+          const res = snap.core.loadTableDefinitionWithVersion(input.name)
           if (res === null) {
             throw new DefinitionNotFoundError(`no table named "${input.name}"`, { kind: 'table', name: input.name })
           }
-          return { content: [{ type: 'text', text: JSON.stringify({ kind: 'table', name: input.name, definition: res.definition, version: res.version }) }] }
+          return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), kind: 'table', name: input.name, definition: res.definition, version: res.version }) }] }
         }
         if (input.kind === 'event') {
-          const res = deps.core.loadEventDefinitionWithVersion(input.name)
+          const res = snap.core.loadEventDefinitionWithVersion(input.name)
           if (res === null) {
             throw new DefinitionNotFoundError(`no event named "${input.name}"`, { kind: 'event', name: input.name })
           }
-          return { content: [{ type: 'text', text: JSON.stringify({ kind: 'event', name: input.name, definition: res.definition, version: res.version }) }] }
+          return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), kind: 'event', name: input.name, definition: res.definition, version: res.version }) }] }
         }
         if (input.kind === 'concept') {
-          const res = deps.core.loadConceptDefinitionWithVersion(input.name)
+          const res = snap.core.loadConceptDefinitionWithVersion(input.name)
           if (res === null) {
             throw new DefinitionNotFoundError(`no concept named "${input.name}"`, { kind: 'concept', name: input.name })
           }
-          return { content: [{ type: 'text', text: JSON.stringify({ kind: 'concept', name: input.name, definition: res.definition, version: res.version }) }] }
+          return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), kind: 'concept', name: input.name, definition: res.definition, version: res.version }) }] }
         }
         // kind === 'metric': derived from a host table/event's inline `metrics:` block,
         // not a standalone file (metrics.ts / GLOSSARY § definition) — there is no raw
         // byte artifact to fingerprint, and no write tool ever needs one for a metric.
-        const definition = deps.core.loadMetricDefinition(input.name)
+        const definition = snap.core.loadMetricDefinition(input.name)
         if (definition === null) {
           throw new DefinitionNotFoundError(`no metric named "${input.name}"`, { kind: 'metric', name: input.name })
         }
-        return { content: [{ type: 'text', text: JSON.stringify({ kind: 'metric', name: input.name, definition }) }] }
+        return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), kind: 'metric', name: input.name, definition }) }] }
       } catch (e) {
         return toToolErrorResult(e)
       }
@@ -269,8 +272,9 @@ function registerGetJoinPath(server: McpServer, deps: ServerDeps): void {
     },
     async (input) => {
       try {
-        const path = deps.core.getRelationGraph().findJoinPath(input.from, input.to)
-        return { content: [{ type: 'text', text: JSON.stringify({ from: input.from, to: input.to, found: path !== null, path }) }] }
+        const snap = deps.bindings.requireSnapshot()
+        const path = snap.core.getRelationGraph().findJoinPath(input.from, input.to)
+        return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), from: input.from, to: input.to, found: path !== null, path }) }] }
       } catch (e) {
         return toToolErrorResult(e)
       }
@@ -297,8 +301,9 @@ function registerGetRelations(server: McpServer, deps: ServerDeps): void {
     },
     async (input) => {
       try {
-        const relations = deps.core.getRelationGraph().getRelated(input.target, input.type)
-        return { content: [{ type: 'text', text: JSON.stringify({ target: input.target, relations }) }] }
+        const snap = deps.bindings.requireSnapshot()
+        const relations = snap.core.getRelationGraph().getRelated(input.target, input.type)
+        return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), target: input.target, relations }) }] }
       } catch (e) {
         return toToolErrorResult(e)
       }
@@ -324,8 +329,9 @@ function registerResolveAlias(server: McpServer, deps: ServerDeps): void {
     },
     async (input) => {
       try {
-        const nodeIds = deps.core.getRelationGraph().resolveAlias(input.term)
-        return { content: [{ type: 'text', text: JSON.stringify({ term: input.term, node_ids: nodeIds }) }] }
+        const snap = deps.bindings.requireSnapshot()
+        const nodeIds = snap.core.getRelationGraph().resolveAlias(input.term)
+        return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), term: input.term, node_ids: nodeIds }) }] }
       } catch (e) {
         return toToolErrorResult(e)
       }

@@ -69,9 +69,9 @@
  */
 import { McpServer, type McpServerFactory } from '@modelcontextprotocol/server'
 import { serveStdio, type ServeStdioOptions, type StdioServerHandle } from '@modelcontextprotocol/server/stdio'
-import type { SemanticGroundingCore } from '@semantic-grounding/substrate'
 import type { ServerConfig } from './config.ts'
-import type { GitTier2Recorder } from './git/recorder.ts'
+import type { BindingStore } from './binding.ts'
+import type { ScopeRegistryFile } from './scope-registry.ts'
 // Value import (not `import type`): `TOOL_REGISTRARS` needs the real arrays /
 // functions at runtime. Every tool file's own import of `ServerDeps` /
 // `ToolRegistrar` back from this module is `import type`-only (erased at
@@ -80,6 +80,7 @@ import type { GitTier2Recorder } from './git/recorder.ts'
 // reverse at the value level.
 import { INTENT_TOOL_REGISTRARS } from './tools/index.ts'
 import { registerEnrichmentTools } from './tools/enrichment.ts'
+import { registerScopeTools } from './tools/scope.ts'
 
 /**
  * The MCP server's identity, as reported in `_meta.serverInfo`.
@@ -95,18 +96,22 @@ export const SERVER_INFO = {
 } as const
 
 /**
- * Everything a tool needs, built once per process.
+ * Everything a tool needs, built once per process (ADR-0011's re-ruled shape,
+ * [#51](https://github.com/McKenzieIT/semantic-grounding/issues/51)).
  *
- * The `recorder` is passed alongside the `core` rather than reached through it: the
- * substrate takes a recorder by setter and never hands it back, and the tool layer needs
- * `runAudited` directly — it is the seam that holds the lock around the substrate call and
- * supplies the intent the recorder refuses to invent (ADR-0004's 2026-10-09 update).
+ * There is no process-wide `core`/`recorder` anymore: which corpus a call serves
+ * is **per-call state**, resolved synchronously at each handler's entry as a
+ * snapshot from `bindings` (`binding.ts`, ADR-0011 ruling 1). A registrar that
+ * wants to touch a corpus at call time resolves `deps.bindings.requireSnapshot()`
+ * inside its handler — never at registration time, when no request (and so no
+ * snapshot) exists. The `registry` rides alongside for the management tools,
+ * whose object of work is the table itself rather than any scope's corpus.
  */
 export interface ServerDeps {
-  /** The semantic layer, with the recorder already injected. */
-  readonly core: SemanticGroundingCore
-  /** The git audit recorder; drive every Tier-2 write through its `runAudited`. */
-  readonly recorder: GitTier2Recorder
+  /** The unified scope registry (`~/.semantic-grounding/scopes.yaml` unless overridden). */
+  readonly registry: ScopeRegistryFile
+  /** The per-scope binding store: entry snapshots, lazy construction, the active pointer. */
+  readonly bindings: BindingStore
   /** The validated startup configuration. */
   readonly config: ServerConfig
 }
@@ -135,10 +140,11 @@ export type ToolRegistrar = (server: McpServer, deps: ServerDeps) => void
  * #22 shipped this empty ("stdio transport 启动但零工具可用" was its acceptance
  * criterion). #20 appends ADR-0005's fifteen intent tools (`INTENT_TOOL_REGISTRARS`,
  * `./tools/index.ts`) and #21 appends ADR-0006's three enrichment tools
- * (`registerEnrichmentTools`, `./tools/enrichment.ts`) — appending here was the
- * whole integration step the seam was built for.
+ * (`registerEnrichmentTools`, `./tools/enrichment.ts`); #51 appends ADR-0011's five
+ * scope-management tools (`registerScopeTools`, `./tools/scope.ts`) — appending here
+ * was the whole integration step the seam was built for.
  */
-export const TOOL_REGISTRARS: readonly ToolRegistrar[] = [...INTENT_TOOL_REGISTRARS, registerEnrichmentTools]
+export const TOOL_REGISTRARS: readonly ToolRegistrar[] = [...INTENT_TOOL_REGISTRARS, registerEnrichmentTools, registerScopeTools]
 
 /**
  * Build the factory `serveStdio` calls to get a server instance.

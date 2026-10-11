@@ -98,7 +98,7 @@ describe('the pending queue does not dirty the corpus worktree', () => {
     await h.client.callTool('submit_suggestion', { kind: 'alt_label', subject: 'dws_order', content: '订单宽表' })
 
     const versionRes = toolJson(await h.client.callTool('get_definition', { kind: 'table', name: 'dws_order' })) as { version: string }
-    const res = await h.client.callTool('update_definition', {
+    const res = await h.client.callTool('update_definition', { scope_id: 'fixture',
       kind: 'table',
       name: 'dws_order',
       fields: { description: '订单宽表' },
