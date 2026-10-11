@@ -85,8 +85,9 @@ import { z } from 'zod'
 import type { CallToolResult } from '@modelcontextprotocol/server'
 import { assertKnownFilterNames, UnknownFilterNamesError } from '@semantic-grounding/substrate'
 import { toToolErrorResult, UnknownFilterNameError } from '../errors.ts'
+import { ScopeIdSchema } from './shared.ts'
 import type { ToolRegistrar } from '../server.ts'
-import { auditedWrite, enrichmentHealthAfter, toolSuccess } from './audited.ts'
+import { assertScopeMatch, auditedWrite, enrichmentHealthAfter, scopeStamp, toolSuccess } from './audited.ts'
 
 /** The enrichment family's four tool names (ADR-0006's three + ADR-0008's fourth). */
 export const ENRICHMENT_TOOL_NAMES = [
@@ -110,6 +111,10 @@ const scopeFilterSchema = z.object({
   tables: z.array(z.string()).min(1).optional(),
   events: z.array(z.string()).min(1).optional(),
 })
+
+/** `run_enrichment`'s input: the call-wide filter pair plus the write assertion
+ * (ADR-0011 — one of the 8 commit-class tools that must carry `scope_id`). */
+const runEnrichmentInputSchema = scopeFilterSchema.extend({ scope_id: ScopeIdSchema })
 
 /**
  * Build a `{tables?, events?}` options object from zod-parsed filter args, omitting
@@ -170,7 +175,7 @@ function describeRunEnrichmentScope(scope: { readonly tables?: readonly string[]
  * no I/O) — see `server.ts`'s `ToolRegistrar` doc for why that is load-bearing: a
  * registrar may run twice per process, and every inbound request if it throws.
  * @param server - the fresh server instance to register on.
- * @param deps - the process-wide core/recorder/config this process serves.
+ * @param deps - the registry/bindings/config this process serves (per-call scope via entry snapshots).
  */
 export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
   server.registerTool(
@@ -183,9 +188,10 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
     },
     async (args, _extra) => {
       try {
+        const snap = deps.bindings.requireSnapshot()
         // Pure forwarding: the call-wide pair reading, name validation, and the cap
         // all live in the Core method's contract (ADR-0007/0008).
-        return toolSuccess(await deps.core.listEnrichmentWork(filterOpts(args)))
+        return toolSuccess({ scope: scopeStamp(snap), ...(await snap.core.listEnrichmentWork(filterOpts(args))) })
       } catch (e) {
         return toScopeAwareToolError(e)
       }
@@ -204,7 +210,8 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
     },
     async (args, _extra) => {
       try {
-        return toolSuccess({ prompts: await deps.core.getEnrichmentPrompts(args.work_ids) })
+        const snap = deps.bindings.requireSnapshot()
+        return toolSuccess({ scope: scopeStamp(snap), prompts: await snap.core.getEnrichmentPrompts(args.work_ids) })
       } catch (e) {
         return toToolErrorResult(e)
       }
@@ -222,6 +229,7 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
         'and retry) without affecting the other results in the batch. summary and confidence describe the batch ' +
         'as a whole, in your own words; derivation is always recorded as "llm".',
       inputSchema: z.object({
+        scope_id: ScopeIdSchema,
         results: z.array(z.object({
           work_id: z.string().min(1),
           text: z.string(),
@@ -232,12 +240,14 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
     },
     async (args, extra) => {
       try {
+        const snap = deps.bindings.requireSnapshot()
+        assertScopeMatch(snap, args.scope_id)
         const first = args.results[0]
         const subject = args.results.length === 1 && first !== undefined
-          ? deps.core.peekEnrichmentWorkTarget(first.work_id) ?? first.work_id
+          ? snap.core.peekEnrichmentWorkTarget(first.work_id) ?? first.work_id
           : `${args.results.length} targets`
         const audited = await auditedWrite(
-          deps,
+          snap,
           extra,
           {
             tool: 'apply_enrichment',
@@ -249,13 +259,14 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
             derivation: 'llm',
             confidence: args.confidence,
           },
-          () => deps.core.applyEnrichmentResults(args.results, deps.recorder),
+          () => snap.core.applyEnrichmentResults(args.results, snap.recorder),
         )
         return toolSuccess({
+          scope: scopeStamp(snap),
           results: audited.value.results,
           commit: audited.commit,
           changed: audited.changed,
-          enrichment_health: enrichmentHealthAfter(deps, 'round'),
+          enrichment_health: enrichmentHealthAfter(snap, 'round'),
         })
       } catch (e) {
         return toToolErrorResult(e)
@@ -269,10 +280,12 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
       title: 'Run deterministic enrichment',
       description:
         'Deterministic-only batch backfill: re-run DIM-join and alt_labels discovery and persist whatever the deterministic round finds, as one commit. No model involved — call this before get_enrichment_work so facts a deterministic pass can derive are not left for an LLM to guess at (and recorded as if guessed). Dimension filters are call-wide: run_enrichment(tables:[...]) sweeps ONLY those tables and does not touch events; run_enrichment(events:[...]) the mirror; omit both (or pass {}) to scan the full corpus. Filters name existing corpus definitions exactly — an unknown name fails before any scan or commit, with an error listing it. A run that finds nothing new makes no commit. If your client times out on this call, the server may still have finished and committed — re-issue the identical call: the idempotent changed:false result carries the commit sha, which is the receipt the timeout ate.',
-      inputSchema: scopeFilterSchema,
+      inputSchema: runEnrichmentInputSchema,
     },
     async (args, extra) => {
       try {
+        const snap = deps.bindings.requireSnapshot()
+        assertScopeMatch(snap, args.scope_id)
         // ADR-0007: one adjudication feeds the whole-call door, the leg gating, the
         // Core calls, AND the commit subject — the call and its audit trail cannot
         // disagree (the #25 finding was a subject that said "1 table(s)" over a
@@ -282,12 +295,12 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
         // each of which would only validate its own dimension — guarding the full pair
         // up front is what makes the rejection list BOTH dimensions' unknown names in
         // one round trip (#28's "错误列全未知名").
-        assertKnownFilterNames(deps.core.resolveScopeRoot(), scope)
+        assertKnownFilterNames(snap.core.resolveScopeRoot(), scope)
         const full = scope.tables === undefined && scope.events === undefined
         const tablesOn = full || scope.tables !== undefined
         const eventsOn = full || scope.events !== undefined
         const audited = await auditedWrite(
-          deps,
+          snap,
           extra,
           {
             tool: 'run_enrichment',
@@ -301,28 +314,28 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
             confidence: 1,
           },
           async () => {
-            const batch = deps.recorder.beginBatch()
+            const batch = snap.recorder.beginBatch()
             const tier2 = {
-              recorder: deps.recorder,
-              ...deps.config.scopeId !== undefined ? { scope_id: deps.config.scopeId } : {},
+              recorder: snap.recorder,
+              scope_id: snap.scopeId,
             }
             try {
               // Only the legs the adjudicated scope turned on run, and only those
               // legs appear in the result — a leg that did not run has nothing to
               // report (ADR-0007's leftover-detail ruling: report the legs that ran).
               const relation: {
-                tables?: Awaited<ReturnType<typeof deps.core.discoverRelations>>
-                events?: Awaited<ReturnType<typeof deps.core.discoverEventRelations>>
+                tables?: Awaited<ReturnType<typeof snap.core.discoverRelations>>
+                events?: Awaited<ReturnType<typeof snap.core.discoverEventRelations>>
               } = {}
               if (tablesOn) {
-                relation.tables = await deps.core.discoverRelations({ ...scope.tables !== undefined ? { tables: scope.tables } : {}, tier2 })
+                relation.tables = await snap.core.discoverRelations({ ...scope.tables !== undefined ? { tables: scope.tables } : {}, tier2 })
                 if (relation.tables.written > 0) batch.record('run_enrichment', { round: 'relation', kind: 'table' })
               }
               if (eventsOn) {
-                relation.events = await deps.core.discoverEventRelations({ ...scope.events !== undefined ? { events: scope.events } : {}, tier2 })
+                relation.events = await snap.core.discoverEventRelations({ ...scope.events !== undefined ? { events: scope.events } : {}, tier2 })
                 if (relation.events.written > 0) batch.record('run_enrichment', { round: 'relation', kind: 'event' })
               }
-              const altLabels = await deps.core.discoverAltLabels({ ...scope, tier2 })
+              const altLabels = await snap.core.discoverAltLabels({ ...scope, tier2 })
               if (altLabels.written > 0) batch.record('run_enrichment', { round: 'alt_labels' })
               await batch.end()
               return { relation, alt_labels: altLabels }
@@ -333,9 +346,10 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
           },
         )
         return toolSuccess({
+          scope: scopeStamp(snap),
           commit: audited.commit,
           changed: audited.changed,
-          enrichment_health: enrichmentHealthAfter(deps, 'round'),
+          enrichment_health: enrichmentHealthAfter(snap, 'round'),
           summary: audited.value,
         })
       } catch (e) {

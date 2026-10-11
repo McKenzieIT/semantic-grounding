@@ -80,7 +80,7 @@ describe('get_definition — ADR-0005 ruling 6', () => {
   it('the version round-trips as expected_version on a later update_definition', async () => {
     h = await buildIntentToolHarness()
     const read = toolJson(await h.client.callTool('get_definition', { kind: 'table', name: 'dws_order' })) as { version: string }
-    const update = await h.client.callTool('update_definition', {
+    const update = await h.client.callTool('update_definition', { scope_id: 'fixture',
       kind: 'table',
       name: 'dws_order',
       fields: { description: '订单宽表（更新）' },
@@ -119,7 +119,7 @@ describe('get_definition — ADR-0005 ruling 6', () => {
 
   it('loads a metric with no version (no backing file to fingerprint)', async () => {
     h = await buildIntentToolHarness()
-    await h.client.callTool('update_definition', {
+    await h.client.callTool('update_definition', { scope_id: 'fixture',
       kind: 'table',
       name: 'dws_order',
       fields: { metrics: { gmv: { expression: 'sum(pay_amt)', description: '', alt_labels: [], caliber_variants: [] } } },
@@ -141,7 +141,7 @@ describe('get_join_path / get_relations / resolve_alias', () => {
     // Drive one write through the autoEnrich-on core so the deterministic relation
     // round populates dimension_refs — get_join_path reads the relation graph, which
     // is built from on-disk dimension_refs, not inferred live.
-    await h.client.callTool('update_definition', {
+    await h.client.callTool('update_definition', { scope_id: 'fixture',
       kind: 'table',
       name: 'dws_order',
       fields: { description: 'trigger enrichment' },
@@ -167,7 +167,7 @@ describe('get_join_path / get_relations / resolve_alias', () => {
 
   it('get_relations lists direct edges, filterable by type', async () => {
     h = await buildIntentToolHarness({ autoEnrich: true })
-    await h.client.callTool('update_definition', {
+    await h.client.callTool('update_definition', { scope_id: 'fixture',
       kind: 'table',
       name: 'dws_order',
       fields: { description: 'trigger' },
@@ -192,7 +192,7 @@ describe('get_join_path / get_relations / resolve_alias', () => {
   it('resolve_alias finds a node by its alt_label', async () => {
     h = await buildIntentToolHarness()
     const current = toolJson(await h.client.callTool('get_definition', { kind: 'table', name: 'dws_order' })) as { version: string }
-    await h.client.callTool('add_alias', {
+    await h.client.callTool('add_alias', { scope_id: 'fixture',
       kind: 'table',
       name: 'dws_order',
       alias: '订单宽表',

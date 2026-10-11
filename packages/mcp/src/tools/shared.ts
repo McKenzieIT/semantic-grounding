@@ -55,8 +55,21 @@ export const ExpectedVersionSchema = z.string().regex(
   'expected_version must be the 64-character lowercase hex sha256 fingerprint get_definition returned',
 ).describe('The sha256 content fingerprint this write assumes the target still carries (from get_definition.version). A mismatch is rejected as stale_baseline: re-read and retry.')
 
+/**
+ * `scope_id`: the write assertion of ADR-0011's three-layer defense, required on the
+ * 8 commit-class tools. Compared synchronously at handler entry against the snapshot
+ * the handler bound — a mismatch is `scope_mismatch` (−31064), not a silent redirect.
+ * The charset is the registry's (constant 6): conservative, trailer- and path-safe.
+ */
+export const ScopeIdSchema = z.string().regex(
+  /^[a-z0-9][a-z0-9-]*$/,
+  'scope_id must match /^[a-z0-9][a-z0-9-]*$/ (1-64 chars) — it rides the X-SG-Scope trailer and paths',
+).min(1).max(64)
+  .describe('The scope this write asserts it is serving (from the tool response\'s scope.id, or list_scopes). Checked against the server\'s active scope at call entry: a mismatch means a switch happened after your read — switch_scope or re-read under the new scope.')
+
 /** The five Tier-2 fields every *create*-class tool shares (no `expected_version`). */
 export const CREATE_COMMON_FIELDS = {
+  scope_id: ScopeIdSchema,
   summary: SummarySchema,
   derivation: DerivationSchema,
   confidence: ConfidenceSchema,

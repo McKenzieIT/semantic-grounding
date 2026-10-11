@@ -1,5 +1,6 @@
 /**
- * The executable's process-level contract ([#22](https://github.com/McKenzieIT/semantic-grounding/issues/22)).
+ * The executable's process-level contract ([#22](https://github.com/McKenzieIT/semantic-grounding/issues/22);
+ * re-ruled for the registry/scope model by ADR-0011, [#51](https://github.com/McKenzieIT/semantic-grounding/issues/51)).
  *
  * These spawn the real entry point rather than calling `runMain` in-process, because every
  * claim #22's acceptance makes is about a *process*: which exit code, how many bytes on
@@ -14,30 +15,43 @@
  *
  * The posture matrix itself (ADR-0004 rulings 5 and 6, all four branches) is covered at
  * the unit level in `startup-posture.spec.ts` and is deliberately not re-tested here. What
- * is tested here is that the entry *surfaces* a refusal and a recovery correctly.
+ * is tested here is that the entry *surfaces* a refusal and a recovery correctly — now at
+ * the three binding moments ADR-0011 moved posture to (`--scope`'s eager bind here;
+ * `register_scope`/`switch_scope` are `tools/scope.ts`'s own future coverage). Every test
+ * below registers its scope **directly through `ScopeRegistryFile`**, not through the
+ * `register_scope` tool — the registry's own `register()` runs no posture or load check
+ * (that is deliberately the *tool's* job, per the registry module's own header), which is
+ * exactly what lets a deployment-refusal test plant a bad corpus and prove *startup's*
+ * posture re-check catches it, independent of whichever door the entry came through.
  *
  * @module tests/server-startup.spec
  */
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { hostname } from 'node:os'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { hostname, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { EXIT } from '../src/main.ts'
 import { LOCK_FILENAME, type LockRecord } from '../src/git/lock.ts'
+import { ScopeRegistryFile } from '../src/scope-registry.ts'
 import { INTENT_TOOL_NAMES } from '../src/tools/index.ts'
 import { ENRICHMENT_TOOL_NAMES } from '../src/tools/enrichment.ts'
+import { SCOPE_TOOL_NAMES } from '../src/tools/scope.ts'
 import { createFixtureCorpus, fixtureGit, type FixtureCorpus } from './helpers/fixture-corpus.ts'
 
 const BIN = fileURLToPath(new URL('../src/bin.ts', import.meta.url))
 const REGISTRAR_BIN = fileURLToPath(new URL('./helpers/registrar-server.ts', import.meta.url))
 
+/** Every default-registrar tool name, in no particular order — this file's own "all of them" baseline. */
+const ALL_DEFAULT_TOOL_NAMES = [...INTENT_TOOL_NAMES, ...ENRICHMENT_TOOL_NAMES, ...SCOPE_TOOL_NAMES]
+
 /**
  * The environment to spawn with: the real one, minus this server's own variables.
  *
- * Scrubbed deliberately. An `SG_CORPUS` set in the developer's shell would silently
- * satisfy the "missing corpus" test and make it pass for the wrong reason.
+ * Scrubbed deliberately. An `SG_REGISTRY`/`SG_AGENT_ID` set in the developer's shell
+ * would silently satisfy a test for the wrong reason, or point a spawned process at a
+ * real `~/.semantic-grounding/scopes.yaml`.
  * @returns the scrubbed environment.
  */
 function baseEnv(): Record<string, string> {
@@ -101,6 +115,35 @@ function responses(stdout: string): Array<Record<string, unknown>> {
   return stdout.split('\n').filter(l => l.trim() !== '').map(l => JSON.parse(l) as Record<string, unknown>)
 }
 
+/** Registry temp dirs created by {@link freshRegistryPath}, torn down in `afterEach`. */
+let liveRegistryDirs: string[] = []
+
+/**
+ * A throwaway registry file path, isolated from the real `~/.semantic-grounding`.
+ * The file need not exist yet — `ScopeRegistryFile`/`main.ts` both treat ENOENT as an
+ * empty registry.
+ * @returns the registry path to pass as `--registry`.
+ */
+function freshRegistryPath(): string {
+  const dir = mkdtempSync(join(tmpdir(), 'sg-registry-'))
+  liveRegistryDirs.push(dir)
+  return join(dir, 'scopes.yaml')
+}
+
+/**
+ * Register one scope directly through the registry's own `register()` — deliberately
+ * bypassing `register_scope`'s posture/load door, so a test can plant a scope entry
+ * pointing at a corpus that would never pass that door, and prove startup's *own*
+ * posture re-check (`BindingStore.bindStartup`) catches it independently.
+ * @param registryPath - the registry file.
+ * @param id - the scope id.
+ * @param semanticRoot - the corpus root to register (not required to be valid yet).
+ */
+async function registerDirect(registryPath: string, id: string, semanticRoot: string): Promise<void> {
+  const registry = new ScopeRegistryFile(registryPath)
+  await registry.register({ id, semanticRoot, name: id, registeredBy: 'setup' })
+}
+
 let fixture: FixtureCorpus
 
 beforeEach(() => {
@@ -109,23 +152,25 @@ beforeEach(() => {
 
 afterEach(() => {
   fixture.cleanup()
+  for (const dir of liveRegistryDirs) rmSync(dir, { recursive: true, force: true })
+  liveRegistryDirs = []
 })
 
 // ── Usage errors: EX_USAGE (64) ──────────────────────────────────────────
 
 describe('usage refusals exit 64 and say nothing on stdout', () => {
   it.each([
-    ['no arguments at all', [] as readonly string[]],
-    ['corpus without an agent id', ['--corpus', '/srv/c']],
-    ['an unknown flag', ['--corpus', '/srv/c', '--agent-id', 'a', '--bogus']],
-    ['a malformed lock timeout', ['--corpus', '/srv/c', '--agent-id', 'a', '--lock-timeout-ms', '10s']],
+    ['no arguments at all — no agent id', [] as readonly string[]],
+    ['the removed --corpus flag', ['--corpus', '/srv/c', '--agent-id', 'a']],
+    ['an unknown flag', ['--agent-id', 'a', '--bogus']],
+    ['a malformed lock timeout', ['--agent-id', 'a', '--lock-timeout-ms', '10s']],
   ])('%s', (_label, args) => {
-    const r = run(args)
+    const r = run([...args, '--registry', freshRegistryPath()])
     expect(r.code).toBe(EXIT.usage)
     expect(r.stdout).toBe('')
     // The usage text comes with the failure, so a mis-registered server teaches its own
     // surface at the moment the operator sees it fail.
-    expect(r.stderr).toContain('--corpus')
+    expect(r.stderr).toContain('--agent-id')
   })
 
   it('prints help to stderr and exits 0', () => {
@@ -133,16 +178,19 @@ describe('usage refusals exit 64 and say nothing on stdout', () => {
     expect(r.code).toBe(EXIT.ok)
     expect(r.stdout).toBe('')
     expect(r.stderr).toContain('usage: sg-mcp')
+    expect(r.stderr).toContain('register_scope')
   })
 })
 
 // ── Deployment refusals: EX_CONFIG (78) ──────────────────────────────────
 
 describe('deployment refusals exit 78 and say nothing on stdout', () => {
-  it('refuses a corpus that is not a git repository, naming the remedy', () => {
+  it('refuses a corpus that is not a git repository, naming the remedy', async () => {
     const plain = createFixtureCorpus({ git: false })
     try {
-      const r = run(['--corpus', plain.root, '--agent-id', 'a'])
+      const registryPath = freshRegistryPath()
+      await registerDirect(registryPath, 'plain', plain.root)
+      const r = run(['--scope', 'plain', '--agent-id', 'a', '--registry', registryPath])
       expect(r.code).toBe(EXIT.config)
       expect(r.stdout).toBe('')
       expect(r.stderr).toContain('git init')
@@ -151,21 +199,26 @@ describe('deployment refusals exit 78 and say nothing on stdout', () => {
     }
   })
 
-  it('refuses a corpus nested inside a larger repository', () => {
+  it('refuses a corpus nested inside a larger repository', async () => {
     const nested = join(fixture.root, 'sub-corpus')
     mkdirSync(join(nested, 'tables'), { recursive: true })
     writeFileSync(join(nested, 'config.yaml'), 'scope_id: nested\n', 'utf8')
-    const r = run(['--corpus', nested, '--agent-id', 'a'])
+    const registryPath = freshRegistryPath()
+    await registerDirect(registryPath, 'nested', nested)
+    const r = run(['--scope', 'nested', '--agent-id', 'a', '--registry', registryPath])
     expect(r.code).toBe(EXIT.config)
     expect(r.stderr).toContain('not a repository root')
   })
 
-  it('refuses a dirty worktree with no lock, and leaves the edit alone', () => {
+  it('refuses a dirty worktree with no lock, and leaves the edit alone', async () => {
+    const registryPath = freshRegistryPath()
+    await registerDirect(registryPath, 'fixture', fixture.root) // registered while clean
+
     const p = join(fixture.root, 'tables', 'dws_order.yaml')
     const before = readFileSync(p, 'utf8')
     writeFileSync(p, `${before}\n# a human's uncommitted edit\n`, 'utf8')
 
-    const r = run(['--corpus', fixture.root, '--agent-id', 'a'])
+    const r = run(['--scope', 'fixture', '--agent-id', 'a', '--registry', registryPath])
     expect(r.code).toBe(EXIT.config)
     expect(r.stdout).toBe('')
     expect(r.stderr).toContain('git stash')
@@ -173,8 +226,8 @@ describe('deployment refusals exit 78 and say nothing on stdout', () => {
     expect(readFileSync(p, 'utf8')).toContain("a human's uncommitted edit")
   })
 
-  it('refuses an agent id git cannot use as an identity', () => {
-    const r = run(['--corpus', fixture.root, '--agent-id', 'bad<name>'])
+  it('refuses an agent id git cannot use as an identity, before any registry lookup', () => {
+    const r = run(['--agent-id', 'bad<name>', '--registry', freshRegistryPath()])
     expect(r.code).toBe(EXIT.config)
     expect(r.stdout).toBe('')
     expect(r.stderr).toContain('stripped by git')
@@ -184,23 +237,32 @@ describe('deployment refusals exit 78 and say nothing on stdout', () => {
     // The measured alternative: refusing from inside the serveStdio factory yields a
     // canned `-32603 Internal server error`, exit 0, the remedy lost to the onerror sink,
     // and the factory retried on every request. All four are visible right here.
-    const r = run(['--corpus', fixture.root, '--agent-id', 'bad<name>'], { input: modernToolsList() })
+    const r = run(['--agent-id', 'bad<name>', '--registry', freshRegistryPath()], { input: modernToolsList() })
     expect(r.code).toBe(EXIT.config)
     expect(r.stdout).toBe('')
     expect(r.stderr).not.toContain('-32603')
+  })
+
+  it('refuses an unregistered --scope id, naming it in the refusal', () => {
+    const r = run(['--scope', 'never-registered', '--agent-id', 'a', '--registry', freshRegistryPath()])
+    expect(r.code).toBe(EXIT.config)
+    expect(r.stdout).toBe('')
+    expect(r.stderr).toContain('never-registered')
+    expect(r.stderr).toContain('not in the registry')
   })
 })
 
 // ── Serving ──────────────────────────────────────────────────────────────
 
-// ENRICHMENT_TOOL_NAMES is imported from the registrar's own name constant (the same
-// "one file owns the list" reasoning `tools/index.ts` documents for
-// INTENT_TOOL_NAMES): #21's three + #31's fourth (get_enrichment_prompts, ADR-0008)
-// = nineteen default-registrar tools.
+// SCOPE_TOOL_NAMES is ADR-0011's addition (#51): the five scope-management tools, on
+// top of the pre-existing nineteen (ADR-0005's fifteen + ADR-0006's three + ADR-0008's
+// one) — twenty-four default-registrar tools in total. None of the tools/list-only
+// tests below need an active scope bound: every tool registers unconditionally, and
+// only a definition-tool *call* without one would answer no_active_scope.
 
 describe('serving', () => {
-  it('answers a 2026-07-28 tools/list with all nineteen default-registrar tools (ADR-0005 fifteen + ADR-0006 three + ADR-0008 one), in the revision\'s result shape', () => {
-    const r = run(['--corpus', fixture.root, '--agent-id', 'analyst-bot'], { input: modernToolsList() })
+  it('answers a 2026-07-28 tools/list with all twenty-four default-registrar tools, in the revision\'s result shape', () => {
+    const r = run(['--agent-id', 'analyst-bot', '--registry', freshRegistryPath()], { input: modernToolsList() })
     expect(r.code).toBe(EXIT.ok)
 
     const [res] = responses(r.stdout)
@@ -208,14 +270,14 @@ describe('serving', () => {
     const result = res?.['result'] as Record<string, unknown> | undefined
     // Zero tools was #22's own scope ("stdio transport 启动但零工具可用") — #20 landed
     // ADR-0005's fifteen, #21 landed ADR-0006's three, #31 added ADR-0008's fourth
-    // (get_enrichment_prompts), so the default-registrar list is now all nineteen
-    // (the exact names/schemas are pinned in `tests/intent-tools*.spec.ts`
-    // and `tests/enrichment-tools.spec.ts`; this file's job is the protocol envelope, not the
-    // catalog). The point of asserting the list exists at all rather than the method 404ing:
+    // (get_enrichment_prompts), #51 added ADR-0011's five scope tools. The exact
+    // names/schemas are pinned in `tests/intent-tools*.spec.ts`, `tests/enrichment-tools.spec.ts`
+    // and `tests/scope-tools.spec.ts`; this file's job is the protocol envelope, not the
+    // catalog. The point of asserting the list exists at all rather than the method 404ing:
     // without an explicit `capabilities: { tools: {} }` the SDK answers -32601, which a client
     // cannot tell apart from a broken server.
     const tools = result?.['tools'] as Array<{ name: string }> | undefined
-    expect(tools?.map(t => t.name).sort()).toEqual([...INTENT_TOOL_NAMES, ...ENRICHMENT_TOOL_NAMES].sort())
+    expect(tools?.map(t => t.name).sort()).toEqual([...ALL_DEFAULT_TOOL_NAMES].sort())
     // Revision markers the 2025-era shape does not carry. Their presence is what proves
     // `serveStdio` is wired rather than a hand-connected transport, which answers the
     // same bytes in the wrong era.
@@ -257,7 +319,7 @@ describe('serving', () => {
           method: 'initialize',
           params: { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'probe-host', version: '1.0' } },
         })}\n`
-      const r = run(['--corpus', fixture.root, '--agent-id', 'probe-agent'], {
+      const r = run(['--agent-id', 'probe-agent', '--registry', freshRegistryPath()], {
         input: opening + probe(1, 'prompts/list', modern) + probe(2, 'resources/list', modern) + probe(3, 'resources/templates/list', modern),
       })
       expect(r.code).toBe(EXIT.ok)
@@ -284,15 +346,15 @@ describe('serving', () => {
     })}\n`
     const list = `${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} })}\n`
 
-    const r = run(['--corpus', fixture.root, '--agent-id', 'analyst-bot'], { input: init + list })
+    const r = run(['--agent-id', 'analyst-bot', '--registry', freshRegistryPath()], { input: init + list })
     expect(r.code).toBe(EXIT.ok)
 
     const out = responses(r.stdout)
     expect(out).toHaveLength(2)
     expect((out[0]?.['result'] as Record<string, unknown>)?.['protocolVersion']).toBe('2025-11-25')
-    // Same default-registrar tool set as the modern-era test above (all nineteen).
+    // Same default-registrar tool set as the modern-era test above (all twenty-four).
     const legacyTools = (out[1]?.['result'] as Record<string, unknown>)?.['tools'] as Array<{ name: string }> | undefined
-    expect(legacyTools?.map(t => t.name).sort()).toEqual([...INTENT_TOOL_NAMES, ...ENRICHMENT_TOOL_NAMES].sort())
+    expect(legacyTools?.map(t => t.name).sort()).toEqual([...ALL_DEFAULT_TOOL_NAMES].sort())
     // No `-32601`: the regression this guards is reusing one McpServer across the
     // factory's two measured calls, which answers a legacy `initialize` "Method not found"
     // because the modern binding permanently mutates the instance.
@@ -301,12 +363,12 @@ describe('serving', () => {
 
   it('answers every request on one pinned connection', () => {
     const input = modernToolsList(1) + modernToolsList(2) + modernToolsList(3)
-    const r = run(['--corpus', fixture.root, '--agent-id', 'analyst-bot'], { input })
+    const r = run(['--agent-id', 'analyst-bot', '--registry', freshRegistryPath()], { input })
     expect(r.code).toBe(EXIT.ok)
     expect(responses(r.stdout)).toHaveLength(3)
   })
 
-  it('builds the corpus once even when the serving factory runs twice', () => {
+  it('builds the bound scope\'s corpus once even when the serving factory runs twice', async () => {
     // The banner prints once per startup, so its count is the number of times the
     // expensive half (corpus load, recorder, posture check) was constructed.
     //
@@ -317,7 +379,12 @@ describe('serving', () => {
     // probe instance, and a client that then falls back to legacy `initialize` causes the
     // probe to be discarded and a second instance built. Measured on this exact input, the
     // factory is entered **twice** — so an in-factory build would print two banners, load
-    // the corpus twice, and construct two recorders over one corpus.
+    // the corpus twice, and construct two recorders over one corpus. A `--scope` is bound
+    // here specifically so that risk is actually exercised (an unbound process has nothing
+    // to double-construct).
+    const registryPath = freshRegistryPath()
+    await registerDirect(registryPath, 'fixture', fixture.root)
+
     const discover = `${JSON.stringify({
       jsonrpc: '2.0',
       id: 1,
@@ -337,7 +404,7 @@ describe('serving', () => {
     })}\n`
     const list = `${JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/list', params: {} })}\n`
 
-    const r = run(['--corpus', fixture.root, '--agent-id', 'analyst-bot'], { input: discover + init + list })
+    const r = run(['--scope', 'fixture', '--agent-id', 'analyst-bot', '--registry', registryPath], { input: discover + init + list })
     expect(r.code).toBe(EXIT.ok)
     expect(r.stderr.split('serving MCP over stdio').length - 1).toBe(1)
     // All three still answered, across the era switch — the second instance is a fresh
@@ -350,16 +417,18 @@ describe('serving', () => {
     // The MCP stdio binding expects a server to exit when its stdin closes. Nothing here
     // awaits "serving finished" — the SDK's handle exposes only `close()` — so this
     // asserts the process does not hang on an empty pipe.
-    const r = run(['--corpus', fixture.root, '--agent-id', 'analyst-bot'])
+    const r = run(['--agent-id', 'analyst-bot', '--registry', freshRegistryPath()])
     expect(r.code).toBe(EXIT.ok)
     expect(r.stdout).toBe('')
   })
 
-  it('leaves the corpus untouched: no commit, no dirt', () => {
+  it('leaves the corpus untouched: no commit, no dirt', async () => {
     // Startup takes no write lock and makes no commit. If it did, every client restart
     // would add to the audit history, and ruling 6 would refuse the *next* startup.
+    const registryPath = freshRegistryPath()
+    await registerDirect(registryPath, 'fixture', fixture.root)
     const commitsBefore = fixtureGit(['rev-list', '--count', 'HEAD'], fixture.root).trim()
-    const r = run(['--corpus', fixture.root, '--agent-id', 'analyst-bot'], { input: modernToolsList() })
+    const r = run(['--scope', 'fixture', '--agent-id', 'analyst-bot', '--registry', registryPath], { input: modernToolsList() })
     expect(r.code).toBe(EXIT.ok)
     expect(fixtureGit(['status', '--porcelain'], fixture.root)).toBe('')
     expect(fixtureGit(['rev-list', '--count', 'HEAD'], fixture.root).trim()).toBe(commitsBefore)
@@ -369,32 +438,35 @@ describe('serving', () => {
 // ── The startup banner ───────────────────────────────────────────────────
 
 describe('startup banner', () => {
-  it('reports the resolved corpus, the agent, and the derived commit author', () => {
-    const r = run(['--corpus', fixture.root, '--agent-id', 'analyst-bot', '--scope', 'retail'], {
+  it('reports the registry, the bound scope, the agent, and the derived commit author', async () => {
+    const registryPath = freshRegistryPath()
+    await registerDirect(registryPath, 'retail', fixture.root)
+    const r = run(['--agent-id', 'analyst-bot', '--scope', 'retail', '--registry', registryPath], {
       input: modernToolsList(),
     })
     expect(r.code).toBe(EXIT.ok)
-    // The *resolved* toplevel, not the configured string. Every fixture here is reached
-    // through a symlinked temp dir, so this also keeps the realpath handling honest.
-    expect(r.stderr).toContain(fixtureGit(['rev-parse', '--show-toplevel'], fixture.root).trim())
-    expect(r.stderr).toContain('posture:   clean')
+    expect(r.stderr).toContain(`registry:  ${registryPath}`)
+    expect(r.stderr).toContain(`scope:     retail -> ${fixture.root}`)
     expect(r.stderr).toContain('agent:     analyst-bot')
     // The author email namespace an operator will see in `git log`, visible before the
     // first write rather than after it.
     expect(r.stderr).toMatch(/author:\s+analyst-bot <analyst-bot@agents\./)
-    expect(r.stderr).toContain('scope:     retail')
   })
 
-  it('says a scope was not configured instead of printing a blank', () => {
-    const r = run(['--corpus', fixture.root, '--agent-id', 'a'], { input: modernToolsList() })
-    expect(r.stderr).toContain('no X-SG-Scope trailer')
+  it('reports no active scope instead of printing a blank, when none is bound', () => {
+    const r = run(['--agent-id', 'a', '--registry', freshRegistryPath()], { input: modernToolsList() })
+    expect(r.code).toBe(EXIT.ok)
+    expect(r.stderr).toContain('no_active_scope')
   })
 
-  it('reports the recovered posture after crash residue is restored', () => {
+  it('reports the recovered posture after crash residue is restored', async () => {
     // Ruling 6 row 3, at the process level: residue behind a dead lock is restored and the
     // server starts. The unit-level matrix lives in startup-posture.spec.ts; what is
-    // asserted here is that the report reaches the banner, so an operator can see a
+    // asserted here is that the recovery notice reaches stderr, so an operator can see a
     // recovery happened rather than inferring it from a quiet start.
+    const registryPath = freshRegistryPath()
+    await registerDirect(registryPath, 'fixture', fixture.root) // registered while clean
+
     writeFileSync(join(fixture.root, 'tables', 'dws_half_written.yaml'), 'table_name: x\n', 'utf8')
     const record: LockRecord = {
       // A pid that cannot be alive, on this host, so `inspect` returns 'dead'.
@@ -407,10 +479,9 @@ describe('startup banner', () => {
     }
     writeFileSync(join(fixture.root, '.git', LOCK_FILENAME), `${JSON.stringify(record)}\n`, 'utf8')
 
-    const r = run(['--corpus', fixture.root, '--agent-id', 'a'], { input: modernToolsList() })
+    const r = run(['--scope', 'fixture', '--agent-id', 'a', '--registry', registryPath], { input: modernToolsList() })
     expect(r.code).toBe(EXIT.ok)
     expect(r.stderr).toContain('crash recovery')
-    expect(r.stderr).toContain('posture:   recovered')
     expect(fixtureGit(['status', '--porcelain'], fixture.root)).toBe('')
   })
 })
@@ -418,13 +489,15 @@ describe('startup banner', () => {
 // ── Config carriers, at the process level ────────────────────────────────
 
 describe('config carriers', () => {
-  it('starts from environment variables alone', () => {
+  it('starts from environment variables alone', async () => {
     // The carrier insurance: we cannot verify whether QoderWork's MCP registration exposes
     // `args`, `env`, or both, and a server configurable only through the channel a host
     // happens not to offer is unusable for a reason the operator cannot see.
+    const registryPath = freshRegistryPath()
+    await registerDirect(registryPath, 'env-scope', fixture.root)
     const r = run([], {
       input: modernToolsList(),
-      env: { SG_CORPUS: fixture.root, SG_AGENT_ID: 'env-bot', SG_SCOPE: 'env-scope' },
+      env: { SG_REGISTRY: registryPath, SG_AGENT_ID: 'env-bot', SG_SCOPE: 'env-scope' },
     })
     expect(r.code).toBe(EXIT.ok)
     expect(r.stderr).toContain('agent:     env-bot')
@@ -432,9 +505,10 @@ describe('config carriers', () => {
   })
 
   it('lets a flag win over its environment variable', () => {
-    const r = run(['--agent-id', 'flag-bot'], {
+    const registryPath = freshRegistryPath()
+    const r = run(['--agent-id', 'flag-bot', '--registry', registryPath], {
       input: modernToolsList(),
-      env: { SG_CORPUS: fixture.root, SG_AGENT_ID: 'env-bot' },
+      env: { SG_AGENT_ID: 'env-bot' },
     })
     expect(r.code).toBe(EXIT.ok)
     expect(r.stderr).toContain('agent:     flag-bot')
@@ -448,8 +522,9 @@ describe('ToolRegistrar seam', () => {
     // #20 and #21's entire integration step is appending to `TOOL_REGISTRARS`. Declaring
     // `capabilities: { tools: {} }` for the zero-tool case and registering a tool later
     // could plausibly conflict — the SDK wires its tool handlers eagerly in the first case
-    // and lazily in the second — so this asserts they compose.
-    const r = run(['--corpus', fixture.root, '--agent-id', 'a'], {
+    // and lazily in the second — so this asserts they compose. No scope needs to be bound:
+    // the registrar seam is about tool registration, not corpus access.
+    const r = run(['--agent-id', 'a', '--registry', freshRegistryPath()], {
       input: modernToolsList(),
       bin: REGISTRAR_BIN,
     })
@@ -461,7 +536,7 @@ describe('ToolRegistrar seam', () => {
 
   it('still refuses startup when a registrar is installed', () => {
     // Registering tools must not accidentally move the refusal behind the transport.
-    const r = run(['--corpus', fixture.root, '--agent-id', 'bad<name>'], { bin: REGISTRAR_BIN })
+    const r = run(['--agent-id', 'bad<name>', '--registry', freshRegistryPath()], { bin: REGISTRAR_BIN })
     expect(r.code).toBe(EXIT.config)
     expect(r.stdout).toBe('')
   })

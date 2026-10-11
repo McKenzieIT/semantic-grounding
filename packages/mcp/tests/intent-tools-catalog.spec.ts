@@ -160,14 +160,14 @@ describe('item-level tool schemas — ADR-0005 ruling 3 (reshaped by ADR-0010 / 
   it('add_alias requires kind, name, alias, and the full update-class common block', async () => {
     const tool = byName(await listTools(), 'add_alias')
     expect(tool.inputSchema.required?.slice().sort()).toEqual(
-      ['alias', 'confidence', 'derivation', 'expected_version', 'kind', 'name', 'summary'].sort(),
+      ['alias', 'confidence', 'derivation', 'expected_version', 'kind', 'name', 'scope_id', 'summary'].sort(),
     )
   })
 
   it('remove_alias requires kind, name, labels (a same-target batch, #37 §3), and the full update-class common block', async () => {
     const tool = byName(await listTools(), 'remove_alias')
     expect(tool.inputSchema.required?.slice().sort()).toEqual(
-      ['confidence', 'derivation', 'expected_version', 'kind', 'labels', 'name', 'summary'].sort(),
+      ['confidence', 'derivation', 'expected_version', 'kind', 'labels', 'name', 'scope_id', 'summary'].sort(),
     )
     const labels = tool.inputSchema.properties?.['labels'] as { type?: string; minItems?: number }
     expect(labels.type).toBe('array')

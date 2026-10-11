@@ -1,6 +1,8 @@
 /**
  * The config surface's legal and illegal branches — #22's acceptance asks for exactly
- * this ("单元测试覆盖 CLI/config 解析的合法与非法分支").
+ * this ("单元测试覆盖 CLI/config 解析的合法与非法分支"), re-ruled by ADR-0011 ruling 3
+ * (#51): `--corpus` is gone, `--registry` takes its place as an *optional* carrier with
+ * a real default, and `--agent-id` is the only required flag.
  *
  * `parseServerConfig` is pure over `(argv, env)`, which is why it is a unit test here and
  * the process-level contract (exit codes, stdout silence) is a spawn test in
@@ -11,19 +13,26 @@
  */
 import { describe, expect, it } from 'vitest'
 import { ConfigError, ENV_VARS, HelpRequested, parseServerConfig, usage } from '../src/config.ts'
+import { defaultRegistryPath } from '../src/scope-registry.ts'
 
 /** An environment with none of the server's variables set. */
 const NO_ENV: Record<string, string | undefined> = {}
 
 describe('parseServerConfig — legal branches', () => {
-  it('takes the two required values from flags', () => {
-    const cfg = parseServerConfig(['--corpus', '/srv/corpus', '--agent-id', 'analyst-bot'], NO_ENV)
-    expect(cfg.corpusRoot).toBe('/srv/corpus')
+  it('takes the required value from flags', () => {
+    const cfg = parseServerConfig(['--agent-id', 'analyst-bot'], NO_ENV)
     expect(cfg.agentId).toBe('analyst-bot')
   })
 
+  it('defaults the registry path when none is given', () => {
+    // Ruling 2's default: a server started with nothing but --agent-id still has a
+    // table to read/write, at the same path every other process on the machine uses.
+    const cfg = parseServerConfig(['--agent-id', 'a'], NO_ENV)
+    expect(cfg.registryPath).toBe(defaultRegistryPath())
+  })
+
   it('leaves the optional values absent rather than defaulting them', () => {
-    const cfg = parseServerConfig(['--corpus', '/srv/corpus', '--agent-id', 'a'], NO_ENV)
+    const cfg = parseServerConfig(['--agent-id', 'a'], NO_ENV)
     // Absent, not empty-string and not zero: `buildTrailers` drops `X-SG-Scope` when the
     // scope is blank, and `lock.ts` owns the timeout default. A default invented here
     // would be a second, competing source for both.
@@ -35,32 +44,31 @@ describe('parseServerConfig — legal branches', () => {
 
   it('accepts the optional values when given', () => {
     const cfg = parseServerConfig(
-      ['--corpus', '/srv/c', '--agent-id', 'a', '--scope', 'retail', '--lock-timeout-ms', '25000'],
+      ['--agent-id', 'a', '--scope', 'retail', '--lock-timeout-ms', '25000'],
       NO_ENV,
     )
     expect(cfg.scopeId).toBe('retail')
     expect(cfg.lockTimeoutMs).toBe(25_000)
   })
 
-  it('resolves a relative corpus path to an absolute one', () => {
+  it('resolves a relative registry path to an absolute one', () => {
     // Under stdio the MCP client picks the working directory, so a relative path names a
     // directory the operator did not choose. Resolving here, once, is what makes every
-    // downstream message (and the posture check's toplevel comparison) name the directory
-    // actually used.
-    const cfg = parseServerConfig(['--corpus', 'corpus', '--agent-id', 'a'], NO_ENV)
-    expect(cfg.corpusRoot.startsWith('/')).toBe(true)
-    expect(cfg.corpusRoot.endsWith('/corpus')).toBe(true)
+    // downstream message name the file actually used.
+    const cfg = parseServerConfig(['--registry', 'scopes.yaml', '--agent-id', 'a'], NO_ENV)
+    expect(cfg.registryPath.startsWith('/')).toBe(true)
+    expect(cfg.registryPath.endsWith('/scopes.yaml')).toBe(true)
   })
 
   it('falls back to the environment for every setting', () => {
     const cfg = parseServerConfig([], {
-      [ENV_VARS.corpus]: '/srv/from-env',
+      [ENV_VARS.registry]: '/srv/from-env.yaml',
       [ENV_VARS.agentId]: 'env-bot',
       [ENV_VARS.scope]: 'env-scope',
       [ENV_VARS.lockTimeoutMs]: '7000',
     })
     expect(cfg).toMatchObject({
-      corpusRoot: '/srv/from-env',
+      registryPath: '/srv/from-env.yaml',
       agentId: 'env-bot',
       scopeId: 'env-scope',
       lockTimeoutMs: 7000,
@@ -68,49 +76,40 @@ describe('parseServerConfig — legal branches', () => {
   })
 
   it('lets a flag win over its environment variable', () => {
-    const cfg = parseServerConfig(['--agent-id', 'flag-bot'], {
-      [ENV_VARS.corpus]: '/srv/c',
+    const cfg = parseServerConfig(['--agent-id', 'flag-bot', '--registry', '/flag-registry.yaml'], {
       [ENV_VARS.agentId]: 'env-bot',
+      [ENV_VARS.registry]: '/env-registry.yaml',
     })
     expect(cfg.agentId).toBe('flag-bot')
+    expect(cfg.registryPath).toBe('/flag-registry.yaml')
   })
 
   it('treats a blank value in either carrier as absent', () => {
     // A client UI that renders an empty text field as `--scope ""` means "unset". Taking
     // it literally would put an empty `X-SG-Scope` trailer in the audit history.
-    const cfg = parseServerConfig(['--corpus', '/srv/c', '--agent-id', 'a', '--scope', '   '], {
+    const cfg = parseServerConfig(['--agent-id', 'a', '--scope', '   '], {
       [ENV_VARS.scope]: '',
     })
     expect(cfg.scopeId).toBeUndefined()
   })
 
   it('trims surrounding whitespace off values', () => {
-    const cfg = parseServerConfig([], { [ENV_VARS.corpus]: '/srv/c ', [ENV_VARS.agentId]: ' bot ' })
+    const cfg = parseServerConfig([], { [ENV_VARS.registry]: '/srv/reg.yaml ', [ENV_VARS.agentId]: ' bot ' })
     expect(cfg.agentId).toBe('bot')
+    expect(cfg.registryPath).toBe('/srv/reg.yaml')
   })
 })
 
 describe('parseServerConfig — illegal branches', () => {
-  it('refuses a missing corpus, naming both carriers', () => {
-    try {
-      parseServerConfig(['--agent-id', 'a'], NO_ENV)
-      expect.unreachable('should have refused')
-    } catch (e) {
-      expect(e).toBeInstanceOf(ConfigError)
-      // Both carriers named: an operator whose host only exposes `env` must not be told
-      // to pass a flag they cannot reach.
-      expect((e as ConfigError).message).toContain('--corpus')
-      expect((e as ConfigError).message).toContain(ENV_VARS.corpus)
-    }
-  })
-
   it('refuses a missing agent id, and says why a default is not an option', () => {
     try {
-      parseServerConfig(['--corpus', '/srv/c'], NO_ENV)
+      parseServerConfig([], NO_ENV)
       expect.unreachable('should have refused')
     } catch (e) {
       expect(e).toBeInstanceOf(ConfigError)
       const msg = (e as ConfigError).message
+      // Both carriers named: an operator whose host only exposes `env` must not be told
+      // to pass a flag they cannot reach.
       expect(msg).toContain('--agent-id')
       expect(msg).toContain(ENV_VARS.agentId)
       // ADR-0004 ruling 9's reason, not just the symptom.
@@ -119,13 +118,19 @@ describe('parseServerConfig — illegal branches', () => {
   })
 
   it('refuses an unknown flag', () => {
-    expect(() => parseServerConfig(['--corpus', '/c', '--agent-id', 'a', '--nope'], NO_ENV))
-      .toThrow(ConfigError)
+    expect(() => parseServerConfig(['--agent-id', 'a', '--nope'], NO_ENV)).toThrow(ConfigError)
+  })
+
+  it('refuses the removed --corpus flag', () => {
+    // ADR-0011 ruling 3's clean break: a corpus enters through the register_scope tool
+    // now, not the command line, and strict parsing rejects the old flag as unknown
+    // rather than silently ignoring it.
+    expect(() => parseServerConfig(['--corpus', '/srv/corpus', '--agent-id', 'a'], NO_ENV)).toThrow(ConfigError)
   })
 
   it('refuses a positional argument', () => {
-    // There is no positional form. Accepting one would make `sg-mcp /srv/corpus` look
-    // configured while leaving the corpus unset.
+    // There is no positional form; a corpus/scope enters through the register_scope
+    // tool, not the command line.
     expect(() => parseServerConfig(['/srv/corpus'], NO_ENV)).toThrow(ConfigError)
   })
 
@@ -137,20 +142,19 @@ describe('parseServerConfig — illegal branches', () => {
   ])('refuses a lock timeout that is %s', (_label, value) => {
     // Refused rather than clamped or rounded: a timeout silently reinterpreted makes the
     // corpus block or fail for a duration nobody chose.
-    expect(() => parseServerConfig(['--corpus', '/c', '--agent-id', 'a', '--lock-timeout-ms', value], NO_ENV))
+    expect(() => parseServerConfig(['--agent-id', 'a', '--lock-timeout-ms', value], NO_ENV))
       .toThrow(ConfigError)
   })
 
   it('treats a blank lock timeout as absent rather than refusing it', () => {
     // The same blank-is-absent rule as every other value, applied before validation — so
     // an empty field in a client UI takes the default instead of failing startup.
-    const cfg = parseServerConfig(['--corpus', '/c', '--agent-id', 'a', '--lock-timeout-ms', '  '], NO_ENV)
+    const cfg = parseServerConfig(['--agent-id', 'a', '--lock-timeout-ms', '  '], NO_ENV)
     expect(cfg.lockTimeoutMs).toBeUndefined()
   })
 
   it('refuses a malformed lock timeout from the environment too', () => {
     expect(() => parseServerConfig([], {
-      [ENV_VARS.corpus]: '/c',
       [ENV_VARS.agentId]: 'a',
       [ENV_VARS.lockTimeoutMs]: 'ten seconds',
     })).toThrow(ConfigError)
@@ -160,10 +164,9 @@ describe('parseServerConfig — illegal branches', () => {
     // Mirrors `PostureRefusedError`'s discipline: refusing without saying what to run is
     // how an operator concludes the tool is broken rather than the invocation.
     const cases: Array<[readonly string[], Record<string, string | undefined>]> = [
-      [['--agent-id', 'a'], NO_ENV],
-      [['--corpus', '/c'], NO_ENV],
-      [['--corpus', '/c', '--agent-id', 'a', '--bogus'], NO_ENV],
-      [['--corpus', '/c', '--agent-id', 'a', '--lock-timeout-ms', 'x'], NO_ENV],
+      [[], NO_ENV],
+      [['--agent-id', 'a', '--bogus'], NO_ENV],
+      [['--agent-id', 'a', '--lock-timeout-ms', 'x'], NO_ENV],
     ]
     for (const [argv, env] of cases) {
       try {
@@ -178,10 +181,10 @@ describe('parseServerConfig — illegal branches', () => {
   })
 
   it('does not validate the deployment — that is posture.ts and identity.ts', () => {
-    // A nonexistent corpus and an ident-hostile agent id both parse here. Keeping the two
-    // failure classes separate is what lets the exit code distinguish "your invocation is
-    // wrong" (64) from "your deployment is not serviceable" (78).
-    const cfg = parseServerConfig(['--corpus', '/definitely/not/here', '--agent-id', 'bad<name>'], NO_ENV)
+    // A nonexistent registry path and an ident-hostile agent id both parse here. Keeping
+    // the two failure classes separate is what lets the exit code distinguish "your
+    // invocation is wrong" (64) from "your deployment is not serviceable" (78).
+    const cfg = parseServerConfig(['--registry', '/definitely/not/here/scopes.yaml', '--agent-id', 'bad<name>'], NO_ENV)
     expect(cfg.agentId).toBe('bad<name>')
   })
 })
@@ -206,7 +209,7 @@ describe('--help', () => {
 describe('usage text', () => {
   it('documents every flag and its environment variable', () => {
     const text = usage()
-    for (const flag of ['--corpus', '--agent-id', '--scope', '--lock-timeout-ms', '--help']) {
+    for (const flag of ['--agent-id', '--scope', '--registry', '--lock-timeout-ms', '--help']) {
       expect(text, `usage should mention ${flag}`).toContain(flag)
     }
     for (const name of Object.values(ENV_VARS)) {
@@ -216,5 +219,9 @@ describe('usage text', () => {
 
   it('states the precedence rule, since there are two carriers', () => {
     expect(usage()).toContain('A flag always wins over its environment variable.')
+  })
+
+  it('explains that a corpus enters through the register_scope tool, not a flag', () => {
+    expect(usage()).toContain('register_scope')
   })
 })

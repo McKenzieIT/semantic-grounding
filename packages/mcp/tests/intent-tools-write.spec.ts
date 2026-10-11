@@ -23,7 +23,7 @@ async function currentVersion(name: string): Promise<string> {
 describe('create_definition — ADR-0005 ruling 5', () => {
   it('creates a new table, auditing a commit, with no enrichment_health key', async () => {
     h = await buildIntentToolHarness()
-    const res = await h.client.callTool('create_definition', {
+    const res = await h.client.callTool('create_definition', { scope_id: 'fixture',
       kind: 'table',
       table: {
         table_name: 'dws_brand_new',
@@ -44,7 +44,7 @@ describe('create_definition — ADR-0005 ruling 5', () => {
 
   it('the commit subject carries the tool name as its verb (ADR-0004 ruling 10)', async () => {
     h = await buildIntentToolHarness()
-    await h.client.callTool('create_definition', {
+    await h.client.callTool('create_definition', { scope_id: 'fixture',
       kind: 'table',
       table: { table_name: 'dws_second', partitions: [{ name: 'ds', type: 'string' }], columns: [] },
       summary: '首次落地',
@@ -57,7 +57,7 @@ describe('create_definition — ADR-0005 ruling 5', () => {
 
   it('refuses with definition_already_exists (-31022) rather than silently overwriting', async () => {
     h = await buildIntentToolHarness()
-    const res = await h.client.callTool('create_definition', {
+    const res = await h.client.callTool('create_definition', { scope_id: 'fixture',
       kind: 'table',
       table: { table_name: 'dws_order', partitions: [{ name: 'ds', type: 'string' }], columns: [] },
       summary: 'duplicate',
@@ -72,7 +72,7 @@ describe('create_definition — ADR-0005 ruling 5', () => {
 
   it('creates a new event', async () => {
     h = await buildIntentToolHarness()
-    const res = await h.client.callTool('create_definition', {
+    const res = await h.client.callTool('create_definition', { scope_id: 'fixture',
       kind: 'event',
       event: { name: 'game.pay.order', description: '支付下单', params_fields: {} },
       summary: '首次落地',
@@ -86,7 +86,7 @@ describe('create_definition — ADR-0005 ruling 5', () => {
 
   it('rejects a DIM table missing primary_key/label_columns via zod, before the handler runs (generic SDK message, not the structured JSON contract)', async () => {
     h = await buildIntentToolHarness()
-    const res = await h.client.callTool('create_definition', {
+    const res = await h.client.callTool('create_definition', { scope_id: 'fixture',
       kind: 'table',
       table: { table_name: 'dim_broken', kind: 'dim', partitions: [], columns: [] },
       summary: 'broken',
@@ -105,7 +105,7 @@ describe('create_definition — ADR-0005 ruling 5', () => {
 describe('update_definition — ADR-0005 ruling 4', () => {
   it('updates an allowed field and inlines enrichment_health', async () => {
     h = await buildIntentToolHarness({ autoEnrich: true })
-    const res = await h.client.callTool('update_definition', {
+    const res = await h.client.callTool('update_definition', { scope_id: 'fixture',
       kind: 'table',
       name: 'dws_order',
       fields: { description: '订单宽表' },
@@ -121,7 +121,7 @@ describe('update_definition — ADR-0005 ruling 4', () => {
 
   it('rejects a stale baseline as a coded, retryable error (-31002)', async () => {
     h = await buildIntentToolHarness()
-    const res = await h.client.callTool('update_definition', {
+    const res = await h.client.callTool('update_definition', { scope_id: 'fixture',
       kind: 'table',
       name: 'dws_order',
       fields: { description: 'x' },
@@ -139,12 +139,12 @@ describe('update_definition — ADR-0005 ruling 4', () => {
 
   it('the re-read-and-retry loop actually works', async () => {
     h = await buildIntentToolHarness()
-    const stale = await h.client.callTool('update_definition', {
+    const stale = await h.client.callTool('update_definition', { scope_id: 'fixture',
       kind: 'table', name: 'dws_order', fields: { description: 'first' },
       summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: 'f'.repeat(64),
     })
     expect(stale.result?.['isError']).toBe(true)
-    const fresh = await h.client.callTool('update_definition', {
+    const fresh = await h.client.callTool('update_definition', { scope_id: 'fixture',
       kind: 'table', name: 'dws_order', fields: { description: 'first' },
       summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await currentVersion('dws_order'),
     })
@@ -153,7 +153,7 @@ describe('update_definition — ADR-0005 ruling 4', () => {
 
   it('rejects an array-reference field with a coded redirect to the item-level tool (-31020)', async () => {
     h = await buildIntentToolHarness()
-    const res = await h.client.callTool('update_definition', {
+    const res = await h.client.callTool('update_definition', { scope_id: 'fixture',
       kind: 'table',
       name: 'dws_order',
       // zod accepts this syntactically (alt_labels stays a typed field) — the handler
@@ -173,7 +173,7 @@ describe('update_definition — ADR-0005 ruling 4', () => {
 
   it('rejects an identity field via the SDK\'s own generic zod rejection (unrecognized key, not JSON)', async () => {
     h = await buildIntentToolHarness()
-    const res = await h.client.callTool('update_definition', {
+    const res = await h.client.callTool('update_definition', { scope_id: 'fixture',
       kind: 'table',
       name: 'dws_order',
       fields: { table_name: 'renamed' },
@@ -192,7 +192,7 @@ describe('update_definition — ADR-0005 ruling 4', () => {
     h = await buildIntentToolHarness()
     // dim_shop is DIM-kind; emptying primary_key fails TableDefinitionSchema's own
     // superRefine on the *merged* document — a value problem, not a field-name problem.
-    const res = await h.client.callTool('update_definition', {
+    const res = await h.client.callTool('update_definition', { scope_id: 'fixture',
       kind: 'table',
       name: 'dim_shop',
       fields: { primary_key: [] },
@@ -209,7 +209,7 @@ describe('update_definition — ADR-0005 ruling 4', () => {
 
   it('errors with definition_not_found (-31021) for an unknown table', async () => {
     h = await buildIntentToolHarness()
-    const res = await h.client.callTool('update_definition', {
+    const res = await h.client.callTool('update_definition', { scope_id: 'fixture',
       kind: 'table',
       name: 'nope',
       fields: { description: 'x' },
@@ -224,14 +224,14 @@ describe('update_definition — ADR-0005 ruling 4', () => {
 
   it('is idempotent: the identical write twice reports changed:false and makes no second commit', async () => {
     h = await buildIntentToolHarness()
-    const first = await h.client.callTool('update_definition', {
+    const first = await h.client.callTool('update_definition', { scope_id: 'fixture',
       kind: 'table', name: 'dws_order', fields: { description: '订单宽表' },
       summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await currentVersion('dws_order'),
     })
     const firstBody = toolJson(first) as { commit: string; changed: boolean }
     expect(firstBody.changed).toBe(true)
 
-    const second = await h.client.callTool('update_definition', {
+    const second = await h.client.callTool('update_definition', { scope_id: 'fixture',
       kind: 'table', name: 'dws_order', fields: { description: '订单宽表' },
       summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await currentVersion('dws_order'),
     })
@@ -244,7 +244,7 @@ describe('update_definition — ADR-0005 ruling 4', () => {
     h = await buildIntentToolHarness()
     await h.client.callTool(
       'update_definition',
-      { kind: 'table', name: 'dws_order', fields: { description: 'x' }, summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await currentVersion('dws_order') },
+      { scope_id: 'fixture', kind: 'table', name: 'dws_order', fields: { description: 'x' }, summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await currentVersion('dws_order') },
       { name: 'qoderwork', version: '1.0' },
     )
     const trailers = await h.recorder.readTrailers()
@@ -258,7 +258,7 @@ describe('preserve-filter regression — an origin-omitted tool write survives e
     // A second DIM with no column-name overlap with dws_order, so the deterministic
     // round finds nothing for it on its own — isolates the assertion to "did the agent's
     // own entry survive" rather than "did enrichment also independently find it".
-    await h.client.callTool('create_definition', {
+    await h.client.callTool('create_definition', { scope_id: 'fixture',
       kind: 'table',
       table: {
         table_name: 'dim_other',
@@ -272,7 +272,7 @@ describe('preserve-filter regression — an origin-omitted tool write survives e
       confidence: 0.9,
     })
 
-    await h.client.callTool('add_relation', {
+    await h.client.callTool('add_relation', { scope_id: 'fixture',
       kind: 'table',
       name: 'dws_order',
       relation: { dim_table: 'dim_other', join_keys: [{ dws_column: 'pay_amt', dim_column: 'other_id' }] },

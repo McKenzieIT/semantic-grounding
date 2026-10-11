@@ -17,9 +17,10 @@
  */
 import type { McpServer, ServerContext } from '@modelcontextprotocol/server'
 import { z } from 'zod'
+import type { ScopeBinding } from '../binding.ts'
 import { DefinitionNotFoundError, toToolErrorResult } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
-import { auditedWrite, enrichmentHealthAfter, toolSuccess } from './audited.ts'
+import { assertScopeMatch, auditedWrite, enrichmentHealthAfter, scopeStamp, toolSuccess } from './audited.ts'
 import {
   RelationRefInputSchema,
   UPDATE_COMMON_FIELDS,
@@ -41,9 +42,12 @@ function mapCoreError(e: unknown, kind: 'table' | 'event', name: string): never 
   throw e
 }
 
-/** The response JSON spine every item tool shares (ADR-0005 ruling 8). */
-function itemResponseBase(res: { readonly commit: string; readonly changed: boolean }, enrichmentHealth: unknown): Record<string, unknown> {
+/** The response JSON spine every item tool shares (ADR-0005 ruling 8), stamped with
+ * the entry snapshot's scope (ADR-0011's response layer: a straddled response still
+ * says which scope served it). */
+function itemResponseBase(snap: ScopeBinding, res: { readonly commit: string; readonly changed: boolean }, enrichmentHealth: unknown): Record<string, unknown> {
   return {
+    scope: scopeStamp(snap),
     commit: res.commit,
     changed: res.changed,
     ...enrichmentHealth !== undefined ? { enrichment_health: enrichmentHealth } : {},
@@ -96,13 +100,15 @@ function registerAddAlias(server: McpServer, deps: ServerDeps): void {
     },
     async (input, ctx: ServerContext) => {
       try {
+        const snap = deps.bindings.requireSnapshot()
+        assertScopeMatch(snap, input.scope_id)
         const res = await auditedWrite(
-          deps,
+          snap,
           ctx,
           { tool: 'add_alias', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-          () => deps.core.addAlias(input.kind, input.name, input.alias, input.expected_version),
+          () => snap.core.addAlias(input.kind, input.name, input.alias, input.expected_version),
         )
-        const body = itemResponseBase(res, enrichmentHealthAfter(deps, input.kind))
+        const body = itemResponseBase(snap, res, enrichmentHealthAfter(snap, input.kind))
         if (res.value.unsuppressed) body['unsuppressed'] = res.value.unsuppressed
         return toolSuccess(body)
       } catch (e) {
@@ -123,13 +129,15 @@ function registerRemoveAlias(server: McpServer, deps: ServerDeps): void {
     },
     async (input, ctx: ServerContext) => {
       try {
+        const snap = deps.bindings.requireSnapshot()
+        assertScopeMatch(snap, input.scope_id)
         const res = await auditedWrite(
-          deps,
+          snap,
           ctx,
           { tool: 'remove_alias', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-          () => deps.core.removeAliases(input.kind, input.name, input.labels, input.expected_version),
+          () => snap.core.removeAliases(input.kind, input.name, input.labels, input.expected_version),
         )
-        const body = itemResponseBase(res, enrichmentHealthAfter(deps, input.kind))
+        const body = itemResponseBase(snap, res, enrichmentHealthAfter(snap, input.kind))
         body['results'] = res.value.results
         return toolSuccess(body)
       } catch (e) {
@@ -150,13 +158,15 @@ function registerAddRelation(server: McpServer, deps: ServerDeps): void {
     },
     async (input, ctx: ServerContext) => {
       try {
+        const snap = deps.bindings.requireSnapshot()
+        assertScopeMatch(snap, input.scope_id)
         const res = await auditedWrite(
-          deps,
+          snap,
           ctx,
           { tool: 'add_relation', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-          () => deps.core.addRelation(input.kind, input.name, input.relation, input.expected_version),
+          () => snap.core.addRelation(input.kind, input.name, input.relation, input.expected_version),
         )
-        const body = itemResponseBase(res, enrichmentHealthAfter(deps, input.kind))
+        const body = itemResponseBase(snap, res, enrichmentHealthAfter(snap, input.kind))
         if (res.value.unsuppressed) body['unsuppressed'] = res.value.unsuppressed
         return toolSuccess(body)
       } catch (e) {
@@ -177,13 +187,15 @@ function registerRemoveRelation(server: McpServer, deps: ServerDeps): void {
     },
     async (input, ctx: ServerContext) => {
       try {
+        const snap = deps.bindings.requireSnapshot()
+        assertScopeMatch(snap, input.scope_id)
         const res = await auditedWrite(
-          deps,
+          snap,
           ctx,
           { tool: 'remove_relation', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-          () => deps.core.removeRelations(input.kind, input.name, input.relations, input.expected_version),
+          () => snap.core.removeRelations(input.kind, input.name, input.relations, input.expected_version),
         )
-        const body = itemResponseBase(res, enrichmentHealthAfter(deps, input.kind))
+        const body = itemResponseBase(snap, res, enrichmentHealthAfter(snap, input.kind))
         body['results'] = res.value.results
         return toolSuccess(body)
       } catch (e) {

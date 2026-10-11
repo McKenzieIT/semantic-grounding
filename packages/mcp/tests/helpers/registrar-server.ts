@@ -1,11 +1,11 @@
 /**
  * A server started with one tool registered, for the {@link ToolRegistrar} seam test.
  *
- * Run as `node tests/helpers/registrar-server.ts --corpus <root> --agent-id <id>`. Node
- * strips the types, so this needs no build step and no test runner in scope — the same
- * arrangement as `concurrent-writer.ts`, and for the same reason: the thing under test is
- * a *process* contract. A registrar that worked in-process but produced no `tools/list`
- * entry over the real transport would pass an in-process test and fail #20.
+ * Run as `node tests/helpers/registrar-server.ts --agent-id <id> --registry <path>`.
+ * Node strips the types, so this needs no build step and no test runner in scope — the
+ * same arrangement as `concurrent-writer.ts`, and for the same reason: the thing under
+ * test is a *process* contract. A registrar that worked in-process but produced no
+ * `tools/list` entry over the real transport would pass an in-process test and fail #20.
  *
  * What it proves, specifically: declaring `capabilities: { tools: {} }` up front for the
  * zero-tool case (measurement 4 in `src/server.ts`) does **not** stop a later
@@ -22,7 +22,7 @@ import type { ToolRegistrar } from '../../src/server.ts'
 const echoRegistrar: ToolRegistrar = (server, deps) => {
   server.registerTool(
     'seam_probe',
-    { description: `registered by a ToolRegistrar over corpus ${deps.config.corpusRoot}` },
+    { description: `registered by a ToolRegistrar over registry ${deps.config.registryPath}` },
     () => ({ content: [{ type: 'text' as const, text: 'seam ok' }] }),
   )
 }

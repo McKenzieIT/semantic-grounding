@@ -26,7 +26,7 @@
  *
  * ## What each phase proves
  *
- * - **Catalog** — all 18 tool names over the wire (detailed schema pinning stays in the
+ * - **Catalog** — the full tool catalog over the wire (detailed schema pinning stays in the
  *   catalog spec; a second copy here would be a maintenance surface with no new claim).
  * - **问数 read path** — the corpus cannot yet answer "订单表怎么关联店铺维表" (no join,
  *   no alias), which is the state that motivates the writes.
@@ -71,7 +71,8 @@
  */
 import { spawn } from 'node:child_process'
 import assert from 'node:assert/strict'
-import { writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { dumpYaml, loadTables } from '@semantic-grounding/substrate'
@@ -80,6 +81,8 @@ import { startup } from '../src/main.ts'
 import { createServerFactory, SERVER_INFO } from '../src/server.ts'
 import { INTENT_TOOL_NAMES } from '../src/tools/index.ts'
 import { ENRICHMENT_TOOL_NAMES } from '../src/tools/enrichment.ts'
+import { SCOPE_TOOL_NAMES } from '../src/tools/scope.ts'
+import { ScopeRegistryFile } from '../src/scope-registry.ts'
 import { buildServer } from '../tests/helpers/intent-tools-harness.ts'
 import { createFixtureCorpus, fixtureGit, fixtureTable, type FixtureCorpus } from '../tests/helpers/fixture-corpus.ts'
 import { connectInProcess, toolJson, type InProcessClient } from '../tests/helpers/inprocess-client.ts'
@@ -88,10 +91,10 @@ import { connectInProcess, toolJson, type InProcessClient } from '../tests/helpe
 const AGENT_ID = 'e2e-gate-agent'
 /** The client name sent per-request in the envelope — the X-SG-Client trailer's source. */
 const CLIENT_NAME = 'sg-e2e-gate'
-/** ADR-0006's three + ADR-0008's fourth (`get_enrichment_prompts`), from the
- * registrar's own name constant — the same single-source rule `tools/index.ts`
- * documents for `INTENT_TOOL_NAMES`. */
-const ALL_TOOL_NAMES = [...INTENT_TOOL_NAMES, ...ENRICHMENT_TOOL_NAMES]
+/** ADR-0006's three + ADR-0008's fourth (`get_enrichment_prompts`) + ADR-0011's five
+ * scope tools, from each registrar's own name constant — the same single-source rule
+ * `tools/index.ts` documents for `INTENT_TOOL_NAMES`. */
+const ALL_TOOL_NAMES = [...INTENT_TOOL_NAMES, ...ENRICHMENT_TOOL_NAMES, ...SCOPE_TOOL_NAMES]
 /** sha256 hex, the shape of every `version` / `expected_version`. */
 const SHA256 = /^[0-9a-f]{64}$/
 
@@ -212,9 +215,11 @@ interface Boot {
   shutdown(): Promise<void>
 }
 
-/** Boot through the real `startup()` seam and connect one client with all 18 tools. */
-async function boot(corpusRoot: string): Promise<Boot> {
-  const config = parseServerConfig(['--corpus', corpusRoot, '--agent-id', AGENT_ID, '--scope', 'fixture'], {})
+/** Boot through the real `startup()` seam — `--registry`/`--scope` (ADR-0011), never the removed `--corpus` — and connect one client. */
+async function boot(opts: { readonly registryPath: string; readonly scopeId?: string; readonly agentId?: string }): Promise<Boot> {
+  const args = ['--agent-id', opts.agentId ?? AGENT_ID, '--registry', opts.registryPath]
+  if (opts.scopeId !== undefined) args.push('--scope', opts.scopeId)
+  const config = parseServerConfig(args, {})
   const result = await startup(config, line => startupLog.push(line))
   const server = await buildServer(createServerFactory(result.deps))
   const client = await connectInProcess(server)
@@ -222,7 +227,7 @@ async function boot(corpusRoot: string): Promise<Boot> {
     client,
     async shutdown() {
       await client.close()
-      result.deps.core.dispose()
+      result.deps.bindings.disposeAll()
     },
   }
 }
@@ -251,16 +256,24 @@ async function main(): Promise<void> {
   }
 
   let active: Boot | undefined
+  const registryDir = mkdtempSync(join(tmpdir(), 'sg-e2e-registry-'))
+  const registryPath = join(registryDir, 'scopes.yaml')
   try {
+    // Registered directly against the registry file (ADR-0011: `register()` runs no
+    // posture/load check itself — that is the `register_scope` tool's own door) so
+    // Phase 0 proves *startup's own* posture re-check, not the tool's.
+    const registry = new ScopeRegistryFile(registryPath)
+    await registry.register({ id: 'fixture', semanticRoot: root, name: 'fixture', registeredBy: AGENT_ID })
+
     // ── Phase 0 — boot through the real startup seam ────────────────────────────────
     step('startup(): posture check, identity, recorder, core — the deployment shape')
-    const boot1 = await boot(root)
+    const boot1 = await boot({ registryPath, scopeId: 'fixture' })
     active = boot1
     const client = boot1.client
     assert.equal(fixtureGit(['status', '--porcelain'], root).trim(), '', 'fixture must start clean')
 
     // ── Phase 1 — catalog over the wire ─────────────────────────────────────────────
-    step('tools/list: all nineteen tools (ADR-0005 fifteen + ADR-0006 three + ADR-0008 one)')
+    step('tools/list: the full default tool catalog (ADR-0005 fifteen + ADR-0006 three + ADR-0008 one + ADR-0011 five)')
     {
       const listed = (await client.listTools()).result?.['tools'] as Array<{ name: string; description?: string; inputSchema?: { type?: string } }>
       assert.deepEqual(listed.map(t => t.name).sort(), [...ALL_TOOL_NAMES].sort(), 'exactly the ruled tool surface')
@@ -298,7 +311,7 @@ async function main(): Promise<void> {
     step('dimension filter door: unknown names -> coded -31040, both dimensions listed, zero commits')
     {
       const before = commitCount()
-      const rejected = await callCodedError(client, 'run_enrichment', { tables: ['dws_nope'], events: ['evt_nope_a', 'evt_nope_b'] })
+      const rejected = await callCodedError(client, 'run_enrichment', { scope_id: 'fixture', tables: ['dws_nope'], events: ['evt_nope_a', 'evt_nope_b'] })
       assert.equal(rejected.code, -31040, 'unknown_filter_name (the enrichment segment\'s first allocation)')
       assert.equal(rejected.name, 'UnknownFilterNameError')
       assert.equal(rejected.retryable, false)
@@ -315,7 +328,7 @@ async function main(): Promise<void> {
       // The mirror pair, each on the pristine corpus: the named leg writes exactly one
       // file, the unnamed dimension is untouched on disk.
       const before = commitCount()
-      const evRun = await call(client, 'run_enrichment', { events: ['pay_success'] })
+      const evRun = await call(client, 'run_enrichment', { scope_id: 'fixture', events: ['pay_success'] })
       assert.equal(evRun['changed'], true)
       assert.equal(commitCount(), before + 1)
       assert.equal((await trailersOf(fieldString(evRun, 'commit')))['Files'], '1', 'only events/biz/pay_success.yaml')
@@ -332,7 +345,7 @@ async function main(): Promise<void> {
       // round can fill) survives exactly as it was. #25's incident inverted and pinned:
       // one named table, one file, the event side untouched.
       const beforeT = commitCount()
-      const tRun = await call(client, 'run_enrichment', { tables: ['dws_order'] })
+      const tRun = await call(client, 'run_enrichment', { scope_id: 'fixture', tables: ['dws_order'] })
       assert.equal(tRun['changed'], true)
       assert.equal(commitCount(), beforeT + 1)
       assert.equal((await trailersOf(fieldString(tRun, 'commit')))['Files'], '1', 'only tables/dws_order.yaml')
@@ -351,7 +364,7 @@ async function main(): Promise<void> {
     let payFlowCommit: string
     {
       const before = commitCount()
-      const created = await call(client, 'create_definition', {
+      const created = await call(client, 'create_definition', { scope_id: 'fixture',
         kind: 'table',
         table: fixtureTable({
           table_name: 'dws_pay_flow',
@@ -370,7 +383,7 @@ async function main(): Promise<void> {
     step('run_enrichment: N logical writes absorbed into one deterministic commit (Files/Rounds)')
     {
       const before = commitCount()
-      const run = await call(client, 'run_enrichment', {})
+      const run = await call(client, 'run_enrichment', { scope_id: 'fixture' })
       assert.equal(run['changed'], true)
       assert.deepEqual(run['enrichment_health'], [], 'healthy round reports no failures inline')
       const runCommit = fieldString(run, 'commit')
@@ -408,7 +421,7 @@ async function main(): Promise<void> {
     step('update_definition + stale_baseline: coded isError result, re-read, retry succeeds')
     {
       const v1 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
-      const updated = await call(client, 'update_definition', {
+      const updated = await call(client, 'update_definition', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         fields: { description: '订单域宽表：按日聚合计单与支付' },
         expected_version: v1,
@@ -418,6 +431,7 @@ async function main(): Promise<void> {
       assert.ok(Array.isArray(updated['enrichment_health']), 'table write responses inline enrichment_health (ADR-0005 ruling 8)')
 
       const stale = await callCodedError(client, 'update_definition', {
+        scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         fields: { description: 'written against a dead baseline' },
         expected_version: v1, // the pre-update fingerprint — dead now
@@ -429,7 +443,7 @@ async function main(): Promise<void> {
 
       const v2 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
       assert.notEqual(v2, v1, 'the re-read picks up a fresh fingerprint')
-      const retried = await call(client, 'update_definition', {
+      const retried = await call(client, 'update_definition', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         fields: { description: '订单域宽表：按日聚合计单与支付（重试后落盘）' },
         expected_version: v2,
@@ -441,7 +455,7 @@ async function main(): Promise<void> {
     step('add_alias: commit + 问数 answered; the repeat is a no-commit idempotent no-op')
     {
       const v3 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
-      const added = await call(client, 'add_alias', {
+      const added = await call(client, 'add_alias', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order', alias: '订单宽表',
         expected_version: v3,
         ...tier2('添加别名「订单宽表」', 0.9),
@@ -453,7 +467,7 @@ async function main(): Promise<void> {
 
       const v4 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
       const before = commitCount()
-      const repeat = await call(client, 'add_alias', {
+      const repeat = await call(client, 'add_alias', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order', alias: '订单宽表',
         expected_version: v4,
         ...tier2('重复添加同一别名', 0.9),
@@ -464,7 +478,7 @@ async function main(): Promise<void> {
 
     step('add_relation(dws_order→dim_region): agent-asserted ref with origin omitted (curated)')
     {
-      const created = await call(client, 'create_definition', {
+      const created = await call(client, 'create_definition', { scope_id: 'fixture',
         kind: 'table',
         table: dimTable('dim_region', 'region_id', 'region_name'),
         ...tier2('新维度表：区域', 0.9),
@@ -472,7 +486,7 @@ async function main(): Promise<void> {
       assert.equal(created['changed'], true)
 
       const v5 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
-      const related = await call(client, 'add_relation', {
+      const related = await call(client, 'add_relation', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         relation: { dim_table: 'dim_region', join_keys: [{ dws_column: 'region_id', dim_column: 'region_id' }] },
         expected_version: v5,
@@ -488,7 +502,7 @@ async function main(): Promise<void> {
     {
       // dim_pay's primary key matches dws_order.pay_amt, so the on-write hook (real
       // startup leaves autoEnrich on) has something to derive on the next meta write.
-      const created = await call(client, 'create_definition', {
+      const created = await call(client, 'create_definition', { scope_id: 'fixture',
         kind: 'table',
         table: dimTable('dim_pay', 'pay_amt', 'pay_name'),
         ...tier2('新维度表：支付方式', 0.9),
@@ -497,7 +511,7 @@ async function main(): Promise<void> {
 
       const v6 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
       const before = commitCount()
-      const updated = await call(client, 'update_definition', {
+      const updated = await call(client, 'update_definition', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         fields: { description: '订单域宽表：触发派生残留的更新' },
         expected_version: v6,
@@ -523,12 +537,12 @@ async function main(): Promise<void> {
       // cross-table derivation it could not (ADR-0006 ruling 6's own rationale — a
       // newly onboarded DIM makes yesterday's tables joinable by name).
       const before2 = commitCount()
-      const sweep = await call(client, 'run_enrichment', {})
+      const sweep = await call(client, 'run_enrichment', { scope_id: 'fixture' })
       assert.equal(sweep['changed'], true, 'dws_pay_flow→dim_pay was waiting for the full sweep')
       const payFlowRefs = ((await call(client, 'get_definition', { kind: 'table', name: 'dws_pay_flow' }))['definition'] as Record<string, unknown>)['dimension_refs'] as Array<{ dim_table: string }>
       assert.ok(payFlowRefs?.some(r => r.dim_table === 'dim_pay'), 'the sweep derived the cross-table join')
       assert.equal(commitCount(), before2 + 1)
-      const rerun = await call(client, 'run_enrichment', {})
+      const rerun = await call(client, 'run_enrichment', { scope_id: 'fixture' })
       assert.equal(rerun['changed'], false, 'and now genuinely nothing is left to derive')
       assert.equal(commitCount(), before2 + 1, 'an idempotent run makes no commit')
     }
@@ -542,7 +556,7 @@ async function main(): Promise<void> {
       assert.equal(payRef.origin, 'deterministic', 'precondition: this ref is machine-derived, not curated')
 
       const v1 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
-      const removed = await call(client, 'remove_relation', {
+      const removed = await call(client, 'remove_relation', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         relations: [{ dim_table: 'dim_pay', join_keys: payRef.join_keys }],
         expected_version: v1,
@@ -561,7 +575,7 @@ async function main(): Promise<void> {
       // still-matching column name, also respects the veto (shared relationVetoSet
       // filter inside enrichAllDwsTables, #38 slice 3).
       const beforeSweep = commitCount()
-      const sweep = await call(client, 'run_enrichment', {})
+      const sweep = await call(client, 'run_enrichment', { scope_id: 'fixture' })
       assert.equal(sweep['changed'], false, 'nothing left to derive — the veto, not an accident of scope, is why')
       assert.equal(commitCount(), beforeSweep, 'and therefore no commit')
       const afterSweep = (await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }))['definition'] as Record<string, unknown>
@@ -569,7 +583,7 @@ async function main(): Promise<void> {
 
       // Adding it back lifts the veto (#37 §5).
       const v2 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
-      const readded = await call(client, 'add_relation', {
+      const readded = await call(client, 'add_relation', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         relation: { dim_table: 'dim_pay', join_keys: payRef.join_keys },
         expected_version: v2,
@@ -589,7 +603,7 @@ async function main(): Promise<void> {
       // no on-write hook can jump ahead of the curated add_relation below.
       const current = (await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }))['definition'] as Record<string, unknown>
       const v1 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
-      const addedColumn = await call(client, 'update_definition', {
+      const addedColumn = await call(client, 'update_definition', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         fields: { columns: [...current['columns'] as unknown[], { name: 'channel_id', type: 'string', role: 'dimension', comment: '' }] },
         expected_version: v1,
@@ -597,7 +611,7 @@ async function main(): Promise<void> {
       })
       assert.equal(addedColumn['changed'], true)
 
-      const created = await call(client, 'create_definition', {
+      const created = await call(client, 'create_definition', { scope_id: 'fixture',
         kind: 'table',
         table: dimTable('dim_channel', 'channel_id', 'channel_name'),
         ...tier2('新维度表：渠道', 0.9),
@@ -610,7 +624,7 @@ async function main(): Promise<void> {
       // scenario could never get off the ground.
       const v2 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
       const relationInput = { dim_table: 'dim_channel', join_keys: [{ dws_column: 'channel_id', dim_column: 'channel_id' }] }
-      const curated = await call(client, 'add_relation', {
+      const curated = await call(client, 'add_relation', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         relation: relationInput,
         expected_version: v2,
@@ -626,7 +640,7 @@ async function main(): Promise<void> {
       // write's on-write hook deterministically rediscovers it (channel_id still
       // matches) -> reasserted:true. This is the dance's first step.
       const v3 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
-      const firstRemoval = await call(client, 'remove_relation', {
+      const firstRemoval = await call(client, 'remove_relation', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         relations: [relationInput],
         expected_version: v3,
@@ -642,7 +656,7 @@ async function main(): Promise<void> {
 
       // Second removal: now present AND machine-derived -> vetoes for good.
       const v4 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
-      const secondRemoval = await call(client, 'remove_relation', {
+      const secondRemoval = await call(client, 'remove_relation', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         relations: [relationInput],
         expected_version: v4,
@@ -653,7 +667,7 @@ async function main(): Promise<void> {
 
       // Full-sweep proof, not just the on-write hook.
       const beforeSweep = commitCount()
-      const sweep = await call(client, 'run_enrichment', {})
+      const sweep = await call(client, 'run_enrichment', { scope_id: 'fixture' })
       assert.equal(sweep['changed'], false, 'the full sweep finds nothing to do — dim_channel stays vetoed')
       assert.equal(commitCount(), beforeSweep)
       const afterSweep = (await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }))['definition'] as Record<string, unknown>
@@ -662,7 +676,7 @@ async function main(): Promise<void> {
 
       // Lift it.
       const v5 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
-      const relifted = await call(client, 'add_relation', {
+      const relifted = await call(client, 'add_relation', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         relation: relationInput,
         expected_version: v5,
@@ -701,11 +715,12 @@ async function main(): Promise<void> {
       // "Restart": for a stateless server this is exactly a new process — a fresh
       // startup() over the same corpus, nothing carried over but the corpus and git.
       await active.shutdown()
-      const boot2 = await boot(root)
+      const boot2 = await boot({ registryPath, scopeId: 'fixture' })
       active = boot2
       const client2 = boot2.client
 
       const applied = await call(client2, 'apply_enrichment', {
+        scope_id: 'fixture',
         results: [{ work_id: payFlowItem.work_id, text: '["支付流水"]' }],
         summary: '补充支付流水中文名',
         confidence: 0.8,
@@ -743,6 +758,7 @@ async function main(): Promise<void> {
 
       const before = commitCount()
       const batch = await call(client2, 'apply_enrichment', {
+        scope_id: 'fixture',
         results: [
           { work_id: dimShopStale.work_id, text: '["店铺维度"]' },
           { work_id: fresh.work_id, text: '["区域维度"]' },
@@ -761,6 +777,7 @@ async function main(): Promise<void> {
       const reissued = ((await call(client2, 'get_enrichment_work', {}))['work'] as WorkItem[]).find(w => w.target === 'dim_shop' && w.gap.startsWith('alt_labels'))
       assert.ok(reissued !== undefined, 'the stale gap re-issues with a fresh fingerprint')
       const noop = await call(client2, 'apply_enrichment', {
+        scope_id: 'fixture',
         results: [{ work_id: reissued.work_id, text: '["dim_shop"]' }],
         summary: '空答案批次',
         confidence: 0.5,
@@ -797,6 +814,49 @@ async function main(): Promise<void> {
       assert.ok(clientTrailers.split('\n').map(s => s.trim()).includes(CLIENT_NAME), 'X-SG-Client records the calling client')
     }
 
+    // ── Phase 6.5 — ADR-0011 scope tools, over the real wire ───────────────────────
+    // A fully independent fixture, registry and boot (no --scope, no shared `active`)
+    // — switching scopes on the MAIN flow's live server would silently redirect its
+    // later reads/writes to the wrong corpus, so this never touches `client`/`root`.
+    step('scope tools: scaffold → register → list → switch → get, each a real tools/call')
+    {
+      const scopeFixture = createFixtureCorpus({ withEvents: false })
+      const scopeRegistryDir = mkdtempSync(join(tmpdir(), 'sg-e2e-registry-'))
+      const scopeRegistryPath = join(scopeRegistryDir, 'scopes.yaml')
+      const probeBoot = await boot({ registryPath: scopeRegistryPath, agentId: 'scope-probe-agent' })
+      try {
+        const probeClient = probeBoot.client
+
+        const scaffold = await call(probeClient, 'get_scope_scaffold', { scope_id: 'probe', path: scopeFixture.root })
+        assert.equal(scaffold['scope_id'], 'probe')
+        assert.ok(Array.isArray(scaffold['steps']) && (scaffold['steps'] as unknown[]).length === 5, 'five bootstrap steps')
+        assert.ok(typeof scaffold['next_steps'] === 'string' && (scaffold['next_steps'] as string).length > 0, 'carries the ADR-0012 R4 content-bootstrap line')
+
+        const registered = await call(probeClient, 'register_scope', { id: 'probe', path: scopeFixture.root })
+        assert.equal(registered['already_registered'], false, 'first registration is fresh')
+        assert.equal(registered['active_unchanged'], true, 'registering never switches (ruling 3)')
+        assert.equal((registered['scope'] as Record<string, unknown>)['id'], 'probe')
+
+        const listed = await call(probeClient, 'list_scopes', {})
+        const scopes = listed['scopes'] as Array<{ id: string; is_active: boolean }>
+        assert.ok(scopes.some(s => s.id === 'probe' && s.is_active === false), 'registered but not yet active')
+        assert.equal(listed['active'], null, 'no active scope bound at boot (no --scope flag)')
+
+        const switched = await call(probeClient, 'switch_scope', { scope_id: 'probe' })
+        assert.equal((switched['scope'] as Record<string, unknown>)['id'], 'probe')
+        assert.equal(switched['switched_from'], null, 'nothing was active before this switch')
+
+        const described = await call(probeClient, 'get_scope', {})
+        assert.equal((described['scope'] as Record<string, unknown>)['id'], 'probe', 'no scope_id defaults to the now-active scope')
+        assert.equal(described['is_active'], true)
+        assert.ok(described['serving'] !== undefined, 'the response-layer stamp for the scope actually being served')
+      } finally {
+        await probeBoot.shutdown()
+        scopeFixture.cleanup()
+        rmSync(scopeRegistryDir, { recursive: true, force: true })
+      }
+    }
+
     // ── Phase 7 — the 2026-07-28 envelope, over the real executable ────────────────
     step('spawn sg-mcp (src/bin.ts): 2026-07-28 envelope markers on a real tools/call')
     {
@@ -805,7 +865,7 @@ async function main(): Promise<void> {
       const CLIENT_INFO = 'io.modelcontextprotocol/clientInfo'
       const SERVER_INFO_KEY = 'io.modelcontextprotocol/serverInfo'
 
-      const child = spawn(process.execPath, ['src/bin.ts', '--corpus', root, '--agent-id', 'envelope-probe'], {
+      const child = spawn(process.execPath, ['src/bin.ts', '--agent-id', 'envelope-probe', '--registry', registryPath, '--scope', 'fixture'], {
         cwd: fileURLToPath(new URL('..', import.meta.url)), // packages/mcp — src/bin.ts and its deps resolve from here
         stdio: ['pipe', 'pipe', 'inherit'],
       })
@@ -855,6 +915,7 @@ async function main(): Promise<void> {
   } finally {
     await active?.shutdown()
     fixture.cleanup()
+    rmSync(registryDir, { recursive: true, force: true })
     if (startupLog.length > 0 && process.env['SG_E2E_VERBOSE'] === '1') {
       console.log('[e2e] startup log:', startupLog.join('\n'))
     }

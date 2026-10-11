@@ -21,7 +21,7 @@ import { EventDefinitionSchema, TableDefinitionSchema, dumpYaml, writeEventYaml,
 import { z } from 'zod'
 import { DefinitionAlreadyExistsError, toToolErrorResult } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
-import { applyFieldUpdate, auditedWrite, enrichmentHealthAfter, toolSuccess } from './audited.ts'
+import { applyFieldUpdate, assertScopeMatch, auditedWrite, enrichmentHealthAfter, scopeStamp, toolSuccess } from './audited.ts'
 import {
   CREATE_COMMON_FIELDS,
   EVENT_ARRAY_REF_REDIRECT,
@@ -66,32 +66,34 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
     },
     async (input, ctx: ServerContext) => {
       try {
-        const root = deps.core.resolveScopeRoot()
+        const snap = deps.bindings.requireSnapshot()
+        assertScopeMatch(snap, input.scope_id)
+        const root = snap.core.resolveScopeRoot()
 
         if (input.kind === 'table') {
           const name = input.table.table_name
-          if (deps.core.loadTableDefinition(name) !== null) {
+          if (snap.core.loadTableDefinition(name) !== null) {
             throw new DefinitionAlreadyExistsError(`table "${name}" already exists — use update_definition to change it`, { kind: 'table', name })
           }
           const res = await auditedWrite(
-            deps,
+            snap,
             ctx,
             { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-            () => writeTable(root, name, input.table, {}, { recorder: deps.recorder }),
+            () => writeTable(root, name, input.table, {}, { recorder: snap.recorder }),
           )
-          return toolSuccess({ commit: res.commit, changed: res.changed })
+          return toolSuccess({ scope: scopeStamp(snap), commit: res.commit, changed: res.changed })
         }
 
         const name = input.event.name
-        if (deps.core.loadEventDefinition(name) !== null) {
+        if (snap.core.loadEventDefinition(name) !== null) {
           throw new DefinitionAlreadyExistsError(`event "${name}" already exists — use update_definition to change it`, { kind: 'event', name })
         }
         const res = await auditedWrite(
-          deps,
+          snap,
           ctx,
           { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
           async () => {
-            const written = await writeEventYaml(root, name, dumpYaml(input.event), { recorder: deps.recorder })
+            const written = await writeEventYaml(root, name, dumpYaml(input.event), { recorder: snap.recorder })
             if (!written.ok) {
               // `writeEventYaml` re-parses its own `content` and re-checks the name
               // match; both are already guaranteed by this schema and `dumpYaml`, so
@@ -101,7 +103,7 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
             return written
           },
         )
-        return toolSuccess({ commit: res.commit, changed: res.changed })
+        return toolSuccess({ scope: scopeStamp(snap), commit: res.commit, changed: res.changed })
       } catch (e) {
         return toToolErrorResult(e)
       }
@@ -127,12 +129,14 @@ function registerUpdateDefinition(server: McpServer, deps: ServerDeps): void {
     },
     async (input, ctx: ServerContext) => {
       try {
+        const snap = deps.bindings.requireSnapshot()
+        assertScopeMatch(snap, input.scope_id)
         assertNoRedirectedFields(input.fields, input.kind === 'table' ? TABLE_ARRAY_REF_REDIRECT : EVENT_ARRAY_REF_REDIRECT)
         const res = await auditedWrite(
-          deps,
+          snap,
           ctx,
           { tool: 'update_definition', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-          () => applyFieldUpdate(deps, input.kind, input.name, input.fields, input.expected_version),
+          () => applyFieldUpdate(snap, input.kind, input.name, input.fields, input.expected_version),
         )
         assertUpdateOk(res.value, input.kind, input.name)
         // `enrichment_health` rides the kind asymmetry `enrichmentHealthAfter` owns:
@@ -140,7 +144,7 @@ function registerUpdateDefinition(server: McpServer, deps: ServerDeps): void {
         // hook, and inlining `getEnrichmentHealth()` here would only report whatever
         // an earlier table write left behind — misattributed — so the key stays
         // absent for events (`undefined` is dropped by JSON serialization).
-        return toolSuccess({ commit: res.commit, changed: res.changed, enrichment_health: enrichmentHealthAfter(deps, input.kind) })
+        return toolSuccess({ scope: scopeStamp(snap), commit: res.commit, changed: res.changed, enrichment_health: enrichmentHealthAfter(snap, input.kind) })
       } catch (e) {
         return toToolErrorResult(e)
       }
