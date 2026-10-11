@@ -72,6 +72,18 @@ production deployments assemble their own. Under the MCP management surface a co
 is its **own git repository** (corpus root = repo root): the [git recorder](#git-recorder)
 makes commits the audit record, so the repo boundary and the corpus boundary coincide.
 
+### cold start (冷启动)
+
+How a newly registered, empty [corpus](#corpus) grows the [definitions](#definition)
+it needs to support grounding — from an empty shell to a layer that answers reads.
+Cold start is **trajectory-driven**: content is registered incrementally as it
+surfaces in the consuming agent's working trajectory (a question naming an unknown
+table, a DDL the agent reads), never pre-seeded as a bulk load. A term that maps to
+a single asset lands as that asset's [aliases](#alias); a domain term that belongs
+to no single asset lands as a concept — the ontology layer of the relation graph.
+Content enters only through the audited [write path](#write-tier): a corpus may sit
+empty, but it is never hand-filled behind the audit layer.
+
 ### enrichment
 
 A deterministic, provenance-carrying transformation applied to a definition, driven
