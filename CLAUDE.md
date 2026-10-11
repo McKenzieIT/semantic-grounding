@@ -25,6 +25,8 @@ Issue 追踪在 GitHub（McKenzieIT/semantic-grounding），通过 `gh` CLI 操�
 
 **无活跃 map** —— 所有 map 已关闭。
 
+**standalone [#57](https://github.com/McKenzieIT/semantic-grounding/issues/57)（测试 harness 统一，2026-10-12 架构巡检候选 C6）已落地**：`buildIntentToolHarness` 默认镜像生产 `TOOL_REGISTRARS`（19 工具，#21 以来 enrichment 家族首次可在单测层注册）+ `corpusRoot` 借根选项（重启测试=第二 harness 同根复启）；`TOOL_NAMES` 落 `tools/index.ts` 单一来源——catalog 单测（显式 `toHaveLength(19)` 减速带）+ e2e（走真实 startup）两道门对账 `tools/list ≡ TOOL_NAMES`，生产/测试工具面一致由构造保证；enrichment spec 主路径上真实 zod 派发，below-zod 直打切片保留（空数组穿 Core 门 + schema safeParse 钉 zod 对象）；`tier2()`/`versionOf()`/`commitExternalEdit` 三帮手合一（harness/fixture-corpus），e2e 本地 `trailersOf` 折进 `Boot` 的 `recorder.readTrailers`。验证：substrate 342 绿 + mcp 262 绿 + `pnpm e2e` 17 步绿（本机另有 5 个 Windows 路径断言存量失败，stash 干净 HEAD 复现，与本次无关）。
+
 **map [#32](https://github.com/McKenzieIT/semantic-grounding/issues/32)（agent 持久否决权与抽取器护栏）已关闭**，Destination（持久否决权成立 + 抽取器护栏落地 + 语料清理 + #24/#26 关票）经七张子票全解达成：
 [护栏规则全库实测](https://github.com/McKenzieIT/semantic-grounding/issues/33)（prototype，已解：766 定义 → 基线候选 4296；12 谓词 + cap24 杀 51.0%，误杀 0）、
 [负知识 prior art](https://github.com/McKenzieIT/semantic-grounding/issues/34)（research，已解：定名 `suppression`，SARIF §3.35 同构）、

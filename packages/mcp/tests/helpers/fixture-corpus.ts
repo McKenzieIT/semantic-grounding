@@ -26,7 +26,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { dumpYaml } from '@semantic-grounding/substrate'
+import { dumpYaml, loadTables } from '@semantic-grounding/substrate'
 
 /** A column in a fixture table. */
 export interface FixtureColumn {
@@ -121,6 +121,26 @@ export interface FixtureCorpus {
  */
 export function fixtureGit(args: readonly string[], cwd: string): string {
   return execFileSync('git', [...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+}
+
+/**
+ * Commit a direct edit to a table's YAML — "an operator changed this between issuance
+ * and apply", landed as its own commit so the tree is clean afterward (a dirty,
+ * *uncommitted* edit would instead trip `assertCleanBeforeWrite`, which is a different
+ * scenario the specs test separately).
+ *
+ * The shared copy of a helper that used to live identically in
+ * `tests/enrichment-tools.spec.ts` and `scripts/check-e2e-loop.ts`.
+ * @param fixture - the fixture corpus.
+ * @param tableName - the table to edit.
+ * @param changes - fields to merge over the table's current raw dict.
+ */
+export function commitExternalEdit(fixture: FixtureCorpus, tableName: string, changes: Readonly<Record<string, unknown>>): void {
+  const raw = loadTables(fixture.root).find(t => t.table_name === tableName)?.raw
+  if (raw === undefined) throw new Error(`fixture table not found: ${tableName}`)
+  writeFileSync(join(fixture.root, 'tables', `${tableName}.yaml`), dumpYaml({ ...raw, ...changes }), 'utf8')
+  fixtureGit(['add', '-A'], fixture.root)
+  fixtureGit(['commit', '--quiet', '-m', 'operator edit between issuance and apply'], fixture.root)
 }
 
 /**

@@ -7,18 +7,12 @@
  * @see docs/adr/0005-mcp-tool-surface.md
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { buildIntentToolHarness, type IntentToolHarness } from './helpers/intent-tools-harness.ts'
+import { buildIntentToolHarness, tier2, versionOf, type IntentToolHarness } from './helpers/intent-tools-harness.ts'
 import { fixtureGit } from './helpers/fixture-corpus.ts'
 import { toolJson } from './helpers/inprocess-client.ts'
 
 let h: IntentToolHarness | undefined
 afterEach(() => h?.close())
-
-async function currentVersion(name: string): Promise<string> {
-  if (h === undefined) throw new Error('harness not built')
-  const body = toolJson(await h.client.callTool('get_definition', { kind: 'table', name })) as { version: string }
-  return body.version
-}
 
 describe('create_definition — ADR-0005 ruling 5', () => {
   it('creates a new table, auditing a commit, with no enrichment_health key', async () => {
@@ -31,9 +25,7 @@ describe('create_definition — ADR-0005 ruling 5', () => {
         partitions: [{ name: 'ds', type: 'string' }],
         columns: [{ name: 'shop_id', type: 'string', role: 'dimension' }],
       },
-      summary: '首次落地',
-      derivation: 'agent',
-      confidence: 0.9,
+      ...tier2('首次落地', 0.9),
     })
     const body = toolJson(res) as { commit: string; changed: boolean }
     expect(body.changed).toBe(true)
@@ -47,9 +39,7 @@ describe('create_definition — ADR-0005 ruling 5', () => {
     await h.client.callTool('create_definition', {
       kind: 'table',
       table: { table_name: 'dws_second', partitions: [{ name: 'ds', type: 'string' }], columns: [] },
-      summary: '首次落地',
-      derivation: 'agent',
-      confidence: 0.9,
+      ...tier2('首次落地', 0.9),
     })
     const subjects = fixtureGit(['log', '--format=%s'], h.fixture.root).trim().split('\n')
     expect(subjects[0]).toBe('create_definition(dws_second): 首次落地')
@@ -60,9 +50,7 @@ describe('create_definition — ADR-0005 ruling 5', () => {
     const res = await h.client.callTool('create_definition', {
       kind: 'table',
       table: { table_name: 'dws_order', partitions: [{ name: 'ds', type: 'string' }], columns: [] },
-      summary: 'duplicate',
-      derivation: 'agent',
-      confidence: 0.9,
+      ...tier2('duplicate', 0.9),
     })
     expect(res.result?.['isError']).toBe(true)
     const body = toolJson(res)
@@ -75,9 +63,7 @@ describe('create_definition — ADR-0005 ruling 5', () => {
     const res = await h.client.callTool('create_definition', {
       kind: 'event',
       event: { name: 'game.pay.order', description: '支付下单', params_fields: {} },
-      summary: '首次落地',
-      derivation: 'agent',
-      confidence: 0.8,
+      ...tier2('首次落地', 0.8),
     })
     const body = toolJson(res) as { changed: boolean }
     expect(body.changed).toBe(true)
@@ -89,9 +75,7 @@ describe('create_definition — ADR-0005 ruling 5', () => {
     const res = await h.client.callTool('create_definition', {
       kind: 'table',
       table: { table_name: 'dim_broken', kind: 'dim', partitions: [], columns: [] },
-      summary: 'broken',
-      derivation: 'agent',
-      confidence: 0.9,
+      ...tier2('broken', 0.9),
     })
     expect(res.result?.['isError']).toBe(true)
     const text = (res.result?.['content'] as Array<{ text: string }>)[0]?.text ?? ''
@@ -109,10 +93,8 @@ describe('update_definition — ADR-0005 ruling 4', () => {
       kind: 'table',
       name: 'dws_order',
       fields: { description: '订单宽表' },
-      summary: '补充描述',
-      derivation: 'agent',
-      confidence: 0.9,
-      expected_version: await currentVersion('dws_order'),
+      ...tier2('补充描述', 0.9),
+      expected_version: await versionOf(h, 'dws_order'),
     })
     const body = toolJson(res) as { commit: string; changed: boolean; enrichment_health: unknown[] }
     expect(body.changed).toBe(true)
@@ -125,9 +107,7 @@ describe('update_definition — ADR-0005 ruling 4', () => {
       kind: 'table',
       name: 'dws_order',
       fields: { description: 'x' },
-      summary: 'stale attempt',
-      derivation: 'agent',
-      confidence: 0.9,
+      ...tier2('stale attempt', 0.9),
       expected_version: 'f'.repeat(64),
     })
     expect(res.result?.['isError']).toBe(true)
@@ -141,12 +121,12 @@ describe('update_definition — ADR-0005 ruling 4', () => {
     h = await buildIntentToolHarness()
     const stale = await h.client.callTool('update_definition', {
       kind: 'table', name: 'dws_order', fields: { description: 'first' },
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: 'f'.repeat(64),
+      ...tier2('x', 0.9), expected_version: 'f'.repeat(64),
     })
     expect(stale.result?.['isError']).toBe(true)
     const fresh = await h.client.callTool('update_definition', {
       kind: 'table', name: 'dws_order', fields: { description: 'first' },
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await currentVersion('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     expect((toolJson(fresh) as { changed: boolean }).changed).toBe(true)
   })
@@ -159,10 +139,8 @@ describe('update_definition — ADR-0005 ruling 4', () => {
       // zod accepts this syntactically (alt_labels stays a typed field) — the handler
       // is what redirects it, per ADR-0005 ruling 4's "报错指路对应 intent 工具".
       fields: { alt_labels: ['x'] },
-      summary: 'should be rejected',
-      derivation: 'agent',
-      confidence: 0.9,
-      expected_version: await currentVersion('dws_order'),
+      ...tier2('should be rejected', 0.9),
+      expected_version: await versionOf(h, 'dws_order'),
     })
     expect(res.result?.['isError']).toBe(true)
     const body = toolJson(res)
@@ -177,10 +155,8 @@ describe('update_definition — ADR-0005 ruling 4', () => {
       kind: 'table',
       name: 'dws_order',
       fields: { table_name: 'renamed' },
-      summary: 'should be rejected',
-      derivation: 'agent',
-      confidence: 0.9,
-      expected_version: await currentVersion('dws_order'),
+      ...tier2('should be rejected', 0.9),
+      expected_version: await versionOf(h, 'dws_order'),
     })
     expect(res.result?.['isError']).toBe(true)
     const text = (res.result?.['content'] as Array<{ text: string }>)[0]?.text ?? ''
@@ -196,10 +172,8 @@ describe('update_definition — ADR-0005 ruling 4', () => {
       kind: 'table',
       name: 'dim_shop',
       fields: { primary_key: [] },
-      summary: 'break the DIM invariant',
-      derivation: 'agent',
-      confidence: 0.9,
-      expected_version: await currentVersion('dim_shop'),
+      ...tier2('break the DIM invariant', 0.9),
+      expected_version: await versionOf(h, 'dim_shop'),
     })
     expect(res.result?.['isError']).toBe(true)
     const body = toolJson(res)
@@ -213,9 +187,7 @@ describe('update_definition — ADR-0005 ruling 4', () => {
       kind: 'table',
       name: 'nope',
       fields: { description: 'x' },
-      summary: 'x',
-      derivation: 'agent',
-      confidence: 0.9,
+      ...tier2('x', 0.9),
       expected_version: 'f'.repeat(64),
     })
     expect(res.result?.['isError']).toBe(true)
@@ -226,14 +198,14 @@ describe('update_definition — ADR-0005 ruling 4', () => {
     h = await buildIntentToolHarness()
     const first = await h.client.callTool('update_definition', {
       kind: 'table', name: 'dws_order', fields: { description: '订单宽表' },
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await currentVersion('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const firstBody = toolJson(first) as { commit: string; changed: boolean }
     expect(firstBody.changed).toBe(true)
 
     const second = await h.client.callTool('update_definition', {
       kind: 'table', name: 'dws_order', fields: { description: '订单宽表' },
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await currentVersion('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const secondBody = toolJson(second) as { commit: string; changed: boolean }
     expect(secondBody.changed).toBe(false)
@@ -244,7 +216,7 @@ describe('update_definition — ADR-0005 ruling 4', () => {
     h = await buildIntentToolHarness()
     await h.client.callTool(
       'update_definition',
-      { kind: 'table', name: 'dws_order', fields: { description: 'x' }, summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await currentVersion('dws_order') },
+      { kind: 'table', name: 'dws_order', fields: { description: 'x' }, ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order') },
       { name: 'qoderwork', version: '1.0' },
     )
     const trailers = await h.recorder.readTrailers()
@@ -267,19 +239,15 @@ describe('preserve-filter regression — an origin-omitted tool write survives e
         label_columns: ['other_name'],
         columns: [{ name: 'other_id', type: 'string' }, { name: 'other_name', type: 'string' }],
       },
-      summary: '新增维表',
-      derivation: 'agent',
-      confidence: 0.9,
+      ...tier2('新增维表', 0.9),
     })
 
     await h.client.callTool('add_relation', {
       kind: 'table',
       name: 'dws_order',
       relation: { dim_table: 'dim_other', join_keys: [{ dws_column: 'pay_amt', dim_column: 'other_id' }] },
-      summary: '人工补充的关联',
-      derivation: 'agent',
-      confidence: 0.7,
-      expected_version: await currentVersion('dws_order'),
+      ...tier2('人工补充的关联', 0.7),
+      expected_version: await versionOf(h, 'dws_order'),
     })
 
     // Read back through the core's own validated loader (DimensionRefSchema's `origin`
