@@ -12,16 +12,11 @@
  * @see docs/adr/0005-mcp-tool-surface.md + docs/adr/0010-suppression.md
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { buildIntentToolHarness, type IntentToolHarness } from './helpers/intent-tools-harness.ts'
+import { buildIntentToolHarness, tier2, versionOf, type IntentToolHarness } from './helpers/intent-tools-harness.ts'
 import { toolJson } from './helpers/inprocess-client.ts'
 
 let h: IntentToolHarness | undefined
 afterEach(() => h?.close())
-
-async function version(name: string): Promise<string> {
-  if (h === undefined) throw new Error('harness not built')
-  return (toolJson(await h.client.callTool('get_definition', { kind: 'table', name })) as { version: string }).version
-}
 
 /** One per-item verdict row as `remove_*` receipts return them (#37 §2). */
 interface ItemVerdict {
@@ -36,8 +31,8 @@ describe('add_alias / remove_alias', () => {
     h = await buildIntentToolHarness()
     const res = await h.client.callTool('add_alias', {
       kind: 'table', name: 'dws_order', alias: '订单宽表',
-      summary: '添加别名「订单宽表」', derivation: 'agent', confidence: 0.9,
-      expected_version: await version('dws_order'),
+      ...tier2('添加别名「订单宽表」', 0.9),
+      expected_version: await versionOf(h, 'dws_order'),
     })
     expect((toolJson(res) as { changed: boolean }).changed).toBe(true)
     expect(h.core.loadTableDefinition('dws_order')?.alt_labels).toContain('订单宽表')
@@ -47,13 +42,13 @@ describe('add_alias / remove_alias', () => {
     h = await buildIntentToolHarness()
     const first = await h.client.callTool('add_alias', {
       kind: 'table', name: 'dws_order', alias: '订单宽表',
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const firstCommit = (toolJson(first) as { commit: string }).commit
 
     const second = await h.client.callTool('add_alias', {
       kind: 'table', name: 'dws_order', alias: '订单宽表',
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const secondBody = toolJson(second) as { commit: string; changed: boolean }
     expect(secondBody.changed).toBe(false)
@@ -64,11 +59,11 @@ describe('add_alias / remove_alias', () => {
     h = await buildIntentToolHarness()
     await h.client.callTool('add_alias', {
       kind: 'table', name: 'dws_order', alias: '临时别名',
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const res = await h.client.callTool('remove_alias', {
       kind: 'table', name: 'dws_order', labels: ['临时别名'],
-      summary: '移除别名', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('移除别名', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const body = toolJson(res) as { changed: boolean; results: ItemVerdict[] }
     expect(body.changed).toBe(true)
@@ -80,10 +75,10 @@ describe('add_alias / remove_alias', () => {
 
   it('removing an absent alias is a veto write (ensure-absent), not a no-op; the repeat is the true no-op', async () => {
     h = await buildIntentToolHarness()
-    const v1 = await version('dws_order')
+    const v1 = await versionOf(h, 'dws_order')
     const first = toolJson(await h.client.callTool('remove_alias', {
       kind: 'table', name: 'dws_order', labels: ['从未添加过'],
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: v1,
+      ...tier2('x', 0.9), expected_version: v1,
     })) as { changed: boolean; results: ItemVerdict[] }
     expect(first.changed).toBe(true)
     expect(first.results).toEqual([{ key: '从未添加过', outcome: 'absent', suppressed: true, reasserted: false }])
@@ -91,7 +86,7 @@ describe('add_alias / remove_alias', () => {
 
     const second = toolJson(await h.client.callTool('remove_alias', {
       kind: 'table', name: 'dws_order', labels: ['从未添加过'],
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })) as { changed: boolean; results: ItemVerdict[] }
     expect(second.changed).toBe(false)
     expect(second.results).toEqual([{ key: '从未添加过', outcome: 'idempotent', suppressed: false, reasserted: false }])
@@ -101,11 +96,11 @@ describe('add_alias / remove_alias', () => {
     h = await buildIntentToolHarness()
     await h.client.callTool('add_alias', {
       kind: 'table', name: 'dws_order', alias: 'DAU',
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const res = await h.client.callTool('remove_alias', {
       kind: 'table', name: 'dws_order', labels: ['dau'],
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const body = toolJson(res) as { results: ItemVerdict[] }
     expect(body.results).toEqual([{ key: 'dau', outcome: 'removed', suppressed: true, reasserted: false }])
@@ -116,12 +111,12 @@ describe('add_alias / remove_alias', () => {
     h = await buildIntentToolHarness()
     await h.client.callTool('add_alias', {
       kind: 'table', name: 'dws_order', alias: '别名甲',
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const before = toolJson(await h.client.callTool('get_definition', { kind: 'table', name: 'dws_order' })) as { version: string }
     const res = await h.client.callTool('remove_alias', {
       kind: 'table', name: 'dws_order', labels: ['别名甲', '不在场的乙'],
-      summary: '批量清理别名', derivation: 'agent', confidence: 0.9, expected_version: before.version,
+      ...tier2('批量清理别名', 0.9), expected_version: before.version,
     })
     const body = toolJson(res) as { changed: boolean; results: ItemVerdict[] }
     expect(body.changed).toBe(true)
@@ -138,13 +133,13 @@ describe('add_alias / remove_alias', () => {
     h = await buildIntentToolHarness()
     await h.client.callTool('remove_alias', {
       kind: 'table', name: 'dws_order', labels: ['订单宽表'],
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     expect(h.core.loadTableDefinition('dws_order')?.suppressed_alt_labels).toContain('订单宽表')
 
     const res = await h.client.callTool('add_alias', {
       kind: 'table', name: 'dws_order', alias: '订单宽表',
-      summary: '加回（撤销否决）', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('加回（撤销否决）', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const body = toolJson(res) as { changed: boolean; unsuppressed?: string[] }
     expect(body.changed).toBe(true)
@@ -158,12 +153,12 @@ describe('add_alias / remove_alias', () => {
     h = await buildIntentToolHarness()
     await h.client.callTool('add_alias', {
       kind: 'table', name: 'dws_order', alias: '订单宽表',
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     expect(((toolJson(await h.client.callTool('resolve_alias', { term: '订单宽表' })) as { node_ids: string[] }).node_ids)).toContain('dws_order')
     await h.client.callTool('remove_alias', {
       kind: 'table', name: 'dws_order', labels: ['订单宽表'],
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const resolved = toolJson(await h.client.callTool('resolve_alias', { term: '订单宽表' })) as { node_ids: string[] }
     expect(resolved.node_ids).toEqual([])
@@ -173,7 +168,7 @@ describe('add_alias / remove_alias', () => {
     h = await buildIntentToolHarness()
     const res = await h.client.callTool('add_alias', {
       kind: 'table', name: 'nope', alias: 'x',
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: 'f'.repeat(64),
+      ...tier2('x', 0.9), expected_version: 'f'.repeat(64),
     })
     expect(res.result?.['isError']).toBe(true)
     expect(toolJson(res)['code']).toBe(-31021)
@@ -183,11 +178,11 @@ describe('add_alias / remove_alias', () => {
     h = await buildIntentToolHarness()
     await h.client.callTool('add_alias', {
       kind: 'table', name: 'dws_order', alias: '别名一',
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     await h.client.callTool('add_alias', {
       kind: 'table', name: 'dws_order', alias: '别名二',
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const labels = h.core.loadTableDefinition('dws_order')?.alt_labels ?? []
     expect(labels).toContain('别名一')
@@ -196,10 +191,10 @@ describe('add_alias / remove_alias', () => {
 
   it('events are covered day one: remove_alias on an event lands suppressed_alt_labels (map #27 fixture-blindspot lesson)', async () => {
     h = await buildIntentToolHarness({ fixtureOpts: { withEvents: true } })
-    const v = (toolJson(await h.client.callTool('get_definition', { kind: 'event', name: 'pay_success' })) as { version: string }).version
+    const v = await versionOf(h, 'pay_success', 'event')
     const res = await h.client.callTool('remove_alias', {
       kind: 'event', name: 'pay_success', labels: ['支付成功'],
-      summary: '预否决事件别名', derivation: 'agent', confidence: 0.9, expected_version: v,
+      ...tier2('预否决事件别名', 0.9), expected_version: v,
     })
     const body = toolJson(res) as { changed: boolean; results: ItemVerdict[] }
     expect(body.changed).toBe(true)
@@ -214,8 +209,8 @@ describe('add_relation / remove_relation', () => {
     const res = await h.client.callTool('add_relation', {
       kind: 'table', name: 'dws_order',
       relation: { dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] },
-      summary: '补充店铺维度关联', derivation: 'agent', confidence: 0.85,
-      expected_version: await version('dws_order'),
+      ...tier2('补充店铺维度关联', 0.85),
+      expected_version: await versionOf(h, 'dws_order'),
     })
     expect((toolJson(res) as { changed: boolean }).changed).toBe(true)
     const ref = h.core.loadTableDefinition('dws_order')?.dimension_refs.find(r => r.dim_table === 'dim_shop')
@@ -228,8 +223,8 @@ describe('add_relation / remove_relation', () => {
     const res = await h.client.callTool('add_relation', {
       kind: 'table', name: 'dws_order',
       relation: { dim_table: 'dim_does_not_exist', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] },
-      summary: 'x', derivation: 'agent', confidence: 0.9,
-      expected_version: await version('dws_order'),
+      ...tier2('x', 0.9),
+      expected_version: await versionOf(h, 'dws_order'),
     })
     expect(res.result?.['isError']).toBe(true)
     const body = toolJson(res)
@@ -242,12 +237,12 @@ describe('add_relation / remove_relation', () => {
     const relation = { dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] }
     const first = await h.client.callTool('add_relation', {
       kind: 'table', name: 'dws_order', relation,
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const firstCommit = (toolJson(first) as { commit: string }).commit
     const second = await h.client.callTool('add_relation', {
       kind: 'table', name: 'dws_order', relation,
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const secondBody = toolJson(second) as { changed: boolean; commit: string }
     expect(secondBody.changed).toBe(false)
@@ -259,12 +254,12 @@ describe('add_relation / remove_relation', () => {
     await h.client.callTool('add_relation', {
       kind: 'table', name: 'dws_order',
       relation: { dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] },
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     await h.client.callTool('add_relation', {
       kind: 'table', name: 'dws_order',
       relation: { dim_table: 'dim_shop', join_keys: [{ dws_column: 'pay_amt', dim_column: 'shop_id' }] },
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const refs = h.core.loadTableDefinition('dws_order')?.dimension_refs.filter(r => r.dim_table === 'dim_shop') ?? []
     expect(refs).toHaveLength(2)
@@ -275,11 +270,11 @@ describe('add_relation / remove_relation', () => {
     const relation = { dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] }
     await h.client.callTool('add_relation', {
       kind: 'table', name: 'dws_order', relation,
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const res = await h.client.callTool('remove_relation', {
       kind: 'table', name: 'dws_order', relations: [relation],
-      summary: '撤回关联', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('撤回关联', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const body = toolJson(res) as { changed: boolean; results: ItemVerdict[] }
     expect(body.changed).toBe(true)
@@ -296,7 +291,7 @@ describe('add_relation / remove_relation', () => {
     const res = await h.client.callTool('remove_relation', {
       kind: 'table', name: 'dws_order',
       relations: [{ dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] }],
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const body = toolJson(res) as { changed: boolean; results: ItemVerdict[] }
     expect(body.changed).toBe(true)
@@ -313,14 +308,14 @@ describe('add_relation / remove_relation', () => {
     // Trigger the deterministic round: dim_shop's PK (shop_id) matches dws_order's own column.
     await h.client.callTool('update_definition', {
       kind: 'table', name: 'dws_order', fields: { description: 'trigger enrichment' },
-      summary: 'trigger', derivation: 'agent', confidence: 0.5, expected_version: await version('dws_order'),
+      ...tier2('trigger', 0.5), expected_version: await versionOf(h, 'dws_order'),
     })
     expect(h.core.loadTableDefinition('dws_order')?.dimension_refs.find(r => r.dim_table === 'dim_shop')?.origin).toBe('deterministic')
 
     const res = await h.client.callTool('remove_relation', {
       kind: 'table', name: 'dws_order',
       relations: [{ dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] }],
-      summary: '移除自动推导的关联', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('移除自动推导的关联', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const body = toolJson(res) as { changed: boolean; results: ItemVerdict[] }
     expect(body.results).toEqual([{ key: 'dim_shop', outcome: 'removed', suppressed: true, reasserted: false }])
@@ -336,13 +331,13 @@ describe('add_relation / remove_relation', () => {
     const relation = { dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] }
     await h.client.callTool('add_relation', {
       kind: 'table', name: 'dws_order', relation,
-      summary: '人工补充关联', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('人工补充关联', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     // Step 1: remove the curated ref — no veto (origin routing), so the same call's
     // on-write hook re-derives it with origin deterministic. The receipt says so.
     const first = toolJson(await h.client.callTool('remove_relation', {
       kind: 'table', name: 'dws_order', relations: [relation],
-      summary: '撤回', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('撤回', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })) as { results: ItemVerdict[] }
     expect(first.results).toEqual([{ key: 'dim_shop', outcome: 'removed', suppressed: false, reasserted: true }])
     expect(h.core.loadTableDefinition('dws_order')?.dimension_refs.find(r => r.dim_table === 'dim_shop')?.origin).toBe('deterministic')
@@ -351,7 +346,7 @@ describe('add_relation / remove_relation', () => {
     // and the hook's discovery is filtered. Gone for good, discoverably.
     const second = toolJson(await h.client.callTool('remove_relation', {
       kind: 'table', name: 'dws_order', relations: [relation],
-      summary: '再撤回（落否决）', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('再撤回（落否决）', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })) as { changed: boolean; results: ItemVerdict[] }
     expect(second.results).toEqual([{ key: 'dim_shop', outcome: 'removed', suppressed: true, reasserted: false }])
     const def = h.core.loadTableDefinition('dws_order')
@@ -364,14 +359,14 @@ describe('add_relation / remove_relation', () => {
     await h.client.callTool('remove_relation', {
       kind: 'table', name: 'dws_order',
       relations: [{ dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] }],
-      summary: 'x', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     expect(h.core.loadTableDefinition('dws_order')?.suppressed_dimension_refs).toContain('dim_shop')
 
     const res = await h.client.callTool('add_relation', {
       kind: 'table', name: 'dws_order',
       relation: { dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] },
-      summary: '加回（撤销否决）', derivation: 'agent', confidence: 0.9, expected_version: await version('dws_order'),
+      ...tier2('加回（撤销否决）', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const body = toolJson(res) as { changed: boolean; unsuppressed?: string[] }
     expect(body.changed).toBe(true)
@@ -388,8 +383,8 @@ describe('update_definition rejects the suppression key fields', () => {
     const res = await h.client.callTool('update_definition', {
       kind: 'table', name: 'dws_order',
       fields: { suppressed_alt_labels: ['x'] },
-      summary: 'should be rejected', derivation: 'agent', confidence: 0.9,
-      expected_version: await version('dws_order'),
+      ...tier2('should be rejected', 0.9),
+      expected_version: await versionOf(h, 'dws_order'),
     })
     expect(res.result?.['isError']).toBe(true)
     const body = toolJson(res)
@@ -404,8 +399,8 @@ describe('update_definition rejects the suppression key fields', () => {
     const table = await h.client.callTool('update_definition', {
       kind: 'table', name: 'dws_order',
       fields: { suppressed_dimension_refs: ['dim_x'] },
-      summary: 'should be rejected', derivation: 'agent', confidence: 0.9,
-      expected_version: await version('dws_order'),
+      ...tier2('should be rejected', 0.9),
+      expected_version: await versionOf(h, 'dws_order'),
     })
     expect(toolJson(table)['code']).toBe(-31020)
     expect((toolJson(table)['data'] as { use_instead?: string }).use_instead).toContain('remove_relation')
@@ -414,8 +409,8 @@ describe('update_definition rejects the suppression key fields', () => {
     const event = await h.client.callTool('update_definition', {
       kind: 'event', name: 'pay_success',
       fields: { suppressed_external_refs: ['dim_x'] },
-      summary: 'should be rejected', derivation: 'agent', confidence: 0.9,
-      expected_version: (toolJson(await h.client.callTool('get_definition', { kind: 'event', name: 'pay_success' })) as { version: string }).version,
+      ...tier2('should be rejected', 0.9),
+      expected_version: await versionOf(h, 'pay_success', 'event'),
     })
     expect(toolJson(event)['code']).toBe(-31020)
     expect((toolJson(event)['data'] as { use_instead?: string }).use_instead).toContain('remove_relation')

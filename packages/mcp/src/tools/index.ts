@@ -10,6 +10,7 @@
  * @module tools
  */
 import type { ToolRegistrar } from '../server.ts'
+import { ENRICHMENT_TOOL_NAMES } from './enrichment.ts'
 import { ITEM_TOOL_NAMES, registerItemTools } from './items.ts'
 import { READ_TOOL_NAMES, registerReadTools } from './read.ts'
 import { SUGGESTION_TOOL_NAMES, registerSuggestionTools } from './suggestions.ts'
@@ -39,3 +40,20 @@ export const INTENT_TOOL_REGISTRARS: readonly ToolRegistrar[] = [
   registerItemTools,
   registerSuggestionTools,
 ]
+
+/**
+ * Every tool name the server registers — ADR-0005's fifteen intent tools plus
+ * ADR-0006/0008's four enrichment tools. This is the single source for anything that
+ * needs "the whole surface" as a list (the catalog spec's `tools/list` reconciliation,
+ * the e2e gate's inventory check): compose from here, never hand-glue the two families
+ * again — the hand-glued copy in `check-e2e-loop.ts` drifted to a "18 tools" comment
+ * the first time a tool was added.
+ *
+ * The catalog spec asserts `tools/list` (over the default registrars) equals this
+ * list, so a name constant and a registration that disagree fail a test rather than
+ * shipping two different surfaces to production and tests respectively.
+ */
+export const TOOL_NAMES = [
+  ...INTENT_TOOL_NAMES,
+  ...ENRICHMENT_TOOL_NAMES,
+] as const

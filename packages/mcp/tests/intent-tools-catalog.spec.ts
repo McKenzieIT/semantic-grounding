@@ -1,17 +1,30 @@
 /**
- * ADR-0005's fifteen intent tools — the catalog: names, and the schema shapes the
- * ADR's rulings bake in. ADR-0005's own Verification section asks for exactly this
- * ("门禁脚本断言：十五个工具名与 input/output schema 快照").
+ * The tool catalog: names, and the schema shapes the ADRs' rulings bake in —
+ * ADR-0005's fifteen intent tools plus ADR-0006/0008's four enrichment tools,
+ * nineteen total. ADR-0005's own Verification section asks for exactly this
+ * ("门禁脚本断言：十五个工具名与 input/output schema 快照"); ADR-0006/0008 inherited
+ * the same ask, and the e2e gate's header defers schema pinning here — this file is
+ * where that lands for the whole surface.
  *
  * This file asserts over the *wire* `tools/list` output (real zod → JSON Schema
  * conversion through the real `registerTool`), not this package's own TS types —
  * the schema an agent actually sees is what "schema 即提示词" (ADR-0005 ruling 1)
  * is about.
  *
+ * The name reconciliation is the production/tests sync tripwire: the harness serves
+ * the default registrars (production's `TOOL_REGISTRARS`), and this file asserts the
+ * live `tools/list` equals `TOOL_NAMES` — a tool registered without its name constant
+ * (or vice versa) fails here rather than shipping two different surfaces. The
+ * `toHaveLength(19)` line is a deliberate speed bump: growing the surface must change
+ * this line and show up in the diff.
+ *
  * @see docs/adr/0005-mcp-tool-surface.md
+ * @see docs/adr/0006-enrichment-agent-driven.md
+ * @see docs/adr/0007-dimension-filter-semantics.md
+ * @see docs/adr/0008-enrichment-work-response-sizing.md
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { INTENT_TOOL_NAMES } from '../src/tools/index.ts'
+import { TOOL_NAMES } from '../src/tools/index.ts'
 import { buildIntentToolHarness, type IntentToolHarness } from './helpers/intent-tools-harness.ts'
 
 let h: IntentToolHarness | undefined
@@ -42,11 +55,13 @@ function byName(tools: readonly ListedTool[], name: string): ListedTool {
   return found
 }
 
-describe('the fifteen names', () => {
-  it('registers exactly ADR-0005\'s read five + write ten, with the capability pre-declared', async () => {
+describe('the nineteen names', () => {
+  it('registers exactly ADR-0005\'s fifteen + ADR-0006/0008\'s four, reconciled against TOOL_NAMES', async () => {
     const tools = await listTools()
-    expect(tools.map(t => t.name).sort()).toEqual([...INTENT_TOOL_NAMES].sort())
-    expect(tools).toHaveLength(15)
+    expect(tools.map(t => t.name).sort()).toEqual([...TOOL_NAMES].sort())
+    // Deliberate hard count, not TOOL_NAMES.length: growing the surface to 20 must
+    // edit this line, so the change is visible in the diff for review.
+    expect(tools).toHaveLength(19)
   })
 
   it('names every read tool ADR-0005 ruling 6 lists', async () => {
@@ -228,5 +243,48 @@ describe('Tier-1 suggestion tool schemas — ADR-0005 ruling 7 ("Tier-1 无此�
       const tool = byName(await listTools(), name)
       expect(tool.inputSchema.required).toEqual(['suggestion_id'])
     }
+  })
+})
+
+describe('enrichment tool schemas — ADR-0006/0007/0008', () => {
+  it('get_enrichment_work takes only the dimension-filter pair, each array minItems 1, nothing required', async () => {
+    const tool = byName(await listTools(), 'get_enrichment_work')
+    expect(Object.keys(tool.inputSchema.properties ?? {}).sort()).toEqual(['events', 'tables'])
+    expect(tool.inputSchema.required).toBeUndefined()
+    for (const field of ['tables', 'events']) {
+      const filter = tool.inputSchema.properties?.[field] as { type?: string; minItems?: number }
+      expect(filter.type).toBe('array')
+      expect(filter.minItems).toBe(1) // zod min(1): omit the key, don't pass [] (ADR-0007)
+    }
+  })
+
+  it('run_enrichment carries the very same filter schema shape as the listing tool', async () => {
+    const tools = await listTools()
+    expect(byName(tools, 'run_enrichment').inputSchema).toEqual(byName(tools, 'get_enrichment_work').inputSchema)
+  })
+
+  it('get_enrichment_prompts requires work_ids as a 1–10 batch (ADR-0008\'s half-window fold)', async () => {
+    const tool = byName(await listTools(), 'get_enrichment_prompts')
+    expect(tool.inputSchema.required).toEqual(['work_ids'])
+    const ids = tool.inputSchema.properties?.['work_ids'] as { type?: string; minItems?: number; maxItems?: number }
+    expect(ids.type).toBe('array')
+    expect(ids.minItems).toBe(1)
+    expect(ids.maxItems).toBe(10)
+  })
+
+  it('apply_enrichment requires results + summary + confidence, and has no derivation field at all (ADR-0006 ruling 5)', async () => {
+    const tool = byName(await listTools(), 'apply_enrichment')
+    expect(tool.inputSchema.required?.slice().sort()).toEqual(['confidence', 'results', 'summary'])
+    expect(tool.inputSchema.properties).not.toHaveProperty('derivation') // server恒盖 llm — nothing for the client to claim
+    const results = tool.inputSchema.properties?.['results'] as { type?: string; minItems?: number; items?: { required?: readonly string[] } }
+    expect(results.type).toBe('array')
+    expect(results.minItems).toBe(1)
+    expect(results.items?.required?.slice().sort()).toEqual(['text', 'work_id'])
+    const summary = tool.inputSchema.properties?.['summary'] as { minLength?: number; maxLength?: number }
+    expect(summary.minLength).toBe(1)
+    expect(summary.maxLength).toBe(100)
+    const confidence = tool.inputSchema.properties?.['confidence'] as { minimum?: number; maximum?: number }
+    expect(confidence.minimum).toBe(0)
+    expect(confidence.maximum).toBe(1)
   })
 })
