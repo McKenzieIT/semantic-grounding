@@ -31,7 +31,7 @@ import {
   type EventDefinition,
   type DimensionRef,
 } from './types.ts'
-import { loadTables, writeTable, loadEvents, writeEventYaml, dumpYaml, loadSuppressions, type Tier2Opts } from './io.ts'
+import { loadTables, writeTable, loadEvents, writeEventYaml, dumpYaml, loadSuppressions, normalizeLabel, type Tier2Opts } from './io.ts'
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -893,10 +893,6 @@ export function discoverAltLabelsDeterministic(target: AltLabelsTarget): string[
     if (d.length >= 2) push(d)
   }
   return out
-}
-
-function normalizeLabel(s: string): string {
-  return s.toLowerCase().trim()
 }
 
 // ── Suppression filter (#36 / #37, ADR-0010): merge 前, deterministic or LLM alike ──

@@ -69,7 +69,7 @@ import {
   EventDefinitionSchema,
   type DimensionRef,
 } from './types.ts'
-import { loadTables, loadEvents, writeTable, writeEventYaml, dumpYaml, loadSuppressions } from './io.ts'
+import { loadTables, loadEvents, writeTable, writeEventYaml, dumpYaml, loadSuppressions, normalizeLabel } from './io.ts'
 import type { Tier2Recorder } from './io.ts'
 import {
   buildDimInventory,
@@ -498,13 +498,6 @@ function mergeRelationText(
     return { kind: 'idempotent', detail: 'the parsed relation(s) already match the existing refs' }
   }
   return { kind: 'applied', detail: `merged ${added.length} parsed relation(s)`, value: merged }
-}
-
-/** Mirrors `enrichment.ts`'s private `normalizeLabel` (lowercased, trimmed) — not
- * exported there, and trivial enough that duplicating one line beats widening that
- * module's module-level export surface for it. */
-function normalizeLabel(s: string): string {
-  return s.toLowerCase().trim()
 }
 
 /**

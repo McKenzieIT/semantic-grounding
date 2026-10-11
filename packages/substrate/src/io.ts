@@ -263,6 +263,19 @@ export function loadDomains(semanticLayer: string): Record<string, unknown> {
  * @param semanticLayer - the semantic-layer directory path.
  * @returns the normalized corpus-level veto keys (empty when absent/malformed).
  */
+/**
+ * The canonical normalization form for alias / suppression keys: lowercased
+ * and trimmed. One implementation serves every consumer — substrate enrichment
+ * filters, enrichment-work merge, MCP item handlers, and the Core item methods
+ * (#49 — the three private copies that had drifted across the codebase converge
+ * here as the veto-key contract's single source of truth).
+ * @param s - the raw label string.
+ * @returns the normalized key form.
+ */
+export function normalizeLabel(s: string): string {
+  return s.toLowerCase().trim()
+}
+
 export function loadSuppressions(semanticLayer: string): ReadonlySet<string> {
   const p = join(semanticLayer, 'suppressions.yaml')
   if (!existsSync(p)) return new Set()

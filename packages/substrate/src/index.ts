@@ -86,7 +86,7 @@ import {
   type Tier2Recorder,
   type Tier2Opts,
 } from './io.ts'
-import type { TableMeta, EventDefinition, TableDefinition, MetricDefinition } from './types.ts'
+import type { TableMeta, EventDefinition, TableDefinition, MetricDefinition, ItemVerdict } from './types.ts'
 import { type CorpusVariant, type EventCorpusItem } from './corpus.ts'
 import {
   enrichAllDwsTables as enrichAllDwsTablesFromLayer,
@@ -112,7 +112,7 @@ import { tableKindPlugin } from './kinds/table-kind.ts'
 import { conceptKindPlugin } from './kinds/concept-kind.ts'
 import { RelationGraph, type NodeAliasData } from './relation-graph.ts'
 import { toMetricDefinition, splitMetricName } from './metrics.ts'
-import { loadEvents, loadTables, loadConcepts, loadRawDir, loadConceptDefinition as loadConceptDefinitionFromLayer } from './io.ts'
+import { loadEvents, loadTables, loadConcepts, loadRawDir, loadConceptDefinition as loadConceptDefinitionFromLayer, normalizeLabel } from './io.ts'
 import { EventDefinitionSchema, TableDefinitionSchema, ConceptDefinitionSchema } from './types.ts'
 import { DefinitionSnapshot, captureSnapshot } from './snapshot.ts'
 import { buildExcludeColumns } from './io.ts'
@@ -133,6 +133,7 @@ export {
   type ConceptDefinition,
   type MetricDefinition,
   type TableMeta,
+  type ItemVerdict,
 } from './types.ts'
 // W11 C1: MVCC query snapshot — consistent point-in-time view during query execution.
 // clearSnapshotCache / getSnapshotCacheSize / SNAPSHOT_CACHE_MAX stay in
@@ -377,6 +378,80 @@ function resolveSemanticLayerConfig(config: SemanticLayerConfig): ResolvedSemant
  * `extends Service` made impossible: a cordis context admits only one service
  * under a given name).
  */
+// ── Item-method helpers (#49) ─────────────────────────────────────────────────────
+//
+// Module-level helpers for the Core item-level write methods (addAlias /
+// removeAliases / addRelation / removeRelations). Previously lived in the MCP
+// tool layer (`packages/mcp/src/tools/items.ts`); converged here so the domain
+// logic has one home at the substrate level and the handlers thin to schema +
+// auditedWrite + Core call + response formatting.
+
+/** Read a definition's raw dict off disk (lenient — throws on missing target). */
+function itemReadRawDef(root: string, kind: 'table' | 'event', name: string): Record<string, unknown> {
+  const raw = kind === 'table'
+    ? loadTables(root).find(t => t.table_name === name)?.raw
+    : loadEvents(root).find(e => e.name === name)?.raw
+  if (raw === undefined) throw new Error(`${kind === 'table' ? 'Table' : 'Event'} not found: ${name}`)
+  return raw
+}
+
+/** A `string[]` field read leniently off a raw dict (absent/malformed → `[]`). */
+function itemStringArray(raw: Record<string, unknown>, field: string): string[] {
+  const v = raw[field]
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []
+}
+
+/** An `unknown[]` field read leniently off a raw dict (absent/malformed → `[]`). */
+function itemObjectArray(raw: Record<string, unknown>, field: string): unknown[] {
+  const v = raw[field]
+  return Array.isArray(v) ? v : []
+}
+
+/** Order-sensitive `string[]` equality — the byte-stability gate for the dual-field overlay. */
+function itemSameStringArray(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((v, i) => v === b[i])
+}
+
+/** The suppression field name pairing each content field (#36 §1). */
+function itemSuppressionFieldName(kind: 'table' | 'event', content: 'alt_labels' | 'relation'): 'suppressed_alt_labels' | 'suppressed_dimension_refs' | 'suppressed_external_refs' {
+  if (content === 'alt_labels') return 'suppressed_alt_labels'
+  return kind === 'table' ? 'suppressed_dimension_refs' : 'suppressed_external_refs'
+}
+
+/** The relation content field name per kind. */
+function itemRelationFieldName(kind: 'table' | 'event'): 'dimension_refs' | 'external_refs' {
+  return kind === 'table' ? 'dimension_refs' : 'external_refs'
+}
+
+/** Order-sensitive join-key comparison (dws_column + dim_column, pair-by-pair). */
+function itemSameJoinKeys(
+  a: unknown,
+  b: readonly { readonly dws_column: string; readonly dim_column: string }[],
+): boolean {
+  if (!Array.isArray(a) || a.length !== b.length) return false
+  return a.every((raw, i) => {
+    const expected = b[i]
+    return typeof raw === 'object' && raw !== null
+      && (raw as { readonly dws_column?: unknown }).dws_column === expected?.dws_column
+      && (raw as { readonly dim_column?: unknown }).dim_column === expected?.dim_column
+  })
+}
+
+/**
+ * Structural relation identity: same `dim_table` + same `join_keys` in the
+ * same order. A different order is treated as a different relation rather than
+ * invisibly normalized — the same order-sensitive precedent ADR-0010 ruling 5
+ * applies to the byte-stability gate.
+ */
+function itemMatchesRelation(
+  existing: unknown,
+  relation: { readonly dim_table: string; readonly join_keys: readonly { readonly dws_column: string; readonly dim_column: string }[] },
+): boolean {
+  if (typeof existing !== 'object' || existing === null) return false
+  const e = existing as { readonly dim_table?: unknown; readonly join_keys?: unknown }
+  return e.dim_table === relation.dim_table && itemSameJoinKeys(e.join_keys, relation.join_keys)
+}
+
 export class SemanticGroundingCore {
   private readonly resolved: ResolvedSemanticLayerConfig
   private provider: SchemaProvider | undefined
@@ -1595,6 +1670,292 @@ export class SemanticGroundingCore {
       scope_id: opts.scopeId ?? this.scopeId,
       ...opts.expected_version !== undefined ? { expected_version: opts.expected_version } : {},
     })
+  }
+
+  // ── Item-level write methods (#49 / ADR-0005 ruling 3, ADR-0010) ──────────────
+  //
+  // Four methods 1:1 corresponding to the four intent tools (`add_alias`,
+  // `remove_alias`, `add_relation`, `remove_relation`). Each encapsulates the
+  // full domain logic — dual-field overlay (content + suppression), veto
+  // routing, in-lock reassertion check — so the MCP handlers thin to schema +
+  // `runAudited` + Core call + response formatting.
+  //
+  // The handler's `auditedWrite` provides the lock (ruling 3's read-modify-write
+  // inside the corpus lock); these methods do the read and the write inside that
+  // lock. Core does NOT accept AuditIntent or recorder — the handler's
+  // `auditedWrite` provides the ambient context; `this.updateTableMeta` /
+  // `this.updateEventMeta` call `this.recorder()` which is the D5 chokepoint.
+  //
+  // `expected_version` is **required** (#48 grilling resolution Q1), not opts:
+  // the handler always passes it from the tool input. `StaleBaselineError`
+  // propagates from `updateTableMeta` / `updateEventMeta`; `Error("Table not
+  // found: ...")` / `Error("Event not found: ...")` is thrown by these methods
+  // for missing targets — the handler maps both to the appropriate MCP error.
+
+  /**
+   * Add one alias to a table or event, lifting its veto if suppressed.
+   *
+   * Dual-field overlay: appends to `alt_labels` (if not already present by
+   * normalized key) AND removes the key from `suppressed_alt_labels` (the veto
+   * lift, #37 §5). The suppression field joins the overlay only when it
+   * changed or already exists on disk — never introduces `suppressed_*` onto a
+   * definition that never had one when nothing changed.
+   *
+   * Idempotent when the alias is already present AND not vetoed: `added: false`,
+   * `unsuppressed` absent, and the underlying `updateTableMeta` / `updateEventMeta`
+   * reports `changed: false` (no commit).
+   * @param kind - `'table'` or `'event'`.
+   * @param name - the table_name / event name.
+   * @param alias - the alias to add (verbatim form; normalized for comparison).
+   * @param expectedVersion - the sha256 fingerprint from `get_definition`.
+   * @returns `{added, unsuppressed?}`.
+   * @throws Error when the target definition does not exist.
+   * @throws StaleBaselineError when the fingerprint mismatches.
+   */
+  async addAlias(
+    kind: 'table' | 'event',
+    name: string,
+    alias: string,
+    expectedVersion: string,
+  ): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string] }> {
+    const root = this.resolveRoot()
+    const raw = itemReadRawDef(root, kind, name)
+    const existing = itemStringArray(raw, 'alt_labels')
+    const key = normalizeLabel(alias)
+    const present = existing.some(a => normalizeLabel(a) === key)
+    const next = present ? existing : [...existing, alias]
+    // Veto lift: remove the key from suppressed_alt_labels.
+    const existingSup = itemStringArray(raw, 'suppressed_alt_labels')
+    const wasVetoed = existingSup.some(s => normalizeLabel(s) === key)
+    const nextSup = existingSup.filter(s => normalizeLabel(s) !== key)
+    const updates: Record<string, unknown> = { alt_labels: next }
+    if (!itemSameStringArray(existingSup, nextSup) || raw['suppressed_alt_labels'] !== undefined) {
+      updates['suppressed_alt_labels'] = nextSup
+    }
+    await this.applyItemUpdate(kind, name, updates, expectedVersion)
+    return { added: !present, ...(wasVetoed ? { unsuppressed: [key] as const } : {}) }
+  }
+
+  /**
+   * Remove aliases from a table or event, recording persistent suppressions.
+   *
+   * Dual-field overlay: removes matching entries from `alt_labels` AND unions
+   * the normalized keys into `suppressed_alt_labels` (the veto, #37 §1). Every
+   * removal records a persistent suppression — removal IS the veto; it does not
+   * depend on the label being present (ensure-absent: pre-vetoing a word the
+   * enrichment rounds have not found yet).
+   *
+   * Per-item verdicts (#37 §2):
+   * - `removed`: was present, now gone.
+   * - `absent`: was not present; the veto THIS call records IS the write.
+   * - `idempotent`: absent AND already vetoed — the only true no-op.
+   *
+   * `reasserted` is judged in-lock: `updateTableMeta`'s on-write enrichment
+   * hook has run by the time the method resolves, so the receipt cannot lie
+   * about the write-delete loop.
+   * @param kind - `'table'` or `'event'`.
+   * @param name - the table_name / event name.
+   * @param labels - the labels to remove (verbatim; normalized for comparison).
+   * @param expectedVersion - the sha256 fingerprint from `get_definition`.
+   * @returns per-item verdicts.
+   * @throws Error when the target definition does not exist.
+   * @throws StaleBaselineError when the fingerprint mismatches.
+   */
+  async removeAliases(
+    kind: 'table' | 'event',
+    name: string,
+    labels: readonly string[],
+    expectedVersion: string,
+  ): Promise<{ readonly results: readonly ItemVerdict[] }> {
+    const root = this.resolveRoot()
+    const raw = itemReadRawDef(root, kind, name)
+    const existing = itemStringArray(raw, 'alt_labels')
+    const removalKeys = labels.map(normalizeLabel)
+    const removalSet = new Set(removalKeys)
+    const next = existing.filter(a => !removalSet.has(normalizeLabel(a)))
+    // Veto side: union normalized keys into suppressed_alt_labels.
+    const existingSup = itemStringArray(raw, 'suppressed_alt_labels')
+    const supSeen = new Set(existingSup.map(normalizeLabel))
+    const nextSup = [...existingSup]
+    for (const key of removalKeys) {
+      if (!supSeen.has(key)) {
+        supSeen.add(key)
+        nextSup.push(key)
+      }
+    }
+    const updates: Record<string, unknown> = { alt_labels: next }
+    if (!itemSameStringArray(existingSup, nextSup) || raw['suppressed_alt_labels'] !== undefined) {
+      updates['suppressed_alt_labels'] = nextSup
+    }
+    await this.applyItemUpdate(kind, name, updates, expectedVersion)
+    // In-lock reassertion check: the on-write hook has run.
+    const afterRaw = itemReadRawDef(root, kind, name)
+    const after = itemStringArray(afterRaw, 'alt_labels')
+    const results: ItemVerdict[] = labels.map((label, i) => {
+      const key = removalKeys[i] as string
+      const wasPresent = existing.some(a => normalizeLabel(a) === key)
+      const wasAlreadyVetoed = existingSup.some(s => normalizeLabel(s) === key)
+      const outcome: ItemVerdict['outcome'] = wasPresent ? 'removed' : (wasAlreadyVetoed ? 'idempotent' : 'absent')
+      return {
+        key,
+        outcome,
+        suppressed: outcome !== 'idempotent',
+        reasserted: after.some(a => normalizeLabel(a) === key),
+      }
+    })
+    return { results }
+  }
+
+  /**
+   * Add one relation (dim_table + join_keys) to a table or event, lifting its
+   * veto if suppressed.
+   *
+   * Dual-field overlay: appends the relation (omitting `origin` / `derivation`
+   * per ADR-0005 rulings 9–10, so the entry is treated as curated) AND removes
+   * the `dim_table` key from the relation suppression field (the veto lift).
+   *
+   * Relation identity is structural: same `dim_table` + same `join_keys` in the
+   * same order — a different order is treated as a different relation rather
+   * than invisibly normalized (ADR-0010 ruling 5's order-sensitive precedent).
+   *
+   * Idempotent when the exact same relation is already present AND the
+   * dim_table is not vetoed: `added: false`, `unsuppressed` absent, no commit.
+   * @param kind - `'table'` or `'event'`.
+   * @param name - the table_name / event name.
+   * @param relation - `{dim_table, join_keys}`.
+   * @param expectedVersion - the sha256 fingerprint from `get_definition`.
+   * @returns `{added, unsuppressed?}`.
+   * @throws Error when the target definition does not exist, or when
+   *   `kind === 'table'` and `relation.dim_table` has no table definition.
+   * @throws StaleBaselineError when the fingerprint mismatches.
+   */
+  async addRelation(
+    kind: 'table' | 'event',
+    name: string,
+    relation: { readonly dim_table: string; readonly join_keys: readonly { readonly dws_column: string; readonly dim_column: string }[] },
+    expectedVersion: string,
+  ): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string] }> {
+    // For tables, verify the dim_table has its own definition.
+    if (kind === 'table') {
+      const dimDef = loadTableDefinitionFromLayer(this.resolveRoot(), relation.dim_table)
+      if (dimDef === null) {
+        throw new Error(`Table not found: ${relation.dim_table}`)
+      }
+    }
+    const root = this.resolveRoot()
+    const field = itemRelationFieldName(kind)
+    const supField = itemSuppressionFieldName(kind, 'relation')
+    const raw = itemReadRawDef(root, kind, name)
+    const existing = itemObjectArray(raw, field)
+    const alreadyPresent = existing.some(e => itemMatchesRelation(e, relation))
+    const next = alreadyPresent
+      ? existing
+      : [...existing, { dim_table: relation.dim_table, join_keys: relation.join_keys }]
+    // Veto lift: remove the dim_table key from the suppression field.
+    const key = relation.dim_table
+    const existingSup = itemStringArray(raw, supField)
+    const wasVetoed = existingSup.includes(key)
+    const nextSup = existingSup.filter(k => k !== key)
+    const updates: Record<string, unknown> = { [field]: next }
+    if (!itemSameStringArray(existingSup, nextSup) || raw[supField] !== undefined) {
+      updates[supField] = nextSup
+    }
+    await this.applyItemUpdate(kind, name, updates, expectedVersion)
+    return { added: !alreadyPresent, ...(wasVetoed ? { unsuppressed: [key] as const } : {}) }
+  }
+
+  /**
+   * Remove relations from a table or event, routing the veto by the removed
+   * entries' origin (#37 §1 / ADR-0010 ruling 3).
+   *
+   * Origin routing:
+   * - **Machine-derived** (`origin === 'deterministic' | 'llm'`): removal records
+   *   a persistent suppression for that `dim_table` — enrichment rounds will
+   *   never re-derive the join.
+   * - **Curated** (`origin === 'manual'` or absent — hand-added or agent-asserted):
+   *   pure content correction, no veto. If the deterministic round CAN re-derive
+   *   the join, it comes back in the same call (`reasserted: true`). Remove it
+   *   again and THAT removal vetoes it (the "two-step dance").
+   * - **Absent** (ensure-absent): removal records the veto — pre-vetoing a
+   *   dim_table known to be noise, regardless of whether a relation exists now.
+   *
+   * Per-item verdicts carry three facts: `outcome`, `suppressed` (did THIS call
+   * record the veto), and `reasserted` (did the same write's on-write hook
+   * immediately re-derive it).
+   * @param kind - `'table'` or `'event'`.
+   * @param name - the table_name / event name.
+   * @param relations - the relations to remove (structural identity match).
+   * @param expectedVersion - the sha256 fingerprint from `get_definition`.
+   * @returns per-item verdicts.
+   * @throws Error when the target definition does not exist.
+   * @throws StaleBaselineError when the fingerprint mismatches.
+   */
+  async removeRelations(
+    kind: 'table' | 'event',
+    name: string,
+    relations: readonly { readonly dim_table: string; readonly join_keys: readonly { readonly dws_column: string; readonly dim_column: string }[] }[],
+    expectedVersion: string,
+  ): Promise<{ readonly results: readonly ItemVerdict[] }> {
+    const root = this.resolveRoot()
+    const field = itemRelationFieldName(kind)
+    const supField = itemSuppressionFieldName(kind, 'relation')
+    const raw = itemReadRawDef(root, kind, name)
+    const existing = itemObjectArray(raw, field)
+    const next = existing.filter(e => !relations.some(r => itemMatchesRelation(e, r)))
+    // Veto side, routed by origin: machine-derived or absent → veto; curated → no veto.
+    const existingSup = itemStringArray(raw, supField)
+    const nextSup = [...existingSup]
+    const supSeen = new Set(existingSup)
+    const info = relations.map(rel => {
+      const key = rel.dim_table
+      const matches = existing.filter(e => itemMatchesRelation(e, rel))
+      const present = matches.length > 0
+      const machineDerived = matches.some(e => {
+        const origin = (e as { readonly origin?: unknown }).origin
+        return origin === 'deterministic' || origin === 'llm'
+      })
+      const vetoNow = (machineDerived || !present) && !supSeen.has(key)
+      if (vetoNow) {
+        supSeen.add(key)
+        nextSup.push(key)
+      }
+      return { key, present, vetoNow }
+    })
+    const updates: Record<string, unknown> = { [field]: next }
+    if (!itemSameStringArray(existingSup, nextSup) || raw[supField] !== undefined) {
+      updates[supField] = nextSup
+    }
+    await this.applyItemUpdate(kind, name, updates, expectedVersion)
+    // In-lock reassertion check: any ref with this dim_table that survived the
+    // write (i.e. the on-write hook re-derived it) marks the dance.
+    const afterRefs = itemObjectArray(itemReadRawDef(root, kind, name), field)
+    const results: ItemVerdict[] = info.map(({ key, present, vetoNow }) => ({
+      key,
+      outcome: present ? 'removed' : (vetoNow ? 'absent' : 'idempotent'),
+      suppressed: vetoNow,
+      reasserted: afterRefs.some(e => (e as { readonly dim_table?: unknown }).dim_table === key),
+    }))
+    return { results }
+  }
+
+  /**
+   * Internal: dispatch `updateTableMeta` / `updateEventMeta` by kind and throw
+   * on failure. The item methods use this instead of the non-throwing result
+   * shape — the handler's try/catch maps thrown errors to MCP error responses.
+   */
+  private async applyItemUpdate(
+    kind: 'table' | 'event',
+    name: string,
+    updates: Readonly<Record<string, unknown>>,
+    expectedVersion: string,
+  ): Promise<void> {
+    if (kind === 'table') {
+      const res = await this.updateTableMeta(name, updates, { expected_version: expectedVersion })
+      if (!res.ok) throw new Error(res.error)
+    } else {
+      const res = await this.updateEventMeta(name, updates, { expected_version: expectedVersion })
+      if (!res.ok) throw new Error(res.error)
+    }
   }
 }
 

@@ -151,3 +151,32 @@ era codec `projectCallToolResult`、`ToolSchema.outputSchema` 三处均确认该
 passed（24 files，含新增 `guardrail.spec.ts` 20 + `suppression.spec.ts` 12）/ negation-test 过 /
 acceptance 过；mcp typecheck 0 错 / test 270 passed（17 files，`intent-tools-items.spec.ts` 覆盖
 扩容后仍全绿）；e2e 新增步骤覆盖「删除→否决→重新加回→解除否决」与「起落两步」两条序列。
+
+## Update 2026-10-11 — #49 落地：条目级写语义沉进 Core，工具层薄化
+
+落 [#49](https://github.com/McKenzieIT/semantic-grounding/issues/49)（map #47 执行票）。
+**不是新裁决，是裁决 3 的结构化落地**——读改写（read-modify-write inside corpus lock）的
+实现位置从 MCP 工具处理器搬进了 `SemanticGroundingCore` 的四个方法
+（`addAlias`/`removeAliases`/`addRelation`/`removeRelations`），处理器本身薄到只剩
+schema 校验 + `auditedWrite` 包装 + Core 调用 + 响应格式化。
+
+**裁决 3 的双层结构现在显式了。** 原裁决说「add/remove 在 server 锁内做读改写」，落地时
+读改写的全部领域逻辑（`normalizeLabel` 归一化、双字段 overlay 计算、origin 路由、否决
+解除、逐项裁决）都写在 MCP 的 `items.ts` 里。#49 把它分成两层：Core 方法持有领域逻辑
+（读 raw dict → 计算 overlay → 调 `updateTableMeta`/`updateEventMeta`），处理器只持有
+协议逻辑（Zod schema → `auditedWrite` 提供锁 → Core 调用 → 响应格式化 → 错误映射）。
+`auditedWrite` 的 `runAudited` 仍然提供锁，Core 方法在锁内完成读和写——裁决 3 的「锁内
+读改写」不变，只是读改写本身有了自己的家。
+
+**`normalizeLabel` 三处归一。** 此前 `normalizeLabel` 有三份拷贝（`enrichment.ts`、
+`enrichment-work.ts`、`items.ts`），各自独立演进会漂移。#49 把它收成 `io.ts` 的单一导出，
+三处消费同一个实现——与 ADR-0002 的「零新名」哲学同构，只是这次是收敛而非约束。
+
+**测试迁移。** 领域测试从 MCP 的 `intent-tools-items.spec.ts` 迁到 substrate 的
+`item-write.spec.ts`（30 tests，直接调 Core 方法，不经 MCP 线）；MCP 线测试瘦到 7 个
+wire-only 断言（响应形状、错误码映射、schema 校验、`update_definition` 的 `suppressed_*`
+重定向）。两层测试各测自己的层——领域逻辑不因协议层改动而重跑，协议层改动不因领域逻辑
+扩展而膨胀。
+
+门禁全绿：substrate typecheck 0 错 / test 380 passed（26 files）；mcp typecheck 0 错 /
+test 270 passed（17 files）。

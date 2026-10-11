@@ -353,3 +353,20 @@ export const ConceptDefinitionSchema = z.object({
 }).loose()
 /** Inferred type of {@link ConceptDefinitionSchema}. */
 export type ConceptDefinition = z.infer<typeof ConceptDefinitionSchema>
+
+/**
+ * Per-item verdict row returned by the Core item-level write methods
+ * (`removeAliases` / `removeRelations`) — what happened to this key, whether
+ * THIS call recorded the veto, and whether the same locked write's on-write
+ * hook re-asserted it anyway (#49 / ADR-0010 ruling 5).
+ */
+export interface ItemVerdict {
+  /** The normalized label or `dim_table` key. */
+  readonly key: string
+  /** `removed` = was present, now gone; `absent` = was not present, veto is the write; `idempotent` = absent and already vetoed. */
+  readonly outcome: 'removed' | 'absent' | 'idempotent'
+  /** Whether THIS call recorded the key's veto. */
+  readonly suppressed: boolean
+  /** Whether the same write's on-write enrichment hook immediately re-derived it. */
+  readonly reasserted: boolean
+}

@@ -115,3 +115,29 @@ enrichment 轮的写-删循环时成票」。map #32 的 dogfood 实测了这个
   本票的「起落两步」curated 分流直接继承）
 - 外部先例：SARIF v2.1.0 §3.35（`suppressions` 与 `provenance` 分离存储于同一 result）
 - GLOSSARY：新增 Core domain 词条 `suppression`；`provenance` 词条尾部追加指向它的一句
+
+## Update 2026-10-11 — #49 落地：`ItemVerdict` 上 substrate barrel，`normalizeLabel` 归一
+
+落 [#49](https://github.com/McKenzieIT/semantic-grounding/issues/49)（map #47 执行票，
+与 ADR-0005 同批 Update）。**不是新裁决，是裁决 5 的形状固化 + `normalizeLabel` 的收敛。**
+
+**`ItemVerdict` 成为 substrate 公共类型。** 原裁决 5 把逐项回执定义成 `{key, outcome,
+suppressed, reasserted}`，落地时它是 MCP `items.ts` 的 `interface RemoveItemVerdict`。
+#49 把它提升为 `packages/substrate/src/types.ts` 的 `export interface ItemVerdict`，经 barrel
+导出——Core 方法直接产出这个类型，MCP 处理器不再声明自己的镜像。裁决 5 的形状不变，只是
+它的家从协议层搬到了领域层，与 ADR-0005 同批 Update 的「领域逻辑沉 Core」同一方向。
+
+**`normalizeLabel` 三处归一。** 此前 `normalizeLabel`（`s.toLowerCase().trim()`，裁决 5
+的 `key` 归一化形式）有三份独立拷贝：`enrichment.ts`（别名轮过滤）、`enrichment-work.ts`
+（apply 路径）、`items.ts`（工具层比较键）。三处各自演进会漂移——虽然一行函数，但漂移的
+后果是否决键匹配失准（`DAU` 与 `dau` 不再等价），恰好是裁决 5 的 `key` 归一化要防的
+失真。#49 把它收成 `io.ts` 的单一导出，三处消费同一个实现。
+
+**测试分层。** 否决机制的领域测试（origin 路由、ensure-absent、起落两步、逐项裁决、
+`normalizeLabel` 归一化、双字段 overlay 卫生）现在在 substrate 的 `item-write.spec.ts`
+（30 tests，直接调 Core 方法）；MCP 的 `intent-tools-items.spec.ts` 瘦到 7 个 wire-only
+断言。否决机制的回归保护面不变——30 个 substrate 测试覆盖了原 MCP 测试的全部领域断言，
+加上 StaleBaselineError 传播与双字段 overlay 卫生两个新面。
+
+门禁全绿：substrate typecheck 0 错 / test 380 passed（26 files）；mcp typecheck 0 错 /
+test 270 passed（17 files）。
