@@ -115,13 +115,18 @@ kind-specific adapters.
 The interface a kind implements to participate in the [sweep engine](#sweep-engine).
 Composition, not extension: the adapter does not extend `DataSourceKindPlugin` (the
 registry seam), because enrichment has concerns (load / write / prompt / veto / merge)
-the registry plugin does not own. Mid-granularity — four required methods
-(`discover` / `veto` / `merge` / `write`) plus an optional `prepare` that returns
-`{ context?, skip? }`. The `prepare.skip` path lets an adapter declare "this sweep
+the registry plugin does not own. Mid-granularity — four required stage methods
+(`discover` / `veto` / `merge` / `write`), an optional `prepare` that returns
+`{ context?, skip? }`, plus the enumeration/projection seam: a required `list` (load +
+schema-parse the kind's defs, project each one's `existing` enrichment items) and a
+`writePolicy` data property (`'gain-only'` skips the write when a round found nothing
+new — alt_labels' zero-commit idempotency; `'always'` rewrites every swept def —
+relations' refresh mode). The `prepare.skip` path lets an adapter declare "this sweep
 is meaningless" (e.g. relations adapter when no DIM tables exist) and short-circuit
 the iteration. Designed in
-[#64](https://github.com/McKenzieIT/semantic-grounding/issues/64); the table and
-event adapters live in `packages/substrate/src/enrichment/`.
+[#64](https://github.com/McKenzieIT/semantic-grounding/issues/64), landed with the
+alt_labels adapters in [#65](https://github.com/McKenzieIT/semantic-grounding/issues/65);
+the table and event adapters live in `packages/substrate/src/enrichment/`.
 
 ### provenance
 
