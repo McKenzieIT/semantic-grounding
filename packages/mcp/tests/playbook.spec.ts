@@ -127,8 +127,11 @@ describe('get_initialization_playbook — R10: scope_id is required and never si
     expect(pb.scope).toMatchObject({ id: 'ghost', root: null })
     expect(pb.layers.dw.phase).toBe('scope_registration')
     expect(pb.layers.kg.phase).toBe('scope_registration')
-    // R3's phase-1 row is shared across layers (scope is corpus-level, R6).
-    expect(pb.layers.dw.recommended_action).toEqual({ tool: 'register_scope', hint: '注册 scope 以启用语义层管理' })
+    // R3's phase-1 row is shared across layers (scope is corpus-level, R6); the
+    // hint is #69's amendment of that row — the naming-confirmation soft
+    // guidance (persistent identity), the same sentence the two bootstrap
+    // descriptions in `scope.ts` carry.
+    expect(pb.layers.dw.recommended_action).toEqual({ tool: 'register_scope', hint: 'scope_id 是持久身份（1:1 绑定 corpus、随每个 Tier-2 commit 进 git trailer、无改名工具）——注册前与用户确认命名' })
     expect(pb.layers.kg.recommended_action).toEqual(pb.layers.dw.recommended_action)
     expect(pb.summary).toMatchObject({ total_definitions: 0, dw_definitions: 0, kg_definitions: 0, enrichment_work_remaining: 0 })
     expect(pb.summary.message).toContain('scope_registration')

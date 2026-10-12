@@ -166,12 +166,19 @@ type LayerId = 'dw' | 'kg'
 /**
  * #55 R3's reference table, transcribed verbatim — per (layer, phase): the tool
  * (slash-separated where the table names several; null for `mature`) and the
- * hint. `kg`/`backfill` is unreachable (concepts have no enrichment rounds,
- * ADR-0012) but defined, so this stays a total function.
+ * hint — one amendment: #69 widens the `scope_registration` hint into the
+ * naming-confirmation soft guidance (the scope_id is a persistent identity;
+ * confirm its naming with the user before registering — the same sentence
+ * `scope.ts`'s two bootstrap descriptions carry). `kg`/`backfill` is
+ * unreachable (concepts have no enrichment rounds, ADR-0012) but defined, so
+ * this stays a total function.
  */
 function recommendedActionFor(layer: LayerId, phase: PlaybookPhase): RecommendedAction {
   if (phase === 'scope_registration') {
-    return { tool: 'register_scope', hint: '注册 scope 以启用语义层管理' }
+    // #69's amendment of R3's bare "register_scope" row: the naming decision is
+    // initialization's first human call, and the id is permanent — soft
+    // guidance in the hint's wording only (no mechanism, no hard gate).
+    return { tool: 'register_scope', hint: 'scope_id 是持久身份（1:1 绑定 corpus、随每个 Tier-2 commit 进 git trailer、无改名工具）——注册前与用户确认命名' }
   }
   if (phase === 'mature') {
     return { tool: null, hint: '语义层初始化完成，持续维护中' }

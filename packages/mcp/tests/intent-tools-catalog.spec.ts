@@ -10,7 +10,9 @@
  * This file asserts over the *wire* `tools/list` output (real zod → JSON Schema
  * conversion through the real `registerTool`), not this package's own TS types —
  * the schema an agent actually sees is what "schema 即提示词" (ADR-0005 ruling 1)
- * is about.
+ * is about. Where the description prose itself is load-bearing it is asserted
+ * here too: #69's naming-confirmation soft guidance on the two scope-bootstrap
+ * tools is wording an agent dispatches on, not decoration.
  *
  * The name reconciliation is the production/tests sync tripwire: the harness serves
  * the default registrars (production's `TOOL_REGISTRARS`), and this file asserts the
@@ -360,5 +362,21 @@ describe('playbook tool schema — ADR-0014 / #63 (R10: scope_id required)', () 
     expect(tool.inputSchema.required).toEqual(['scope_id'])
     expect(Object.keys(tool.inputSchema.properties ?? {}).sort()).toEqual(['scope_id'])
     expect(tool.annotations?.readOnlyHint).toBe(true)
+  })
+})
+
+describe('scope bootstrap descriptions — #69 (soft guidance: confirm the naming with the user)', () => {
+  it('get_scope_scaffold and register_scope both carry the persistent-identity naming caution', async () => {
+    const tools = await listTools()
+    for (const name of ['get_scope_scaffold', 'register_scope']) {
+      // #69's soft guidance, same semantic in each tool's own wording: the
+      // scope_id is a persistent identity (1:1 with the corpus directory,
+      // rides every Tier-2 commit's trailer, no rename tool on the
+      // registration surface) — confirm the naming with the user before
+      // registering. Words only; there is no mechanism behind them.
+      const description = byName(tools, name).description ?? ''
+      expect(description).toContain('持久身份')
+      expect(description).toContain('与用户确认命名')
+    }
   })
 })

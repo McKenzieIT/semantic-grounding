@@ -969,7 +969,7 @@ async function main(): Promise<void> {
         assert.equal((before['scope'] as Record<string, unknown>)['root'], null)
         const beforeDw = ((before['layers'] as Record<string, Record<string, unknown>>)['dw']) as Record<string, unknown>
         assert.equal(beforeDw['phase'], 'scope_registration')
-        assert.deepEqual(beforeDw['recommended_action'], { tool: 'register_scope', hint: '注册 scope 以启用语义层管理' })
+        assert.deepEqual(beforeDw['recommended_action'], { tool: 'register_scope', hint: 'scope_id 是持久身份（1:1 绑定 corpus、随每个 Tier-2 commit 进 git trailer、无改名工具）——注册前与用户确认命名' })
 
         // Register + switch: the corpus is the standard two-table fixture, so DW
         // starts life in backfill (three deterministic gaps) and KG — zero

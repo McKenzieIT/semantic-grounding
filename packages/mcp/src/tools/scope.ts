@@ -20,6 +20,15 @@
  * to point at that cannot drift), no structured pipeline object (that would make
  * the scaffold a content manual, against ADR-0011 constant 9's seam).
  *
+ * #69 adds the soft guidance that path was missing: the **naming** decision,
+ * initialization's first human call. The scope_id is a persistent identity —
+ * 1:1 with the corpus directory, riding every Tier-2 commit's trailer, no
+ * rename tool on the registration surface — so both bootstrap descriptions
+ * (`get_scope_scaffold` and `register_scope`, same sentence in different
+ * wording) tell the agent to confirm the naming with the user before
+ * registering. Words only: no mechanism, no hard gate — map #50's split is
+ * primitives + soft guidance, orchestration stays with the user.
+ *
  * Everything here works with **no active scope bound** — that is the point of a
  * bootstrap surface. Errors take the `-31060..-31065` segment
  * (`errors.ts`); a posture failure reuses #19's `posture_refused` (−31004),
@@ -69,7 +78,7 @@ function registerGetScopeScaffold(server: McpServer, _deps: ServerDeps): void {
     'get_scope_scaffold',
     {
       title: 'Get the scope scaffold',
-      description: 'Zero-side-effect knowledge tool: the shell layout for a new scope corpus — directory skeleton, config.yaml template (carrying the scope_id), git init + first commit, then the register_scope call that enters it in the registry. You run the infrastructure half yourself in bash (this server manages the knowledge and registry layers, not infrastructure execution); the next_steps line is the content-half bootstrap for after the shell is live.',
+      description: 'Zero-side-effect knowledge tool: the shell layout for a new scope corpus — directory skeleton, config.yaml template (carrying the scope_id), git init + first commit, then the register_scope call that enters it in the registry. You run the infrastructure half yourself in bash (this server manages the knowledge and registry layers, not infrastructure execution); the next_steps line is the content-half bootstrap for after the shell is live. scope_id 是持久身份（1:1 绑定 corpus 目录、随每个 Tier-2 commit 进 git trailer、注册面没有改名工具）——注册前与用户确认命名。',
       inputSchema: GetScopeScaffoldInputSchema,
       annotations: { readOnlyHint: true },
     },
@@ -128,7 +137,7 @@ function registerRegisterScope(server: McpServer, deps: ServerDeps): void {
     'register_scope',
     {
       title: 'Register a scope',
-      description: 'Enter a corpus in the scope registry: resolves the real path, runs the startup posture check (own git repo, rooted there, clean tree — a refusal carries its remedy), fully loads the corpus (a broken config is refused here, not at first switch), then writes the 1:1 table entry. Idempotent: the same id + same real path registers once and answers already_registered. Does NOT switch (switch_scope is a separate, explicit act) and does not change the active default.',
+      description: 'Enter a corpus in the scope registry: resolves the real path, runs the startup posture check (own git repo, rooted there, clean tree — a refusal carries its remedy), fully loads the corpus (a broken config is refused here, not at first switch), then writes the 1:1 table entry. Idempotent: the same id + same real path registers once and answers already_registered. Does NOT switch (switch_scope is a separate, explicit act) and does not change the active default. scope_id 是持久身份：与 corpus 目录 1:1 双向绑定、随每个 Tier-2 commit 进 git trailer、注册面没有改名工具——先与用户确认命名再注册。',
       inputSchema: RegisterScopeInputSchema,
     },
     async (input, _ctx) => {
