@@ -121,7 +121,10 @@ describe('writeConceptYaml', () => {
 
   it('rejects a payload that fails ConceptDefinitionSchema (missing name)', async () => {
     const core = newCore()
-    await expect(core.writeConceptYaml('x', { description: 'no name field' })).rejects.toThrow(/validation failed/i)
+    // #61: write-path domain validation is {ok:false}, not a throw
+    const res = await core.writeConceptYaml('x', { description: 'no name field' })
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.error).toMatch(/validation failed/i)
   })
 })
 

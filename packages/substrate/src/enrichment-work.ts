@@ -605,7 +605,8 @@ export async function applyOneEnrichmentResult(
       : mergeAltLabelsText(text, def.alt_labels, def.table_name, def.pref_label, aliasVetoSet(def.suppressed_alt_labels, corpusVetoes))
     if (outcome.kind !== 'applied') return { ...base, verdict: outcome.kind, detail: outcome.detail }
     const field = round === 'relation' ? 'dimension_refs' : 'alt_labels'
-    await writeTable(semanticLayer, target, { ...row.raw, [field]: outcome.value })
+    const w = await writeTable(semanticLayer, target, { ...row.raw, [field]: outcome.value })
+    if (!w.ok) return { ...base, verdict: 'stale_baseline', detail: w.error }
     return { ...base, verdict: 'applied', detail: outcome.detail }
   }
 
