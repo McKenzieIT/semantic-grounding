@@ -30,6 +30,14 @@ Part B 的落点（裁决：dogfood 记录进 docs/，resolution 链接此处）
 
 连上后看 `/tmp/sg-dogfood-open.jsonl` 首行：`"method":"server/discover"` 即 2026-07-28
 modern era；`"method":"initialize"` 即 2025 legacy era（`legacy:'serve'` 下同样可用）。
+
+> **2026-10-12 更正（[ADR-0011](./adr/0011-scope-management.md) / [#51](https://github.com/McKenzieIT/semantic-grounding/issues/51) 落地后）**：`--corpus` 与
+> `SG_CORPUS` 已删除，上文注册命令不再有效。现行 flag 面：`--agent-id`（必填）·
+> `--scope <id>`（可选急绑）· `--registry <path>`（缺省 `~/.semantic-grounding/scopes.yaml`）·
+> `--lock-timeout-ms`；env 通道对应 `SG_AGENT_ID` / `SG_SCOPE` / `SG_REGISTRY` /
+> `SG_LOCK_TIMEOUT_MS`。进入 corpus 的唯一门是 `register_scope`（脚手架先问
+> `get_scope_scaffold`）。本文其余 `--corpus` / `SG_CORPUS` 字样按 2026-10-10 当时事实保留。
+
 确认后可改回直接注册 `node …/src/bin.ts --corpus … --agent-id …`（Node ≥ 22.18 直跑 .ts；
 或先 `pnpm -r build` 后用 `node …/packages/mcp/lib/bin.js`）。
 
