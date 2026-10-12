@@ -942,9 +942,10 @@ export type WriteConceptYamlResult = { ok: true; path: string } | { ok: false; e
  * @param data - the concept payload; validated against `ConceptDefinitionSchema` unless skipped.
  * @param opts - `{ skipValidation: true }` skips schema validation (for pre-validated generators).
  * @param tier2 - optional Tier-2 options; passed, this write takes the audited
- *   write-and-record path. No `expected_version` is ever checked here — create
- *   is the only concept verb that calls this primitive, and create is
- *   baseline-free by construction (ADR-0005 ruling 7).
+ *   write-and-record path. The seam checks `expected_version` when one is
+ *   supplied, but no caller ever supplies one here — create is the only
+ *   concept verb that calls this primitive, and create is baseline-free by
+ *   construction (ADR-0005 ruling 7), so the check stays dormant on this path.
  * @returns `{ ok: true, path }` on success, or `{ ok: false, error }` when
  *   schema validation rejects the payload.
  */
