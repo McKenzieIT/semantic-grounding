@@ -90,8 +90,13 @@ export type EnrichmentWriteOutcome = { ok: true; path: string } | { ok: false; e
 /**
  * Options for one engine run. Fields are `| undefined` so wrappers can
  * forward their own optional parameters verbatim (exactOptionalPropertyTypes).
+ * Generic over the def type so the relations family's `excludeColumnsFn`
+ * (ticket #66, CL-18 Phase 2) keeps its per-kind parameter type end-to-end —
+ * a pure passthrough slot: the engine hands `opts` to `prepare` and nothing
+ * else; the relations adapters move the function from here into their sweep
+ * context and apply it in `discover`.
  */
-export interface SweepOpts {
+export interface SweepOpts<TDef = unknown> {
   /** Optional one-shot LLM call; the engine hands it straight to `discover`. */
   readonly llmCall?: LlmCall | undefined
   /** Optional definition-name filter; omit/empty = every definition of the kind. */
@@ -100,6 +105,11 @@ export interface SweepOpts {
   readonly mergeContext?: MergeContext | undefined
   /** Optional Tier-2 options; forwarded to the adapter's `write`. */
   readonly tier2?: Tier2Opts | undefined
+  /** Optional per-def exclude-set builder (CL-18 Phase 2, relations only): the
+   * calling layer computes a target's noise-JOIN exclusion (e.g. its partition
+   * columns) from the target's metadata; the adapter forwards it to its
+   * deterministic round. */
+  readonly excludeColumnsFn?: ((def: TDef) => ReadonlySet<string> | undefined) | undefined
 }
 
 /**
@@ -129,12 +139,12 @@ export interface EnrichmentKindAdapter<TDef, TItem, TCtx = undefined> {
   readonly writePolicy: 'gain-only' | 'always'
   /**
    * Sweep-level setup: build cross-target context once (the alt_labels
-   * family loads the corpus veto word list here; the relations family will
-   * build its DIM inventory here, #66) or skip the whole sweep with an
-   * agent-visible reason. Runs before any def is listed; a throw propagates
+   * family loads the corpus veto word list here; the relations family builds
+   * its DIM inventory + excludeColumnsFn here, #66) or skip the whole sweep
+   * with an agent-visible reason. Runs before any def is listed; a throw propagates
    * (the pipelines always ran their setup outside the per-def try).
    */
-  prepare?(semanticLayer: string, opts: SweepOpts): SweepPrepare<TCtx>
+  prepare?(semanticLayer: string, opts: SweepOpts<TDef>): SweepPrepare<TCtx>
   /**
    * List this kind's sweep candidates: load the corpus, schema-parse each
    * def, project `existing` (what `merge` unions into). Corpus order; a

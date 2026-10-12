@@ -54,13 +54,14 @@ export interface SweepResult {
  * @param semanticLayer - the semantic-layer directory path.
  * @param opts - llmCall (forwarded verbatim to discover), names filter,
  *   merge context (default `{ mergeExisting: false, preserveCurated: true }`),
- *   tier2 (forwarded verbatim to write).
+ *   tier2 (forwarded verbatim to write), excludeColumnsFn (forwarded to
+ *   `prepare` only — the relations adapters park it in their sweep context).
  * @returns the sweep report.
  */
 export async function sweepEnrichment<TDef, TItem, TCtx>(
   adapter: EnrichmentKindAdapter<TDef, TItem, TCtx>,
   semanticLayer: string,
-  opts: SweepOpts = {},
+  opts: SweepOpts<TDef> = {},
 ): Promise<SweepResult> {
   const prep = adapter.prepare?.(semanticLayer, opts)
   if (prep?.skip) {

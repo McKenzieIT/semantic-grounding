@@ -12,6 +12,7 @@
 import type { TableDefinition, EventDefinition } from '../types.ts'
 import { normalizeLabel } from '../io.ts'
 import type { LlmCall } from './types.ts'
+import { extractJsonArray } from './relations.ts'
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -35,26 +36,10 @@ export interface AltLabelsSweepCtx {
 
 // ── Shared lenient JSON extraction ──────────────────────────────────────
 
-/** Extract the outermost JSON array from an LLM response, tolerating ```json
- * fences and leading/trailing prose. Shared by this family's
- * `parseAltLabelsResponse` and (still) the relations family's `parseLlmRefs`
- * in `enrichment.ts` — exported module-level, never from the public barrel
- * (ADR-0002). #66 may relocate it next to its second consumer. */
-export function extractJsonArray(text: string): unknown[] {
-  // tolerate ```json fences and leading/trailing prose
-  let t = text.trim()
-  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i)
-  t = fence?.[1]?.trim() ?? t
-  const start = t.indexOf('[')
-  const end = t.lastIndexOf(']')
-  if (start === -1 || end === -1 || end < start) return []
-  try {
-    const parsed: unknown = JSON.parse(t.slice(start, end + 1))
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
+// extractJsonArray (the fence/prose-tolerant LLM JSON-array extractor this
+// family's `parseAltLabelsResponse` uses) is housed with its origin, the
+// relations family (`relations.ts`, ticket #66) — imported above. Module-level
+// name, never on the public barrel (ADR-0002).
 
 // ── Extractor guardrail (#35 / #26, ADR-0009): 12 constant predicates + cap24 ──
 //
