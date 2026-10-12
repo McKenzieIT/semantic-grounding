@@ -545,3 +545,17 @@ That is the dogfood's job, recorded in `docs/mcp-dogfood.md`.
 *If a term you want to use is not here, add it. If a term here conflicts with an
 established term in your head, stop and report the drift rather than silently
 substituting.*
+
+### playbook (初始化手册)
+
+A stateless tool (`get_initialization_playbook`) that computes initialization progress
+from the corpus's current state in real time — returning the current phase, coverage
+metrics, and recommended actions. The playbook is the **information layer**: it reports
+where things stand but does not orchestrate. The agent freely decides when to call and
+what to execute. Playbook complements [cold start](#cold-start) — cold start is the
+content registration strategy (trajectory-driven), playbook is the progress visibility.
+
+The phase model has five hardcoded phases (scope registration → seeding → backfill →
+LLM supplement → mature), with status and coverage derived per-layer (DW and KG tracked
+independently). "Mature" is the completion signal but not a terminal state: the semantic
+layer continues to evolve, only the guidance injection stops.
