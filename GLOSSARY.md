@@ -98,6 +98,31 @@ management surface offers outstanding gaps as [enrichment work](#enrichment-work
 for the connecting agent to complete (ADR-0006) — prompts, parsing, and the
 merge rules stay inside either way.
 
+### sweep engine (扫管引擎)
+
+The parameterized sweep function (`sweepEnrichment`) that orchestrates enrichment
+across all definitions of a given kind — iterate, discover, veto, merge, write,
+collect errors. The engine holds the **编排** (orchestration); the per-kind logic
+lives in an [EnrichmentKindAdapter](#enrichmentkindadapter). One engine, many
+adapters: table/event today, concept tomorrow if ADR-0012's zero-hit measurement
+changes. Designed in [#64](https://github.com/McKenzieIT/semantic-grounding/issues/64)
+to collapse four mirrored pipelines (`enrichAllDwsTables` / `enrichAllEvents` /
+`enrichAllTablesAltLabels` / `enrichAllEventsAltLabels`) into one function plus
+kind-specific adapters.
+
+### EnrichmentKindAdapter
+
+The interface a kind implements to participate in the [sweep engine](#sweep-engine).
+Composition, not extension: the adapter does not extend `DataSourceKindPlugin` (the
+registry seam), because enrichment has concerns (load / write / prompt / veto / merge)
+the registry plugin does not own. Mid-granularity — four required methods
+(`discover` / `veto` / `merge` / `write`) plus an optional `prepare` that returns
+`{ context?, skip? }`. The `prepare.skip` path lets an adapter declare "this sweep
+is meaningless" (e.g. relations adapter when no DIM tables exist) and short-circuit
+the iteration. Designed in
+[#64](https://github.com/McKenzieIT/semantic-grounding/issues/64); the table and
+event adapters live in `packages/substrate/src/enrichment/`.
+
 ### provenance
 
 The record of where a definition's field value came from — authored in YAML, derived
