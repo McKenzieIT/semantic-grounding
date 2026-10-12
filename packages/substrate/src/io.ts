@@ -140,8 +140,19 @@ export function dumpYaml(obj: unknown): string {
   return yaml.dump(obj, { sortKeys: false, lineWidth: -1, noRefs: true, quotingType: '"' })
 }
 function readYaml(path: string): unknown {
+  _readYamlCount++
   return yaml.load(readFileSync(path, 'utf-8'))
 }
+
+// ── Test-only parse counter (ticket 01-probe) ─────────────────────────────
+// Measures how many YAML reads a given code path triggers. NOT exported from
+// index.ts (build-shape.spec.ts guards the public barrel). Import directly
+// from io.ts in specs, matching the existing test pattern.
+let _readYamlCount = 0
+/** Test-only: reset the readYaml call counter to zero. */
+export function _resetReadYamlCount(): void { _readYamlCount = 0 }
+/** Test-only: read the current readYaml call count since last reset. */
+export function _getReadYamlCount(): number { return _readYamlCount }
 
 // ── Atomic write (mirrors writer._atomic_write via @deepseek-ai/dsh-atomic-write) ──
 const YAML_MODE = 0o644

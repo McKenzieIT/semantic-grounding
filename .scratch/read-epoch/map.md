@@ -62,11 +62,20 @@ Destination: MCP 的只读调用路径上，一次工具调用只解析语料一
 
 <!-- 当前未关闭的子 ticket，按阻塞关系排序 -->
 
-- [01-probe](issues/01-probe.md) — **前沿**（research，AFK）：度量探针，有权否决整图
 - [02-bump-audit](issues/02-bump-audit.md) — **前沿**（task，AFK）：`invalidateCaches` bump 完备性审计 + 回归锁，独立于本图成立
-- [03-adr-0015](issues/03-adr-0015.md) — 被 01 阻塞（grilling，HITL）：ADR-0015 + GLOSSARY 词条
-- [04-epoch-impl](issues/04-epoch-impl.md) — 被 01 + 03 阻塞（task，AFK）：AsyncLocalStorage epoch + loader memo + 路径断言
+- [03-adr-0015](issues/03-adr-0015.md) — **前沿**（grilling，HITL）：ADR-0015 + GLOSSARY 词条（01-probe 已解，实测数字可用）
+- [04-epoch-impl](issues/04-epoch-impl.md) — 被 03 阻塞（task，AFK）：AsyncLocalStorage epoch + loader memo + 路径断言
 - [05-cleanup](issues/05-cleanup.md) — 被 04 阻塞（task，AFK）：删 BasicIndex + registerInvalidationHook
+
+### 01-probe 实测（2026-10-13）
+
+- **本图不否决**：读路径成本真实（1-4× 每调用），epoch 有实收益
+- **`assertKnownFilterNames` 最差**：10 个 filter 名 → 4.19× 全库解析，O(N) 线性增长，epoch 可折到 ~1×
+- **`get_enrichment_prompts` 次差**：5 项 → 2.09×，epoch 可折到 ~1×
+- **`search_definitions` 病理**：2× 每调用，但根因是 `projectGraphNodes` 显式未缓存（与 epoch 正交）
+- **`run_enrichment` 262× 是写路径 bug 而非读路径问题**：99% 来自 `findEventPath`（io.ts:801）每写一次全事件库扫描——event name 用点（`account.role.backup.rollback`）而 filename 用下划线（`role_backup_rollback.yaml`），fast path 永不命中。本图不能修，**另开 sibling ticket**
+- **`get_definition` 单条 lookup 已是下限**：321/446 reads = 1 次全扫，epoch 帮不上（name→file 索引才能帮，那是另一条优化）
+- **源票 #60「≥10 次全库解析」的实测**：大幅超出（262×），但根因是写路径 `findEventPath` 扫描，不是源票预想的读路径重复读
 
 ## Not yet specified
 
@@ -83,3 +92,5 @@ Destination: MCP 的只读调用路径上，一次工具调用只解析语料一
 - **name→entry 索引 / 6 处 `.find()` 的 O(corpus) 扫描**：#60 把「O(corpus)」当一个成本，实际是两个——解析语料（321 次读+parse，昂贵）与扫一遍数组（321 次字符串比较，可忽略）。后者在前者被缓存之后不配一层抽象。
 - **`snapshot.ts` / `withSnapshot` / dsh 适配**：ADR-0005 裁决 6 把 MVCC 划给 dsh；且 snapshot 的 `corpusVersion` 键**对它自己的用例是正确的**（MVCC 要的就是钉住一个版本，跨进程过期对它不是 bug 而是定义）。两套缓存生命周期需求真的不同，合并会把一条正确语义拗向另一条。叠加用户 MCP-first 裁决，整体出范围。
 - **mtime 校验式跨调用缓存**：见 Decisions（拿正确性换性能）。
+- **`findEventPath` 写路径 bug（262× 全库解析）**：io.ts:801，每写一个 event 做一次全事件库扫描。根因：event name 用点、filename 用下划线，fast path 永不命中。独立于本图，且**impact 更高**（run_enrichment 99% 成本在此）。另开 sibling ticket 处理——可能修法：filename convention 改点、或 name→path 缓存。
+- **`search_definitions` 的 `projectGraphNodes` 未缓存**：2× 每调用，与 epoch 正交，需要自己的缓存层。
