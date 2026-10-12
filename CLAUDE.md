@@ -32,8 +32,8 @@ Issue 追踪在 GitHub（McKenzieIT/semantic-grounding），通过 `gh` CLI 操�
 
 **map [#50](https://github.com/McKenzieIT/semantic-grounding/issues/50)（MCP 初始化 toolkit——scope + 概念 properties + 批量导入 + playbook 动态指引）进行中**——Destination：任意远程 agent 经 MCP 为任意新产品初始化完整语义层（数仓语义层 + 游戏知识图谱双层）：scope 管理（ADR-0011）、概念注册与 properties 扩展（ADR-0012 + Q4(b)）、批量定义导入（#46 R1 触发条件已到）、初始化 playbook 与动态指引（Q5(b₂)）。Toolkit 是平台能力非工作流——编排权留使用者，平台只提供原语 + 软引导。前置 map #47 已关（#49 落地后的干净 Core 基础）。六张子票：
 [动态指引实现方式](https://github.com/McKenzieIT/semantic-grounding/issues/53)（grilling，已解：**选项 D**——playbook 工具（#55 另裁 API）+ 写工具响应级条件注入（仅 6 个写工具、注入点 `auditedWrite` 响应组装后、`_guidance: {phase, hint, metrics}` JSON 结构化、非初始化时字段完全消失零 tax、触发先用 definition count 阈值默认 10、#55 阶段模型落地后升级接口不变））、
-[scope 管理工具落地](https://github.com/McKenzieIT/semantic-grounding/issues/51)（task，执行中——并行 worktree 会话）、
-[概念写路径落地](https://github.com/McKenzieIT/semantic-grounding/issues/52)（task，执行中——并行 worktree 会话）、
+[scope 管理工具落地](https://github.com/McKenzieIT/semantic-grounding/issues/51)（task，已解：**全部落地**——五工具〔tools/list 19→24〕+ `scopes.yaml` 统一注册表 + 入口快照绑定 + `scope_id` 必填〔−31064〕+ 删 `--corpus`；ADR-0011 accepted 落盘；substrate 零改动；4 新 spec 52 tests；合入 main `f66c787` 未 push）、
+[概念写路径落地](https://github.com/McKenzieIT/semantic-grounding/issues/52)（task，已解：**全部落地**——substrate +2 原语〔`writeConceptYaml`/`updateConceptMeta`〕、六工具 `kind:'concept'` 分支零新工具名、Q4(b) `properties` + 概念侧关系〔三种边 + 存储归宿：table→concept 落 TARGET 概念文件〕、curated 边移除首调即终局；ADR-0012 accepted 落盘 + ADR-0005 Update supersede 段〔metric 排除维持〕；`concept-write.spec.ts` 33 tests；合入 main `708b00e` 未 push——与 #51 合并交叉面两真冲突 + e2e step 14 `scope_id` auto-merge 盲区当场修复，细节在票 resolution）。
 [批量导入工具设计](https://github.com/McKenzieIT/semantic-grounding/issues/54)（grilling，待 HITL：输入形状/校验/尺寸上限/部分失败语义/provenance 四原则）、
 [初始化 playbook 设计](https://github.com/McKenzieIT/semantic-grounding/issues/55)（grilling，待 HITL：阶段模型/覆盖率指标/双层进度/完成度定义——**#56 的 blocker**）、
 [动态指引落地](https://github.com/McKenzieIT/semantic-grounding/issues/56)（task，blocked by #55：`_guidance` 注入 + 触发条件 + e2e 阈值边界转换步）。
