@@ -45,9 +45,9 @@
  *   update_definition`); they ride the one string verbatim as slash-separated
  *   alternatives rather than reshaping the field into an array — 照抄 the table,
  *   not a redesign. The DW `seeding` cell names `import_definitions`, which #54
- *   has designed but not landed (24→25 is this ticket; 25→26 is that one's): the
- *   name is copied as ruled, and `create_definition` fills the same stage in the
- *   interim — see ADR-0014's follow-up note.
+ *   designed and #68 landed (tools/list 25→26): the name this table always
+ *   ruled now resolves to a registered tool — the interim note (create_definition
+ *   standing in) is retired; see ADR-0014's Update note and ADR-0013.
  * - **`scope.root`** is `string | null`: R7 drew the shape assuming a registered
  *   scope, while `scope_registration` by definition has no resolved root to
  *   report (a never-registered id has none at all).

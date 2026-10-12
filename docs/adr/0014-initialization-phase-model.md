@@ -138,6 +138,8 @@ Decision 段预留的四项裁决（R3/R7/R10/R13）随
 - **前瞻引用照抄**：DW `seeding` 的 recommended_action 是 `import_definitions`——#54 已裁
   未落地（本票 24→25，它是 25→26），名字照 R3 表抄录；落地前该阶段的可用手段是
   `create_definition`。#54 落地时 catalog 断言的 `toHaveLength` 需 25→26 再改。
+  （2026-10-12 追记：该前瞻引用已随 [#68](https://github.com/McKenzieIT/semantic-grounding/issues/68)
+  落地兑现——tools/list 25→26、catalog 断言已改，见 ADR-0013；interim 手段退役。）
 - `dwPhase` 内部为判 backfill 扫一次 work 队列，`playbook` 为 `summary`/`coverage` 再扫
   一次：两扫换「阶段推导单一来源」，仪表盘读不是热路径，值得。
 - e2e 门禁加一步（19→20 步）：未注册 → scope_registration、注册+切换后双层真实阶段、与

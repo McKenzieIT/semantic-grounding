@@ -80,6 +80,7 @@ import type { ScopeRegistryFile } from './scope-registry.ts'
 // reverse at the value level.
 import { INTENT_TOOL_REGISTRARS } from './tools/index.ts'
 import { registerEnrichmentTools } from './tools/enrichment.ts'
+import { registerImportTools } from './tools/import.ts'
 import { registerPlaybookTools } from './tools/playbook.ts'
 import { registerScopeTools } from './tools/scope.ts'
 
@@ -142,11 +143,13 @@ export type ToolRegistrar = (server: McpServer, deps: ServerDeps) => void
  * criterion). #20 appends ADR-0005's fifteen intent tools (`INTENT_TOOL_REGISTRARS`,
  * `./tools/index.ts`) and #21 appends ADR-0006's three enrichment tools
  * (`registerEnrichmentTools`, `./tools/enrichment.ts`); #51 appends ADR-0011's five
- * scope-management tools (`registerScopeTools`, `./tools/scope.ts`) and #63 appends
- * the initialization playbook tool (`registerPlaybookTools`, `./tools/playbook.ts`)
+ * scope-management tools (`registerScopeTools`, `./tools/scope.ts`), #63 appends
+ * the initialization playbook tool (`registerPlaybookTools`, `./tools/playbook.ts`),
+ * and #68 appends ADR-0013's bulk-import tool (`registerImportTools`,
+ * `./tools/import.ts`)
  * — appending here was the whole integration step the seam was built for.
  */
-export const TOOL_REGISTRARS: readonly ToolRegistrar[] = [...INTENT_TOOL_REGISTRARS, registerEnrichmentTools, registerScopeTools, registerPlaybookTools]
+export const TOOL_REGISTRARS: readonly ToolRegistrar[] = [...INTENT_TOOL_REGISTRARS, registerEnrichmentTools, registerScopeTools, registerPlaybookTools, registerImportTools]
 
 /**
  * Build the factory `serveStdio` calls to get a server instance.

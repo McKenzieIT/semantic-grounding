@@ -10,6 +10,7 @@
  * @module tools
  */
 import type { ToolRegistrar } from '../server.ts'
+import { IMPORT_TOOL_NAMES, registerImportTools } from './import.ts'
 import { ENRICHMENT_TOOL_NAMES } from './enrichment.ts'
 import { ITEM_TOOL_NAMES, registerItemTools } from './items.ts'
 import { PLAYBOOK_TOOL_NAMES } from './playbook.ts'
@@ -46,25 +47,26 @@ export const INTENT_TOOL_REGISTRARS: readonly ToolRegistrar[] = [
 /**
  * Every tool name the server registers — ADR-0005's fifteen intent tools plus
  * ADR-0006/0008's four enrichment tools plus ADR-0011's five scope tools plus
- * #55/#63's playbook tool. This is the single source for anything that needs
- * "the whole surface" as a list (the catalog spec's `tools/list`
- * reconciliation, the e2e gate's inventory check): compose from here, never
- * hand-glue the families again — the hand-glued copy in
+ * #55/#63's playbook tool plus ADR-0013's bulk-import tool. This is the single
+ * source for anything that needs "the whole surface" as a list (the catalog
+ * spec's `tools/list` reconciliation, the e2e gate's inventory check): compose
+ * from here, never hand-glue the families again — the hand-glued copy in
  * `check-e2e-loop.ts` drifted to a "18 tools" comment the first time a tool
  * was added. #51 merged the scope family in under this same rule: the
  * composition grew by one import, no hand-list anywhere. #63 added the
- * playbook family the same way.
+ * playbook family the same way; #68 the import family.
  *
  * Mirrors `server.ts`'s `TOOL_REGISTRARS` (`[...INTENT_TOOL_REGISTRARS,
- * registerEnrichmentTools, registerScopeTools, registerPlaybookTools]`) family
- * by family. The catalog spec asserts `tools/list` (over the default
- * registrars) equals this list, so a name constant and a registration that
- * disagree fail a test rather than shipping two different surfaces to
- * production and tests respectively.
+ * registerEnrichmentTools, registerScopeTools, registerPlaybookTools,
+ * registerImportTools]`) family by family. The catalog spec asserts `tools/list`
+ * (over the default registrars) equals this list, so a name constant and a
+ * registration that disagree fail a test rather than shipping two different
+ * surfaces to production and tests respectively.
  */
 export const TOOL_NAMES = [
   ...INTENT_TOOL_NAMES,
   ...ENRICHMENT_TOOL_NAMES,
   ...SCOPE_TOOL_NAMES,
   ...PLAYBOOK_TOOL_NAMES,
+  ...IMPORT_TOOL_NAMES,
 ] as const

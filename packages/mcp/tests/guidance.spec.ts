@@ -83,7 +83,7 @@ describe('maybeGuidance', () => {
 let h: IntentToolHarness | undefined
 afterEach(() => h?.close())
 
-describe('_guidance wired into the 6 write tools (default thresholds)', () => {
+describe('_guidance wired into the 7 write tools (default thresholds)', () => {
   it('create_definition carries _guidance — KG\'s empty concept layer is the laggard', async () => {
     h = await buildIntentToolHarness()
     const res = await h.client.callTool('create_definition', { scope_id: 'fixture',
@@ -132,6 +132,21 @@ describe('_guidance wired into the 6 write tools (default thresholds)', () => {
       ...tier2('撤回关联', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })) as { _guidance?: Guidance }
     expect(unrelated._guidance).toMatchObject({ phase: 'seeding', metrics: { kg: { count: 0, phase: 'seeding' } } })
+  })
+
+  it('import_definitions carries _guidance too — the 7th write tool (#68)', async () => {
+    h = await buildIntentToolHarness()
+    const body = toolJson(await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: [
+        { kind: 'table', definition: { table_name: 'dws_seeded', partitions: [{ name: 'ds', type: 'string' }], columns: [] } },
+        { kind: 'concept', definition: { name: 'seeded_term', description: 'a seeded term' } },
+      ],
+      summary: 'imported from DDL dump', derivation: 'agent', confidence: 0.9,
+    })) as { _guidance?: Guidance }
+    // After the import: DW has 3 tables but deterministic gaps remain (backfill),
+    // KG has its first concept (1 < 5, past seeding) — DW is the more-behind layer.
+    expect(body._guidance).toMatchObject({ phase: 'backfill', metrics: { dw: { count: 3 }, kg: { count: 1 } } })
   })
 
   it('read tools never carry _guidance', async () => {

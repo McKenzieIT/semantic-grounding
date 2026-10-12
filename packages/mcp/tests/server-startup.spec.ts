@@ -35,17 +35,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { EXIT } from '../src/main.ts'
 import { LOCK_FILENAME, type LockRecord } from '../src/git/lock.ts'
 import { ScopeRegistryFile } from '../src/scope-registry.ts'
-import { INTENT_TOOL_NAMES } from '../src/tools/index.ts'
-import { ENRICHMENT_TOOL_NAMES } from '../src/tools/enrichment.ts'
-import { PLAYBOOK_TOOL_NAMES } from '../src/tools/playbook.ts'
-import { SCOPE_TOOL_NAMES } from '../src/tools/scope.ts'
+import { TOOL_NAMES } from '../src/tools/index.ts'
 import { createFixtureCorpus, fixtureGit, type FixtureCorpus } from './helpers/fixture-corpus.ts'
 
 const BIN = fileURLToPath(new URL('../src/bin.ts', import.meta.url))
 const REGISTRAR_BIN = fileURLToPath(new URL('./helpers/registrar-server.ts', import.meta.url))
 
-/** Every default-registrar tool name, in no particular order — this file's own "all of them" baseline. */
-const ALL_DEFAULT_TOOL_NAMES = [...INTENT_TOOL_NAMES, ...ENRICHMENT_TOOL_NAMES, ...SCOPE_TOOL_NAMES, ...PLAYBOOK_TOOL_NAMES]
+/** Every default-registrar tool name, in no particular order — the single-source
+ * `TOOL_NAMES` composition (#68 folded this file's former hand-glued family list
+ * into it, the same anti-drift rule `tools/index.ts` states). */
+const ALL_DEFAULT_TOOL_NAMES = [...TOOL_NAMES]
 
 /**
  * The environment to spawn with: the real one, minus this server's own variables.
@@ -257,13 +256,14 @@ describe('deployment refusals exit 78 and say nothing on stdout', () => {
 
 // SCOPE_TOOL_NAMES is ADR-0011's addition (#51): the five scope-management tools, on
 // top of the pre-existing nineteen (ADR-0005's fifteen + ADR-0006's three + ADR-0008's
-// one), and PLAYBOOK_TOOL_NAMES is #63's initialization dashboard — twenty-five
+// one), PLAYBOOK_TOOL_NAMES is #63's initialization dashboard, and
+// IMPORT_TOOL_NAMES is ADR-0013's bulk import (#68) — twenty-six
 // default-registrar tools in total. None of the tools/list-only
 // tests below need an active scope bound: every tool registers unconditionally, and
 // only a definition-tool *call* without one would answer no_active_scope.
 
 describe('serving', () => {
-  it('answers a 2026-07-28 tools/list with all twenty-five default-registrar tools, in the revision\'s result shape', () => {
+  it('answers a 2026-07-28 tools/list with all twenty-six default-registrar tools, in the revision\'s result shape', () => {
     const r = run(['--agent-id', 'analyst-bot', '--registry', freshRegistryPath()], { input: modernToolsList() })
     expect(r.code).toBe(EXIT.ok)
 
@@ -354,7 +354,7 @@ describe('serving', () => {
     const out = responses(r.stdout)
     expect(out).toHaveLength(2)
     expect((out[0]?.['result'] as Record<string, unknown>)?.['protocolVersion']).toBe('2025-11-25')
-    // Same default-registrar tool set as the modern-era test above (all twenty-five).
+    // Same default-registrar tool set as the modern-era test above (all twenty-six).
     const legacyTools = (out[1]?.['result'] as Record<string, unknown>)?.['tools'] as Array<{ name: string }> | undefined
     expect(legacyTools?.map(t => t.name).sort()).toEqual([...ALL_DEFAULT_TOOL_NAMES].sort())
     // No `-32601`: the regression this guards is reusing one McpServer across the

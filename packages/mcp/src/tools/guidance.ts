@@ -4,10 +4,10 @@
  * after #55 closed supersedes it with the real model below — see #56's resolution
  * comment for the correction.)
  *
- * Mechanism: an optional `_guidance` field on exactly the 6 write-tool responses
+ * Mechanism: an optional `_guidance` field on exactly the 7 write-tool responses
  * (create_definition, update_definition, add_alias, remove_alias, add_relation,
- * remove_relation), injected after `auditedWrite`'s response assembly. Read tools
- * never get this field.
+ * remove_relation, import_definitions), injected after `auditedWrite`'s response
+ * assembly. Read tools never get this field.
  *
  * Two layers track independently (#55 R4): DW (tables + events — the text-to-SQL
  * grounding assets) and KG (concepts — the knowledge-graph entity layer). Each

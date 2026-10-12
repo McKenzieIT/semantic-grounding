@@ -598,3 +598,16 @@ derivation), each layer carries its phase, its own coverage indicator, and a
 `recommended_action: { tool, hint }`; `summary` carries the corpus-level counts plus a
 one-sentence judgement of where the scope stands. An unregistered (or unreachable)
 scope id answers with the scope_registration phase rather than an error.
+
+### batch import (批量导入)
+
+The bulk-seeding write tool `import_definitions` (landed
+[#68](https://github.com/McKenzieIT/semantic-grounding/issues/68), ADR-0013): up to 500
+table/event/concept definitions in one call, batch-level provenance (one `summary` names
+the source; `derivation` is agent-only), per-item verdicts (`created` / `updated` /
+`skipped` / `error` — a bad item never aborts the batch), and a single commit (or zero,
+when every item is idempotent). The validation boundary stops at "each definition is
+schema-valid and the batch has no duplicate names" — cross-corpus reference gaps are
+[enrichment](#enrichment) territory. This is the seeding-stage companion to
+[cold start](#cold-start): cold start is the strategy, batch import is the mechanism
+that makes 100-table registrations one judgement instead of 100 round trips.

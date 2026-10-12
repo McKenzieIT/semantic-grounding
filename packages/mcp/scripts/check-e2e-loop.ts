@@ -243,7 +243,7 @@ async function main(): Promise<void> {
     assert.equal(fixtureGit(['status', '--porcelain'], root).trim(), '', 'fixture must start clean')
 
     // ── Phase 1 — catalog over the wire ─────────────────────────────────────────────
-    step('tools/list: the full default tool catalog (ADR-0005 fifteen + ADR-0006 three + ADR-0008 one + ADR-0011 five + #63 playbook)')
+    step('tools/list: the full default tool catalog (ADR-0005 fifteen + ADR-0006 three + ADR-0008 one + ADR-0011 five + #63 playbook + ADR-0013 import)')
     {
       const listed = (await client.listTools()).result?.['tools'] as Array<{ name: string; description?: string; inputSchema?: { type?: string } }>
       assert.deepEqual(listed.map(t => t.name).sort(), [...TOOL_NAMES].sort(), 'exactly the ruled tool surface')
@@ -1005,6 +1005,83 @@ async function main(): Promise<void> {
         await pbBoot.shutdown()
         pbFixture.cleanup()
         rmSync(pbRegistryDir, { recursive: true, force: true })
+      }
+    }
+
+    // ── Phase 6.7 — bulk import (#68, ADR-0013), over the real wire ────────────────
+    // Same isolation rule as 6.5/6.6 (own fixture/registry/boot): the initialization
+    // move this tool exists for — a mixed three-kind batch, per-item verdicts, one
+    // commit — then the idempotent re-issue and the drift update, all against a
+    // young corpus so `_guidance` rides the write response too.
+    step('import_definitions: mixed batch one commit, per-item verdicts, idempotent re-issue, drift update')
+    {
+      const impFixture = createFixtureCorpus({ withEvents: false })
+      const impRegistryDir = mkdtempSync(join(tmpdir(), 'sg-e2e-registry-'))
+      const impRegistryPath = join(impRegistryDir, 'scopes.yaml')
+      const impBoot = await boot({ registryPath: impRegistryPath, agentId: 'import-probe-agent' })
+      try {
+        const impClient = impBoot.client
+        await call(impClient, 'register_scope', { id: 'imp-probe', path: impFixture.root })
+        await call(impClient, 'switch_scope', { scope_id: 'imp-probe' })
+        const impCount = (): number => Number(fixtureGit(['rev-list', '--count', 'HEAD'], impFixture.root).trim())
+
+        // One batch, three kinds, two pre-planted error rows (a DIM failing its
+        // superRefine, a cross-kind duplicate) that must not abort the four good
+        // items — #54 R4's "坏项不中断批" over the wire.
+        const batch = (payComment: string): Readonly<Record<string, unknown>> => ({
+          scope_id: 'imp-probe',
+          items: [
+            { kind: 'table', definition: { table_name: 'dws_seed_pay', table_comment: payComment, partitions: [{ name: 'ds', type: 'string' }], columns: [{ name: 'pay_id', type: 'string', role: 'dimension' }] } },
+            { kind: 'table', definition: { table_name: 'dim_seed_item', kind: 'dim', primary_key: ['item_id'], label_columns: ['item_name'], columns: [{ name: 'item_id', type: 'string', role: 'dimension' }, { name: 'item_name', type: 'string', role: 'dimension' }] } },
+            { kind: 'event', definition: { name: 'game.seed.draw', description: '抽卡', params_fields: {} } },
+            { kind: 'concept', definition: { name: 'seed_rarity', description: '稀有度' } },
+            { kind: 'table', definition: { table_name: 'dim_seed_broken', kind: 'dim', columns: [] } },
+            { kind: 'concept', definition: { name: 'seed_rarity', description: '重名' } },
+          ],
+          summary: 'imported from DDL dump', derivation: 'agent', confidence: 0.9,
+        })
+
+        const before = impCount()
+        const first = await call(impClient, 'import_definitions', batch('seed v1'))
+        assert.equal(first['changed'], true)
+        assert.deepEqual(first['summary'], { created: 4, updated: 0, skipped: 0, errors: 2 })
+        const rows = first['results'] as Array<{ index: number; verdict: string; detail?: string }>
+        assert.deepEqual(rows.map(r => [r.index, r.verdict]), [[0, 'created'], [1, 'created'], [2, 'created'], [3, 'created'], [4, 'error'], [5, 'error']])
+        assert.match(rows[4]?.detail ?? '', /zod:/, 'the DIM superRefine failure surfaces as its own verdict row')
+        assert.match(rows[5]?.detail ?? '', /duplicate name in batch/, 'as does the cross-kind duplicate')
+        // N logical writes, ONE commit, with the batch trailers to show for it.
+        assert.equal(impCount(), before + 1)
+        const subject = fixtureGit(['log', '-1', '--format=%s'], impFixture.root).trim()
+        assert.match(subject, /^import_definitions\(4\/6 items \(4 created, 0 updated\)\): imported from DDL dump$/)
+        const trailers = await impBoot.trailersOf(fieldString(first, 'commit'))
+        assert.equal(trailers['Tool'], 'import_definitions')
+        assert.equal(trailers['Files'], '4')
+        assert.equal(trailers['Rounds'], '4')
+        // The 7th write tool carries `_guidance` (#53 option D; young corpus ⇒ injected).
+        assert.ok(first['_guidance'] !== undefined, 'an initializing corpus gets the guidance field on import too')
+        // The imports are first-class corpus citizens: the read path sees them.
+        const drawn = await call(impClient, 'get_definition', { kind: 'event', name: 'game.seed.draw' })
+        assert.equal(fieldString(drawn, 'version').length, 64)
+
+        // Idempotent re-issue: the same four items skip, the same two error rows
+        // repeat (they are payload facts, not corpus state), and nothing commits.
+        const second = await call(impClient, 'import_definitions', batch('seed v1'))
+        assert.equal(second['changed'], false)
+        assert.deepEqual(second['summary'], { created: 0, updated: 0, skipped: 4, errors: 2 })
+        assert.equal(impCount(), before + 1, 'zero new commits — beginBatch end() saw a clean tree')
+
+        // Drift: one item's content moved on — updated, full overwrite, one commit.
+        const third = await call(impClient, 'import_definitions', batch('seed v2'))
+        assert.equal(third['changed'], true)
+        assert.deepEqual(third['summary'], { created: 0, updated: 1, skipped: 3, errors: 2 })
+        assert.equal(impCount(), before + 2)
+        const pay = (await call(impClient, 'get_definition', { kind: 'table', name: 'dws_seed_pay' }))['definition'] as Record<string, unknown>
+        assert.equal(pay['table_comment'], 'seed v2')
+        assert.equal(fixtureGit(['status', '--porcelain'], impFixture.root).trim(), '', 'the import fixture ends clean')
+      } finally {
+        await impBoot.shutdown()
+        impFixture.cleanup()
+        rmSync(impRegistryDir, { recursive: true, force: true })
       }
     }
 

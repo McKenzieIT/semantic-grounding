@@ -1,7 +1,8 @@
 /**
  * The tool catalog: names, and the schema shapes the ADRs' rulings bake in —
  * ADR-0005's fifteen intent tools plus ADR-0006/0008's four enrichment tools
- * plus #63's playbook tool, twenty total today. ADR-0005's own Verification
+ * plus #63's playbook tool plus ADR-0013's import tool, twenty-six total
+ * today. ADR-0005's own Verification
  * section asks for exactly this ("门禁脚本断言：十五个工具名与 input/output schema
  * 快照"); ADR-0006/0008 inherited the same ask, and the e2e gate's header defers
  * schema pinning here — this file is where that lands for the whole surface.
@@ -23,6 +24,7 @@
  * @see docs/adr/0007-dimension-filter-semantics.md
  * @see docs/adr/0008-enrichment-work-response-sizing.md
  * @see docs/adr/0014-initialization-phase-model.md (the playbook tool, #63)
+ * @see docs/adr/0013-batch-definition-import.md (the import tool, #68)
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { TOOL_NAMES } from '../src/tools/index.ts'
@@ -58,14 +60,13 @@ function byName(tools: readonly ListedTool[], name: string): ListedTool {
   return found
 }
 
-describe('the twenty-five names', () => {
-  it('registers exactly ADR-0005\'s fifteen + ADR-0006/0008\'s four + ADR-0011\'s five + #63\'s playbook, reconciled against TOOL_NAMES', async () => {
+describe('the twenty-six names', () => {
+  it('registers exactly ADR-0005\'s fifteen + ADR-0006/0008\'s four + ADR-0011\'s five + #63\'s playbook + ADR-0013\'s import, reconciled against TOOL_NAMES', async () => {
     const tools = await listTools()
     expect(tools.map(t => t.name).sort()).toEqual([...TOOL_NAMES].sort())
-    // Deliberate hard count, not TOOL_NAMES.length: growing the surface to 26
-    // (#54's import_definitions is next) must edit this line, so the change is
-    // visible in the diff for review.
-    expect(tools).toHaveLength(25)
+    // Deliberate hard count, not TOOL_NAMES.length: growing the surface must
+    // edit this line, so the change is visible in the diff for review.
+    expect(tools).toHaveLength(26)
   })
 
   it('names every read tool ADR-0005 ruling 6 lists', async () => {
@@ -83,7 +84,29 @@ describe('the twenty-five names', () => {
       'create_definition', 'update_definition',
       'add_alias', 'remove_alias', 'add_relation', 'remove_relation',
       'submit_suggestion', 'list_suggestions', 'get_suggestion', 'discard_suggestion',
+      'import_definitions',
     ]))
+  })
+})
+
+describe('import_definitions — ADR-0013 (#54)', () => {
+  it('requires the batch-level provenance block, the agent-narrowed derivation, and the 500 cap', async () => {
+    const tool = byName(await listTools(), 'import_definitions')
+    expect(tool.inputSchema.required?.slice().sort()).toEqual(['confidence', 'derivation', 'items', 'scope_id', 'summary'])
+    const items = tool.inputSchema.properties?.['items'] as { maxItems?: number; minItems?: number }
+    expect(items.minItems).toBe(1)
+    expect(items.maxItems).toBe(500)
+    const derivation = tool.inputSchema.properties?.['derivation'] as { const?: string }
+    expect(derivation.const).toBe('agent')
+  })
+
+  it('advertises the permissive item envelope — the strict per-kind parse is Phase 1\'s, in the handler', async () => {
+    const tool = byName(await listTools(), 'import_definitions')
+    const items = tool.inputSchema.properties?.['items'] as { items?: Record<string, unknown> }
+    const envelope = items.items as { properties?: Record<string, unknown>; required?: readonly string[] }
+    expect(envelope.required?.slice().sort()).toEqual(['definition', 'kind'])
+    expect(envelope.properties).toHaveProperty('definition')
+    expect(envelope.properties).toHaveProperty('kind')
   })
 })
 
