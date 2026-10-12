@@ -62,8 +62,7 @@ Destination: MCP 的只读调用路径上，一次工具调用只解析语料一
 
 <!-- 当前未关闭的子 ticket，按阻塞关系排序 -->
 
-- [03-adr-0015](issues/03-adr-0015.md) — **前沿**（grilling，HITL）：ADR-0015 + GLOSSARY 词条（01-probe 实测数字已就位）
-- [04-epoch-impl](issues/04-epoch-impl.md) — 被 03 阻塞（task，AFK）：AsyncLocalStorage epoch + loader memo + 路径断言
+- [04-epoch-impl](issues/04-epoch-impl.md) — **前沿**（task，AFK）：AsyncLocalStorage epoch + loader memo + 路径断言（03-adr-0015 已解，裁决面锁死）
 - [05-cleanup](issues/05-cleanup.md) — 被 04 阻塞（task，AFK）：删 BasicIndex + registerInvalidationHook
 
 ### 01-probe 实测（2026-10-13）
@@ -81,6 +80,12 @@ Destination: MCP 的只读调用路径上，一次工具调用只解析语料一
 - **无遗漏 bug**：所有 7 个公共写原语都通过 `auditedFileWrite` (io.ts:707) 调用 `invalidateCaches` (717 成功后 / 722 回滚后)，由 #61 落地的设计保证
 - **回归锁落地**：`bump-completeness.spec.ts` 8 tests 全绿，未来若新增写原语绕开 `auditedFileWrite` 会立刻红
 - **MCP 层全覆盖**：`tools/write.ts` / `enrichment.ts` / `items.ts` / `suggestions.ts` 都通过 substrate 7 个公共写原语，不自己写文件
+
+### 03-adr-0015 已解（2026-10-13）
+
+- **ADR-0015 accepted 落盘**：`docs/adr/0015-read-epoch-cache-key.md`，十项裁决（R1-R10）全部来自 charting rounds 1-3 用户已锁的推荐
+- **GLOSSARY 新增两条词条**：`read epoch (读 epoch)` + `snapshot`（后者是原本缺失的条目，read epoch 的 Distinct from 链接需要它）
+- 裁决面锁死，04-epoch-impl 据此执行
 
 ## Not yet specified
 

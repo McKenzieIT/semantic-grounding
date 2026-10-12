@@ -250,6 +250,50 @@ A host embeds core by constructing it and wiring its setters; it never mounts co
 into itself and lets core reach back. Each core instance carries its own
 collaborators, so one host process can hold several cores over different corpora.
 
+### read epoch (读 epoch)
+
+The caching scope for a single tool call's read path. Within one epoch, `loadTables`
+and `loadEvents` return the same parsed arrays rather than re-reading disk; the epoch
+ends when the call returns, so the next call gets a fresh read. ADR-0015.
+
+The cache key is **composite**: `(per-call epoch) × (in-process corpusVersion)`. Both
+halves are independently necessary:
+
+- **`corpusVersion`** alone is an in-process monotonic counter bumped by
+  `invalidateCaches` on every write. It cannot see writes from other processes — and
+  the substrate runs under multi-process contention (`concurrent-write.spec.ts` spawns
+  separate OS processes behind a pid-file lock). Process A caching on `corpusVersion`
+  alone would serve stale data indefinitely after process B writes.
+- **Per-call epoch** alone would let a later write inside the same call (e.g. pipeline
+  3 of `run_enrichment` writing `alt_labels`) use a stale `raw` from before pipeline 1
+  wrote `dimension_refs`, silently reverting the earlier write — the "whole-field
+  overwrite loses concurrent edits" failure ADR-0004 ruling 8 names.
+
+The epoch is provided via `AsyncLocalStorage` (`withReadEpoch(fn)` in
+`src/read-epoch.ts`); `loadTables` / `loadEvents` check for an active epoch and either
+return the memoised array or read straight from disk when none is open. The
+no-epoch-when-open path is byte-identical to today, so hosts that do not opt in
+(including dsh, which uses its own [`snapshot`](#snapshot) for MVCC) are unaffected.
+
+Distinct from [`snapshot`](#snapshot), which pins definitions for the duration of a
+single query for MVCC isolation and is a public host-facing API (ADR-0005 ruling 6
+explicitly refused snapshot handles on the MCP read surface, reserving MVCC for "dsh's
+query-execution needs"). The two caches have genuinely different lifetime requirements;
+merging them would bend one correct semantic toward the other.
+
+### snapshot
+
+A frozen, point-in-time view of all definitions in a semantic layer, used for MVCC
+isolation during a single query's execution. A snapshot pins the tables, events, and
+retrieval corpus at the `corpusVersion` captured when it was acquired; subsequent
+`invalidateCaches` calls do not affect a held snapshot. Public API on
+`SemanticGroundingCore.withSnapshot(fn)`. ADR-0005 ruling 6 explicitly refused
+snapshot handles on the MCP grounding read surface — snapshots serve dsh's
+query-execution needs, not MCP's tool-call reads. Distinct from the
+[`read epoch`](#read-epoch-读-epoch), which is a per-call cache for the read path
+rather than an MVCC pin; the two have different lifetime requirements and are not
+merged (ADR-0015 R9).
+
 ## Audit and tiers
 
 ### write tier
