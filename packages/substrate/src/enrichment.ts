@@ -161,7 +161,7 @@ export function mergeRefs(
  * {@link assertKnownFilterNames} — the whole-call, fail-early rejection ADR-0007 rules
  * for the Core discovery/listing methods, BEFORE any scan, write, or commit.
  *
- * A substrate-side sibling of `io.ts`'s `StaleBaselineError` / `WriteValidationError`
+ * A substrate-side sibling of `io.ts`'s `StaleBaselineError`
  * (a contract violation the *caller* can act on), not a coded wire error: the MCP
  * layer maps this onto its own `-31040` `UnknownFilterNameError` (`packages/mcp/src/
  * errors.ts`), the same way every other substrate condition gets its wire shape at the
@@ -532,9 +532,13 @@ export async function enrichAllDwsTables(
           ? originAwareReplaceRefs(existingRefs(t.raw), discovered)
           : discovered
       // write raw + refs (preserves physical types / extra keys; writeTable validates)
-      await writeTable(semanticLayer, t.table_name, { ...t.raw, dimension_refs: refs }, {}, tier2)
-      written += 1
-      if (refs.length > 0) enriched += 1
+      const res = await writeTable(semanticLayer, t.table_name, { ...t.raw, dimension_refs: refs }, {}, tier2)
+      if (res.ok) {
+        written += 1
+        if (refs.length > 0) enriched += 1
+      } else {
+        errors.push(`${t.table_name}: ${res.error}`)
+      }
     } catch (e) {
       errors.push(`${t.table_name}: ${(e as Error).message}`)
     }
@@ -1105,9 +1109,13 @@ export async function enrichAllTablesAltLabels(
       const newLabels = vetoes.size === 0 ? discovered : discovered.filter(l => !vetoes.has(normalizeLabel(l)))
       if (newLabels.length === 0) continue
       const merged = mergeAltLabels(r.data.alt_labels, newLabels)
-      await writeTable(semanticLayer, t.table_name, { ...t.raw, alt_labels: merged }, {}, tier2)
-      written += 1
-      enriched += 1
+      const res = await writeTable(semanticLayer, t.table_name, { ...t.raw, alt_labels: merged }, {}, tier2)
+      if (res.ok) {
+        written += 1
+        enriched += 1
+      } else {
+        errors.push(`${t.table_name}: ${res.error}`)
+      }
     } catch (e) {
       errors.push(`${t.table_name}: ${(e as Error).message}`)
     }

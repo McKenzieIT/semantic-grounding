@@ -112,7 +112,7 @@ import { tableKindPlugin } from './kinds/table-kind.ts'
 import { conceptKindPlugin } from './kinds/concept-kind.ts'
 import { RelationGraph, type NodeAliasData } from './relation-graph.ts'
 import { toMetricDefinition, splitMetricName } from './metrics.ts'
-import { loadEvents, loadTables, loadConcepts, loadRawDir, loadConceptDefinition as loadConceptDefinitionFromLayer, normalizeLabel, writeConceptYaml as writeConceptYamlFromLayer, updateConceptMeta as updateConceptMetaFromLayer } from './io.ts'
+import { loadEvents, loadTables, loadConcepts, loadRawDir, loadConceptDefinition as loadConceptDefinitionFromLayer, normalizeLabel, writeConceptYaml as writeConceptYamlFromLayer, updateConceptMeta as updateConceptMetaFromLayer, type WriteConceptYamlResult } from './io.ts'
 import { EventDefinitionSchema, TableDefinitionSchema, ConceptDefinitionSchema } from './types.ts'
 import { DefinitionSnapshot, captureSnapshot } from './snapshot.ts'
 import { buildExcludeColumns } from './io.ts'
@@ -152,7 +152,6 @@ export {
   writeEventYaml,
   updateTableMeta,
   updateEventMeta,
-  WriteValidationError,
   StaleBaselineError,
   type RawEvent,
   type RawTable,
@@ -161,6 +160,8 @@ export {
   type Tier2Opts,
   type Tier2Batch,
   type Tier2RecordMeta,
+  type WriteTableResult,
+  type WriteConceptYamlResult,
   type WriteEventYamlResult,
   type UpdateTableMetaResult,
   type UpdateEventMetaResult,
@@ -1730,13 +1731,15 @@ export class SemanticGroundingCore {
    * @param name - the concept `name` (becomes the `<name>.yaml` filename).
    * @param data - the concept payload; validated against `ConceptDefinitionSchema` unless skipped.
    * @param opts - `{ skipValidation: true }` skips schema validation (for pre-validated generators).
-   * @returns the absolute path of the written `<name>.yaml` under `concepts/`.
+   * @returns `{ ok: true, path }` on success, or `{ ok: false, error }` when
+   *   schema validation rejects the payload (#61: the write paths' unified
+   *   domain-failure face).
    */
   async writeConceptYaml(
     name: string,
     data: unknown,
     opts: { skipValidation?: boolean } = {},
-  ): Promise<string> {
+  ): Promise<WriteConceptYamlResult> {
     return writeConceptYamlFromLayer(this.resolveRoot(), name, data, opts, {
       recorder: this.recorder(),
       scope_id: this.scopeId,

@@ -656,8 +656,71 @@ async function restoreRaw(path: string, snapshot: RawSnapshot): Promise<void> {
 }
 
 // ── Writer (mirrors writer.py: validate-before-dump, atomic, invalidate) ──
-/** Error thrown by `writeTable` when `TableDefinitionSchema.safeParse` rejects the payload (unless `skipValidation` is set). */
-export class WriteValidationError extends Error {}
+/**
+ * The outcome a seam callback reports back to {@link auditedFileWrite}:
+ * `committed` when the write landed (the seam goes on to invalidate caches and
+ * record), or the domain `error` when it did not — a callback that has not
+ * written anything aborts the transaction, and the error surfaces as the
+ * caller's `{ok:false}`, never as a recorder rollback.
+ */
+type AuditedFileWriteOutcome<T> = { readonly committed: true; readonly value: T } | { readonly committed: false; readonly error: string }
+/**
+ * The one audited write-and-record transaction every Tier-2 file write in this
+ * module drives (#61): snapshot the pre-write raw bytes, check the caller's
+ * `expected_version` against them (ADR-0004 ruling 8 — the freshest read,
+ * the single-process stand-in for "inside the lock"), run the write,
+ * invalidate caches, record via the Tier-2 recorder — and when the recorder
+ * raises, restore the snapshot and re-throw (ruling 1 / D5: the statement is
+ * "the write did not happen"; disk ends at the pre-write state, never a third
+ * unaudited-residue state). Seven write paths previously carried this
+ * ceremony as hand-maintained copies — #52's concept pair was the sixth and
+ * seventh pair of hands (`updateConceptMeta`'s own doc said "updateTableMeta's
+ * exact ceremony"), each new path re-copying the ~15-line rollback half with
+ * no test pinning it.
+ *
+ * The `write` callback receives the pre-write {@link RawSnapshot} so the
+ * read-merge-validate paths (the `update*Meta` family, A13) merge on exactly
+ * the bytes the version check compared. A callback returning
+ * `{committed: false}` leaves disk untouched and records nothing — that is the
+ * domain-failure exit, the caller's `{ok:false}`.
+ * @param semanticLayer - the semantic-layer directory path (for cache invalidation).
+ * @param target - the file about to be written.
+ * @param tier2 - the recorder + optional scope id + optional `expected_version`.
+ * @param write - the write itself: receives the snapshot, writes the file,
+ *   reports whether it committed.
+ * @param record - the audit record's verb and subject.
+ * @returns the callback's outcome — committed outcomes have been recorded;
+ *   aborted outcomes are passed through untouched.
+ */
+async function auditedFileWrite<T>(
+  semanticLayer: string,
+  target: string,
+  tier2: Tier2Opts,
+  write: (before: RawSnapshot) => Promise<AuditedFileWriteOutcome<T>>,
+  record: { readonly verb: string; readonly subject: Record<string, unknown> },
+): Promise<AuditedFileWriteOutcome<T>> {
+  const before = snapshotRaw(target)
+  checkExpectedVersion(target, tier2.expected_version, before.raw)
+  const outcome = await write(before)
+  if (!outcome.committed) return outcome
+  invalidateCaches(semanticLayer)
+  try {
+    await tier2.recorder.recordTier2Write(record.verb, record.subject, tier2.scope_id !== undefined ? { scope_id: tier2.scope_id } : {})
+  } catch (e) {
+    await restoreRaw(target, before)
+    invalidateCaches(semanticLayer)
+    throw e
+  }
+  return outcome
+}
+/**
+ * Result of writing table YAML: `{ ok: true, path }` on success, or
+ * `{ ok: false, error }` when the payload fails `TableDefinitionSchema`
+ * validation (#61: the write paths' unified domain-failure face — the caller
+ * fixes the payload and retries. `StaleBaselineError` and recorder failures
+ * still throw; those are not payload problems).
+ */
+export type WriteTableResult = { ok: true; path: string } | { ok: false; error: string }
 /**
  * Validate-then-atomically-write a table YAML (mirrors writer.write_table),
  * invalidating caches on success. The write primitive: Tier-2 paths compose
@@ -673,7 +736,8 @@ export class WriteValidationError extends Error {}
  * @param tier2 - optional Tier-2 options; passed, this write takes the
  *   audited write-and-record path (optional `expected_version` checked
  *   first; a recorder failure restores the pre-write bytes and rethrows).
- * @returns the absolute path of the written `<name>.yaml` under `tables/`.
+ * @returns `{ ok: true, path }` on success, or `{ ok: false, error }` when
+ *   schema validation rejects the payload.
  */
 export async function writeTable(
   semanticLayer: string,
@@ -681,30 +745,22 @@ export async function writeTable(
   data: unknown,
   opts: { skipValidation?: boolean } = {},
   tier2?: Tier2Opts,
-): Promise<string> {
+): Promise<WriteTableResult> {
   if (!opts.skipValidation) {
     const r = TableDefinitionSchema.safeParse(data)
-    if (!r.success) throw new WriteValidationError(`Table validation failed: ${r.error.message}`)
+    if (!r.success) return { ok: false, error: `Table validation failed: ${r.error.message}` }
   }
   const tablesPath = join(semanticLayer, 'tables')
   const target = join(tablesPath, `${name}.yaml`)
   if (tier2 === undefined) {
     await atomicWrite(target, data)
     invalidateCaches(semanticLayer)
-    return target
+    return { ok: true, path: target }
   }
-  const before = snapshotRaw(target)
-  checkExpectedVersion(target, tier2.expected_version, before.raw)
-  await atomicWrite(target, data)
-  invalidateCaches(semanticLayer)
-  try {
-    await tier2.recorder.recordTier2Write('write_table', { table_name: name }, tier2.scope_id !== undefined ? { scope_id: tier2.scope_id } : {})
-  } catch (e) {
-    await restoreRaw(target, before)
-    invalidateCaches(semanticLayer)
-    throw e
-  }
-  return target
+  const outcome = await auditedFileWrite(semanticLayer, target, tier2,
+    async () => { await atomicWrite(target, data); return { committed: true, value: target } },
+    { verb: 'write_table', subject: { table_name: name } })
+  return outcome.committed ? { ok: true, path: outcome.value } : { ok: false, error: outcome.error }
 }
 /**
  * Result of writing event YAML: either `{ ok: true, path }` on success or
@@ -755,18 +811,10 @@ export async function writeEventYaml(
     invalidateCaches(semanticLayer)
     return { ok: true, path: target }
   }
-  const before = snapshotRaw(target)
-  checkExpectedVersion(target, tier2.expected_version, before.raw)
-  await atomicWrite(target, content)
-  invalidateCaches(semanticLayer)
-  try {
-    await tier2.recorder.recordTier2Write('write_event_yaml', { event_name: name }, tier2.scope_id !== undefined ? { scope_id: tier2.scope_id } : {})
-  } catch (e) {
-    await restoreRaw(target, before)
-    invalidateCaches(semanticLayer)
-    throw e
-  }
-  return { ok: true, path: target }
+  const outcome = await auditedFileWrite(semanticLayer, target, tier2,
+    async () => { await atomicWrite(target, content); return { committed: true, value: target } },
+    { verb: 'write_event_yaml', subject: { event_name: name } })
+  return outcome.committed ? { ok: true, path: outcome.value } : { ok: false, error: outcome.error }
 }
 // Tier-2 per-scope persistent write: read-merge-validate-write + audit (mirrors writer.update_table_meta).
 // D5 contract: "Tier-2 不可关" — audit is NON-OPTIONAL. The `recorder` (ctx.audit)
@@ -800,23 +848,16 @@ export async function updateTableMeta(
 ): Promise<UpdateTableMetaResult> {
   const tf = join(semanticLayer, 'tables', `${name}.yaml`)
   if (!existsSync(tf)) return { ok: false, error: `Table not found: ${name}` }
-  const before = snapshotRaw(tf)
-  checkExpectedVersion(tf, opts.expected_version, before.raw)
-  const data = yaml.load(before.raw)
-  if (typeof data !== 'object' || data === null) return { ok: false, error: `Table malformed: ${name}` }
-  const merged: Record<string, unknown> = { ...(data as Record<string, unknown>), ...updates }
-  const r = TableDefinitionSchema.safeParse(merged)
-  if (!r.success) return { ok: false, error: `Validation failed after update: ${r.error.message}` }
-  await atomicWrite(tf, merged)
-  invalidateCaches(semanticLayer)
-  try {
-    await opts.recorder.recordTier2Write('update_table_meta', { table_name: name, updates }, opts.scope_id !== undefined ? { scope_id: opts.scope_id } : {})
-  } catch (e) {
-    await restoreRaw(tf, before)
-    invalidateCaches(semanticLayer)
-    throw e
-  }
-  return { ok: true, table_name: name }
+  const outcome = await auditedFileWrite(semanticLayer, tf, opts, async (before) => {
+    const data = yaml.load(before.raw)
+    if (typeof data !== 'object' || data === null) return { committed: false, error: `Table malformed: ${name}` }
+    const merged: Record<string, unknown> = { ...(data as Record<string, unknown>), ...updates }
+    const r = TableDefinitionSchema.safeParse(merged)
+    if (!r.success) return { committed: false, error: `Validation failed after update: ${r.error.message}` }
+    await atomicWrite(tf, merged)
+    return { committed: true, value: name }
+  }, { verb: 'update_table_meta', subject: { table_name: name, updates } })
+  return outcome.committed ? { ok: true, table_name: outcome.value } : { ok: false, error: outcome.error }
 }
 
 // A13 (TOCTOU lost-update): Tier-2 per-scope event-meta update — read-merge-
@@ -856,23 +897,16 @@ export async function updateEventMeta(
 ): Promise<UpdateEventMetaResult> {
   const ef = findEventPath(semanticLayer, name)
   if (ef === null) return { ok: false, error: `Event not found: ${name}` }
-  const before = snapshotRaw(ef)
-  checkExpectedVersion(ef, opts.expected_version, before.raw)
-  const data = yaml.load(before.raw)
-  if (typeof data !== 'object' || data === null) return { ok: false, error: `Event malformed: ${name}` }
-  const merged: Record<string, unknown> = { ...(data as Record<string, unknown>), ...updates }
-  const r = EventDefinitionSchema.safeParse(merged)
-  if (!r.success) return { ok: false, error: `Validation failed after update: ${r.error.message}` }
-  await atomicWrite(ef, merged)
-  invalidateCaches(semanticLayer)
-  try {
-    await opts.recorder.recordTier2Write('update_event_meta', { event_name: name, updates }, opts.scope_id !== undefined ? { scope_id: opts.scope_id } : {})
-  } catch (e) {
-    await restoreRaw(ef, before)
-    invalidateCaches(semanticLayer)
-    throw e
-  }
-  return { ok: true, event_name: name }
+  const outcome = await auditedFileWrite(semanticLayer, ef, opts, async (before) => {
+    const data = yaml.load(before.raw)
+    if (typeof data !== 'object' || data === null) return { committed: false, error: `Event malformed: ${name}` }
+    const merged: Record<string, unknown> = { ...(data as Record<string, unknown>), ...updates }
+    const r = EventDefinitionSchema.safeParse(merged)
+    if (!r.success) return { committed: false, error: `Validation failed after update: ${r.error.message}` }
+    await atomicWrite(ef, merged)
+    return { committed: true, value: name }
+  }, { verb: 'update_event_meta', subject: { event_name: name, updates } })
+  return outcome.committed ? { ok: true, event_name: outcome.value } : { ok: false, error: outcome.error }
 }
 
 // ── Concept write primitives (#52 / ADR-0012: the concept write path opened) ──
@@ -891,6 +925,12 @@ export async function updateEventMeta(
  */
 export type UpdateConceptMetaResult = { ok: true; concept_name: string } | { ok: false; error: string }
 /**
+ * Result of writing concept YAML: `{ ok: true, path }` on success, or
+ * `{ ok: false, error }` when the payload fails `ConceptDefinitionSchema`
+ * validation (#61: same unified domain-failure face as `WriteTableResult`).
+ */
+export type WriteConceptYamlResult = { ok: true; path: string } | { ok: false; error: string }
+/**
  * Validate-then-atomically-write a concept YAML (`concepts/<name>.yaml`),
  * invalidating caches on success — `writeTable`'s exact shape applied to the
  * concept layout. The concept write primitive (#52 / ADR-0012): passing
@@ -902,10 +942,12 @@ export type UpdateConceptMetaResult = { ok: true; concept_name: string } | { ok:
  * @param data - the concept payload; validated against `ConceptDefinitionSchema` unless skipped.
  * @param opts - `{ skipValidation: true }` skips schema validation (for pre-validated generators).
  * @param tier2 - optional Tier-2 options; passed, this write takes the audited
- *   write-and-record path. No `expected_version` is ever checked here — create
- *   is the only concept verb that calls this primitive, and create is
- *   baseline-free by construction (ADR-0005 ruling 7).
- * @returns the absolute path of the written `<name>.yaml` under `concepts/`.
+ *   write-and-record path. The seam checks `expected_version` when one is
+ *   supplied, but no caller ever supplies one here — create is the only
+ *   concept verb that calls this primitive, and create is baseline-free by
+ *   construction (ADR-0005 ruling 7), so the check stays dormant on this path.
+ * @returns `{ ok: true, path }` on success, or `{ ok: false, error }` when
+ *   schema validation rejects the payload.
  */
 export async function writeConceptYaml(
   semanticLayer: string,
@@ -913,28 +955,21 @@ export async function writeConceptYaml(
   data: unknown,
   opts: { skipValidation?: boolean } = {},
   tier2?: Tier2Opts,
-): Promise<string> {
+): Promise<WriteConceptYamlResult> {
   if (!opts.skipValidation) {
     const r = ConceptDefinitionSchema.safeParse(data)
-    if (!r.success) throw new WriteValidationError(`Concept validation failed: ${r.error.message}`)
+    if (!r.success) return { ok: false, error: `Concept validation failed: ${r.error.message}` }
   }
   const target = join(semanticLayer, 'concepts', `${name}.yaml`)
   if (tier2 === undefined) {
     await atomicWrite(target, data)
     invalidateCaches(semanticLayer)
-    return target
+    return { ok: true, path: target }
   }
-  const before = snapshotRaw(target)
-  await atomicWrite(target, data)
-  invalidateCaches(semanticLayer)
-  try {
-    await tier2.recorder.recordTier2Write('write_concept_yaml', { concept_name: name }, tier2.scope_id !== undefined ? { scope_id: tier2.scope_id } : {})
-  } catch (e) {
-    await restoreRaw(target, before)
-    invalidateCaches(semanticLayer)
-    throw e
-  }
-  return target
+  const outcome = await auditedFileWrite(semanticLayer, target, tier2,
+    async () => { await atomicWrite(target, data); return { committed: true, value: target } },
+    { verb: 'write_concept_yaml', subject: { concept_name: name } })
+  return outcome.committed ? { ok: true, path: outcome.value } : { ok: false, error: outcome.error }
 }
 /**
  * Tier-2 per-scope write: read-merge-validate-write a single concept's meta
@@ -960,23 +995,16 @@ export async function updateConceptMeta(
 ): Promise<UpdateConceptMetaResult> {
   const cf = join(semanticLayer, 'concepts', `${name}.yaml`)
   if (!existsSync(cf)) return { ok: false, error: `Concept not found: ${name}` }
-  const before = snapshotRaw(cf)
-  checkExpectedVersion(cf, opts.expected_version, before.raw)
-  const data = yaml.load(before.raw)
-  if (typeof data !== 'object' || data === null) return { ok: false, error: `Concept malformed: ${name}` }
-  const merged: Record<string, unknown> = { ...(data as Record<string, unknown>), ...updates }
-  const r = ConceptDefinitionSchema.safeParse(merged)
-  if (!r.success) return { ok: false, error: `Validation failed after update: ${r.error.message}` }
-  await atomicWrite(cf, merged)
-  invalidateCaches(semanticLayer)
-  try {
-    await opts.recorder.recordTier2Write('update_concept_meta', { concept_name: name, updates }, opts.scope_id !== undefined ? { scope_id: opts.scope_id } : {})
-  } catch (e) {
-    await restoreRaw(cf, before)
-    invalidateCaches(semanticLayer)
-    throw e
-  }
-  return { ok: true, concept_name: name }
+  const outcome = await auditedFileWrite(semanticLayer, cf, opts, async (before) => {
+    const data = yaml.load(before.raw)
+    if (typeof data !== 'object' || data === null) return { committed: false, error: `Concept malformed: ${name}` }
+    const merged: Record<string, unknown> = { ...(data as Record<string, unknown>), ...updates }
+    const r = ConceptDefinitionSchema.safeParse(merged)
+    if (!r.success) return { committed: false, error: `Validation failed after update: ${r.error.message}` }
+    await atomicWrite(cf, merged)
+    return { committed: true, value: name }
+  }, { verb: 'update_concept_meta', subject: { concept_name: name, updates } })
+  return outcome.committed ? { ok: true, concept_name: outcome.value } : { ok: false, error: outcome.error }
 }
 
 // ── Sync-write (mirrors rbi_semantic/sync.py: YAML-write-only, receives pre-fetched schema dicts) ──
@@ -1133,41 +1161,40 @@ export async function syncWriteDefinitions(
       continue
     }
     const target = join(semanticLayer, 'tables', `${tname}.yaml`)
-    const before = snapshotRaw(target)
-    try {
-      let doc: Record<string, unknown>
-      let isDim = false
-      const existing = existingTables.get(tname)
-      if (existing !== undefined) {
-        doc = mergeChangedYaml(existing, meta)
-      } else if (dimTableNames.has(tname)) {
-        doc = generateDimYaml(meta)
-        isDim = true
-      } else {
-        doc = generateTableYaml(meta)
+    // ADR-0004 ruling 1 / #18: an audit failure rolls back ONLY this table
+    // (the seam restores its pre-write bytes, or deletes it if this write
+    // created it) and aborts the batch by propagating — tables 1..N-1
+    // already written AND recorded earlier in this loop keep their commits.
+    const outcome = await auditedFileWrite(semanticLayer, target, opts, async () => {
+      try {
+        let doc: Record<string, unknown>
+        let isDim = false
+        const existing = existingTables.get(tname)
+        if (existing !== undefined) {
+          doc = mergeChangedYaml(existing, meta)
+        } else if (dimTableNames.has(tname)) {
+          doc = generateDimYaml(meta)
+          isDim = true
+        } else {
+          doc = generateTableYaml(meta)
+        }
+        // DIM path validates against .superRefine (pk + label_columns) — do NOT silently
+        // emit primary_key:[] / label_columns:[] that fails .superRefine on read.
+        // DWS/merge keep skipValidation (generation pre-validates; DWS has no kind constraint).
+        const w = await writeTable(semanticLayer, tname, doc, { skipValidation: !isDim })
+        if (!w.ok) return { committed: false, error: `${tname}: ${w.error}` }
+        return { committed: true, value: undefined }
+      } catch (e) {
+        // Generation failure: nothing landed on disk (generation happens
+        // before any write, and atomicWrite never touches the target on a
+        // thrown rename), so there is nothing to roll back here — collect
+        // and move on to the next table (unchanged batch semantics).
+        return { committed: false, error: `${tname}: ${(e as Error).message}` }
       }
-      // DIM path validates against .superRefine (pk + label_columns) — do NOT silently
-      // emit primary_key:[] / label_columns:[] that fails .superRefine on read.
-      // DWS/merge keep skipValidation (generation pre-validates; DWS has no kind constraint).
-      await writeTable(semanticLayer, tname, doc, { skipValidation: !isDim })
-    } catch (e) {
-      // Generation/validation failure: nothing landed on disk (writeTable
-      // validates before it writes, and atomicWrite never touches the
-      // target on a thrown rename), so there is nothing to roll back here —
-      // collect and move on to the next table (unchanged batch semantics).
-      errors.push(`${tname}: ${(e as Error).message}`)
+    }, { verb: 'sync_write_definitions', subject: { table_name: tname } })
+    if (!outcome.committed) {
+      errors.push(outcome.error)
       continue
-    }
-    try {
-      await opts.recorder.recordTier2Write('sync_write_definitions', { table_name: tname }, opts.scope_id !== undefined ? { scope_id: opts.scope_id } : {})
-    } catch (e) {
-      // ADR-0004 ruling 1 / #18: an audit failure rolls back ONLY this table
-      // (restores its pre-write bytes, or deletes it if this write created
-      // it) and aborts the batch by propagating — tables 1..N-1 already
-      // written AND recorded earlier in this loop keep their commits.
-      await restoreRaw(target, before)
-      invalidateCaches(semanticLayer)
-      throw e
     }
     written += 1
   }
