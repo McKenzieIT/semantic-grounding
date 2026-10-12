@@ -1,45 +1,112 @@
 /**
- * ADR-0006's three enrichment tools (`get_enrichment_work` / `apply_enrichment` /
- * `run_enrichment`, `src/tools/enrichment.ts`), driven end to end through the real
- * `GitTier2Recorder` + `SemanticGroundingCore` + a real git-backed fixture corpus.
+ * ADR-0006/0008's four enrichment tools (`get_enrichment_work` /
+ * `get_enrichment_prompts` / `apply_enrichment` / `run_enrichment`,
+ * `src/tools/enrichment.ts`), driven end to end through the real registration and
+ * dispatch path: `buildIntentToolHarness` (production's default registrars — all
+ * nineteen tools) plus an `InProcessClient`, so the SDK's real zod `inputSchema`
+ * validation runs on every call, the same seam an agent's traffic crosses.
  *
  * These cover ADR-0006's Verification section claims directly: a `work_id` survives a
- * server restart (modeled here as two independently-constructed core/recorder pairs,
- * since that is the entirety of what "restart" means when there is no session state to
- * lose — map #12's own stateless-protocol framing); one stale item in a batch does not
- * poison the others; a fully idempotent batch produces no commit; `apply_enrichment`'s
- * response carries per-item verdict + commit + changed + inline `enrichment_health`;
- * and `run_enrichment` removes deterministically-derivable gaps from the work list.
+ * server restart (modeled as a second, independently-constructed harness over the same
+ * corpus — new recorder, core, server, and client, nothing carried over, which is the
+ * entirety of what "restart" means when there is no session state to lose, map #12's
+ * own stateless-protocol framing); one stale item in a batch does not poison the
+ * others; a fully idempotent batch produces no commit; `apply_enrichment`'s response
+ * carries per-item verdict + commit + changed + inline `enrichment_health`; and
+ * `run_enrichment` removes deterministically-derivable gaps from the work list.
  *
- * Tool handlers are invoked directly against a minimal fake `McpServer` that only
- * implements `registerTool` (capturing the callback) — the registrar itself is
- * `server-startup.spec.ts`'s "ToolRegistrar seam" tests' job (real process, real wire);
- * this file is about what each handler actually *does*, which is cheaper and more
- * precise to drive in-process while still exercising the real recorder and real git.
+ * History: this file used to invoke the handlers directly against a ~120-line private
+ * capture harness, because `buildIntentToolHarness` hard-coded the fifteen intent
+ * registrars and the enrichment family could not register there (#21's gap). #57 made
+ * the harness mirror production's registrars and moved this file onto it. One
+ * direct-handler slice is deliberately retained below: it pins the below-zod doors —
+ * a `tables: []` reaching the Core door intact, and the zod objects themselves via
+ * `safeParse` — where bypassing the wire gate is the point.
  *
- * `buildDeps` registers and binds the fixture as the active scope through a real,
- * temp-file-backed `ScopeRegistryFile`/`BindingStore` (ADR-0011, #51) — there is no more
- * process-wide `core`/`recorder` to construct directly — and `apply_enrichment` /
- * `run_enrichment` calls below carry `scope_id: 'fixture'`, the write assertion the
+ * `autoEnrich` is on here (as it was, by the class default, under this file's
+ * pre-#57 hand-built deps, and as the e2e gate's real `startup()` runs it): these
+ * tests count commits over writes the on-write hook observes.
+ *
+ * `buildDeps` (the retained direct-handler slice below) registers and binds the
+ * fixture as the active scope through a real, temp-file-backed
+ * `ScopeRegistryFile`/`BindingStore` (ADR-0011, #51) — there is no more process-wide
+ * `core`/`recorder` to construct directly — and every `apply_enrichment` /
+ * `run_enrichment` call below carries `scope_id: 'fixture'`, the write assertion the
  * three-layer defense requires at the handler door (`assertScopeMatch`).
  *
  * @see docs/adr/0006-enrichment-agent-driven.md
+ * @see docs/adr/0007-dimension-filter-semantics.md
+ * @see docs/adr/0008-enrichment-work-response-sizing.md
  */
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CLIENT_INFO_META_KEY, type CallToolResult } from '@modelcontextprotocol/server'
-import { SemanticGroundingCore, dumpYaml, loadEvents, loadTables } from '@semantic-grounding/substrate'
+import { loadEvents, loadTables } from '@semantic-grounding/substrate'
 import { BindingStore } from '../src/binding.ts'
 import type { ServerConfig } from '../src/config.ts'
-import { GitTier2Recorder } from '../src/git/recorder.ts'
 import { ScopeRegistryFile } from '../src/scope-registry.ts'
 import type { ServerDeps } from '../src/server.ts'
 import { registerEnrichmentTools } from '../src/tools/enrichment.ts'
-import { createFixtureCorpus, fixtureGit, type FixtureCorpus } from './helpers/fixture-corpus.ts'
+import { buildIntentToolHarness, HARNESS_SCOPE_ID, type IntentToolHarness } from './helpers/intent-tools-harness.ts'
+import { commitExternalEdit, createFixtureCorpus, fixtureGit, type FixtureCorpus } from './helpers/fixture-corpus.ts'
+import { toolJson } from './helpers/inprocess-client.ts'
 
-// ── Harness: capture registerTool's callbacks without a real McpServer/transport ────
+// ── Main path: real registrars, real zod dispatch, real envelope ────────────────────
+
+let fixture: FixtureCorpus
+const openHarnesses: IntentToolHarness[] = []
+
+beforeEach(() => { fixture = createFixtureCorpus() }) // withDim: true (default) — dws_order + dim_shop, shop_id-joinable
+afterEach(async () => {
+  for (const h of openHarnesses.splice(0)) await h.close()
+  for (const bindings of liveBindings.splice(0)) bindings.disposeAll()
+  for (const dir of liveRegistryDirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  fixture.cleanup()
+})
+
+/**
+ * Serve a corpus through a production-shaped harness — all nineteen tools, autoEnrich
+ * on. The root is borrowed (`corpusRoot`), so `close()` tears down only the client;
+ * the directory's lifecycle belongs to its owner (the module fixture, or a test's own
+ * `createFixtureCorpus`).
+ * @param root - the corpus root to serve (default the module fixture).
+ * @returns the harness, closed automatically by `afterEach`.
+ */
+async function serve(root: string = fixture.root): Promise<IntentToolHarness> {
+  const h = await buildIntentToolHarness({ corpusRoot: root, autoEnrich: true })
+  openHarnesses.push(h)
+  return h
+}
+
+/** One `tools/call` outcome as the tests read it: the isError flag plus the parsed body. */
+interface Outcome {
+  readonly isError: boolean
+  readonly body: Record<string, unknown>
+}
+
+/**
+ * Call a tool through the client — real zod validation, real envelope, real
+ * `toToolErrorResult` shaping (an error payload parses the same as a success body).
+ * @param h - the harness to call through.
+ * @param name - the tool name.
+ * @param args - schema-valid tool input.
+ * @param clientName - optional per-call client name (ADR-0005's addendum), carried the
+ *   real way: as the envelope's `clientInfo`.
+ * @returns the outcome.
+ */
+async function call(
+  h: IntentToolHarness,
+  name: string,
+  args: Readonly<Record<string, unknown>>,
+  clientName?: string,
+): Promise<Outcome> {
+  const res = await h.client.callTool(name, args, clientName !== undefined ? { name: clientName } : undefined)
+  return { isError: res.result?.['isError'] === true, body: toolJson(res) }
+}
+
+// ── Retained direct-handler slice: the below-zod doors ──────────────────────────────
 
 /** The minimal shape this file needs from a tool handler. */
 type Handler = (args: unknown, extra: unknown) => Promise<CallToolResult> | CallToolResult
@@ -49,12 +116,11 @@ type Handler = (args: unknown, extra: unknown) => Promise<CallToolResult> | Call
  * `registerTool`, capturing each handler by name. The registrar itself is pure
  * registration (`server.ts`'s own contract), so this is a faithful exercise of it.
  *
- * Note the harness calls handlers DIRECTLY with raw args — the SDK's zod
- * `inputSchema` validation does not run on this path (the in-process client and the
- * spawned-process tests cover that seam). That is deliberate: it lets these tests pin
- * the Core-layer door (`unknown_filter_name` for empty/unknown filters reaches the
- * handler intact here) while the schema-level gates (`min(1)`, the prompt batch cap)
- * are pinned against the captured `inputSchema` objects themselves.
+ * The retained slice's reason to exist: handlers called DIRECTLY with raw args skip
+ * the SDK's zod `inputSchema` validation, which is exactly what the below-zod pins
+ * need — a `tables: []` must be refused by the Core door even when the wire gate is
+ * absent, and the zod-level gates (`min(1)`, the prompt batch cap) are pinned against
+ * the captured `inputSchema` objects themselves.
  * @param deps - the process-wide deps the registrar closes over.
  * @returns the tool handlers, keyed by name, and each tool's registered config.
  */
@@ -89,101 +155,63 @@ function fakeExtra(clientName?: string): unknown {
 }
 
 /**
- * Call a captured tool and parse its JSON response text.
+ * Call a captured tool directly (below-zod) and parse its JSON response text.
  * @param tools - the captured handlers.
  * @param name - the tool name.
  * @param args - the tool's input.
- * @param clientName - optional per-call client name (ADR-0005's addendum).
  * @returns the raw `CallToolResult` and, when present, the parsed first text block.
  */
 async function callTool(
   tools: Map<string, Handler>,
   name: string,
   args: unknown,
-  clientName?: string,
 ): Promise<{ readonly result: CallToolResult; readonly body: Record<string, unknown> }> {
   const handler = tools.get(name)
   if (handler === undefined) throw new Error(`tool not registered: ${name}`)
-  const result = await handler(args, fakeExtra(clientName))
+  const result = await handler(args, fakeExtra())
   const block = result.content[0]
   const text = block !== undefined && 'text' in block ? (block as { text: string }).text : undefined
   return { result, body: text !== undefined ? JSON.parse(text) : {} }
 }
 
-/** The scope id every `buildDeps` fixture registers and binds under. */
-const SCOPE_ID = 'fixture'
-
-/** Registries/bindings `buildDeps` has created, torn down in `afterEach` alongside the fixture. */
-let liveBindings: BindingStore[] = []
-let liveRegistryDirs: string[] = []
-
 /**
  * Build the `ServerDeps` a registrar needs, over a fixture corpus — the same
  * construction `main.ts`'s `startup()` performs (register + bind the fixture as the
  * active scope through a real, temp-file-backed `ScopeRegistryFile`/`BindingStore`,
- * ADR-0011/#51), minus the posture check (the fixture is already a clean repo).
+ * ADR-0011/#51 — there is no more process-wide `core`/`recorder` to construct
+ * directly), minus the posture check (the fixture is already a clean repo).
  *
- * Each call builds its own throwaway registry — never `defaultRegistryPath()` — so two
- * calls over the same fixture (the "server restart" test below) are genuinely
- * independent, carrying nothing over from each other, which is the entirety of what
- * "restart" means when there is no session state to lose.
+ * Each call builds its own throwaway registry — never `defaultRegistryPath()` — so a
+ * test never grows state on the machine that runs it.
  * @param fixture - the fixture corpus to serve.
- * @returns the deps, plus the recorder/core directly for assertions.
+ * @returns the deps the registrar closes over.
  */
-async function buildDeps(
-  fixture: FixtureCorpus,
-): Promise<{ readonly deps: ServerDeps; readonly recorder: GitTier2Recorder; readonly core: SemanticGroundingCore }> {
+async function buildDeps(fixture: FixtureCorpus): Promise<{ readonly deps: ServerDeps }> {
   const agentId = 'analyst-bot'
   const registryDir = mkdtempSync(join(tmpdir(), 'sg-registry-'))
   const registryPath = join(registryDir, 'scopes.yaml')
   const registry = new ScopeRegistryFile(registryPath)
-  await registry.register({ id: SCOPE_ID, semanticRoot: fixture.root, name: SCOPE_ID, registeredBy: agentId })
+  await registry.register({ id: HARNESS_SCOPE_ID, semanticRoot: fixture.root, name: HARNESS_SCOPE_ID, registeredBy: agentId })
   const bindings = new BindingStore({ registry, agentId, lock: { timeoutMs: 2_000, pollIntervalMs: 10 } })
-  await bindings.bindStartup(SCOPE_ID)
+  await bindings.bindStartup(HARNESS_SCOPE_ID)
   liveBindings.push(bindings)
   liveRegistryDirs.push(registryDir)
-  const snap = bindings.requireSnapshot()
-  const config: ServerConfig = { registryPath, agentId, scopeId: SCOPE_ID }
-  return { deps: { registry, bindings, config }, recorder: snap.recorder, core: snap.core }
+  const config: ServerConfig = { registryPath, agentId, scopeId: HARNESS_SCOPE_ID }
+  return { deps: { registry, bindings, config } }
 }
 
-/**
- * Commit a direct edit to a table's YAML — "an operator changed this between issuance
- * and apply", landed as its own commit so the tree is clean afterward (a dirty,
- * *uncommitted* edit would instead trip `assertCleanBeforeWrite`, which is a different
- * scenario this file tests separately).
- * @param fixture - the fixture corpus.
- * @param tableName - the table to edit.
- * @param changes - fields to merge over the table's current raw dict.
- */
-function commitExternalEdit(fixture: FixtureCorpus, tableName: string, changes: Record<string, unknown>): void {
-  const raw = loadTables(fixture.root).find(t => t.table_name === tableName)?.raw
-  if (raw === undefined) throw new Error(`fixture table not found: ${tableName}`)
-  const p = join(fixture.root, 'tables', `${tableName}.yaml`)
-  writeFileSync(p, dumpYaml({ ...raw, ...changes }), 'utf8')
-  fixtureGit(['add', '-A'], fixture.root)
-  fixtureGit(['commit', '--quiet', '-m', 'operator edit'], fixture.root)
-}
-
-let fixture: FixtureCorpus
-beforeEach(() => { fixture = createFixtureCorpus() }) // withDim: true (default) — dws_order + dim_shop, shop_id-joinable
-afterEach(() => {
-  for (const bindings of liveBindings) bindings.disposeAll()
-  liveBindings = []
-  for (const dir of liveRegistryDirs) rmSync(dir, { recursive: true, force: true })
-  liveRegistryDirs = []
-  fixture.cleanup()
-})
+/** The slice's still-live binding stores / registry dirs — disposed in `afterEach`. */
+const liveBindings: BindingStore[] = []
+const liveRegistryDirs: string[] = []
 
 // ── get_enrichment_work ───────────────────────────────────────────────────
 
 describe('get_enrichment_work', () => {
   it('lists the fixture\'s relation and alt_labels gaps, with no commit', async () => {
-    const { deps } = await buildDeps(fixture)
-    const tools = captureTools(deps)
+    const h = await serve()
     const before = fixtureGit(['rev-parse', 'HEAD'], fixture.root).trim()
-    const { result, body } = await callTool(tools, 'get_enrichment_work', {})
-    expect(result.isError).toBeUndefined()
+    const { isError, body } = await call(h, 'get_enrichment_work', {})
+    expect(isError).toBe(false)
     const work = body.work as Array<{ target: string; gap: string; work_id: string; prompt: string }>
     expect(work.some(w => w.target === 'dws_order' && w.gap.startsWith('dimension_refs'))).toBe(true)
     expect(work.some(w => w.target === 'dws_order' && w.gap.startsWith('alt_labels'))).toBe(true)
@@ -193,9 +221,8 @@ describe('get_enrichment_work', () => {
   })
 
   it('honors a tables filter', async () => {
-    const { deps } = await buildDeps(fixture)
-    const tools = captureTools(deps)
-    const { body } = await callTool(tools, 'get_enrichment_work', { tables: ['dim_shop'] })
+    const h = await serve()
+    const { body } = await call(h, 'get_enrichment_work', { tables: ['dim_shop'] })
     const work = body.work as Array<{ target: string }>
     expect(work.every(w => w.target === 'dim_shop')).toBe(true)
     expect(work.length).toBeGreaterThan(0)
@@ -205,26 +232,25 @@ describe('get_enrichment_work', () => {
 // ── apply_enrichment ──────────────────────────────────────────────────────
 
 describe('apply_enrichment', () => {
-  it('a work_id survives a server restart: a freshly-constructed deps pair can still apply it', async () => {
-    const first = await buildDeps(fixture)
-    const toolsBeforeRestart = captureTools(first.deps)
-    const { body: workBody } = await callTool(toolsBeforeRestart, 'get_enrichment_work', {})
-    const item = (workBody.work as Array<{ target: string; gap: string; work_id: string }>)
+  it('a work_id survives a server restart: a fresh server over the same corpus can still apply it', async () => {
+    const first = await serve()
+    const listed = await call(first, 'get_enrichment_work', {})
+    const item = (listed.body.work as Array<{ target: string; gap: string; work_id: string }>)
       .find(w => w.target === 'dws_order' && w.gap.startsWith('alt_labels'))
     expect(item).toBeDefined()
 
-    // "Restart": brand new registry + bindings over the same corpus, nothing carried
-    // over from `first` — proving work_id's self-containment rather than any in-memory
-    // cache.
-    const second = await buildDeps(fixture)
-    const toolsAfterRestart = captureTools(second.deps)
-    const { result, body } = await callTool(toolsAfterRestart, 'apply_enrichment', {
-      scope_id: SCOPE_ID,
+    // "Restart": a second, independently-constructed harness — new recorder, core,
+    // server, and client — over the same corpus, nothing carried over from `first`,
+    // proving work_id's self-containment rather than any in-memory cache.
+    await first.close()
+    const second = await serve()
+    const { isError, body } = await call(second, 'apply_enrichment', {
+      scope_id: 'fixture',
       results: [{ work_id: item!.work_id, text: '["订单宽表"]' }],
       summary: '补充订单宽表别名',
       confidence: 0.9,
     })
-    expect(result.isError).toBeUndefined()
+    expect(isError).toBe(false)
     const results = body.results as Array<{ work_id: string; target: string; verdict: string }>
     expect(results).toHaveLength(1)
     expect(results[0]).toMatchObject({ work_id: item!.work_id, target: 'dws_order', verdict: 'applied' })
@@ -236,10 +262,9 @@ describe('apply_enrichment', () => {
   })
 
   it('one stale item does not poison the batch — the other still lands, in one commit', async () => {
-    const { deps, recorder } = await buildDeps(fixture)
-    const tools = captureTools(deps)
-    const { body: workBody } = await callTool(tools, 'get_enrichment_work', {})
-    const work = workBody.work as Array<{ target: string; gap: string; work_id: string }>
+    const h = await serve()
+    const listed = await call(h, 'get_enrichment_work', {})
+    const work = listed.body.work as Array<{ target: string; gap: string; work_id: string }>
     const itemOrder = work.find(w => w.target === 'dws_order' && w.gap.startsWith('alt_labels'))
     const itemShop = work.find(w => w.target === 'dim_shop' && w.gap.startsWith('alt_labels'))
     expect(itemOrder).toBeDefined()
@@ -250,8 +275,8 @@ describe('apply_enrichment', () => {
     commitExternalEdit(fixture, 'dws_order', { description: 'edited by someone else after issuance' })
     const commitsBefore = Number(fixtureGit(['rev-list', '--count', 'HEAD'], fixture.root).trim())
 
-    const { body } = await callTool(tools, 'apply_enrichment', {
-      scope_id: SCOPE_ID,
+    const { body } = await call(h, 'apply_enrichment', {
+      scope_id: 'fixture',
       results: [
         { work_id: itemOrder!.work_id, text: '["订单宽表"]' },
         { work_id: itemShop!.work_id, text: '["店铺维度"]' },
@@ -267,24 +292,23 @@ describe('apply_enrichment', () => {
     // Exactly one new commit for the whole batch — the stale rejection added none.
     const commitsAfter = Number(fixtureGit(['rev-list', '--count', 'HEAD'], fixture.root).trim())
     expect(commitsAfter).toBe(commitsBefore + 1)
-    const trailers = await recorder.readTrailers()
+    const trailers = await h.recorder.readTrailers()
     expect(trailers.Derivation).toBe('llm')
     expect(trailers.Files).toBe('1')
   })
 
   it('a fully idempotent batch produces no new commit', async () => {
-    const { deps } = await buildDeps(fixture)
-    const tools = captureTools(deps)
-    const { body: workBody } = await callTool(tools, 'get_enrichment_work', {})
-    const item = (workBody.work as Array<{ target: string; gap: string; work_id: string }>)
+    const h = await serve()
+    const listed = await call(h, 'get_enrichment_work', {})
+    const item = (listed.body.work as Array<{ target: string; gap: string; work_id: string }>)
       .find(w => w.target === 'dim_shop' && w.gap.startsWith('alt_labels'))
     expect(item).toBeDefined()
 
     const before = fixtureGit(['rev-parse', 'HEAD'], fixture.root).trim()
     // "dim_shop" is the table's own name — excluded from what counts as new, so this
     // resolves to zero genuinely new labels (idempotent), not a write.
-    const { body } = await callTool(tools, 'apply_enrichment', {
-      scope_id: SCOPE_ID,
+    const { body } = await call(h, 'apply_enrichment', {
+      scope_id: 'fixture',
       results: [{ work_id: item!.work_id, text: '["dim_shop"]' }],
       summary: 'no-op answer',
       confidence: 0.5,
@@ -296,34 +320,32 @@ describe('apply_enrichment', () => {
   })
 
   it('records the per-request clientInfo as X-SG-Client, not any construction-time value', async () => {
-    const { deps, recorder } = await buildDeps(fixture) // no clientName at construction time
-    const tools = captureTools(deps)
-    const { body: workBody } = await callTool(tools, 'get_enrichment_work', {})
-    const item = (workBody.work as Array<{ target: string; gap: string; work_id: string }>)
+    const h = await serve() // no clientName at construction time
+    const listed = await call(h, 'get_enrichment_work', {})
+    const item = (listed.body.work as Array<{ target: string; gap: string; work_id: string }>)
       .find(w => w.target === 'dws_order' && w.gap.startsWith('alt_labels'))
-    const { body } = await callTool(
-      tools,
-      'apply_enrichment',
-      { scope_id: SCOPE_ID, results: [{ work_id: item!.work_id, text: '["订单宽表"]' }], summary: 'x', confidence: 0.5 },
-      'my-test-client',
-    )
-    const trailers = await recorder.readTrailers(body.commit as string)
+    const { body } = await call(h, 'apply_enrichment', {
+      scope_id: 'fixture',
+      results: [{ work_id: item!.work_id, text: '["订单宽表"]' }],
+      summary: 'x',
+      confidence: 0.5,
+    }, 'my-test-client')
+    const trailers = await h.recorder.readTrailers(body.commit as string)
     expect(trailers.Client).toBe('my-test-client')
   })
 
   it('server always overrides derivation to "llm", regardless of batch size', async () => {
-    const { deps, recorder } = await buildDeps(fixture)
-    const tools = captureTools(deps)
-    const { body: workBody } = await callTool(tools, 'get_enrichment_work', {})
-    const item = (workBody.work as Array<{ target: string; gap: string; work_id: string }>)
+    const h = await serve()
+    const listed = await call(h, 'get_enrichment_work', {})
+    const item = (listed.body.work as Array<{ target: string; gap: string; work_id: string }>)
       .find(w => w.target === 'dws_order' && w.gap.startsWith('alt_labels'))
-    const { body } = await callTool(tools, 'apply_enrichment', {
-      scope_id: SCOPE_ID,
+    const { body } = await call(h, 'apply_enrichment', {
+      scope_id: 'fixture',
       results: [{ work_id: item!.work_id, text: '["订单宽表"]' }],
       summary: 'single item subject check',
       confidence: 0.7,
     })
-    const trailers = await recorder.readTrailers(body.commit as string)
+    const trailers = await h.recorder.readTrailers(body.commit as string)
     expect(trailers.Derivation).toBe('llm')
     // Single-item subject names the definition (ADR-0006 ruling 5), not a field echo.
     const subject = fixtureGit(['log', '-1', '--format=%s'], fixture.root).trim()
@@ -331,10 +353,9 @@ describe('apply_enrichment', () => {
   })
 
   it('a dirty worktree refusal surfaces as a coded isError result, not a thrown exception', async () => {
-    const { deps } = await buildDeps(fixture)
-    const tools = captureTools(deps)
-    const { body: workBody } = await callTool(tools, 'get_enrichment_work', {})
-    const item = (workBody.work as Array<{ target: string; gap: string; work_id: string }>)
+    const h = await serve()
+    const listed = await call(h, 'get_enrichment_work', {})
+    const item = (listed.body.work as Array<{ target: string; gap: string; work_id: string }>)
       .find(w => w.target === 'dws_order' && w.gap.startsWith('alt_labels'))
 
     // An *uncommitted* edit — the dirty-tree refusal, distinct from the committed
@@ -342,18 +363,16 @@ describe('apply_enrichment', () => {
     const p = join(fixture.root, 'tables', 'dws_order.yaml')
     writeFileSync(p, `${readFileSync(p, 'utf8')}\n# uncommitted operator edit\n`, 'utf8')
 
-    const { result } = await callTool(tools, 'apply_enrichment', {
-      scope_id: SCOPE_ID,
+    const { isError, body } = await call(h, 'apply_enrichment', {
+      scope_id: 'fixture',
       results: [{ work_id: item!.work_id, text: '["订单宽表"]' }],
       summary: 'x',
       confidence: 0.5,
     })
-    expect(result.isError).toBe(true)
-    const block = result.content[0]
-    const payload = JSON.parse((block as { text: string }).text) as { code: number; name: string; retryable: boolean }
-    expect(payload.code).toBe(-31004) // posture_refused (#19's segment — reused, not reallocated; errors.ts's own doc)
-    expect(payload.name).toBe('PostureRefusedError')
-    expect(payload.retryable).toBe(false)
+    expect(isError).toBe(true)
+    expect(body.code).toBe(-31004) // posture_refused (#19's segment — reused, not reallocated; errors.ts's own doc)
+    expect(body.name).toBe('PostureRefusedError')
+    expect(body.retryable).toBe(false)
   })
 })
 
@@ -361,41 +380,38 @@ describe('apply_enrichment', () => {
 
 describe('run_enrichment', () => {
   it('persists the deterministic join, removing it from get_enrichment_work afterward', async () => {
-    const { deps, recorder } = await buildDeps(fixture)
-    const tools = captureTools(deps)
-    const before = (await callTool(tools, 'get_enrichment_work', {})).body.work as Array<{ target: string; gap: string }>
+    const h = await serve()
+    const before = (await call(h, 'get_enrichment_work', {})).body.work as Array<{ target: string; gap: string }>
     expect(before.some(w => w.target === 'dws_order' && w.gap.startsWith('dimension_refs'))).toBe(true)
 
-    const { result, body } = await callTool(tools, 'run_enrichment', { scope_id: SCOPE_ID })
-    expect(result.isError).toBeUndefined()
+    const { isError, body } = await call(h, 'run_enrichment', { scope_id: 'fixture' })
+    expect(isError).toBe(false)
     expect(body.changed).toBe(true)
     expect(body.commit).toMatch(/^[0-9a-f]{40}$/)
     expect(body.enrichment_health).toEqual([])
 
-    const after = (await callTool(tools, 'get_enrichment_work', {})).body.work as Array<{ target: string; gap: string }>
+    const after = (await call(h, 'get_enrichment_work', {})).body.work as Array<{ target: string; gap: string }>
     expect(after.some(w => w.target === 'dws_order' && w.gap.startsWith('dimension_refs'))).toBe(false)
     // alt_labels gaps are untouched by run_enrichment (no model, nothing deterministic
     // to derive there) — they are still exactly where they were.
     expect(after.some(w => w.target === 'dws_order' && w.gap.startsWith('alt_labels'))).toBe(true)
 
-    const trailers = await recorder.readTrailers(body.commit as string)
+    const trailers = await h.recorder.readTrailers(body.commit as string)
     expect(trailers.Derivation).toBe('deterministic')
   })
 
   it('a second call with nothing new to find makes no commit', async () => {
-    const { deps } = await buildDeps(fixture)
-    const tools = captureTools(deps)
-    await callTool(tools, 'run_enrichment', { scope_id: SCOPE_ID })
+    const h = await serve()
+    await call(h, 'run_enrichment', { scope_id: 'fixture' })
     const before = fixtureGit(['rev-parse', 'HEAD'], fixture.root).trim()
-    const { body } = await callTool(tools, 'run_enrichment', { scope_id: SCOPE_ID })
+    const { body } = await call(h, 'run_enrichment', { scope_id: 'fixture' })
     expect(body.changed).toBe(false)
     expect(fixtureGit(['rev-parse', 'HEAD'], fixture.root).trim()).toBe(before)
   })
 
   it('a tables filter scopes the sweep', async () => {
-    const { deps } = await buildDeps(fixture)
-    const tools = captureTools(deps)
-    const { body } = await callTool(tools, 'run_enrichment', { scope_id: SCOPE_ID, tables: ['dim_shop'] })
+    const h = await serve()
+    const { body } = await call(h, 'run_enrichment', { scope_id: 'fixture', tables: ['dim_shop'] })
     // dim_shop is a DIM (no dimension_refs field of its own) and has no DIM inventory
     // to join against itself, so a filter naming only it finds nothing to persist.
     expect(body.changed).toBe(false)
@@ -415,14 +431,13 @@ describe('dimension filter semantics (ADR-0007)', () => {
   it('a tables filter does NOT sweep events — one named table, one file, the event untouched', async () => {
     const f = createFixtureCorpus({ withEvents: true })
     try {
-      const { deps, recorder } = await buildDeps(f)
-      const tools = captureTools(deps)
+      const h = await serve(f.root)
       const commitsBefore = Number(fixtureGit(['rev-list', '--count', 'HEAD'], f.root).trim())
-      const { result, body } = await callTool(tools, 'run_enrichment', { scope_id: SCOPE_ID, tables: ['dws_order'] })
-      expect(result.isError).toBeUndefined()
+      const { isError, body } = await call(h, 'run_enrichment', { scope_id: 'fixture', tables: ['dws_order'] })
+      expect(isError).toBe(false)
       expect(body.changed).toBe(true)
       expect(Number(fixtureGit(['rev-list', '--count', 'HEAD'], f.root).trim())).toBe(commitsBefore + 1)
-      const trailers = await recorder.readTrailers(body.commit as string)
+      const trailers = await h.recorder.readTrailers(body.commit as string)
       expect(trailers.Files).toBe('1') // dws_order.yaml only — never events/biz/pay_success.yaml
       // THE pin: the events dimension was out of the call, so its gap is intact.
       const evt = loadEvents(f.root).find(e => e.name === 'pay_success')
@@ -442,12 +457,11 @@ describe('dimension filter semantics (ADR-0007)', () => {
   it('an events filter is the mirror: the table side is never scanned', async () => {
     const f = createFixtureCorpus({ withEvents: true })
     try {
-      const { deps, recorder } = await buildDeps(f)
-      const tools = captureTools(deps)
-      const { result, body } = await callTool(tools, 'run_enrichment', { scope_id: SCOPE_ID, events: ['pay_success'] })
-      expect(result.isError).toBeUndefined()
+      const h = await serve(f.root)
+      const { isError, body } = await call(h, 'run_enrichment', { scope_id: 'fixture', events: ['pay_success'] })
+      expect(isError).toBe(false)
       expect(body.changed).toBe(true)
-      const trailers = await recorder.readTrailers(body.commit as string)
+      const trailers = await h.recorder.readTrailers(body.commit as string)
       expect(trailers.Files).toBe('1') // the event yaml only
       // The table leg never ran: dws_order's relation gap is intact.
       const dws = loadTables(f.root).find(t => t.table_name === 'dws_order')
@@ -465,11 +479,10 @@ describe('dimension filter semantics (ADR-0007)', () => {
   it('{} (or no keys) is the one full-corpus shape: both dimensions swept, one commit', async () => {
     const f = createFixtureCorpus({ withEvents: true })
     try {
-      const { deps, recorder } = await buildDeps(f)
-      const tools = captureTools(deps)
-      const { body } = await callTool(tools, 'run_enrichment', { scope_id: SCOPE_ID })
+      const h = await serve(f.root)
+      const { body } = await call(h, 'run_enrichment', { scope_id: 'fixture' })
       expect(body.changed).toBe(true)
-      const trailers = await recorder.readTrailers(body.commit as string)
+      const trailers = await h.recorder.readTrailers(body.commit as string)
       expect(trailers.Files).toBe('2') // dws_order.yaml + events/biz/pay_success.yaml
       const dwsRefs = loadTables(f.root).find(t => t.table_name === 'dws_order')?.raw.dimension_refs
       const evtRefs = loadEvents(f.root).find(e => e.name === 'pay_success')?.raw.external_refs
@@ -485,17 +498,16 @@ describe('dimension filter semantics (ADR-0007)', () => {
   it('get_enrichment_work honors the same call-wide reading on its index', async () => {
     const f = createFixtureCorpus({ withEvents: true })
     try {
-      const { deps } = await buildDeps(f)
-      const tools = captureTools(deps)
-      const tablesOnly = await callTool(tools, 'get_enrichment_work', { tables: ['dws_order'] })
+      const h = await serve(f.root)
+      const tablesOnly = await call(h, 'get_enrichment_work', { tables: ['dws_order'] })
       const rows = tablesOnly.body.work as Array<{ target: string }>
       expect(rows.length).toBeGreaterThan(0)
       expect(rows.every(r => r.target === 'dws_order')).toBe(true)
       expect((tablesOnly.body.total as number)).toBe(rows.length)
       expect(tablesOnly.body.truncated).toBe(false)
-      const eventsOnly = await callTool(tools, 'get_enrichment_work', { events: ['pay_success'] })
+      const eventsOnly = await call(h, 'get_enrichment_work', { events: ['pay_success'] })
       expect((eventsOnly.body.work as Array<{ target: string }>).every(r => r.target === 'pay_success')).toBe(true)
-      const full = await callTool(tools, 'get_enrichment_work', {})
+      const full = await call(h, 'get_enrichment_work', {})
       const targets = (full.body.work as Array<{ target: string }>).map(r => r.target)
       expect(targets).toContain('dws_order')
       expect(targets).toContain('pay_success')
@@ -507,12 +519,14 @@ describe('dimension filter semantics (ADR-0007)', () => {
   it('an unknown filter name is a coded -31040 isError result listing every unknown name, with zero commits', async () => {
     const f = createFixtureCorpus({ withEvents: true })
     try {
-      const { deps } = await buildDeps(f)
-      const tools = captureTools(deps)
+      const h = await serve(f.root)
       const headBefore = fixtureGit(['rev-parse', 'HEAD'], f.root).trim()
       for (const tool of ['run_enrichment', 'get_enrichment_work'] as const) {
-        const { result, body } = await callTool(tools, tool, { scope_id: SCOPE_ID, tables: ['dws_typo_a', 'dws_typo_b'], events: ['evt_typo'] })
-        expect(result.isError).toBe(true)
+        // run_enrichment is commit-class: it carries the ADR-0011 scope assertion the
+        // read-only listing tool's strict schema must not even see.
+        const filters = { tables: ['dws_typo_a', 'dws_typo_b'], events: ['evt_typo'] }
+        const { isError, body } = await call(h, tool, tool === 'run_enrichment' ? { scope_id: 'fixture', ...filters } : filters)
+        expect(isError).toBe(true)
         expect(body.code).toBe(-31040)
         expect(body.name).toBe('UnknownFilterNameError')
         expect(body.retryable).toBe(false)
@@ -528,14 +542,15 @@ describe('dimension filter semantics (ADR-0007)', () => {
     }
   })
 
-  it('an empty filter array is refused — omitting the key is the only "not in this call"', async () => {
+  it('an empty filter array is refused — omitting the key is the only "not in this call" (below-zod, direct handler)', async () => {
     const f = createFixtureCorpus({ withEvents: true })
     try {
+      // The retained direct-handler slice: the client path cannot carry `tables: []`
+      // past the SDK's zod gate (`min(1)`, pinned against the schema below) — this
+      // pin is the door UNDER that gate, the Core method's own refusal.
       const { deps } = await buildDeps(f)
       const tools = captureTools(deps)
-      // The direct-handler path carries [] straight to the Core door (the SDK's zod
-      // gate refuses it earlier on the wire — pinned below against the schema).
-      const { result, body } = await callTool(tools, 'run_enrichment', { scope_id: SCOPE_ID, tables: [] })
+      const { result, body } = await callTool(tools, 'run_enrichment', { scope_id: HARNESS_SCOPE_ID, tables: [] })
       expect(result.isError).toBe(true)
       expect(body.code).toBe(-31040)
       expect(body.message).toContain('empty dimension filter')
@@ -553,23 +568,21 @@ describe('zod schema gates (ADR-0007/0008)', () => {
     try {
       const { deps } = await buildDeps(f)
       captureTools(deps)
-      const workSchema = capturedConfigs.get('get_enrichment_work')?.inputSchema
-      expect(workSchema).toBeDefined()
-      expect(workSchema!.safeParse({}).success).toBe(true)
-      expect(workSchema!.safeParse({ tables: ['dws_order'] }).success).toBe(true)
-      expect(workSchema!.safeParse({ tables: [], events: ['x'] }).success).toBe(false)
-      expect(workSchema!.safeParse({ events: [] }).success).toBe(false)
-
-      // run_enrichment extends the very same filter pair with the write door's
-      // required scope_id (ADR-0011) — same dimension-filter semantics as the
-      // read-only listing tool above, plus the mandatory scope assertion.
-      const runSchema = capturedConfigs.get('run_enrichment')?.inputSchema
-      expect(runSchema).toBeDefined()
-      expect(runSchema!.safeParse({}).success).toBe(false)
-      expect(runSchema!.safeParse({ scope_id: 'fixture' }).success).toBe(true)
-      expect(runSchema!.safeParse({ scope_id: 'fixture', tables: ['dws_order'] }).success).toBe(true)
-      expect(runSchema!.safeParse({ scope_id: 'fixture', tables: [], events: ['x'] }).success).toBe(false)
-      expect(runSchema!.safeParse({ scope_id: 'fixture', events: [] }).success).toBe(false)
+      const schema = capturedConfigs.get('run_enrichment')?.inputSchema
+      expect(schema).toBeDefined()
+      // run_enrichment is commit-class: the ADR-0011 scope assertion rides the same
+      // schema (scopeFilterSchema extended), so its zod gate demands it too.
+      expect(schema!.safeParse({}).success).toBe(false)
+      expect(schema!.safeParse({ scope_id: 'fixture' }).success).toBe(true)
+      expect(schema!.safeParse({ scope_id: 'fixture', tables: ['dws_order'] }).success).toBe(true)
+      expect(schema!.safeParse({ scope_id: 'fixture', tables: [], events: ['x'] }).success).toBe(false)
+      expect(schema!.safeParse({ scope_id: 'fixture', events: [] }).success).toBe(false)
+      // The listing tool serves the same filter pair from the base schema — one
+      // filter contract, two doors; only the scope assertion divides them (#51).
+      const listing = capturedConfigs.get('get_enrichment_work')?.inputSchema
+      expect(listing).toBeDefined()
+      expect(listing!.safeParse({ tables: [] }).success).toBe(false)
+      expect(listing!.safeParse({ tables: ['dws_order'] }).success).toBe(true)
     } finally {
       f.cleanup()
     }
@@ -599,24 +612,23 @@ describe('get_enrichment_prompts', () => {
   it('index → prompts → apply: the split loop end to end, over an event target', async () => {
     const f = createFixtureCorpus({ withEvents: true })
     try {
-      const { deps } = await buildDeps(f)
-      const tools = captureTools(deps)
-      const { body: indexBody } = await callTool(tools, 'get_enrichment_work', {})
+      const h = await serve(f.root)
+      const { body: indexBody } = await call(h, 'get_enrichment_work', {})
       const rows = indexBody.work as Array<{ work_id: string; target: string; gap: string }>
       // Index rows are exactly the ruled shape — no prompt field rides along.
       const row = rows.find(r => r.target === 'pay_success' && r.gap.startsWith('alt_labels'))
       expect(row).toBeDefined()
       expect(Object.keys(row!).sort()).toEqual(['gap', 'target', 'work_id'])
 
-      const { result, body } = await callTool(tools, 'get_enrichment_prompts', { work_ids: [row!.work_id] })
-      expect(result.isError).toBeUndefined()
+      const { isError, body } = await call(h, 'get_enrichment_prompts', { work_ids: [row!.work_id] })
+      expect(isError).toBe(false)
       const prompts = body.prompts as Array<{ work_id: string; target: string; round?: string; verdict: string; prompt?: string }>
       expect(prompts).toHaveLength(1)
       expect(prompts[0]).toMatchObject({ work_id: row!.work_id, target: 'pay_success', round: 'alt_labels', verdict: 'fresh' })
       expect(prompts[0]?.prompt).toContain('pay_success')
 
-      const applied = await callTool(tools, 'apply_enrichment', {
-        scope_id: SCOPE_ID,
+      const applied = await call(h, 'apply_enrichment', {
+        scope_id: 'fixture',
         results: [{ work_id: row!.work_id, text: '["支付成功"]' }],
         summary: '补事件别名',
         confidence: 0.8,
@@ -631,9 +643,8 @@ describe('get_enrichment_prompts', () => {
   it('stale and malformed work_ids verdict stale_baseline per item, without prompts', async () => {
     const f = createFixtureCorpus({ withEvents: true })
     try {
-      const { deps } = await buildDeps(f)
-      const tools = captureTools(deps)
-      const { body: indexBody } = await callTool(tools, 'get_enrichment_work', {})
+      const h = await serve(f.root)
+      const { body: indexBody } = await call(h, 'get_enrichment_work', {})
       const rows = indexBody.work as Array<{ work_id: string; target: string; gap: string }>
       const orderRow = rows.find(r => r.target === 'dws_order' && r.gap.startsWith('alt_labels'))!
       const eventRow = rows.find(r => r.target === 'pay_success' && r.gap.startsWith('alt_labels'))!
@@ -641,7 +652,7 @@ describe('get_enrichment_prompts', () => {
       // dws_order changes underneath its issued work_id (committed, so the tree is clean).
       commitExternalEdit(f, 'dws_order', { description: 'operator edit after listing' })
 
-      const { body } = await callTool(tools, 'get_enrichment_prompts', {
+      const { body } = await call(h, 'get_enrichment_prompts', {
         work_ids: [orderRow.work_id, eventRow.work_id, 'not-a-work-id'],
       })
       const prompts = body.prompts as Array<{ target: string; verdict: string; prompt?: string }>

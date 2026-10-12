@@ -75,26 +75,19 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { dumpYaml, loadTables } from '@semantic-grounding/substrate'
 import { parseServerConfig } from '../src/config.ts'
 import { startup } from '../src/main.ts'
 import { createServerFactory, SERVER_INFO } from '../src/server.ts'
-import { INTENT_TOOL_NAMES } from '../src/tools/index.ts'
-import { ENRICHMENT_TOOL_NAMES } from '../src/tools/enrichment.ts'
-import { SCOPE_TOOL_NAMES } from '../src/tools/scope.ts'
+import { TOOL_NAMES } from '../src/tools/index.ts'
 import { ScopeRegistryFile } from '../src/scope-registry.ts'
-import { buildServer } from '../tests/helpers/intent-tools-harness.ts'
-import { createFixtureCorpus, fixtureGit, fixtureTable, type FixtureCorpus } from '../tests/helpers/fixture-corpus.ts'
+import { buildServer, tier2 } from '../tests/helpers/intent-tools-harness.ts'
+import { commitExternalEdit, createFixtureCorpus, fixtureGit, fixtureTable } from '../tests/helpers/fixture-corpus.ts'
 import { connectInProcess, toolJson, type InProcessClient } from '../tests/helpers/inprocess-client.ts'
 
 /** The writing agent this gate declares at startup — the commit author (ADR-0004 ruling 9). */
 const AGENT_ID = 'e2e-gate-agent'
 /** The client name sent per-request in the envelope — the X-SG-Client trailer's source. */
 const CLIENT_NAME = 'sg-e2e-gate'
-/** ADR-0006's three + ADR-0008's fourth (`get_enrichment_prompts`) + ADR-0011's five
- * scope tools, from each registrar's own name constant — the same single-source rule
- * `tools/index.ts` documents for `INTENT_TOOL_NAMES`. */
-const ALL_TOOL_NAMES = [...INTENT_TOOL_NAMES, ...ENRICHMENT_TOOL_NAMES, ...SCOPE_TOOL_NAMES]
 /** sha256 hex, the shape of every `version` / `expected_version`. */
 const SHA256 = /^[0-9a-f]{64}$/
 
@@ -176,11 +169,6 @@ function fieldString(body: Readonly<Record<string, unknown>>, key: string): stri
   return value
 }
 
-/** The common Tier-2 write parameters every gate write carries (ADR-0005 ruling 7). */
-function tier2(summary: string, confidence: number): Readonly<Record<string, unknown>> {
-  return { summary, derivation: 'agent', confidence }
-}
-
 /** Fixture columns with the `comment` field `TableDefinitionSchema` re-validates on update. */
 function columns(...specs: ReadonlyArray<readonly [string, string, string]>): ReadonlyArray<Record<string, unknown>> {
   return specs.map(([name, type, role]) => ({ name, type, role, comment: '' }))
@@ -199,23 +187,16 @@ function dimTable(table_name: string, primaryKey: string, labelColumn: string): 
   })
 }
 
-/** Commit a direct YAML edit as "an operator changed this between issuance and apply" — committed, so the tree stays clean. */
-function commitExternalEdit(fixture: FixtureCorpus, tableName: string, changes: Readonly<Record<string, unknown>>): void {
-  const raw = loadTables(fixture.root).find(t => t.table_name === tableName)?.raw
-  assert.ok(raw !== undefined, `fixture table not found: ${tableName}`)
-  writeFileSync(join(fixture.root, 'tables', `${tableName}.yaml`), dumpYaml({ ...raw, ...changes }), 'utf8')
-  fixtureGit(['add', '-A'], fixture.root)
-  fixtureGit(['commit', '--quiet', '-m', 'operator edit between issuance and apply'], fixture.root)
-}
-
 /** One booted server: the real startup result plus a connected in-process client. */
 interface Boot {
   readonly client: InProcessClient
+  /** Read a commit's `X-SG-*` trailers through the booted recorder's own read path. */
+  readonly trailersOf: (commit: string) => Promise<Record<string, string>>
   /** Tear the client down and dispose the core — "process restart" for a stateless server. */
   shutdown(): Promise<void>
 }
 
-/** Boot through the real `startup()` seam — `--registry`/`--scope` (ADR-0011), never the removed `--corpus` — and connect one client. */
+/** Boot through the real `startup()` seam — `--registry`/`--scope` (ADR-0011), never the removed `--corpus` — and connect one client over the full tool surface. */
 async function boot(opts: { readonly registryPath: string; readonly scopeId?: string; readonly agentId?: string }): Promise<Boot> {
   const args = ['--agent-id', opts.agentId ?? AGENT_ID, '--registry', opts.registryPath]
   if (opts.scopeId !== undefined) args.push('--scope', opts.scopeId)
@@ -225,6 +206,7 @@ async function boot(opts: { readonly registryPath: string; readonly scopeId?: st
   const client = await connectInProcess(server)
   return {
     client,
+    trailersOf: commit => result.deps.bindings.requireSnapshot().recorder.readTrailers(commit),
     async shutdown() {
       await client.close()
       result.deps.bindings.disposeAll()
@@ -242,18 +224,6 @@ async function main(): Promise<void> {
   const root = fixture.root
   const head = (): string => fixtureGit(['rev-parse', 'HEAD'], root).trim()
   const commitCount = (): number => Number(fixtureGit(['rev-list', '--count', 'HEAD'], root).trim())
-  const trailersOf = async (commit: string): Promise<Record<string, string>> => {
-    // git's own trailer interpolation (the same read path `git/identity.ts` designs for
-    // humans), prefix stripped for the same key shape the recorder's readTrailers returns.
-    const out = fixtureGit(['log', '-1', '--format=%(trailers:only=true,unfold=true)', commit], root)
-    const map: Record<string, string> = {}
-    for (const line of out.split('\n')) {
-      const sep = line.indexOf(':')
-      if (sep <= 0) continue
-      map[line.slice(0, sep).replace(/^X-SG-/, '')] = line.slice(sep + 1).trim()
-    }
-    return map
-  }
 
   let active: Boot | undefined
   const registryDir = mkdtempSync(join(tmpdir(), 'sg-e2e-registry-'))
@@ -276,7 +246,7 @@ async function main(): Promise<void> {
     step('tools/list: the full default tool catalog (ADR-0005 fifteen + ADR-0006 three + ADR-0008 one + ADR-0011 five)')
     {
       const listed = (await client.listTools()).result?.['tools'] as Array<{ name: string; description?: string; inputSchema?: { type?: string } }>
-      assert.deepEqual(listed.map(t => t.name).sort(), [...ALL_TOOL_NAMES].sort(), 'exactly the ruled tool surface')
+      assert.deepEqual(listed.map(t => t.name).sort(), [...TOOL_NAMES].sort(), 'exactly the ruled tool surface')
       for (const tool of listed) {
         assert.equal(tool.inputSchema?.type, 'object', `${tool.name} advertises an object inputSchema`)
         assert.ok(typeof tool.description === 'string' && tool.description.length > 0, `${tool.name} has a description (schema is prompt)`)
@@ -331,7 +301,7 @@ async function main(): Promise<void> {
       const evRun = await call(client, 'run_enrichment', { scope_id: 'fixture', events: ['pay_success'] })
       assert.equal(evRun['changed'], true)
       assert.equal(commitCount(), before + 1)
-      assert.equal((await trailersOf(fieldString(evRun, 'commit')))['Files'], '1', 'only events/biz/pay_success.yaml')
+      assert.equal((await active.trailersOf(fieldString(evRun, 'commit')))['Files'], '1', 'only events/biz/pay_success.yaml')
       const orderAfterEvRun = (await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }))['definition'] as Record<string, unknown>
       assert.deepEqual(orderAfterEvRun['dimension_refs'], [], 'the tables leg never ran — the #25 spill, inverted and pinned')
       const evSubject = fixtureGit(['log', '-1', '--format=%s'], root).trim()
@@ -348,7 +318,7 @@ async function main(): Promise<void> {
       const tRun = await call(client, 'run_enrichment', { scope_id: 'fixture', tables: ['dws_order'] })
       assert.equal(tRun['changed'], true)
       assert.equal(commitCount(), beforeT + 1)
-      assert.equal((await trailersOf(fieldString(tRun, 'commit')))['Files'], '1', 'only tables/dws_order.yaml')
+      assert.equal((await active.trailersOf(fieldString(tRun, 'commit')))['Files'], '1', 'only tables/dws_order.yaml')
       const evtAfter = (await call(client, 'get_definition', { kind: 'event', name: 'pay_success' }))['definition'] as Record<string, unknown>
       assert.deepEqual(evtAfter['alt_labels'], [], 'the events dimension was out of the call — its gap is intact')
       assert.ok(((evtAfter['external_refs'] as unknown[]) ?? []).length > 0, 'and the refs the events run DID fill are still there')
@@ -377,7 +347,7 @@ async function main(): Promise<void> {
       payFlowCommit = fieldString(created, 'commit')
       assert.match(payFlowCommit, /^[0-9a-f]{40}$/)
       assert.equal(commitCount(), before + 1, 'create compiles to the write primitive — exactly one commit, no enrichment residue')
-      assert.equal((await trailersOf(payFlowCommit))['Tool'], 'create_definition')
+      assert.equal((await active.trailersOf(payFlowCommit))['Tool'], 'create_definition')
     }
 
     step('run_enrichment: N logical writes absorbed into one deterministic commit (Files/Rounds)')
@@ -388,7 +358,7 @@ async function main(): Promise<void> {
       assert.deepEqual(run['enrichment_health'], [], 'healthy round reports no failures inline')
       const runCommit = fieldString(run, 'commit')
       assert.equal(commitCount(), before + 1, 'ONE commit for the whole full sweep (beginBatch absorption)')
-      const trailers = await trailersOf(runCommit)
+      const trailers = await active.trailersOf(runCommit)
       assert.equal(trailers['Tool'], 'run_enrichment')
       assert.equal(trailers['Derivation'], 'deterministic')
       // Phase 2.5 already filled dws_order and pay_success; {} sweeps everything, so
@@ -493,7 +463,7 @@ async function main(): Promise<void> {
         ...tier2('订单表挂区域维度（业务口径）', 0.8),
       })
       assert.equal(related['changed'], true)
-      const trailers = await trailersOf(fieldString(related, 'commit'))
+      const trailers = await active.trailersOf(fieldString(related, 'commit'))
       assert.equal(trailers['Tool'], 'add_relation')
       assert.equal(trailers['Derivation'], 'agent')
     }
@@ -521,8 +491,8 @@ async function main(): Promise<void> {
       assert.equal(commitCount(), before + 2, 'one agent write, two commits (ADR-0004 2026-10-09 addendum ①)')
       const agentCommit = fieldString(updated, 'commit')
       assert.equal(agentCommit, fixtureGit(['rev-parse', 'HEAD~1'], root).trim(), 'the response names the agent commit; the residue landed after it')
-      assert.equal((await trailersOf(agentCommit))['Tool'], 'update_definition')
-      const residue = await trailersOf(head())
+      assert.equal((await active.trailersOf(agentCommit))['Tool'], 'update_definition')
+      const residue = await active.trailersOf(head())
       assert.equal(residue['Tool'], 'enrich_on_write', 'derived residue gets its own honest commit, never folded')
       assert.equal(residue['Derivation'], 'deterministic')
 
@@ -850,7 +820,7 @@ async function main(): Promise<void> {
       assert.deepEqual(verdicts.map(v => [v.target, v.verdict]), [['dws_pay_flow', 'applied']], 'pre-restart work_id applied post-restart (self-contained)')
       assert.equal(applied['changed'], true)
       assert.ok(Array.isArray(applied['enrichment_health']))
-      const trailers = await trailersOf(fieldString(applied, 'commit'))
+      const trailers = await active.trailersOf(fieldString(applied, 'commit'))
       assert.equal(trailers['Tool'], 'apply_enrichment')
       assert.equal(trailers['Derivation'], 'llm', 'server-overridden, never client-claimed (ADR-0006 ruling 5)')
       assert.equal(trailers['Confidence'], '0.8')
