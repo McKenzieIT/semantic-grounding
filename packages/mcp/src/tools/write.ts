@@ -24,6 +24,7 @@ import { z } from 'zod'
 import { DefinitionAlreadyExistsError, toToolErrorResult } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { applyFieldUpdate, assertScopeMatch, auditedWrite, enrichmentHealthAfter, scopeStamp, toolSuccess } from './audited.ts'
+import { guidanceField } from './guidance.ts'
 import {
   CREATE_COMMON_FIELDS,
   CONCEPT_ARRAY_REF_REDIRECT,
@@ -87,7 +88,8 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
             { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
             () => writeTable(root, name, input.table, {}, { recorder: snap.recorder }),
           )
-          return toolSuccess({ scope: scopeStamp(snap), commit: res.commit, changed: res.changed })
+          const guidance = await guidanceField(snap, deps.config.guidanceThreshold)
+          return toolSuccess({ scope: scopeStamp(snap), commit: res.commit, changed: res.changed, ...guidance })
         }
 
         if (input.kind === 'concept') {
@@ -105,7 +107,8 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
             { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
             () => snap.core.writeConceptYaml(name, input.concept),
           )
-          return toolSuccess({ scope: scopeStamp(snap), commit: res.commit, changed: res.changed })
+          const guidance = await guidanceField(snap, deps.config.guidanceThreshold)
+          return toolSuccess({ scope: scopeStamp(snap), commit: res.commit, changed: res.changed, ...guidance })
         }
 
         const name = input.event.name
@@ -127,7 +130,8 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
             return written
           },
         )
-        return toolSuccess({ scope: scopeStamp(snap), commit: res.commit, changed: res.changed })
+        const guidance = await guidanceField(snap, deps.config.guidanceThreshold)
+        return toolSuccess({ scope: scopeStamp(snap), commit: res.commit, changed: res.changed, ...guidance })
       } catch (e) {
         return toToolErrorResult(e)
       }
@@ -173,7 +177,14 @@ function registerUpdateDefinition(server: McpServer, deps: ServerDeps): void {
         // `getEnrichmentHealth()` here would only report whatever an earlier table
         // write left behind — misattributed — so the key stays absent for both
         // (`undefined` is dropped by JSON serialization).
-        return toolSuccess({ scope: scopeStamp(snap), commit: res.commit, changed: res.changed, enrichment_health: enrichmentHealthAfter(snap, input.kind) })
+        const guidance = await guidanceField(snap, deps.config.guidanceThreshold)
+        return toolSuccess({
+          scope: scopeStamp(snap),
+          commit: res.commit,
+          changed: res.changed,
+          enrichment_health: enrichmentHealthAfter(snap, input.kind),
+          ...guidance,
+        })
       } catch (e) {
         return toToolErrorResult(e)
       }

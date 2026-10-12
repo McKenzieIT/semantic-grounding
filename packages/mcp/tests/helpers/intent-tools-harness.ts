@@ -24,6 +24,7 @@ import { BindingStore } from '../../src/binding.ts'
 import type { GitTier2Recorder } from '../../src/git/recorder.ts'
 import { ScopeRegistryFile } from '../../src/scope-registry.ts'
 import { createServerFactory, TOOL_REGISTRARS, type ServerDeps, type ToolRegistrar } from '../../src/server.ts'
+import type { GuidanceThresholds } from '../../src/tools/guidance.ts'
 import { createFixtureCorpus, type FixtureCorpus, type FixtureCorpusOptions } from './fixture-corpus.ts'
 import { connectInProcess, toolJson, type InProcessClient } from './inprocess-client.ts'
 
@@ -62,6 +63,9 @@ export interface IntentToolHarnessOptions {
    * is how the restart tests build a second server over the same corpus.
    */
   readonly corpusRoot?: string
+  /** `_guidance` per-layer threshold override (default: `guidance.ts`'s
+   * `DEFAULT_DW_THRESHOLD`/`DEFAULT_KG_THRESHOLD`, 50/5). */
+  readonly guidanceThreshold?: GuidanceThresholds
 }
 
 /** One built harness. */
@@ -101,7 +105,12 @@ export async function buildIntentToolHarness(opts: IntentToolHarnessOptions = {}
   const deps: ServerDeps = {
     registry,
     bindings,
-    config: { registryPath, agentId, scopeId: HARNESS_SCOPE_ID },
+    config: {
+      registryPath,
+      agentId,
+      scopeId: HARNESS_SCOPE_ID,
+      ...opts.guidanceThreshold !== undefined ? { guidanceThreshold: opts.guidanceThreshold } : {},
+    },
   }
   const server = await buildServer(createServerFactory(deps, opts.registrars ?? TOOL_REGISTRARS))
   const client = await connectInProcess(server)

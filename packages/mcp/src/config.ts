@@ -54,6 +54,7 @@
 import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { defaultRegistryPath } from './scope-registry.ts'
+import type { GuidanceThresholds } from './tools/guidance.ts'
 
 /** The executable's name, as it appears in usage text and error remedies. */
 export const BIN_NAME = 'sg-mcp'
@@ -93,6 +94,16 @@ export interface ServerConfig {
   readonly scopeId?: string
   /** Corpus-lock acquisition timeout; absent means `lock.ts`'s 10s default. */
   readonly lockTimeoutMs?: number
+  /**
+   * Per-layer `_guidance` maturity thresholds (`tools/guidance.ts`): DW (tables +
+   * events) and KG (concepts) track independently (#55 R4/R12), each reaching
+   * `mature` at its own count. An absent side defaults to that module's
+   * `DEFAULT_DW_THRESHOLD` (50) / `DEFAULT_KG_THRESHOLD` (5). No flag/env var:
+   * ADR-0011 ruling 3 closed the CLI surface at four flags, and neither #55 nor
+   * #56 asks for one — reachable today via `ServerConfig` construction (tests, a
+   * future embedding host), not via the `sg-mcp` binary's argv.
+   */
+  readonly guidanceThreshold?: GuidanceThresholds
 }
 
 /**
