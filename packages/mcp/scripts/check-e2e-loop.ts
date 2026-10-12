@@ -243,7 +243,7 @@ async function main(): Promise<void> {
     assert.equal(fixtureGit(['status', '--porcelain'], root).trim(), '', 'fixture must start clean')
 
     // ── Phase 1 — catalog over the wire ─────────────────────────────────────────────
-    step('tools/list: the full default tool catalog (ADR-0005 fifteen + ADR-0006 three + ADR-0008 one + ADR-0011 five)')
+    step('tools/list: the full default tool catalog (ADR-0005 fifteen + ADR-0006 three + ADR-0008 one + ADR-0011 five + #63 playbook)')
     {
       const listed = (await client.listTools()).result?.['tools'] as Array<{ name: string; description?: string; inputSchema?: { type?: string } }>
       assert.deepEqual(listed.map(t => t.name).sort(), [...TOOL_NAMES].sort(), 'exactly the ruled tool surface')
@@ -945,6 +945,66 @@ async function main(): Promise<void> {
         await probeBoot.shutdown()
         scopeFixture.cleanup()
         rmSync(scopeRegistryDir, { recursive: true, force: true })
+      }
+    }
+
+    // ── Phase 6.6 — the initialization playbook (#63, ADR-0014), over the real wire ─
+    // Its own fixture/registry/boot (same isolation rule as Phase 6.5): the probe
+    // walks #55's e2e sketch — "scope 未注册 → 各阶段 → 成熟" — compressed to the
+    // stops a live server observes in one gate run, plus the reuse contract
+    // (playbook phases equal _guidance's on the same corpus state).
+    step('initialization playbook: scope_registration before register, real two-layer phases after switch, equivalence with _guidance')
+    {
+      const pbFixture = createFixtureCorpus({ withEvents: false })
+      const pbRegistryDir = mkdtempSync(join(tmpdir(), 'sg-e2e-registry-'))
+      const pbRegistryPath = join(pbRegistryDir, 'scopes.yaml')
+      const pbBoot = await boot({ registryPath: pbRegistryPath, agentId: 'playbook-probe-agent' })
+      try {
+        const pbClient = pbBoot.client
+
+        // Before registration: phase 1 of the five — a successful answer, not an
+        // error (R6: scope 不存在), whose recommended action is register_scope (R3).
+        const before = await call(pbClient, 'get_initialization_playbook', { scope_id: 'pb-probe' })
+        assert.equal(before['overall_phase'], 'scope_registration')
+        assert.equal((before['scope'] as Record<string, unknown>)['root'], null)
+        const beforeDw = ((before['layers'] as Record<string, Record<string, unknown>>)['dw']) as Record<string, unknown>
+        assert.equal(beforeDw['phase'], 'scope_registration')
+        assert.deepEqual(beforeDw['recommended_action'], { tool: 'register_scope', hint: '注册 scope 以启用语义层管理' })
+
+        // Register + switch: the corpus is the standard two-table fixture, so DW
+        // starts life in backfill (three deterministic gaps) and KG — zero
+        // concepts — in seeding, which is the laggard (R8's rule).
+        await call(pbClient, 'register_scope', { id: 'pb-probe', path: pbFixture.root })
+        await call(pbClient, 'switch_scope', { scope_id: 'pb-probe' })
+        const live = await call(pbClient, 'get_initialization_playbook', { scope_id: 'pb-probe' })
+        assert.equal(live['overall_phase'], 'seeding')
+        const layers = live['layers'] as Record<string, Record<string, unknown>>
+        assert.equal(layers['dw']?.['phase'], 'backfill')
+        assert.equal(layers['kg']?.['phase'], 'seeding')
+        assert.deepEqual(layers['dw']?.['recommended_action'], { tool: 'run_enrichment', hint: '运行确定性 enrichment 填充关联和别名' })
+        const summary = live['summary'] as Record<string, unknown>
+        assert.deepEqual(
+          { dw: summary['dw_definitions'], kg: summary['kg_definitions'], total: summary['total_definitions'], work: summary['enrichment_work_remaining'] },
+          { dw: 2, kg: 0, total: 2, work: 3 },
+        )
+        assert.ok(typeof summary['message'] === 'string' && (summary['message'] as string).includes('知识图谱层(KG)'), 'the corpus-level judgement names the laggard layer')
+
+        // The reuse contract, observed on one state: the write's _guidance reports
+        // the state it produced; the playbook then reads that same state.
+        const aliased = await call(pbClient, 'add_alias', { scope_id: 'pb-probe',
+          kind: 'table', name: 'dws_order', alias: '订单宽表',
+          ...tier2('补别名', 0.9), expected_version: fieldString(await call(pbClient, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version'),
+        })
+        const guidance = aliased['_guidance'] as { phase: string; metrics: { dw: { phase: string }; kg: { phase: string } } }
+        const after = await call(pbClient, 'get_initialization_playbook', { scope_id: 'pb-probe' })
+        const afterLayers = after['layers'] as Record<string, Record<string, unknown>>
+        assert.equal(afterLayers['dw']?.['phase'], guidance.metrics.dw.phase)
+        assert.equal(afterLayers['kg']?.['phase'], guidance.metrics.kg.phase)
+        assert.equal(after['overall_phase'], guidance.phase)
+      } finally {
+        await pbBoot.shutdown()
+        pbFixture.cleanup()
+        rmSync(pbRegistryDir, { recursive: true, force: true })
       }
     }
 

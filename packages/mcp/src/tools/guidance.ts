@@ -40,6 +40,15 @@
  * deterministic gap index `get_enrichment_work` exposes — so {@link maybeGuidance}
  * is async.
  *
+ * ## #63: the phase derivation is exported, not duplicated
+ *
+ * `layerCounts`/`dwPhase`/`kgPhase` (and `PHASE_RANK`) were module-private until
+ * `get_initialization_playbook` (`tools/playbook.ts`, #63) needed them. #55's
+ * resolution pinned the reuse rule — "`_guidance.phase` 调用本工具的阶段判断，接口
+ * 不变" — so the playbook imports these instead of forking a second phase
+ * derivation. They are exported for that one consumer; their signatures and
+ * semantics are unchanged.
+ *
  * @module tools/guidance
  */
 import type { ScopeBinding } from '../binding.ts'
@@ -80,14 +89,17 @@ export interface Guidance {
   readonly metrics: Readonly<{ dw: LayerMetrics; kg: LayerMetrics }>
 }
 
-/** Lower rank = further behind. */
-const PHASE_RANK: Readonly<Record<GuidancePhase, number>> = { seeding: 0, backfill: 1, llm_supplement: 2, mature: 3 }
+/** Lower rank = further behind. Exported for `tools/playbook.ts` (#63) — the
+ * single ranking table both tools order phases by; a second copy could drift into
+ * disagreeing with `_guidance` about which layer is the laggard. */
+export const PHASE_RANK: Readonly<Record<GuidancePhase, number>> = { seeding: 0, backfill: 1, llm_supplement: 2, mature: 3 }
 
 /** DW's phase: `seeding` (no definitions) → `backfill` (deterministic relation /
  * alias gaps outstanding) → `llm_supplement` (gaps clear, count still below
  * threshold) → `mature`. The `backfill` check is the only reason this function
- * (and therefore {@link maybeGuidance}) is async. */
-async function dwPhase(snap: ScopeBinding, count: number, threshold: number): Promise<GuidancePhase> {
+ * (and therefore {@link maybeGuidance}) is async. Exported for
+ * `tools/playbook.ts` (#63) — the one phase derivation, shared, never forked. */
+export async function dwPhase(snap: ScopeBinding, count: number, threshold: number): Promise<GuidancePhase> {
   if (count === 0) return 'seeding'
   const work = await snap.core.listEnrichmentWork({})
   if (work.total > 0) return 'backfill'
@@ -95,16 +107,18 @@ async function dwPhase(snap: ScopeBinding, count: number, threshold: number): Pr
 }
 
 /** KG's phase: `seeding` → `llm_supplement` → `mature` — `backfill` is skipped
- * (concepts have no enrichment rounds at all, ADR-0012/#46). */
-function kgPhase(count: number, threshold: number): GuidancePhase {
+ * (concepts have no enrichment rounds at all, ADR-0012/#46). Exported for
+ * `tools/playbook.ts` (#63), same single-derivation rule as {@link dwPhase}. */
+export function kgPhase(count: number, threshold: number): GuidancePhase {
   if (count === 0) return 'seeding'
   return count < threshold ? 'llm_supplement' : 'mature'
 }
 
 /** DW count (tables + events) and KG count (concepts), split from one
  * schema-valid, graph-attached scan — see this module's doc for why a concept
- * node's fixed `kind` lets DW fall out "by elimination". */
-function layerCounts(snap: ScopeBinding): { readonly dw: number; readonly kg: number } {
+ * node's fixed `kind` lets DW fall out "by elimination". Exported for
+ * `tools/playbook.ts` (#63), same single-derivation rule as {@link dwPhase}. */
+export function layerCounts(snap: ScopeBinding): { readonly dw: number; readonly kg: number } {
   const nodes = snap.core.projectGraphNodes({ includeDerived: false })
   const kg = nodes.filter(n => n.kind === 'concept').length
   return { dw: nodes.length - kg, kg }

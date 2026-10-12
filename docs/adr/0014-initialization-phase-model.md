@@ -113,6 +113,36 @@ R13（corpus 级 `summary`）——描述的是**尚未实现**的 `get_initiali
 - 门禁：两个包的 typecheck/test 全绿；本票未涉及 e2e 脚本改动（6 个写工具原有的 wire
   形状不变，只多一个条件性字段），现有 e2e 覆盖不需要新增步骤。
 
+## Update — #63：R3/R7/R10/R13 落地（2026-10-12）
+
+Decision 段预留的四项裁决（R3/R7/R10/R13）随
+[#63](https://github.com/McKenzieIT/semantic-grounding/issues/63) 落地在
+`packages/mcp/src/tools/playbook.ts`（`get_initialization_playbook`，tools/list 24→25）：
+
+- **复用先行**：`guidance.ts` 的 `layerCounts`/`dwPhase`/`kgPhase`（连带 `PHASE_RANK`）由模块私有
+  提升为导出，`playbook.ts` 直接 import——阶段推导仍只此一套，`_guidance.phase` 与
+  `overall_phase`/`layers.*.phase` 的等价有直接断言的测试（`tests/playbook.spec.ts` 第一组）。
+  阈值仍读 `ServerConfig.guidanceThreshold`（默认 DW=50/KG=5），未新增平行配置入口。
+- **R10 的三态门**：`scope_id` 必填（zod 层拒缺省）；未注册（或已注册但目录不可达——R6
+  phase 1 的两个 entry 条件）的 id 得到的是**成功的** `scope_registration` 应答，其
+  recommended_action 是 `register_scope`；已注册、可达、但非本进程活跃绑定的 scope 拒绝
+  `scope_mismatch`（−31064，ADR-0011 写断言同一惯例族），remedy 指向 `switch_scope`——读工具
+  不以 switch 为副作用（constant 1）。`scope_registration` 因此在本工具**可达**（`_guidance`
+  的注入点结构上观测不到它，见上文收窄段），`PlaybookPhase = GuidancePhase |
+  'scope_registration'` 五值，正是 R7 设想的 `PhaseName`。
+- **两处与票面文字的和解（不是重设计）**：① `summary` 同时携带 R7 的数字块
+  （`total_definitions`/`dw_definitions`/`kg_definitions`/`enrichment_work_remaining`）与
+  #63 票面要求的一句话判断 `message`（R13 正文列的正是那四个数字，票面的「一句话」与 R7
+  的形状取并集，二者都不丢）；② R3 表格中 DW `llm_supplement` 一格含三个工具名，按
+  「照抄」原则以斜杠分隔 rides 单个 `tool: string` 字段，不把字段改成数组。
+- **前瞻引用照抄**：DW `seeding` 的 recommended_action 是 `import_definitions`——#54 已裁
+  未落地（本票 24→25，它是 25→26），名字照 R3 表抄录；落地前该阶段的可用手段是
+  `create_definition`。#54 落地时 catalog 断言的 `toHaveLength` 需 25→26 再改。
+- `dwPhase` 内部为判 backfill 扫一次 work 队列，`playbook` 为 `summary`/`coverage` 再扫
+  一次：两扫换「阶段推导单一来源」，仪表盘读不是热路径，值得。
+- e2e 门禁加一步（19→20 步）：未注册 → scope_registration、注册+切换后双层真实阶段、与
+  `_guidance` 的同态等价，走真实 `startup()` seam。
+
 ## References
 
 - 设计来源：[#55](https://github.com/McKenzieIT/semantic-grounding/issues/55) 的
@@ -135,6 +165,7 @@ R13（corpus 级 `summary`）——描述的是**尚未实现**的 `get_initiali
 - GLOSSARY：`playbook (初始化手册)` 词条随 `#55` 落盘（commit `8fe4a07`），本票核对
   后确认其描述覆盖本 ADR 的模型，未改动
 
-跟进：`get_initialization_playbook` 工具（R3/R7/R10/R13 的落地点）尚未开票——map #50
-随 `#56` 关票追加该子票。该票应复用本 ADR 的 `layerCounts`/`dwPhase`/`kgPhase`
-（`guidance.ts`，当前模块内私有，未导出），而不是重新实现一套阶段判断逻辑。
+跟进：`get_initialization_playbook` 工具（R3/R7/R10/R13 的落地点）曾由 map #50 随 `#56`
+关票开票为 [#63](https://github.com/McKenzieIT/semantic-grounding/issues/63)，现已落地——
+见上文 Update 段；该票复用了本 ADR 的 `layerCounts`/`dwPhase`/`kgPhase`（`guidance.ts`，
+随该票提升为导出），未另起一套阶段判断逻辑。

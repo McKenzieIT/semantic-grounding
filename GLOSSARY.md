@@ -589,3 +589,12 @@ The phase model has five hardcoded phases (scope registration → seeding → ba
 LLM supplement → mature), with status and coverage derived per-layer (DW and KG tracked
 independently). "Mature" is the completion signal but not a terminal state: the semantic
 layer continues to evolve, only the guidance injection stops.
+
+Tool-level shape (landed [#63](https://github.com/McKenzieIT/semantic-grounding/issues/63),
+ADR-0014): the tool takes a required `scope_id` (no whole-registry default view) and
+returns `{ scope, overall_phase, summary, layers: { dw, kg } }` — `overall_phase` is the
+more-behind layer's phase (the exact judgment `_guidance.phase` reports; one shared
+derivation), each layer carries its phase, its own coverage indicator, and a
+`recommended_action: { tool, hint }`; `summary` carries the corpus-level counts plus a
+one-sentence judgement of where the scope stands. An unregistered (or unreachable)
+scope id answers with the scope_registration phase rather than an error.

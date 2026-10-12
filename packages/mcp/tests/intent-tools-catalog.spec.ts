@@ -1,10 +1,10 @@
 /**
  * The tool catalog: names, and the schema shapes the ADRs' rulings bake in —
- * ADR-0005's fifteen intent tools plus ADR-0006/0008's four enrichment tools,
- * nineteen total. ADR-0005's own Verification section asks for exactly this
- * ("门禁脚本断言：十五个工具名与 input/output schema 快照"); ADR-0006/0008 inherited
- * the same ask, and the e2e gate's header defers schema pinning here — this file is
- * where that lands for the whole surface.
+ * ADR-0005's fifteen intent tools plus ADR-0006/0008's four enrichment tools
+ * plus #63's playbook tool, twenty total today. ADR-0005's own Verification
+ * section asks for exactly this ("门禁脚本断言：十五个工具名与 input/output schema
+ * 快照"); ADR-0006/0008 inherited the same ask, and the e2e gate's header defers
+ * schema pinning here — this file is where that lands for the whole surface.
  *
  * This file asserts over the *wire* `tools/list` output (real zod → JSON Schema
  * conversion through the real `registerTool`), not this package's own TS types —
@@ -15,13 +15,14 @@
  * the default registrars (production's `TOOL_REGISTRARS`), and this file asserts the
  * live `tools/list` equals `TOOL_NAMES` — a tool registered without its name constant
  * (or vice versa) fails here rather than shipping two different surfaces. The
- * `toHaveLength(24)` line is a deliberate speed bump: growing the surface must change
+ * `toHaveLength(25)` line is a deliberate speed bump: growing the surface must change
  * this line and show up in the diff.
  *
  * @see docs/adr/0005-mcp-tool-surface.md
  * @see docs/adr/0006-enrichment-agent-driven.md
  * @see docs/adr/0007-dimension-filter-semantics.md
  * @see docs/adr/0008-enrichment-work-response-sizing.md
+ * @see docs/adr/0014-initialization-phase-model.md (the playbook tool, #63)
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { TOOL_NAMES } from '../src/tools/index.ts'
@@ -34,6 +35,7 @@ afterEach(() => h?.close())
 interface ListedTool {
   readonly name: string
   readonly description?: string
+  readonly annotations?: { readonly readOnlyHint?: boolean }
   readonly inputSchema: {
     readonly type?: string
     readonly properties?: Record<string, unknown>
@@ -56,13 +58,14 @@ function byName(tools: readonly ListedTool[], name: string): ListedTool {
   return found
 }
 
-describe('the twenty-four names', () => {
-  it('registers exactly ADR-0005\'s fifteen + ADR-0006/0008\'s four + ADR-0011\'s five, reconciled against TOOL_NAMES', async () => {
+describe('the twenty-five names', () => {
+  it('registers exactly ADR-0005\'s fifteen + ADR-0006/0008\'s four + ADR-0011\'s five + #63\'s playbook, reconciled against TOOL_NAMES', async () => {
     const tools = await listTools()
     expect(tools.map(t => t.name).sort()).toEqual([...TOOL_NAMES].sort())
-    // Deliberate hard count, not TOOL_NAMES.length: growing the surface to 25 must
-    // edit this line, so the change is visible in the diff for review.
-    expect(tools).toHaveLength(24)
+    // Deliberate hard count, not TOOL_NAMES.length: growing the surface to 26
+    // (#54's import_definitions is next) must edit this line, so the change is
+    // visible in the diff for review.
+    expect(tools).toHaveLength(25)
   })
 
   it('names every read tool ADR-0005 ruling 6 lists', async () => {
@@ -325,5 +328,14 @@ describe('enrichment tool schemas — ADR-0006/0007/0008', () => {
     const confidence = tool.inputSchema.properties?.['confidence'] as { minimum?: number; maximum?: number }
     expect(confidence.minimum).toBe(0)
     expect(confidence.maximum).toBe(1)
+  })
+})
+
+describe('playbook tool schema — ADR-0014 / #63 (R10: scope_id required)', () => {
+  it('get_initialization_playbook requires exactly scope_id and advertises the read-only hint', async () => {
+    const tool = byName(await listTools(), 'get_initialization_playbook')
+    expect(tool.inputSchema.required).toEqual(['scope_id'])
+    expect(Object.keys(tool.inputSchema.properties ?? {}).sort()).toEqual(['scope_id'])
+    expect(tool.annotations?.readOnlyHint).toBe(true)
   })
 })
