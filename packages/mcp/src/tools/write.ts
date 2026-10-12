@@ -85,7 +85,16 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
             snap,
             ctx,
             { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-            () => writeTable(root, name, input.table, {}, { recorder: snap.recorder }),
+            async () => {
+              const written = await writeTable(root, name, input.table, {}, { recorder: snap.recorder })
+              // `writeTable` re-validates the payload; it was already validated
+              // by this tool's zod schema, so reaching the `{ok:false}` branch
+              // is this server's own bug, not a caller mistake.
+              if (!written.ok) {
+                throw new Error(`writeTable rejected a payload create_definition already validated: ${written.error}`)
+              }
+              return written
+            },
           )
           return toolSuccess({ scope: scopeStamp(snap), commit: res.commit, changed: res.changed })
         }
@@ -103,7 +112,13 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
             snap,
             ctx,
             { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-            () => snap.core.writeConceptYaml(name, input.concept),
+            async () => {
+              const written = await snap.core.writeConceptYaml(name, input.concept)
+              if (!written.ok) {
+                throw new Error(`writeConceptYaml rejected a payload create_definition already validated: ${written.error}`)
+              }
+              return written
+            },
           )
           return toolSuccess({ scope: scopeStamp(snap), commit: res.commit, changed: res.changed })
         }

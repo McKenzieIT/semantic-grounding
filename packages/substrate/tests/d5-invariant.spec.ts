@@ -21,7 +21,7 @@
  * @see docs/adr/0001-d5-tier2-audit-invariant.md
  */
 import { test, expect, describe, it, beforeEach, afterEach } from 'vitest'
-import { SemanticGroundingCore, type TableMeta } from '../src/index.ts'
+import { SemanticGroundingCore, writeTable, writeEventYaml, type TableMeta } from '../src/index.ts'
 import type { Tier2Recorder } from '../src/io.ts'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -193,4 +193,102 @@ test('D5 — each core instance carries its own recorder', async () => {
   a.setTier2Recorder(noopRecorder)
   // b was never wired: it must still throw even though a sibling instance is wired
   await expect(b.syncWrite([SAMPLE_META])).rejects.toThrow(/D5/)
+})
+
+// ── #61: the remaining five audited write paths roll back on a recorder raise ──
+// The two guards above (syncWrite, updateTableMeta) pinned 2 of 7 paths; the
+// other five rolled back correctly only by courtesy of the ceremony being
+// re-copied faithfully. #61 folded all seven into io.ts's `auditedFileWrite`
+// seam; this block pins the remaining five wirings — the recorder raise
+// propagates and disk ends at its pre-write state, on both restore branches
+// (create ⇒ the file is gone; update ⇒ the bytes are byte-identical,
+// hand-written comment included) across the table/event/concept axis. Also
+// pins #61's unified domain-failure face: writeTable validation failures are
+// {ok:false}, never a throw.
+describe('D5 — #61: every remaining audited write path rolls back on a recorder raise', () => {
+  let dir: string
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'd5-61-'))
+    mkdirSync(join(dir, 'tables'), { recursive: true })
+    mkdirSync(join(dir, 'events', 'biz'), { recursive: true })
+    mkdirSync(join(dir, 'concepts'), { recursive: true })
+    writeFileSync(join(dir, 'config.yaml'), yaml.dump({ scope_id: 'd5-61' }), 'utf8')
+  })
+  afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }) })
+
+  /** A recorder whose every recording raises — the D5 lower-half probe. */
+  const exploding: Tier2Recorder = {
+    recordTier2Write: async () => { throw new Error('audit backend down') },
+  }
+
+  /** The minimal schema-valid table payload (mirrors item-write's fixture). */
+  const TABLE = {
+    table_name: 'dws_probe', table_comment: '', description: '', alt_labels: [], domains: [],
+    granularity: '', engine: 'maxcompute', metrics: {}, partitions: [{ name: 'ds', type: 'string' }],
+    confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' }, coverage: null,
+    supersedes: [], disambiguation: null, primary_key: [], primary_key_unique: null,
+    duplicate_sample: [], label_columns: [], freshness: '', dimension_refs: [],
+  }
+
+  it('writeTable (audited) — the raise propagates and the created file is rolled back to absent', async () => {
+    const probe = join(dir, 'tables', 'dws_probe.yaml')
+    await expect(writeTable(dir, 'dws_probe', TABLE, {}, { recorder: exploding })).rejects.toThrow(/audit backend down/)
+    expect(existsSync(probe)).toBe(false)
+  })
+
+  it('writeTable (audited) — an overwrite rolls the file back to its byte-identical pre-write state', async () => {
+    const probe = join(dir, 'tables', 'dws_probe.yaml')
+    const original = '# hand-written note: do not remove\n'
+      + yaml.dump(TABLE, { sortKeys: false, lineWidth: -1, noRefs: true, quotingType: '"' })
+    writeFileSync(probe, original, 'utf8')
+    await expect(writeTable(dir, 'dws_probe', { ...TABLE, description: 'overwritten' }, {}, { recorder: exploding })).rejects.toThrow(/audit backend down/)
+    expect(readFileSync(probe, 'utf8')).toBe(original)
+  })
+
+  it('writeTable — a validation failure is {ok:false} (#61 unified face) with nothing on disk', async () => {
+    const probe = join(dir, 'tables', 'bad.yaml')
+    // `table_name` is the one field with no default — `{}` cannot validate
+    const res = await writeTable(dir, 'bad', {}, {}, { recorder: exploding })
+    expect(res.ok).toBe(false)
+    if (!res.ok) expect(res.error).toMatch(/Table validation failed/)
+    expect(existsSync(probe)).toBe(false)
+  })
+
+  it('writeEventYaml (audited) — the raise propagates and the created _suggested file is rolled back to absent', async () => {
+    const probe = join(dir, 'events', '_suggested', 'pay_probe.yaml')
+    await expect(writeEventYaml(dir, 'pay_probe', 'name: pay_probe\ndescription: probe\n', { recorder: exploding })).rejects.toThrow(/audit backend down/)
+    expect(existsSync(probe)).toBe(false)
+  })
+
+  it('updateEventMeta — the raise propagates and the file stays byte-identical', async () => {
+    const probe = join(dir, 'events', 'biz', 'pay_probe.yaml')
+    const original = '# hand-written note: do not remove\n'
+      + yaml.dump({
+        name: 'pay_probe', event_filter: '', description: '', alt_labels: [], domains: [],
+        params_fields: {}, metrics: {}, disambiguation: [], external_refs: [],
+      }, { sortKeys: false, lineWidth: -1, noRefs: true, quotingType: '"' })
+    writeFileSync(probe, original, 'utf8')
+    const svc = new SemanticGroundingCore({ semanticRoot: dir, autoEnrich: false })
+    svc.setTier2Recorder(exploding)
+    await expect(svc.updateEventMeta('pay_probe', { description: 'overwritten' })).rejects.toThrow(/audit backend down/)
+    expect(readFileSync(probe, 'utf8')).toBe(original)
+  })
+
+  it('writeConceptYaml — the raise propagates and the created file is rolled back to absent', async () => {
+    const probe = join(dir, 'concepts', '付费.yaml')
+    const svc = new SemanticGroundingCore({ semanticRoot: dir, autoEnrich: false })
+    svc.setTier2Recorder(exploding)
+    await expect(svc.writeConceptYaml('付费', { name: '付费', description: 'x' })).rejects.toThrow(/audit backend down/)
+    expect(existsSync(probe)).toBe(false)
+  })
+
+  it('updateConceptMeta — the raise propagates and the file stays byte-identical', async () => {
+    const probe = join(dir, 'concepts', '付费.yaml')
+    const original = '# hand-written note: do not remove\nname: 付费\ndescription: 旧\n'
+    writeFileSync(probe, original, 'utf8')
+    const svc = new SemanticGroundingCore({ semanticRoot: dir, autoEnrich: false })
+    svc.setTier2Recorder(exploding)
+    await expect(svc.updateConceptMeta('付费', { description: '新' })).rejects.toThrow(/audit backend down/)
+    expect(readFileSync(probe, 'utf8')).toBe(original)
+  })
 })

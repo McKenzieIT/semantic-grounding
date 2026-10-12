@@ -255,7 +255,9 @@ import * as mod from '${PKG.name}'
 import def from '${PKG.name}'
 
 const { SemanticGroundingCore, tableKindPlugin, eventKindPlugin, conceptKindPlugin,
-        DataSourceRegistry, loadTables, loadEvents, WriteValidationError } = mod
+        DataSourceRegistry, loadTables, loadEvents, StaleBaselineError } = mod
+assert.equal(typeof StaleBaselineError, 'function', 'StaleBaselineError is exported')
+assert.equal(mod.WriteValidationError, undefined, 'WriteValidationError retired (#61: domain validation is {ok:false}, not a throw)')
 
 assert.equal(typeof SemanticGroundingCore, 'function', 'SemanticGroundingCore is exported')
 assert.equal(def, SemanticGroundingCore, 'default export is the core class')
@@ -270,10 +272,13 @@ assert.equal(mod.registerInvalidationHook, undefined, 'registerInvalidationHook 
 //
 // #18 (ADR-0004 ruling 8) added 'StaleBaselineError': the error a write path
 // throws when an expected_version baseline no longer matches the on-disk
-// fingerprint, on the barrel for the same reason 'WriteValidationError' (its
-// sibling error type) already was — a caller needs instanceof to tell
-// "stale, re-read and retry" apart from every other write failure. The two
-// new reserved-batch-slot types ('Tier2Batch', 'Tier2RecordMeta') are
+// fingerprint, on the barrel because a caller needs instanceof to tell
+// "stale, re-read and retry" apart from every other write failure. Its former
+// sibling 'WriteValidationError' left the barrel with #61: write-path domain
+// validation failures return {ok:false} now (the unified domain-failure
+// face), so there is no second error type to instanceof — the class was
+// deleted with zero throw sites and zero typed catch sites remaining. The two
+// reserved-batch-slot types ('Tier2Batch', 'Tier2RecordMeta') are
 // type-only and so do not appear in this runtime list (see the note above).
 //
 // #31 (ADR-0007) added 'UnknownFilterNamesError' + 'assertKnownFilterNames':
@@ -286,7 +291,7 @@ assert.equal(mod.registerInvalidationHook, undefined, 'registerInvalidationHook 
 const EXPECTED_RUNTIME_NAMES = [
   'ConceptDefinitionSchema', 'DataSourceRegistry', 'DefinitionSnapshot', 'EventDefinitionSchema',
   'RelationGraph', 'SemanticGroundingCore', 'StaleBaselineError', 'TableDefinitionSchema',
-  'UnknownFilterNamesError', 'WriteValidationError', 'assertKnownFilterNames', 'captureSnapshot',
+  'UnknownFilterNamesError', 'assertKnownFilterNames', 'captureSnapshot',
   'conceptKindPlugin', 'deriveMetricRelations', 'discard',
   'dumpYaml', 'eventKindPlugin', 'extractMetricsFromEvent', 'extractMetricsFromTable',
   'invalidateCaches', 'isValidId', 'listing', 'loadConcepts', 'loadConfig', 'loadEvents',
@@ -296,7 +301,7 @@ const EXPECTED_RUNTIME_NAMES = [
 ].sort()
 const names = Object.keys(mod).sort()
 assert.deepEqual(names, [...EXPECTED_RUNTIME_NAMES, 'default'].sort(),
-  'barrel runtime surface must equal the ADR-0003 allow-list (37 names + default), got: ' + names.join(', '))
+  'barrel runtime surface must equal the ADR-0003 allow-list (36 names + default), got: ' + names.join(', '))
 // Headline names that must STAY off the barrel (ADR-0002/0003: convention-
 // coupled, test utilities, internals). getCorpusVersion / registerInvalidationHook
 // / SemanticLayerService are asserted separately above and not repeated here.

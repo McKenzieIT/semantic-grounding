@@ -122,3 +122,27 @@ barrel——它们在 dsh 侧只剩测试/脚本消费，(a) 不成立（口径 
   它新增方法的签名引用的型必须保留。
 
 三者均落在 `src/io.ts`，由 `src/index.ts` re-export；本次新增不改变裁掉名单。
+
+## Update 2026-10-12 — #61 落地：barrel −1（37→36 runtime、type +2，`WriteValidationError` 退役）
+
+[#61](https://github.com/McKenzieIT/semantic-grounding/issues/61) 把 io.ts 七条写路径的
+audited write-and-record 仪式收进单一 `auditedFileWrite` seam，并归一写路径错误面：
+`writeTable`/`writeConceptYaml` 的领域校验从 `throw WriteValidationError` 改为
+`return {ok:false, error}`（与 `writeEventYaml`/三个 `update*Meta` 既有形状一致）；
+`StaleBaselineError` 与 recorder 故障维持 throw。三类失败的分界由 seam 单点定义。
+
+- **`WriteValidationError` 下桶**（runtime，37→36）：归一后全仓**零抛点、零类型化捕获点**
+  （已核：唯一两个抛点正是被归一的 `writeTable`/`writeConceptYaml`；mcp 靠通用
+  `catch → toToolErrorResult`，无 `instanceof` 分支）。类删除，不是死导出保留——
+  barrel 名单 = 真实消费面的纪律。`scripts/check-tarball-acceptance.mjs` 的
+  `EXPECTED_RUNTIME_NAMES` 已同步到 36。
+- **`WriteTableResult`、`WriteConceptYamlResult`**（type-only，不计入 runtime 断言）：
+  `writeTable`/`writeConceptYaml` 的新返回型（口径 2：两者是保留名字，其签名的
+  返回型属于公共面；与既有 `WriteEventYamlResult` 同形）。
+- **dsh 迁移注记**（class (a) 证据的下游义务）：本 ADR 保留名单记 `WriteValidationError`
+  的原始上桶证据为「dsh 8 文件直引/`as` 别名 + Tier-2 写抛出型」。后者已随归一消失；
+  前者意味着 dsh 下次升级 substrate 时需把 `instanceof WriteValidationError` 分支改为
+  `res.ok` 检查（校验失败信息字符串不变：`Table validation failed: …` /
+  `Concept validation failed: …`；`writeTable` 返回型从 `string` 变
+  `WriteTableResult`，取路径改 `res.ok && res.path`）。substrate 未正式发布，
+  tarball 直装，无 registry 消费者。

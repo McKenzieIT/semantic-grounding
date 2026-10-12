@@ -605,7 +605,15 @@ export async function applyOneEnrichmentResult(
       : mergeAltLabelsText(text, def.alt_labels, def.table_name, def.pref_label, aliasVetoSet(def.suppressed_alt_labels, corpusVetoes))
     if (outcome.kind !== 'applied') return { ...base, verdict: outcome.kind, detail: outcome.detail }
     const field = round === 'relation' ? 'dimension_refs' : 'alt_labels'
-    await writeTable(semanticLayer, target, { ...row.raw, [field]: outcome.value })
+    // #61: writeTable's domain validation is {ok:false}, not a throw. Mapping it
+    // to a verdict (not propagating) is this module's documented contract —
+    // "every failure mode is a verdict … one bad item cannot abort the others" —
+    // and mirrors the event branch's own {ok:false} mapping right below. In
+    // practice unreachable: row.raw was safeParse'd moments above and the merged
+    // field is merge-validated, so the old throw path this replaces was equally
+    // unreachable (and contradicted the never-throw contract when it fired).
+    const w = await writeTable(semanticLayer, target, { ...row.raw, [field]: outcome.value })
+    if (!w.ok) return { ...base, verdict: 'stale_baseline', detail: w.error }
     return { ...base, verdict: 'applied', detail: outcome.detail }
   }
 
