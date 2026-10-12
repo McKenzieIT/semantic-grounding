@@ -62,8 +62,7 @@ Destination: MCP 的只读调用路径上，一次工具调用只解析语料一
 
 <!-- 当前未关闭的子 ticket，按阻塞关系排序 -->
 
-- [02-bump-audit](issues/02-bump-audit.md) — **前沿**（task，AFK）：`invalidateCaches` bump 完备性审计 + 回归锁，独立于本图成立
-- [03-adr-0015](issues/03-adr-0015.md) — **前沿**（grilling，HITL）：ADR-0015 + GLOSSARY 词条（01-probe 已解，实测数字可用）
+- [03-adr-0015](issues/03-adr-0015.md) — **前沿**（grilling，HITL）：ADR-0015 + GLOSSARY 词条（01-probe 实测数字已就位）
 - [04-epoch-impl](issues/04-epoch-impl.md) — 被 03 阻塞（task，AFK）：AsyncLocalStorage epoch + loader memo + 路径断言
 - [05-cleanup](issues/05-cleanup.md) — 被 04 阻塞（task，AFK）：删 BasicIndex + registerInvalidationHook
 
@@ -76,6 +75,12 @@ Destination: MCP 的只读调用路径上，一次工具调用只解析语料一
 - **`run_enrichment` 262× 是写路径 bug 而非读路径问题**：99% 来自 `findEventPath`（io.ts:801）每写一次全事件库扫描——event name 用点（`account.role.backup.rollback`）而 filename 用下划线（`role_backup_rollback.yaml`），fast path 永不命中。本图不能修，**另开 sibling ticket**
 - **`get_definition` 单条 lookup 已是下限**：321/446 reads = 1 次全扫，epoch 帮不上（name→file 索引才能帮，那是另一条优化）
 - **源票 #60「≥10 次全库解析」的实测**：大幅超出（262×），但根因是写路径 `findEventPath` 扫描，不是源票预想的读路径重复读
+
+### 02-bump-audit 实测（2026-10-13）
+
+- **无遗漏 bug**：所有 7 个公共写原语都通过 `auditedFileWrite` (io.ts:707) 调用 `invalidateCaches` (717 成功后 / 722 回滚后)，由 #61 落地的设计保证
+- **回归锁落地**：`bump-completeness.spec.ts` 8 tests 全绿，未来若新增写原语绕开 `auditedFileWrite` 会立刻红
+- **MCP 层全覆盖**：`tools/write.ts` / `enrichment.ts` / `items.ts` / `suggestions.ts` 都通过 substrate 7 个公共写原语，不自己写文件
 
 ## Not yet specified
 
