@@ -1,6 +1,6 @@
 # ADR-0015: 读 epoch 缓存键 —— `(per-call epoch) × 进程内 corpusVersion`
 
-- **Status**: proposed
+- **Status**: accepted
 - **Date**: 2026-10-13
 - **Deciders**: McKenzieIT
 - **Relates to**: ADR-0004 裁决 8（写门指纹 `definitionVersion` 走 `readFileSync`，不经 loader —— 本裁决不触碰）、ADR-0005 裁决 6（拒绝快照句柄进 MCP 读面，MVCC 划给 dsh —— 与本裁决互补）、ADR-0006 裁决 4（`work_id` 自包含指纹，`fingerprint(raw)` 吃 loader 输出 —— 本裁决的硬约束）、ADR-0010（持久否决权，`registerInvalidationHook` 曾为 BasicIndex 而设 —— 本裁决随删）、[源票 #60](https://github.com/McKenzieIT/semantic-grounding/issues/60)、map `read-epoch`

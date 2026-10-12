@@ -106,6 +106,7 @@ import {
 // an omitted dimension can be OUT of the call, which the combined wrapper's
 // omit=everything contract cannot express — its own contract is unchanged.)
 import { listEnrichmentWorkItems, fetchEnrichmentPrompts, applyEnrichmentResultsBatch, peekWorkIdTarget } from './enrichment-work.ts'
+import { withReadEpoch } from './read-epoch.ts'
 import { DataSourceRegistry, type CorpusItem, type GraphNodeProjection } from './registry.ts'
 import { eventKindPlugin } from './kinds/event-kind.ts'
 import { tableKindPlugin } from './kinds/table-kind.ts'
@@ -491,6 +492,25 @@ function itemMatchesRelation(
 }
 
 export class SemanticGroundingCore {
+  /**
+   * Run `fn` inside one read epoch (ADR-0015): while it runs, `loadTables` /
+   * `loadEvents` share one per-layer memo instead of re-reading disk, keyed
+   * `(this epoch) × (in-process corpusVersion)` — a write in between bumps the
+   * version and forces a re-read, so post-write reads inside the same epoch
+   * still see fresh bytes. A static, not an instance method, on purpose: the
+   * epoch scopes a whole *tool call*, which may touch several cores (or none —
+   * the scope-management tools), so it is module-level state that must not
+   * pretend to belong to one instance. This is the MCP host's route to the
+   * epoch; the substrate function itself (`src/read-epoch.ts`) stays off the
+   * public barrel, whose 36-name allow-list (ADR-0003) is untouched.
+   * @param fn - the call to wrap (sync or async; a Promise return passes
+   *   through with the epoch attached to its continuations).
+   * @returns whatever `fn` returns, unchanged.
+   */
+  static withReadEpoch<T>(fn: () => T): T {
+    return withReadEpoch(fn)
+  }
+
   private readonly resolved: ResolvedSemanticLayerConfig
   private provider: SchemaProvider | undefined
   /** G3: injected one-shot LLM call for the semantic relation round (undefined => deterministic round only). */

@@ -71,7 +71,7 @@ describe('bump-completeness: every write primitive bumps getCorpusVersion', () =
         table_name: 't2',
         kind: 'dws',
         columns: [{ name: 'id', type: 'bigint' }],
-      }, noopTier2())
+      }, {}, noopTier2())
       const v1 = getCorpusVersion(root)
       expect(v1).toBeGreaterThan(v0)
     } finally {
@@ -125,7 +125,7 @@ describe('bump-completeness: every write primitive bumps getCorpusVersion', () =
       await writeConceptYaml(root, 'c2', {
         name: 'c2',
         description: 'second concept',
-      }, noopTier2())
+      }, {}, noopTier2())
       const v1 = getCorpusVersion(root)
       expect(v1).toBeGreaterThan(v0)
     } finally {

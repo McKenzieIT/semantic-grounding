@@ -83,6 +83,10 @@ import { registerEnrichmentTools } from './tools/enrichment.ts'
 import { registerImportTools } from './tools/import.ts'
 import { registerPlaybookTools } from './tools/playbook.ts'
 import { registerScopeTools } from './tools/scope.ts'
+// ADR-0015's MCP-side entry: the epoch itself lives in the substrate
+// (`read-epoch.ts`, reached through the barrel's `SemanticGroundingCore`
+// static — the barrel's 36-name allow-list is untouched). Value import.
+import { SemanticGroundingCore } from '@semantic-grounding/substrate'
 
 /**
  * The MCP server's identity, as reported in `_meta.serverInfo`.
@@ -152,6 +156,63 @@ export type ToolRegistrar = (server: McpServer, deps: ServerDeps) => void
 export const TOOL_REGISTRARS: readonly ToolRegistrar[] = [...INTENT_TOOL_REGISTRARS, registerEnrichmentTools, registerScopeTools, registerPlaybookTools, registerImportTools]
 
 /**
+ * Wrap one function so it runs inside a read epoch (ADR-0015): every
+ * `loadTables` / `loadEvents` the call makes shares one per-layer memo, with
+ * any write's `corpusVersion` bump forcing the next read back to disk (write
+ * safety is the composite key's, not the wrapper's — a write tool gets the
+ * same wrap as a read tool and stays correct by construction). Sync and
+ * Promise returns both pass through: `withReadEpoch` is `() => T`, so a
+ * handler's returned Promise carries the epoch into its continuations.
+ */
+function epochWrapped<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  return (...args: A) => SemanticGroundingCore.withReadEpoch(() => fn(...args))
+}
+
+/**
+ * ADR-0015's handler chokepoint: the server every registrar receives, with
+ * `registerTool` intercepted so **every installed tool handler** — read tools
+ * and write tools alike — runs inside one read epoch per call. One place of
+ * entry; the 26 `server.registerTool(...)` call sites across the tool files
+ * stay untouched by design (the alternative, wrapping each handler at its
+ * definition, would bet correctness on the next tool author remembering —
+ * the bet ADR-0010 already recorded losing).
+ *
+ * A Proxy, not a subclass: the registrars hand the instance back to the SDK's
+ * own `McpServer` machinery and only ever call `registerTool` on it, so
+ * forwarding every other property untouched (including the SDK's internal
+ * private state) is exactly the contract. Inside `registerTool(name, config, cb)`:
+ * - `cb` (the handler — `ToolCallback` in the SDK's two overloads) is wrapped
+ *   by {@link epochWrapped};
+ * - any function-valued property on `config` (the SDK accepts a
+ *   `scopeChallenge` handler there) is wrapped the same way — no current tool
+ *   uses one, but a future tool must not silently escape the epoch through it.
+ *
+ * The three connect-time probe handlers below (`prompts/list` etc.) are
+ * installed on the low-level `server.server`, never through `registerTool`,
+ * so they never see the wrap — they read no corpus, and that is fine.
+ * @param server - the fresh server instance the registrars will install on.
+ * @returns the same instance with `registerTool` epoch-wrapped.
+ */
+function epochEnteringServer(server: McpServer): McpServer {
+  const registerTool = server.registerTool.bind(server)
+  return new Proxy(server, {
+    get(target, prop, receiver) {
+      if (prop !== 'registerTool') return Reflect.get(target, prop, receiver)
+      return (name: string, config: unknown, cb?: unknown) => {
+        const wrappedConfig = config !== null && typeof config === 'object'
+          ? Object.fromEntries(
+              Object.entries(config as Record<string, unknown>)
+                .map(([k, v]) => [k, typeof v === 'function' ? epochWrapped(v as (...args: never[]) => unknown) : v]),
+            )
+          : config
+        const wrappedCb = typeof cb === 'function' ? epochWrapped(cb as (...args: never[]) => unknown) : cb
+        return registerTool(name, wrappedConfig as never, wrappedCb as never)
+      }
+    },
+  })
+}
+
+/**
  * Build the factory `serveStdio` calls to get a server instance.
  * @param deps - the process-wide dependencies, already constructed.
  * @param registrars - tool registrars to run on each instance (default
@@ -183,7 +244,11 @@ export function createServerFactory(
     server.server.setRequestHandler('prompts/list', () => ({ prompts: [] }))
     server.server.setRequestHandler('resources/list', () => ({ resources: [] }))
     server.server.setRequestHandler('resources/templates/list', () => ({ resourceTemplates: [] }))
-    for (const register of registrars) register(server, deps)
+    // ADR-0015: every registrar installs through the epoch-entering proxy, so
+    // all 26 tool handlers run one read epoch per call (see
+    // `epochEnteringServer`). Registrars stay pure registration — the wrap is
+    // applied to the handlers they install, never to registration itself.
+    for (const register of registrars) register(epochEnteringServer(server), deps)
     return server
   }
 }

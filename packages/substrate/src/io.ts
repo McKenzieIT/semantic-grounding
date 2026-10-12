@@ -47,6 +47,9 @@ import {
   type EventCorpusInput,
   type EventCorpusItem,
 } from './corpus.ts'
+// read-epoch.ts must not import this module (cycle: it is the store this
+// module's loaders memo through — ADR-0015's one-direction dependency).
+import { currentReadEpoch } from './read-epoch.ts'
 
 /**
  * Identity/scope metadata attached to one Tier-2 record (`recordTier2Write`'s
@@ -320,6 +323,10 @@ export interface RawEvent {
  * @returns a fresh array of raw events (name + raw + domain), oldest-first within each domain.
  */
 export function loadEvents(semanticLayer: string): RawEvent[] {
+  return readThroughEpoch(semanticLayer, 'events', scanEvents)
+}
+/** `loadEvents`'s direct disk scan — the R3 no-epoch path, verbatim. */
+function scanEvents(semanticLayer: string): RawEvent[] {
   const eventsDir = join(semanticLayer, 'events')
   const out: RawEvent[] = []
   if (!existsSync(eventsDir)) return out
@@ -359,6 +366,10 @@ export interface RawTable {
  * @returns a fresh array of raw tables (path + table_name + raw), name-sorted.
  */
 export function loadTables(semanticLayer: string): RawTable[] {
+  return readThroughEpoch(semanticLayer, 'tables', scanTables)
+}
+/** `loadTables`'s direct disk scan — the R3 no-epoch path, verbatim. */
+function scanTables(semanticLayer: string): RawTable[] {
   const tdir = join(semanticLayer, 'tables')
   const out: RawTable[] = []
   if (!existsSync(tdir)) return out
@@ -375,6 +386,43 @@ export function loadTables(semanticLayer: string): RawTable[] {
       continue
     }
   }
+  return out
+}
+
+// ── Read epoch (ADR-0015): loader memo keyed (epoch × corpusVersion) ──────
+// The epoch half of the composite key is the store instance itself (see
+// read-epoch.ts — one fresh store per withReadEpoch call, never shared across
+// epochs); this helper owns the other two coordinates:
+// - the `(semanticLayer, kind)` string tells two loaders apart on the same
+//   layer — a layer's tables and its events must never collide on one memo
+//   slot, or loadEvents would hand back loadTables' array;
+// - the per-entry `version` snapshot is validated against the LIVE
+//   `_corpusVersion` counter on every access, so any write's bump (R8:
+//   bump-completeness is auditedFileWrite's by-design guarantee, #75) turns
+//   the entry into a miss mid-epoch and the loader re-reads from disk.
+// Callers that never open an epoch take the `scan` path directly — R3:
+// byte-identical to pre-ADR-0015 behavior, one existing behavior unchanged.
+/**
+ * Read one loader family through the open epoch's memo (ADR-0015 R1): hit only
+ * when the entry's recorded corpusVersion still equals the live counter, else
+ * direct-read and write the fresh entry back.
+ * @param semanticLayer - the semantic-layer directory path.
+ * @param kind - which loader family the memo slot belongs to (`tables`/`events`).
+ * @param scan - the direct disk scan (today's loader body, verbatim).
+ * @returns the memoised array on a hit, otherwise the scan's fresh array.
+ */
+function readThroughEpoch<T>(semanticLayer: string, kind: 'tables' | 'events', scan: (semanticLayer: string) => T): T {
+  const epoch = currentReadEpoch()
+  if (epoch === undefined) return scan(semanticLayer) // R3: no epoch — direct read
+  const version = _corpusVersion.get(semanticLayer) ?? 0
+  const key = `${semanticLayer}\u0000${kind}`
+  const hit = epoch.memo.get(key)
+  // io.ts-side narrowing of read-epoch.ts's loose `unknown`: the only writer
+  // of `data` slots is this function, storing exactly what `scan` returned —
+  // RawTable[] for 'tables', RawEvent[] for 'events'.
+  if (hit !== undefined && hit.version === version) return hit.data as T
+  const out = scan(semanticLayer)
+  epoch.memo.set(key, { version, data: out })
   return out
 }
 /**
