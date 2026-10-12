@@ -1,5 +1,5 @@
 Type: task
-Status: open
+Status: resolved
 
 ## Question
 
@@ -25,3 +25,38 @@ Status: open
 - 如有遗漏，补 commit
 
 **前置**：无。本票与 01-probe 同为前沿，可并行。
+
+## Answer
+
+**Audit 2026-10-13: 所有 7 个公共写原语都通过 `auditedFileWrite` 调用 `invalidateCaches`。无遗漏。**
+
+### 审计表
+
+| 写原语 | 调用 `auditedFileWrite` | `auditedFileWrite` 调用 `invalidateCaches` | 备注 |
+|--------|------------------------|------------------------------------------|------|
+| `writeTable` (io.ts:753) | ✓ | ✓ (717 成功后 / 722 回滚后) | — |
+| `writeEventYaml` (io.ts:801) | ✓ | ✓ (822 tier2=undef 分支 / 717 via auditedFileWrite) | 两条路径都覆盖 |
+| `updateTableMeta` (io.ts:854) | ✓ | ✓ (717 via auditedFileWrite) | — |
+| `updateEventMeta` (io.ts:903) | ✓ | ✓ (717 via auditedFileWrite) | — |
+| `writeConceptYaml` (io.ts:963) | ✓ | ✓ (717 via auditedFileWrite) | — |
+| `updateConceptMeta` (io.ts:1001) | ✓ | ✓ (717 via auditedFileWrite) | — |
+| `syncWriteDefinitions` (io.ts:1155) | ✓ | ✓ (717 via auditedFileWrite, 循环体内) | — |
+
+`auditedFileWrite` (io.ts:707) 是单点 seam: 每次成功写后 bump (717), 每次 recorder 失败回滚后也 bump (722)。
+
+### 回归 spec
+
+`packages/substrate/tests/bump-completeness.spec.ts` — 8 tests:
+- 7 个写原语各一条断言 (`v1 > v0`)
+- 1 条基线断言 (`invalidateCaches` 直接调用)
+- 1 条跨路径隔离断言 (root A bump, root B 不动)
+
+全绿。
+
+### MCP 层审计
+
+`packages/mcp/src/tools/` 所有写路径 (`write.ts` / `enrichment.ts` / `items.ts` / `suggestions.ts`) 都通过 substrate 的 7 个公共写原语, 不自己写文件, 故自动覆盖。
+
+### 原预期 vs 实测
+
+原以为本票会发现「今天就存在的 bug」(至少一条写路径漏 bump)。实测无 bug — `auditedFileWrite` 的设计 (由 #61 落地) 已经把 bump 完备性由构造保证。本票仍值回归锁: 未来若新增写原语绕开 `auditedFileWrite`, spec 会立刻红。
