@@ -164,21 +164,6 @@ async function atomicWrite(path: string, obj: unknown): Promise<void> {
   await writeFileAtomic(path, text, { mode: YAML_MODE })
 }
 
-// ── Cache-invalidation hooks (ADR-0011 contract) ─────────────────────────
-const _invalidationHooks: Array<(semanticLayer: string) => void> = []
-/**
- * Register a cache-invalidation hook fired by `invalidateCaches` (ADR-0011).
- * @param hook - the callback invoked with the semantic-layer path being invalidated.
- * @returns the result
- */
-export function registerInvalidationHook(hook: (semanticLayer: string) => void): () => void {
-  _invalidationHooks.push(hook)
-  return () => {
-    const i = _invalidationHooks.indexOf(hook)
-    if (i >= 0) _invalidationHooks.splice(i, 1)
-  }
-}
-
 // D2f: per-path corpus-version counter bumped on every invalidateCaches call.
 // A cached enriched Bm25Linker (tool-search-data-sources, keyed by ctx.schema)
 // probes SemanticGroundingCore.corpusVersion() and rebuilds on a mismatch, so a
@@ -200,18 +185,13 @@ export function getCorpusVersion(semanticLayer: string): number {
   return _corpusVersion.get(semanticLayer) ?? 0
 }
 /**
- * Fire every registered invalidation hook for `semanticLayer` (best-effort: a broken hook cannot block the write).
+ * Bump the per-path corpus-version counter for `semanticLayer` (ADR-0011).
+ * Read-side caches key on it — the ADR-0015 loader memo's composite key turns
+ * stale into a miss, and the enriched-Bm25Linker probe rebuilds on a mismatch.
  * @param semanticLayer - the semantic-layer path being invalidated.
  */
 export function invalidateCaches(semanticLayer: string): void {
   _corpusVersion.set(semanticLayer, (_corpusVersion.get(semanticLayer) ?? 0) + 1)
-  for (const hook of _invalidationHooks) {
-    try {
-      hook(semanticLayer)
-    } catch {
-      // best-effort — a broken hook must not block the write
-    }
-  }
 }
 
 // ── Reader (mirrors reader.py: lenient scan, strict validate-on-match) ──

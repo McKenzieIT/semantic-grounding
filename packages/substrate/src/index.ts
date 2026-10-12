@@ -174,9 +174,6 @@ export {
 // (core.loadRetrievalCorpus is the public route), inferRole/generateTableYaml/
 // generateDimYaml/mergeColumns/mergeChangedYaml (convention-coupled or merge
 // internals), syncWriteDefinitions (P6b sync flow, no consumer yet).
-// basic-index (BasicIndex + EventIndexEntry/TableIndexEntry) is internal now:
-// corpus plumbing with no host consumer; the public read path is the core
-// class (ADR-0003).
 export { submit, load as loadPending, listing, discard, isValidId, type PendingSuggestion, type SubmitArgs } from './pending.ts'
 export {
   type CorpusVariant,
@@ -574,10 +571,6 @@ export class SemanticGroundingCore {
    * carry (slice 2 ②). The behavioural guarantee is unchanged — after disposal
    * the registry holds no kinds — but the trigger moves from a host fiber
    * unloading to an explicit call, so the host owns the lifecycle boundary.
-   *
-   * A host that embeds the core per request/tenant MUST call this; the
-   * module-level `registerInvalidationHook` list in `io.ts` is global, so a
-   * leaked instance leaks a hook (see the map's Not-yet-specified).
    */
   dispose(): void {
     // splice before running so a disposer that re-enters cannot double-run

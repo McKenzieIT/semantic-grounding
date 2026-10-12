@@ -57,13 +57,6 @@ describe('dependencies stay external', () => {
     expect(emitted).toContain(`from "${specifier}"`)
   })
 
-  it('does not inline the substrate, which would duplicate its module-level state', () => {
-    // `io.ts`'s invalidation-hook list is module-level and global. Two copies of the
-    // substrate in one process means two hook lists, and a cache that is invalidated in
-    // one and stale in the other — the hazard map #12's fog records.
-    expect(emitted).not.toContain('registerInvalidationHook =')
-  })
-
   it('does not inline the MCP SDK', () => {
     expect(emitted).toContain('from "@modelcontextprotocol/server/stdio"')
   })

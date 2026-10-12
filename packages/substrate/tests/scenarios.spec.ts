@@ -1,13 +1,12 @@
 /**
- * P6b semantic-layer — the 4 P6 prototype scenarios ported to vitest + a
+ * P6b semantic-layer — the 3 P6 prototype scenarios ported to vitest + a
  * P13b-swap-reachability test. Proves: zod mirrors RBI pydantic (parse +
  * round-trip + canonicalize + DIM superRefine), ODPS-decoupled sync (stand-in
- * provider -> generate/merge YAML, analyst role preserved), write-tiers
- * (Tier-1 suggest->pending->approve; Tier-2 via a ctx.audit recorder), and
- * BasicIndex (lookup + ADR-0011 invalidate rebuild). The swap test shows the
- * substrate provides the EventDefinition.params_fields / TableDefinition.partitions
- * contract P13b makeCriticCtx consumes (the SemanticGroundingCore exposes these
- * via ctx.schema.load_*).
+ * provider -> generate/merge YAML, analyst role preserved), and write-tiers
+ * (Tier-1 suggest->pending->approve; Tier-2 via a ctx.audit recorder). The
+ * swap test shows the substrate provides the EventDefinition.params_fields /
+ * TableDefinition.partitions contract P13b makeCriticCtx consumes (the
+ * SemanticGroundingCore exposes these via ctx.schema.load_*).
  *
  * Run: `pnpm vitest run packages/data/semantic-layer`
  */
@@ -26,14 +25,12 @@ import {
 import {
   loadEventDefinition,
   loadTableDefinition,
-  writeTable,
   writeEventYaml,
   updateTableMeta,
   syncWriteDefinitions,
   mergeChangedYaml,
   type Tier2Recorder,
 } from '../src/io.ts'
-import { BasicIndex } from '../src/basic-index.ts'
 import { submit, load as loadPending, listing, discard, isValidId } from '../src/pending.ts'
 import { StandInSchemaProvider } from '../src/schema-provider.ts'
 import { makeCriticCtx } from '../src/vendor/nl2sql-types.ts'
@@ -164,7 +161,6 @@ test('S2 ODPS-decoupled sync — stand-in provider -> TableMeta -> generate/merg
 
 test('S3 write-tiers — Tier-1 suggest->pending->approve; Tier-2 via ctx.audit recorder', async () => {
   resetLayer()
-  const idx = new BasicIndex(LAYER)
   // Tier-1: suggest does NOT touch source-of-truth (the fixture event is already present)
   const content = yaml.dump({
     name: 'role.online', event_filter: "event = 'role.online'", description: 'suggest',
@@ -180,28 +176,11 @@ test('S3 write-tiers — Tier-1 suggest->pending->approve; Tier-2 via ctx.audit 
   expect(res.ok).toBe(true)
   expect(discard(VAR_PENDING, rec.suggestion_id)).toBe(true)
   expect(listing(VAR_PENDING).length).toBe(0)
-  expect(idx.lookupEvent('role.online')).not.toBeNull()
   // Tier-2: update_table_meta via ctx.audit recorder (D5 non-disableable)
   const { recorder, calls } = mockRecorder()
   const r = await updateTableMeta(LAYER, 'dws_pay_order_di', { granularity: '日增量，每行一笔' }, { recorder, scope_id: '10000demo' })
   expect(r.ok).toBe(true)
   expect(calls).toContain('update_table_meta')
-})
-
-test('S4 BasicIndex — lookup + ADR-0011 invalidate -> rebuild after write', async () => {
-  resetLayer()
-  const idx = new BasicIndex(LAYER)
-  expect(idx.tableCount()).toBe(2) // dws_pay_order_di + dim_charm_info
-  expect(idx.lookupTable('dws_pay_order_di')).not.toBeNull()
-  expect(idx.tableCountByKind('dim')).toBe(1)
-  // a NEW write -> invalidate fires -> next lookup rebuilds
-  await writeTable(LAYER, 'dws_login_di', {
-    table_name: 'dws_login_di', kind: 'dws',
-    columns: [{ name: 'role_id', type: 'string', role: 'dimension' }],
-    confirmation: { status: 'draft' },
-  }, { skipValidation: true })
-  expect(idx.tableCount()).toBe(3) // rebuilt from disk
-  expect(idx.lookupTable('dws_login_di')).not.toBeNull()
 })
 
 test('freshness preprocess maps legacy Chinese value', () => {
