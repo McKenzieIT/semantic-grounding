@@ -22,13 +22,12 @@ import {
   buildDimInventory,
   discoverEventRelationsFor,
   existingEventRefs,
-  mergeRefs,
-  originAwareReplaceRefs,
+  relationsMerge,
   relationVetoSet,
   type RelationsSweepCtx,
 } from './relations.ts'
 import { sweepEnrichment } from './sweep.ts'
-import type { EnrichmentKindAdapter, ListedTarget, MergeContext, SweepTarget } from './types.ts'
+import type { EnrichmentKindAdapter, ListedTarget, SweepTarget } from './types.ts'
 import type { LlmCall } from './types.ts'
 
 /** The alt_labels adapter for events: the events mirror of
@@ -120,21 +119,8 @@ export const eventRelationsAdapter: EnrichmentKindAdapter<EventDefinition, Dimen
     const vetoes = relationVetoSet(target.def.suppressed_external_refs)
     return vetoes.size === 0 ? discovered : discovered.filter(ref => !vetoes.has(ref.dim_table))
   },
-  // MergeContext three-branch (parallel to the table adapter): mergeExisting
-  // = merge everything (no on-write hook for events today); preserveCurated
-  // origin-aware replace by default (GA-GT3 item 5); raw full replace as the
-  // GA-GT3-5b escape-hatch.
-  merge: (
-    _target: SweepTarget<EventDefinition, DimensionRef>,
-    existing: readonly DimensionRef[],
-    discovered: readonly DimensionRef[],
-    mergeContext: MergeContext,
-  ): readonly DimensionRef[] =>
-    mergeContext.mergeExisting
-      ? mergeRefs(existing, discovered)
-      : mergeContext.preserveCurated
-        ? originAwareReplaceRefs(existing, discovered)
-        : discovered,
+  // MergeContext three-branch shared with the table adapter: see relationsMerge.
+  merge: relationsMerge,
   write: (target: SweepTarget<EventDefinition, DimensionRef>, merged: readonly DimensionRef[], tier2?: Tier2Opts) =>
     writeEventYaml(target.semanticLayer, target.name, dumpYaml({ ...target.raw, external_refs: merged }), tier2),
 }

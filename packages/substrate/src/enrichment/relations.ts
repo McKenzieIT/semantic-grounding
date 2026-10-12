@@ -25,7 +25,7 @@ import {
   type DimensionRef,
 } from '../types.ts'
 import { loadTables } from '../io.ts'
-import type { LlmCall } from './types.ts'
+import type { LlmCall, MergeContext, SweepTarget } from './types.ts'
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -368,6 +368,33 @@ export function originAwareReplaceRefs(
 }
 
 // ── B1: event enrichment (mirror of the table round) ───────────────────
+
+/**
+ * The relations family's `merge` stage, shared verbatim by both kind adapters
+ * (map #64; the #67 dedup collapsed the two mirror copies into this one):
+ * the MergeContext three-branch. `mergeExisting=true` (the on-write hook's
+ * never-wipe mode): merge everything — all existing preserved, discovered
+ * unioned (`mergeRefs`). `false` + `preserveCurated=true` (default, the
+ * explicit discoverRelations / discoverEventRelations entry): origin-aware
+ * replace — keep curated (`manual`/`undefined`), drop machine
+ * (`deterministic`/`llm`) so re-discovery refreshes stale machine refs
+ * without wiping joins the deterministic round cannot rediscover (GA-GT3
+ * item 5). `false` + `preserveCurated=false`: raw full replace — drop ALL
+ * existing (incl. curated) and write only discovered (GA-GT3-5b
+ * escape-hatch for blow-away-rebuild).
+ */
+export function relationsMerge<TDef>(
+  _target: SweepTarget<TDef, DimensionRef>,
+  existing: readonly DimensionRef[],
+  discovered: readonly DimensionRef[],
+  mergeContext: MergeContext,
+): readonly DimensionRef[] {
+  return mergeContext.mergeExisting
+    ? mergeRefs(existing, discovered)
+    : mergeContext.preserveCurated
+      ? originAwareReplaceRefs(existing, discovered)
+      : discovered
+}
 
 /**
  * Deterministic round for events: for each DIM with a non-empty `primary_key`,

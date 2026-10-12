@@ -1,21 +1,21 @@
 /**
- * CL-1 Phase 3 — alt_labels enrichment tests: discoverAltLabelsDeterministic,
+ * CL-1 Phase 3 — alt_labels pure-machinery tests: discoverAltLabelsDeterministic,
  * buildAltLabelsPrompt, parseAltLabelsResponse, mergeAltLabels,
- * discoverAltLabelsFor, enrichAllTablesAltLabels, enrichAllEventsAltLabels.
+ * discoverAltLabelsFor, plus the combined discoverAltLabels wrapper. The
+ * sweep orchestration (enrichAllTablesAltLabels / enrichAllEventsAltLabels on
+ * the sweep engine) lives in sweep.spec.ts, parameterized per kind
+ * (map #64 / #67).
  */
 import { test, expect, describe, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync, readFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import yaml from 'js-yaml'
 import {
   discoverAltLabelsDeterministic,
   buildAltLabelsPrompt,
   parseAltLabelsResponse,
   mergeAltLabels,
   discoverAltLabelsFor,
-  enrichAllTablesAltLabels,
-  enrichAllEventsAltLabels,
   discoverAltLabels,
   type AltLabelsTarget,
 } from '../src/enrichment.ts'
@@ -275,130 +275,6 @@ describe('discoverAltLabelsFor', () => {
     const labels = await discoverAltLabelsFor(targetWithExisting, llmCall)
     expect(labels).not.toContain('MAU')
     expect(labels).toContain('新标签')
-  })
-})
-
-// ── enrichAllTablesAltLabels (filesystem integration) ────────────────────
-
-describe('enrichAllTablesAltLabels', () => {
-  let root: string
-
-  beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), 'alt-labels-'))
-    mkdirSync(join(root, 'tables'), { recursive: true })
-  })
-  afterEach(() =>{  rmSync(root, { recursive: true, force: true }) })
-
-  function writeTableYaml(name: string, extra: Record<string, unknown> = {}) {
-    const def = {
-      table_name: name,
-      table_comment: '',
-      description: '日活跃用户宽表（DAU）',
-      domains: ['活跃'],
-      columns: [{ name: 'user_id', type: 'string', comment: '用户ID' }],
-      kind: 'dws',
-      primary_key: [],
-      label_columns: [],
-      alt_labels: [],
-      ...extra,
-    }
-    writeFileSync(join(root, 'tables', `${name}.yaml`), dumpYaml(def))
-  }
-
-  test('enriches a table with deterministic labels', async () => {
-    writeTableYaml('dws_active_user_di')
-    const res = await enrichAllTablesAltLabels(root)
-    expect(res.enriched).toBe(1)
-    expect(res.written).toBe(1)
-    expect(res.errors).toEqual([])
-    const raw = yaml.load(readFileSync(join(root, 'tables', 'dws_active_user_di.yaml'), 'utf8')) as Record<string, unknown>
-    const labels = raw.alt_labels as string[]
-    expect(labels).toContain('DAU')
-    expect(labels).toContain('活跃')
-  })
-
-  test('preserves existing alt_labels and appends new', async () => {
-    writeTableYaml('dws_active_user_di', { alt_labels: ['existing'] })
-    const res = await enrichAllTablesAltLabels(root)
-    expect(res.enriched).toBe(1)
-    const raw = yaml.load(readFileSync(join(root, 'tables', 'dws_active_user_di.yaml'), 'utf8')) as Record<string, unknown>
-    const labels = raw.alt_labels as string[]
-    expect(labels[0]).toBe('existing')
-    expect(labels).toContain('DAU')
-  })
-
-  test('skips tables with no discoverable labels', async () => {
-    writeTableYaml('dws_boring', { description: 'plain table', domains: [] })
-    const res = await enrichAllTablesAltLabels(root)
-    expect(res.enriched).toBe(0)
-    expect(res.written).toBe(0)
-  })
-
-  test('filters by table name', async () => {
-    writeTableYaml('dws_active_user_di')
-    writeTableYaml('dws_pay_order_di', { description: '付费订单（充值）' })
-    const res = await enrichAllTablesAltLabels(root, undefined, ['dws_pay_order_di'])
-    expect(res.enriched).toBe(1)
-    expect(res.written).toBe(1)
-    // dws_active_user_di should be untouched
-    const raw = yaml.load(readFileSync(join(root, 'tables', 'dws_active_user_di.yaml'), 'utf8')) as Record<string, unknown>
-    expect((raw.alt_labels as string[]).length).toBe(0)
-  })
-
-  test('LLM round supplements when provided', async () => {
-    writeTableYaml('dws_active_user_di')
-    const llmCall = async () => '["日活数据", "每日活跃"]'
-    const res = await enrichAllTablesAltLabels(root, llmCall)
-    expect(res.enriched).toBe(1)
-    const raw = yaml.load(readFileSync(join(root, 'tables', 'dws_active_user_di.yaml'), 'utf8')) as Record<string, unknown>
-    const labels = raw.alt_labels as string[]
-    expect(labels).toContain('日活数据')
-    expect(labels).toContain('每日活跃')
-  })
-})
-
-// ── enrichAllEventsAltLabels ─────────────────────────────────────────────
-
-describe('enrichAllEventsAltLabels', () => {
-  let root: string
-
-  beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), 'alt-labels-evt-'))
-    mkdirSync(join(root, 'events', 'social'), { recursive: true })
-  })
-  afterEach(() =>{  rmSync(root, { recursive: true, force: true }) })
-
-  function writeEventYaml(name: string, extra: Record<string, unknown> = {}) {
-    const def = {
-      name,
-      description: '好友互动事件（聊天）',
-      domains: ['社交'],
-      params_fields: { friend_id: { type: 'string', description: '好友ID' } },
-      alt_labels: [],
-      ...extra,
-    }
-    writeFileSync(join(root, 'events', 'social', `${name}.yaml`), dumpYaml(def))
-  }
-
-  test('enriches an event with deterministic labels', async () => {
-    writeEventYaml('social.friend_chat')
-    const res = await enrichAllEventsAltLabels(root)
-    expect(res.enriched).toBe(1)
-    expect(res.written).toBe(1)
-    const raw = yaml.load(readFileSync(join(root, 'events', 'social', 'social.friend_chat.yaml'), 'utf8')) as Record<string, unknown>
-    const labels = raw.alt_labels as string[]
-    expect(labels).toContain('聊天')
-    expect(labels).toContain('社交')
-  })
-
-  test('filters by event name', async () => {
-    writeEventYaml('social.friend_chat')
-    writeEventYaml('social.gift_send', { description: '赠送礼物（送礼）', domains: ['经济'] })
-    const res = await enrichAllEventsAltLabels(root, undefined, ['social.gift_send'])
-    expect(res.enriched).toBe(1)
-    // friend_chat untouched
-    const raw = yaml.load(readFileSync(join(root, 'events', 'social', 'social.friend_chat.yaml'), 'utf8')) as Record<string, unknown>
-    expect((raw.alt_labels as string[]).length).toBe(0)
   })
 })
 
