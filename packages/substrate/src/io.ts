@@ -593,9 +593,10 @@ function checkExpectedVersion(target: string, expectedVersion: string | undefine
  * located via a full `loadEvents` scan) and the two had already diverged — a
  * hand-renamed event file made the copy throw ENOENT while `findEventPath`'s
  * fallback scan, used here, still resolves the very file the writer checks
- * against. Concepts have no write path in v1 (ADR-0005 ruling 2), so their
- * resolution is the filename convention for read completeness, mirroring the
- * table layout.
+ * against. Concepts resolve by the same filename convention as tables
+ * (`concepts/<name>.yaml`) — now the write-side path too, since ADR-0012
+ * opened `writeConceptYaml`/`updateConceptMeta` (superseding ADR-0005 ruling
+ * 2's concept-write exclusion).
  * @param semanticLayer - the semantic-layer directory path.
  * @param kind - which storage layout to resolve against.
  * @param name - the table_name / event name / concept name.
@@ -872,6 +873,110 @@ export async function updateEventMeta(
     throw e
   }
   return { ok: true, event_name: name }
+}
+
+// ── Concept write primitives (#52 / ADR-0012: the concept write path opened) ──
+// Mirrors the table pair shape-for-shape: `writeConceptYaml` is the validate-
+// then-atomically-write create primitive (the counterpart of `writeTable`),
+// `updateConceptMeta` the Tier-2 read-merge-validate-write (the counterpart of
+// `updateTableMeta`). Differences from the table pair are all consequences of
+// what a concept IS: no on-write enrichment anywhere (concepts have no
+// enrichment rounds — #46 verified 'concept' zero-hit in enrichment*.ts), and
+// the target file is the fixed `concepts/<name>.yaml` (same convention
+// `definitionVersion` already resolves for the read side).
+/**
+ * Result of a Tier-2 concept-meta update: `{ ok: true, concept_name }` on
+ * success, or `{ ok: false, error }` when the concept is missing/malformed or
+ * post-merge validation fails.
+ */
+export type UpdateConceptMetaResult = { ok: true; concept_name: string } | { ok: false; error: string }
+/**
+ * Validate-then-atomically-write a concept YAML (`concepts/<name>.yaml`),
+ * invalidating caches on success — `writeTable`'s exact shape applied to the
+ * concept layout. The concept write primitive (#52 / ADR-0012): passing
+ * `tier2` takes the audited write-and-record path (snapshot-and-rollback on a
+ * recorder failure, ADR-0004 ruling 1); omitting it leaves the raw-edit
+ * surface whose audit is the caller's responsibility.
+ * @param semanticLayer - the semantic-layer directory path.
+ * @param name - the concept `name` (becomes the `<name>.yaml` filename).
+ * @param data - the concept payload; validated against `ConceptDefinitionSchema` unless skipped.
+ * @param opts - `{ skipValidation: true }` skips schema validation (for pre-validated generators).
+ * @param tier2 - optional Tier-2 options; passed, this write takes the audited
+ *   write-and-record path. No `expected_version` is ever checked here — create
+ *   is the only concept verb that calls this primitive, and create is
+ *   baseline-free by construction (ADR-0005 ruling 7).
+ * @returns the absolute path of the written `<name>.yaml` under `concepts/`.
+ */
+export async function writeConceptYaml(
+  semanticLayer: string,
+  name: string,
+  data: unknown,
+  opts: { skipValidation?: boolean } = {},
+  tier2?: Tier2Opts,
+): Promise<string> {
+  if (!opts.skipValidation) {
+    const r = ConceptDefinitionSchema.safeParse(data)
+    if (!r.success) throw new WriteValidationError(`Concept validation failed: ${r.error.message}`)
+  }
+  const target = join(semanticLayer, 'concepts', `${name}.yaml`)
+  if (tier2 === undefined) {
+    await atomicWrite(target, data)
+    invalidateCaches(semanticLayer)
+    return target
+  }
+  const before = snapshotRaw(target)
+  await atomicWrite(target, data)
+  invalidateCaches(semanticLayer)
+  try {
+    await tier2.recorder.recordTier2Write('write_concept_yaml', { concept_name: name }, tier2.scope_id !== undefined ? { scope_id: tier2.scope_id } : {})
+  } catch (e) {
+    await restoreRaw(target, before)
+    invalidateCaches(semanticLayer)
+    throw e
+  }
+  return target
+}
+/**
+ * Tier-2 per-scope write: read-merge-validate-write a single concept's meta
+ * updates and record the write via `opts.recorder` (D5 non-disableable audit).
+ * `updateTableMeta`'s exact ceremony for the concept layout: pre-write raw-byte
+ * snapshot + recorder-failure rollback (ADR-0004 ruling 1), optional
+ * `opts.expected_version` staleness check against the on-disk fingerprint
+ * (ruling 8), full-schema validation of the merged document before the write.
+ * Concepts have no on-write enrichment hook — there is no round that could
+ * re-derive concept content (#46), so the caller's post-write health question
+ * does not arise.
+ * @param semanticLayer - the semantic-layer directory path.
+ * @param name - the concept `name` to update (must already exist on disk).
+ * @param updates - the field overrides merged over the existing concept YAML.
+ * @param opts - the recorder + optional scope id + optional `expected_version` used for the Tier-2 audit record.
+ * @returns `{ ok: true, concept_name }` on success, or `{ ok: false, error }` when the concept is missing/malformed or validation fails.
+ */
+export async function updateConceptMeta(
+  semanticLayer: string,
+  name: string,
+  updates: Record<string, unknown>,
+  opts: Tier2Opts,
+): Promise<UpdateConceptMetaResult> {
+  const cf = join(semanticLayer, 'concepts', `${name}.yaml`)
+  if (!existsSync(cf)) return { ok: false, error: `Concept not found: ${name}` }
+  const before = snapshotRaw(cf)
+  checkExpectedVersion(cf, opts.expected_version, before.raw)
+  const data = yaml.load(before.raw)
+  if (typeof data !== 'object' || data === null) return { ok: false, error: `Concept malformed: ${name}` }
+  const merged: Record<string, unknown> = { ...(data as Record<string, unknown>), ...updates }
+  const r = ConceptDefinitionSchema.safeParse(merged)
+  if (!r.success) return { ok: false, error: `Validation failed after update: ${r.error.message}` }
+  await atomicWrite(cf, merged)
+  invalidateCaches(semanticLayer)
+  try {
+    await opts.recorder.recordTier2Write('update_concept_meta', { concept_name: name, updates }, opts.scope_id !== undefined ? { scope_id: opts.scope_id } : {})
+  } catch (e) {
+    await restoreRaw(cf, before)
+    invalidateCaches(semanticLayer)
+    throw e
+  }
+  return { ok: true, concept_name: name }
 }
 
 // ── Sync-write (mirrors rbi_semantic/sync.py: YAML-write-only, receives pre-fetched schema dicts) ──

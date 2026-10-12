@@ -180,3 +180,22 @@ wire-only 断言（响应形状、错误码映射、schema 校验、`update_defi
 
 门禁全绿：substrate typecheck 0 错 / test 380 passed（26 files）；mcp typecheck 0 错 /
 test 270 passed（17 files）。
+
+## Update 2026-10-12 — #52 落地：裁决 2 的 concept 排除条款被 ADR-0012 supersede
+
+落 [#52](https://github.com/McKenzieIT/semantic-grounding/issues/52)（map #40 执行票）。
+**不是前提证伪，是裁决已被后续 ADR 正式推翻**——裁决 2 原文「concept 写路径（无 Tier-2
+函数、无写原语——v1 全程只读，与 Q2 边界一致）」在 [#46](https://github.com/McKenzieIT/semantic-grounding/issues/46)
+的五轮 grilling 中被重新审视：概念层被重新定位为知识图谱的 ontology 结构层而非索引页附录，
+结构层缺位不再被视为可接受的软退化。本条记录供后续读者定位「concept 排除」这句话出自何处、
+何时、因何被推翻——完整的裁决记录见 **[ADR-0012](./0012-concept-write-path.md)**。
+
+**裁决 2 的 metric 排除部分维持不变**，不受本次 supersede 影响：宿主内嵌 `metrics:` 块是
+派生只读视图，无后备文件、无指纹，`read.ts:241-249` 的 "no write tool ever needs one" 仍然
+成立——排除有理由，不是欠账的另一半。
+
+substrate 新增两个原语（`writeConceptYaml`/`updateConceptMeta`，对齐 `writeTable`/
+`updateTableMeta` 的既有形状）；工具面延续本 ADR 裁决 1 的「零新工具名」——`create_definition`/
+`update_definition`/`add_alias`/`remove_alias`/`add_relation`/`remove_relation` 六个既有
+工具加 `kind:'concept'` 分支，`tools/list` 的工具总数不受影响。细节、Q4(b) 对
+`add_relation`/`remove_relation` 的后续修正、门禁结果见 ADR-0012 自身的 Update 段落。

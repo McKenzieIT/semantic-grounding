@@ -27,6 +27,7 @@ interface ListedTool {
     readonly required?: readonly string[]
     readonly additionalProperties?: unknown
     readonly oneOf?: readonly { readonly properties?: Record<string, unknown>; readonly required?: readonly string[] }[]
+    readonly anyOf?: readonly { readonly properties?: Record<string, unknown>; readonly required?: readonly string[] }[]
   }
 }
 
@@ -100,28 +101,43 @@ describe('read tool schemas', () => {
   })
 })
 
-describe('create_definition — ADR-0005 ruling 5', () => {
-  it('is a discriminated union on kind: table | event', async () => {
+describe('create_definition — ADR-0005 ruling 5 (+ ADR-0012 concept arm)', () => {
+  it('is a discriminated union on kind: table | event | concept', async () => {
     const tool = byName(await listTools(), 'create_definition')
     const branches = tool.inputSchema.oneOf
-    expect(branches).toHaveLength(2)
+    expect(branches).toHaveLength(3)
   })
 
-  it('each branch requires the full TableDefinitionSchema/EventDefinitionSchema payload plus the create-class common block, and omits expected_version', async () => {
+  it('each branch requires the full TableDefinitionSchema/EventDefinitionSchema/ConceptDefinitionSchema payload plus the create-class common block, and omits expected_version', async () => {
     const tool = byName(await listTools(), 'create_definition')
     for (const branch of tool.inputSchema.oneOf ?? []) {
       expect(branch.required).toEqual(expect.arrayContaining(['kind', 'summary', 'derivation', 'confidence']))
       expect(branch.required).not.toContain('expected_version')
       expect(branch.properties).not.toHaveProperty('expected_version')
     }
+    const concept = (tool.inputSchema.oneOf ?? []).find(b => b.properties?.['concept'] !== undefined)
+    expect(concept?.required).toEqual(expect.arrayContaining(['concept']))
+    // ADR-0012's constant: the tool face is strict — bounded by the kind's
+    // declared fields, stray keys rejected (the substrate schema's `.loose()`
+    // is corpus compatibility, not tool surface).
+    expect(concept?.properties?.['concept']).toMatchObject({ additionalProperties: false })
+    // The concept payload itself: name + description required, edges are NOT
+    // a create field (add_relation owns them), properties free-form.
+    const payload = concept?.properties?.['concept'] as { required?: readonly string[]; properties?: Record<string, unknown> }
+    expect(payload.required?.slice().sort()).toEqual(['description', 'name'])
+    expect(payload.properties).toHaveProperty('pref_label')
+    expect(payload.properties).toHaveProperty('alt_labels')
+    expect(payload.properties).toHaveProperty('properties')
+    expect(payload.properties).not.toHaveProperty('related_refs')
+    expect(payload.properties).not.toHaveProperty('suppressed_related_refs')
   })
 })
 
-describe('update_definition — ADR-0005 ruling 4', () => {
-  it('is a discriminated union on kind: table | event, each requiring expected_version', async () => {
+describe('update_definition — ADR-0005 ruling 4 (+ ADR-0012 concept arm)', () => {
+  it('is a discriminated union on kind: table | event | concept, each requiring expected_version', async () => {
     const tool = byName(await listTools(), 'update_definition')
     const branches = tool.inputSchema.oneOf ?? []
-    expect(branches).toHaveLength(2)
+    expect(branches).toHaveLength(3)
     for (const branch of branches) {
       expect(branch.required).toEqual(expect.arrayContaining(['kind', 'name', 'fields', 'summary', 'derivation', 'confidence', 'expected_version']))
     }
@@ -174,22 +190,38 @@ describe('item-level tool schemas — ADR-0005 ruling 3 (reshaped by ADR-0010 / 
     expect(labels.minItems).toBe(1)
   })
 
-  it('add_relation requires a relation object (dim_table + join_keys), never origin or derivation on it', async () => {
+  it('add_relation takes a union: a join (dim_table + join_keys) or a concept-side edge (target_kind + name), never origin or derivation on either arm', async () => {
     const tool = byName(await listTools(), 'add_relation')
-    const relation = tool.inputSchema.properties?.['relation'] as { properties?: Record<string, unknown>; required?: readonly string[] }
-    expect(relation.required?.slice().sort()).toEqual(['dim_table', 'join_keys'])
-    expect(relation.properties).not.toHaveProperty('origin')
-    expect(relation.properties).not.toHaveProperty('derivation')
+    const relation = tool.inputSchema.properties?.['relation'] as { anyOf?: readonly { properties?: Record<string, unknown>; required?: readonly string[] }[] }
+    const arms = relation.anyOf
+    expect(arms).toHaveLength(2)
+    const join = arms?.find(a => a.properties?.['dim_table'] !== undefined)
+    const edge = arms?.find(a => a.properties?.['target_kind'] !== undefined)
+    expect(join?.required?.slice().sort()).toEqual(['dim_table', 'join_keys'])
+    expect(join?.properties).not.toHaveProperty('origin')
+    expect(join?.properties).not.toHaveProperty('derivation')
+    expect(edge?.required?.slice().sort()).toEqual(['name', 'target_kind'])
+    expect(edge?.properties).not.toHaveProperty('origin')
+    expect(edge?.properties).not.toHaveProperty('derivation')
+    const edgeKind = edge?.properties?.['target_kind'] as { enum?: readonly string[] }
+    expect(edgeKind.enum?.slice().sort()).toEqual(['concept', 'table'])
   })
 
-  it('remove_relation requires an array of relation objects (relations, #37 §3), each dim_table + join_keys, never origin or derivation', async () => {
+  it('remove_relation takes an array of that same union (relations, #37 §3), both arms never origin or derivation', async () => {
     const tool = byName(await listTools(), 'remove_relation')
-    const relations = tool.inputSchema.properties?.['relations'] as { type?: string; minItems?: number; items?: { properties?: Record<string, unknown>; required?: readonly string[] } }
+    const relations = tool.inputSchema.properties?.['relations'] as { type?: string; minItems?: number; items?: { anyOf?: readonly { properties?: Record<string, unknown>; required?: readonly string[] }[] } }
     expect(relations.type).toBe('array')
     expect(relations.minItems).toBe(1)
-    expect(relations.items?.required?.slice().sort()).toEqual(['dim_table', 'join_keys'])
-    expect(relations.items?.properties).not.toHaveProperty('origin')
-    expect(relations.items?.properties).not.toHaveProperty('derivation')
+    const arms = relations.items?.anyOf
+    expect(arms).toHaveLength(2)
+    const join = arms?.find(a => a.properties?.['dim_table'] !== undefined)
+    const edge = arms?.find(a => a.properties?.['target_kind'] !== undefined)
+    expect(join?.required?.slice().sort()).toEqual(['dim_table', 'join_keys'])
+    expect(join?.properties).not.toHaveProperty('origin')
+    expect(join?.properties).not.toHaveProperty('derivation')
+    expect(edge?.required?.slice().sort()).toEqual(['name', 'target_kind'])
+    expect(edge?.properties).not.toHaveProperty('origin')
+    expect(edge?.properties).not.toHaveProperty('derivation')
   })
 
   it('never exposes a whole-array replace parameter', async () => {

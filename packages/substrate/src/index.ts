@@ -112,7 +112,7 @@ import { tableKindPlugin } from './kinds/table-kind.ts'
 import { conceptKindPlugin } from './kinds/concept-kind.ts'
 import { RelationGraph, type NodeAliasData } from './relation-graph.ts'
 import { toMetricDefinition, splitMetricName } from './metrics.ts'
-import { loadEvents, loadTables, loadConcepts, loadRawDir, loadConceptDefinition as loadConceptDefinitionFromLayer, normalizeLabel } from './io.ts'
+import { loadEvents, loadTables, loadConcepts, loadRawDir, loadConceptDefinition as loadConceptDefinitionFromLayer, normalizeLabel, writeConceptYaml as writeConceptYamlFromLayer, updateConceptMeta as updateConceptMetaFromLayer } from './io.ts'
 import { EventDefinitionSchema, TableDefinitionSchema, ConceptDefinitionSchema } from './types.ts'
 import { DefinitionSnapshot, captureSnapshot } from './snapshot.ts'
 import { buildExcludeColumns } from './io.ts'
@@ -386,12 +386,48 @@ function resolveSemanticLayerConfig(config: SemanticLayerConfig): ResolvedSemant
 // logic has one home at the substrate level and the handlers thin to schema +
 // auditedWrite + Core call + response formatting.
 
+/** The kinds an item-level write may target — concepts joined the set when the
+ * concept write path opened (#52 / ADR-0012); the alias semantics are isomorphic
+ * and ride the same dual-field overlay. */
+type ItemKind = 'table' | 'event' | 'concept'
+
+/** One relation as the item methods accept it: the historical asset→dim join
+ * shape (`dim_table` + `join_keys`), or a concept-side edge (`target_kind` +
+ * `name`, no join semantics — Q4(b) Update). The `target_kind?: undefined`
+ * marker keeps the union discriminable without making legacy calls spell out
+ * `target_kind: 'table'`. */
+type RelationInput =
+  | { readonly target_kind?: undefined; readonly dim_table: string; readonly join_keys: readonly { readonly dws_column: string; readonly dim_column: string }[] }
+  | { readonly target_kind: 'table' | 'concept'; readonly name: string }
+
+/** Is this relation a concept-side edge (Q4(b)), rather than an asset→dim join? */
+function isConceptEdge(rel: RelationInput): rel is { readonly target_kind: 'table' | 'concept'; readonly name: string } {
+  return rel.target_kind !== undefined
+}
+
+/** The veto key for one declared concept edge: the graph-id form of its target
+ * (`concept:<name>` for concept targets, the bare table name for table
+ * targets) — collision-free between a table and a concept sharing a name. */
+function conceptEdgeKey(edge: { readonly target_kind: 'table' | 'concept'; readonly target: string }): string {
+  return edge.target_kind === 'concept' ? `concept:${edge.target}` : edge.target
+}
+
+/** Structural identity for a declared concept edge: same `target_kind` + same
+ * `target`. No order or join-key component — an edge has neither. */
+function itemMatchesConceptEdge(existing: unknown, edge: { readonly target_kind: 'table' | 'concept'; readonly target: string }): boolean {
+  if (typeof existing !== 'object' || existing === null) return false
+  const e = existing as { readonly target_kind?: unknown; readonly target?: unknown }
+  return e.target_kind === edge.target_kind && e.target === edge.target
+}
+
 /** Read a definition's raw dict off disk (lenient — throws on missing target). */
-function itemReadRawDef(root: string, kind: 'table' | 'event', name: string): Record<string, unknown> {
+function itemReadRawDef(root: string, kind: ItemKind, name: string): Record<string, unknown> {
   const raw = kind === 'table'
     ? loadTables(root).find(t => t.table_name === name)?.raw
-    : loadEvents(root).find(e => e.name === name)?.raw
-  if (raw === undefined) throw new Error(`${kind === 'table' ? 'Table' : 'Event'} not found: ${name}`)
+    : kind === 'event'
+      ? loadEvents(root).find(e => e.name === name)?.raw
+      : loadConcepts(root).find(c => c.name === name)?.raw
+  if (raw === undefined) throw new Error(`${kind === 'table' ? 'Table' : kind === 'event' ? 'Event' : 'Concept'} not found: ${name}`)
   return raw
 }
 
@@ -413,14 +449,15 @@ function itemSameStringArray(a: readonly string[], b: readonly string[]): boolea
 }
 
 /** The suppression field name pairing each content field (#36 §1). */
-function itemSuppressionFieldName(kind: 'table' | 'event', content: 'alt_labels' | 'relation'): 'suppressed_alt_labels' | 'suppressed_dimension_refs' | 'suppressed_external_refs' {
+function itemSuppressionFieldName(kind: ItemKind, content: 'alt_labels' | 'relation'): 'suppressed_alt_labels' | 'suppressed_dimension_refs' | 'suppressed_external_refs' | 'suppressed_related_refs' {
   if (content === 'alt_labels') return 'suppressed_alt_labels'
+  if (kind === 'concept') return 'suppressed_related_refs'
   return kind === 'table' ? 'suppressed_dimension_refs' : 'suppressed_external_refs'
 }
 
 /** The relation content field name per kind. */
-function itemRelationFieldName(kind: 'table' | 'event'): 'dimension_refs' | 'external_refs' {
-  return kind === 'table' ? 'dimension_refs' : 'external_refs'
+function itemRelationFieldName(kind: ItemKind): 'dimension_refs' | 'external_refs' | 'related_refs' {
+  return kind === 'table' ? 'dimension_refs' : kind === 'event' ? 'external_refs' : 'related_refs'
 }
 
 /** Order-sensitive join-key comparison (dws_column + dim_column, pair-by-pair). */
@@ -1672,6 +1709,66 @@ export class SemanticGroundingCore {
     })
   }
 
+  // ── Concept write methods (#52 / ADR-0012) ────────────────────────────────────
+  //
+  // The concept pair of `writeTable`/`updateTableMeta`, reached through the Core
+  // class because the public barrel is name-locked (ADR-0002/0003 — the same
+  // Core-method axis #31/#49 established). One deliberate asymmetry with the
+  // table pair: NO on-write enrichment hook anywhere in this section — concepts
+  // have no enrichment rounds (#46 measured 'concept' zero-hit in
+  // enrichment*.ts), so there is nothing a hook could re-derive and no health
+  // to report afterwards.
+
+  /**
+   * Validate-then-atomically-write one concept YAML (`concepts/<name>.yaml`),
+   * recording the write via `ctx.audit` (D5 non-disableable) — `writeTable`'s
+   * create-path ceremony for the concept layout, including ADR-0004 ruling 1's
+   * snapshot-and-rollback on a recorder failure. The create verb:
+   * `create_definition(kind:'concept')` compiles here; existence is the
+   * handler's pre-check (the io primitive itself overwrites, exactly as
+   * `writeTable` does).
+   * @param name - the concept `name` (becomes the `<name>.yaml` filename).
+   * @param data - the concept payload; validated against `ConceptDefinitionSchema` unless skipped.
+   * @param opts - `{ skipValidation: true }` skips schema validation (for pre-validated generators).
+   * @returns the absolute path of the written `<name>.yaml` under `concepts/`.
+   */
+  async writeConceptYaml(
+    name: string,
+    data: unknown,
+    opts: { skipValidation?: boolean } = {},
+  ): Promise<string> {
+    return writeConceptYamlFromLayer(this.resolveRoot(), name, data, opts, {
+      recorder: this.recorder(),
+      scope_id: this.scopeId,
+    })
+  }
+
+  /**
+   * Tier-2 per-scope write: read-merge-validate-write a single concept's meta
+   * updates, recording the write via `ctx.audit` (D5 non-disableable) —
+   * `updateTableMeta`'s ceremony for the concept layout (A13-style re-read at
+   * write time, ADR-0004 ruling 1 rollback, ruling 8 expected_version).
+   * No on-write enrichment hook: concepts have no rounds, so no hook and no
+   * post-write health.
+   * @param name - the concept `name` to update (must already exist on disk).
+   * @param updates - the field overrides merged over the existing concept YAML.
+   * @param opts - optional scope id override + optional `expected_version`
+   *   (sha256 baseline checked against the on-disk fingerprint before the
+   *   write lands; a mismatch throws `StaleBaselineError`).
+   * @returns `{ ok: true, concept_name }` on success, or `{ ok: false, error }` when the concept is missing/malformed or validation fails.
+   */
+  async updateConceptMeta(
+    name: string,
+    updates: Record<string, unknown>,
+    opts: { readonly scopeId?: string; readonly expected_version?: string } = {},
+  ): Promise<{ ok: true; concept_name: string } | { ok: false; error: string }> {
+    return updateConceptMetaFromLayer(this.resolveRoot(opts.scopeId), name, updates, {
+      recorder: this.recorder(),
+      scope_id: opts.scopeId ?? this.scopeId,
+      ...opts.expected_version !== undefined ? { expected_version: opts.expected_version } : {},
+    })
+  }
+
   // ── Item-level write methods (#49 / ADR-0005 ruling 3, ADR-0010) ──────────────
   //
   // Four methods 1:1 corresponding to the four intent tools (`add_alias`,
@@ -1704,7 +1801,7 @@ export class SemanticGroundingCore {
    * Idempotent when the alias is already present AND not vetoed: `added: false`,
    * `unsuppressed` absent, and the underlying `updateTableMeta` / `updateEventMeta`
    * reports `changed: false` (no commit).
-   * @param kind - `'table'` or `'event'`.
+   * @param kind - `'table'`, `'event'`, or `'concept'`.
    * @param name - the table_name / event name.
    * @param alias - the alias to add (verbatim form; normalized for comparison).
    * @param expectedVersion - the sha256 fingerprint from `get_definition`.
@@ -1713,7 +1810,7 @@ export class SemanticGroundingCore {
    * @throws StaleBaselineError when the fingerprint mismatches.
    */
   async addAlias(
-    kind: 'table' | 'event',
+    kind: ItemKind,
     name: string,
     alias: string,
     expectedVersion: string,
@@ -1753,7 +1850,7 @@ export class SemanticGroundingCore {
    * `reasserted` is judged in-lock: `updateTableMeta`'s on-write enrichment
    * hook has run by the time the method resolves, so the receipt cannot lie
    * about the write-delete loop.
-   * @param kind - `'table'` or `'event'`.
+   * @param kind - `'table'`, `'event'`, or `'concept'`.
    * @param name - the table_name / event name.
    * @param labels - the labels to remove (verbatim; normalized for comparison).
    * @param expectedVersion - the sha256 fingerprint from `get_definition`.
@@ -1762,7 +1859,7 @@ export class SemanticGroundingCore {
    * @throws StaleBaselineError when the fingerprint mismatches.
    */
   async removeAliases(
-    kind: 'table' | 'event',
+    kind: ItemKind,
     name: string,
     labels: readonly string[],
     expectedVersion: string,
@@ -1820,9 +1917,9 @@ export class SemanticGroundingCore {
    *
    * Idempotent when the exact same relation is already present AND the
    * dim_table is not vetoed: `added: false`, `unsuppressed` absent, no commit.
-   * @param kind - `'table'` or `'event'`.
-   * @param name - the table_name / event name.
-   * @param relation - `{dim_table, join_keys}`.
+   * @param kind - `'table'`, `'event'` (join-shaped relation), or `'concept'` (concept-side edge).
+   * @param name - the table_name / event / concept name.
+   * @param relation - a join `{dim_table, join_keys}` for table/event subjects, or `{target_kind, name}` for a concept-side edge (Q4(b)).
    * @param expectedVersion - the sha256 fingerprint from `get_definition`.
    * @returns `{added, unsuppressed?}`.
    * @throws Error when the target definition does not exist, or when
@@ -1830,12 +1927,19 @@ export class SemanticGroundingCore {
    * @throws StaleBaselineError when the fingerprint mismatches.
    */
   async addRelation(
-    kind: 'table' | 'event',
+    kind: ItemKind,
     name: string,
-    relation: { readonly dim_table: string; readonly join_keys: readonly { readonly dws_column: string; readonly dim_column: string }[] },
+    relation: RelationInput,
     expectedVersion: string,
   ): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string] }> {
+    // Concept-side edge (Q4(b) Update): 概念→概念 / 概念→表 / 表→概念.
+    if (isConceptEdge(relation)) {
+      return this.addConceptEdge(kind, name, relation, expectedVersion)
+    }
     // For tables, verify the dim_table has its own definition.
+    if (kind === 'concept') {
+      throw new Error('join-shaped relations (dim_table + join_keys) are not supported for concepts — a concept declares entity-layer edges with target_kind instead (Q4(b))')
+    }
     if (kind === 'table') {
       const dimDef = loadTableDefinitionFromLayer(this.resolveRoot(), relation.dim_table)
       if (dimDef === null) {
@@ -1882,31 +1986,48 @@ export class SemanticGroundingCore {
    * Per-item verdicts carry three facts: `outcome`, `suppressed` (did THIS call
    * record the veto), and `reasserted` (did the same write's on-write hook
    * immediately re-derive it).
-   * @param kind - `'table'` or `'event'`.
-   * @param name - the table_name / event name.
-   * @param relations - the relations to remove (structural identity match).
+   * @param kind - `'table'`, `'event'` (join-shaped relations), or `'concept'` (concept-side edges).
+   * @param name - the table_name / event / concept name.
+   * @param relations - the relations to remove — joins (structural identity match) or same-shape concept edges; the two shapes cannot mix in one call.
    * @param expectedVersion - the sha256 fingerprint from `get_definition`.
    * @returns per-item verdicts.
    * @throws Error when the target definition does not exist.
    * @throws StaleBaselineError when the fingerprint mismatches.
    */
   async removeRelations(
-    kind: 'table' | 'event',
+    kind: ItemKind,
     name: string,
-    relations: readonly { readonly dim_table: string; readonly join_keys: readonly { readonly dws_column: string; readonly dim_column: string }[] }[],
+    relations: readonly RelationInput[],
     expectedVersion: string,
   ): Promise<{ readonly results: readonly ItemVerdict[] }> {
+    // Partition first (Q4(b)): concept edges and join-shaped relations write
+    // different files with different baselines — one call carries one shape.
+    const edges: Array<{ readonly target_kind: 'table' | 'concept'; readonly name: string }> = []
+    const joins: Array<{ readonly dim_table: string; readonly join_keys: readonly { readonly dws_column: string; readonly dim_column: string }[] }> = []
+    for (const rel of relations) {
+      if (isConceptEdge(rel)) edges.push(rel)
+      else joins.push(rel)
+    }
+    if (edges.length > 0 && joins.length > 0) {
+      throw new Error('remove_relation cannot mix join-shaped relations with concept edges in one call — they write different files with different baselines; split the call')
+    }
+    if (edges.length > 0) {
+      return this.removeConceptEdges(kind, name, edges, expectedVersion)
+    }
+    if (kind === 'concept') {
+      throw new Error('join-shaped relations (dim_table + join_keys) are not supported for concepts — a concept declares entity-layer edges with target_kind instead (Q4(b))')
+    }
     const root = this.resolveRoot()
     const field = itemRelationFieldName(kind)
     const supField = itemSuppressionFieldName(kind, 'relation')
     const raw = itemReadRawDef(root, kind, name)
     const existing = itemObjectArray(raw, field)
-    const next = existing.filter(e => !relations.some(r => itemMatchesRelation(e, r)))
+    const next = existing.filter(e => !joins.some(r => itemMatchesRelation(e, r)))
     // Veto side, routed by origin: machine-derived or absent → veto; curated → no veto.
     const existingSup = itemStringArray(raw, supField)
     const nextSup = [...existingSup]
     const supSeen = new Set(existingSup)
-    const info = relations.map(rel => {
+    const info = joins.map(rel => {
       const key = rel.dim_table
       const matches = existing.filter(e => itemMatchesRelation(e, rel))
       const present = matches.length > 0
@@ -1938,13 +2059,180 @@ export class SemanticGroundingCore {
     return { results }
   }
 
+  // ── Concept-side declared edges (Q4(b) Update / #52) ───────────────────────────
+  //
+  // Every declared concept edge has ONE storage home: a concept's own
+  // `related_refs`. A concept subject stores its edge on itself (概念→概念,
+  // 概念→表); a table subject's concept-target edge (表→概念) stores on the
+  // TARGET concept — the table schema has no edge field, and a second storage
+  // home for the same edge would recreate exactly the one-edge-two-datasets
+  // shape R3 refused. Consequence the tool layer documents: whenever a
+  // relation involves a concept, `expected_version` is the fingerprint of the
+  // CONCEPT file this write modifies (subject concept, or target concept for
+  // a table subject).
+
   /**
-   * Internal: dispatch `updateTableMeta` / `updateEventMeta` by kind and throw
-   * on failure. The item methods use this instead of the non-throwing result
-   * shape — the handler's try/catch maps thrown errors to MCP error responses.
+   * Add one declared concept edge, lifting its veto if suppressed.
+   *
+   * Dual-field overlay on the home concept, exactly `addAlias`'s shape over
+   * `related_refs` / `suppressed_related_refs`: append the edge when absent
+   * (omitting `origin`/`derivation` — rulings 9–10, curated) and remove the
+   * target key from the suppression field (the veto lift).
+   *
+   * Existence checks: the subject (concept or table) and — for a declared
+   * target — the target concept must both exist; a concept→table edge's
+   * target table must exist. Mirrors `addRelation`'s dim-table check.
+   * @param kind - the SUBJECT kind: `'concept'` (edge lands on it) or
+   * `'table'` (edge lands on the target concept). `'event'` is refused — the
+   * Q4(b) edge set is concept→concept / concept→table / table→concept.
+   * @param name - the subject concept/table name.
+   * @param edge - `{target_kind, name}` — the target kind and the target's
+   * bare name (concept name or table name; the plugin resolves graph ids).
+   * @param expectedVersion - the sha256 fingerprint of the CONCEPT file this
+   *   write modifies (the home concept — see the section note above).
+   * @returns `{added, unsuppressed?}`.
+   * @throws Error when the subject or a declared target does not exist, or
+   *   when `kind === 'event'`.
+   * @throws StaleBaselineError when the fingerprint mismatches.
+   */
+  private async addConceptEdge(
+    kind: ItemKind,
+    name: string,
+    edge: { readonly target_kind: 'table' | 'concept'; readonly name: string },
+    expectedVersion: string,
+  ): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string] }> {
+    if (kind === 'event') {
+      throw new Error('concept-target relations are not supported for events — the legal concept-side edges are concept→concept, concept→table, and table→concept (Q4(b))')
+    }
+    const root = this.resolveRoot()
+    if (kind === 'table') {
+      if (loadTableDefinitionFromLayer(root, name) === null) throw new Error(`Table not found: ${name}`)
+      if (loadConceptDefinitionFromLayer(root, edge.name) === null) throw new Error(`Concept not found: ${edge.name}`)
+    } else {
+      if (edge.target_kind === 'concept' && loadConceptDefinitionFromLayer(root, edge.name) === null) {
+        throw new Error(`Concept not found: ${edge.name}`)
+      }
+      if (edge.target_kind === 'table' && loadTableDefinitionFromLayer(root, edge.name) === null) {
+        throw new Error(`Table not found: ${edge.name}`)
+      }
+    }
+    // The stored record names the edge's OTHER side; the home is whoever owns
+    // the file: the concept subject itself, or the target concept for a table
+    // subject.
+    const home = kind === 'concept' ? name : edge.name
+    const record = kind === 'concept'
+      ? { target_kind: edge.target_kind, target: edge.name }
+      : { target_kind: 'table' as const, target: name }
+    const key = conceptEdgeKey(record)
+    const raw = itemReadRawDef(root, 'concept', home)
+    const existing = itemObjectArray(raw, 'related_refs')
+    const alreadyPresent = existing.some(e => itemMatchesConceptEdge(e, record))
+    const next = alreadyPresent ? existing : [...existing, record]
+    // Veto lift: remove the key from suppressed_related_refs.
+    const existingSup = itemStringArray(raw, 'suppressed_related_refs')
+    const wasVetoed = existingSup.includes(key)
+    const nextSup = existingSup.filter(k => k !== key)
+    const updates: Record<string, unknown> = { related_refs: next }
+    if (!itemSameStringArray(existingSup, nextSup) || raw['suppressed_related_refs'] !== undefined) {
+      updates['suppressed_related_refs'] = nextSup
+    }
+    await this.applyItemUpdate('concept', home, updates, expectedVersion)
+    return { added: !alreadyPresent, ...(wasVetoed ? { unsuppressed: [key] as const } : {}) }
+  }
+
+  /**
+   * Remove declared concept edges from their home concept, routing the veto by
+   * the stored entries' origin — `removeRelations`' exact semantics over
+   * `related_refs` / `suppressed_related_refs`.
+   *
+   * One call touches ONE concept file: a concept subject's whole batch lands
+   * on the subject; a table subject's edges must all name the same target
+   * concept (in practice one — each target is a different file with its own
+   * baseline), which is enforced with a split-the-call error.
+   *
+   * `reasserted` is always `false`: concepts have no enrichment rounds, so no
+   * on-write hook can re-derive a just-removed edge — the verdict field stays
+   * (receipt shape parity with the table/event path) and says so honestly.
+   * @param kind - the SUBJECT kind (`'event'` refused, as `addConceptEdge`).
+   * @param name - the subject concept/table name.
+   * @param edges - the edges to remove (structural identity: target_kind + target).
+   * @param expectedVersion - the sha256 fingerprint of the home CONCEPT file.
+   * @returns per-item verdicts.
+   * @throws Error when the subject does not exist, when `kind === 'event'`,
+   *   or when a table subject's edges name more than one target concept.
+   * @throws StaleBaselineError when the fingerprint mismatches.
+   */
+  private async removeConceptEdges(
+    kind: ItemKind,
+    name: string,
+    edges: readonly { readonly target_kind: 'table' | 'concept'; readonly name: string }[],
+    expectedVersion: string,
+  ): Promise<{ readonly results: readonly ItemVerdict[] }> {
+    if (kind === 'event') {
+      throw new Error('concept-target relations are not supported for events — the legal concept-side edges are concept→concept, concept→table, and table→concept (Q4(b))')
+    }
+    const root = this.resolveRoot()
+    let home: string
+    let records: Array<{ readonly target_kind: 'table' | 'concept'; readonly target: string }>
+    if (kind === 'concept') {
+      home = name
+      records = edges.map(e => ({ target_kind: e.target_kind, target: e.name }))
+    } else {
+      if (loadTableDefinitionFromLayer(root, name) === null) throw new Error(`Table not found: ${name}`)
+      const targets = new Set(edges.map(e => e.name))
+      if (targets.size !== 1) {
+        throw new Error('remove_relation from a table subject takes concept edges that all name the SAME target concept — each target concept is a different file with its own baseline; split the call')
+      }
+      const first = edges[0]
+      if (first === undefined) throw new Error('empty concept-edge batch')
+      home = first.name
+      records = [{ target_kind: 'table', target: name }]
+    }
+    const raw = itemReadRawDef(root, 'concept', home)
+    const existing = itemObjectArray(raw, 'related_refs')
+    const next = existing.filter(e => !records.some(r => itemMatchesConceptEdge(e, r)))
+    // Veto side, routed by origin — identical to the table/event path:
+    // machine-derived or absent → veto; curated → pure content correction.
+    const existingSup = itemStringArray(raw, 'suppressed_related_refs')
+    const nextSup = [...existingSup]
+    const supSeen = new Set(existingSup)
+    const info = records.map(record => {
+      const key = conceptEdgeKey(record)
+      const matches = existing.filter(e => itemMatchesConceptEdge(e, record))
+      const present = matches.length > 0
+      const machineDerived = matches.some(e => {
+        const origin = (e as { readonly origin?: unknown }).origin
+        return origin === 'deterministic' || origin === 'llm'
+      })
+      const vetoNow = (machineDerived || !present) && !supSeen.has(key)
+      if (vetoNow) {
+        supSeen.add(key)
+        nextSup.push(key)
+      }
+      return { key, present, vetoNow }
+    })
+    const updates: Record<string, unknown> = { related_refs: next }
+    if (!itemSameStringArray(existingSup, nextSup) || raw['suppressed_related_refs'] !== undefined) {
+      updates['suppressed_related_refs'] = nextSup
+    }
+    await this.applyItemUpdate('concept', home, updates, expectedVersion)
+    const results: ItemVerdict[] = info.map(({ key, present, vetoNow }) => ({
+      key,
+      outcome: present ? 'removed' : (vetoNow ? 'absent' : 'idempotent'),
+      suppressed: vetoNow,
+      reasserted: false, // no enrichment rounds on concepts — nothing can re-derive a vetoed edge
+    }))
+    return { results }
+  }
+
+  /**
+   * Internal: dispatch `updateTableMeta` / `updateEventMeta` /
+   * `updateConceptMeta` by kind and throw on failure. The item methods use
+   * this instead of the non-throwing result shape — the handler's try/catch
+   * maps thrown errors to MCP error responses.
    */
   private async applyItemUpdate(
-    kind: 'table' | 'event',
+    kind: ItemKind,
     name: string,
     updates: Readonly<Record<string, unknown>>,
     expectedVersion: string,
@@ -1952,8 +2240,11 @@ export class SemanticGroundingCore {
     if (kind === 'table') {
       const res = await this.updateTableMeta(name, updates, { expected_version: expectedVersion })
       if (!res.ok) throw new Error(res.error)
-    } else {
+    } else if (kind === 'event') {
       const res = await this.updateEventMeta(name, updates, { expected_version: expectedVersion })
+      if (!res.ok) throw new Error(res.error)
+    } else {
+      const res = await this.updateConceptMeta(name, updates, { expected_version: expectedVersion })
       if (!res.ok) throw new Error(res.error)
     }
   }

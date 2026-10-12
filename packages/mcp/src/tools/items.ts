@@ -24,18 +24,20 @@ import { assertScopeMatch, auditedWrite, enrichmentHealthAfter, scopeStamp, tool
 import {
   RelationRefInputSchema,
   UPDATE_COMMON_FIELDS,
-  WritableKindSchema,
+  AliasKindSchema,
+  RelationSubjectKindSchema,
 } from './shared.ts'
 
 /** The four item-level tool names. */
 export const ITEM_TOOL_NAMES = ['add_alias', 'remove_alias', 'add_relation', 'remove_relation'] as const
 
-/** Map Core method's `Error("Table/Event not found: ...")` to `DefinitionNotFoundError`.
- * `StaleBaselineError` is already remapped to `StaleBaselineRejection` by `runAudited`. */
-function mapCoreError(e: unknown, kind: 'table' | 'event', name: string): never {
+/** Map Core method's `Error("Table/Event/Concept not found: ...")` to
+ * `DefinitionNotFoundError`. `StaleBaselineError` is already remapped to
+ * `StaleBaselineRejection` by `runAudited`. */
+function mapCoreError(e: unknown, kind: 'table' | 'event' | 'concept', name: string): never {
   if (e instanceof Error) {
     const msg = e.message
-    if (msg.startsWith('Table not found') || msg.startsWith('Event not found')) {
+    if (msg.startsWith('Table not found') || msg.startsWith('Event not found') || msg.startsWith('Concept not found')) {
       throw new DefinitionNotFoundError(msg, { kind, name })
     }
   }
@@ -57,7 +59,7 @@ function itemResponseBase(snap: ScopeBinding, res: { readonly commit: string; re
 /** Common input shape for `add_alias` / `add_relation` (single-item — #37 §3 keeps
  * `add_*` single: no measured pain, nothing pre-built). */
 const AddAliasInputSchema = z.object({
-  kind: WritableKindSchema,
+  kind: AliasKindSchema,
   name: z.string().min(1),
   alias: z.string().min(1),
   ...UPDATE_COMMON_FIELDS,
@@ -66,7 +68,7 @@ const AddAliasInputSchema = z.object({
 /** `remove_alias` input: same-target batch of labels (#37 §3 — the empty array is
  * closed at the door, map #27 precedent). Breaking reshape of ADR-0005's `alias`. */
 const RemoveAliasInputSchema = z.object({
-  kind: WritableKindSchema,
+  kind: AliasKindSchema,
   name: z.string().min(1),
   labels: z.array(z.string().min(1)).min(1),
   ...UPDATE_COMMON_FIELDS,
@@ -74,16 +76,18 @@ const RemoveAliasInputSchema = z.object({
 
 /** Common input shape for `add_relation` (single). */
 const AddRelationInputSchema = z.object({
-  kind: WritableKindSchema,
+  kind: RelationSubjectKindSchema,
   name: z.string().min(1),
   relation: RelationRefInputSchema,
   ...UPDATE_COMMON_FIELDS,
 })
 
 /** `remove_relation` input: same-target batch of relations (#37 §3). Breaking
- * reshape of ADR-0005's `relation`. */
+ * reshape of ADR-0005's `relation`. One shape per call: joins and concept-side
+ * edges cannot mix (the Core refuses the mix — different files, different
+ * baselines). */
 const RemoveRelationInputSchema = z.object({
-  kind: WritableKindSchema,
+  kind: RelationSubjectKindSchema,
   name: z.string().min(1),
   relations: z.array(RelationRefInputSchema).min(1),
   ...UPDATE_COMMON_FIELDS,
@@ -95,7 +99,7 @@ function registerAddAlias(server: McpServer, deps: ServerDeps): void {
     'add_alias',
     {
       title: 'Add an alias',
-      description: 'Append one alt_label to a table or event, read-modify-write inside the corpus lock. Adding back a suppressed label LIFTS its veto — removal is the veto, re-assertion is its mirror — and the receipt\'s `unsuppressed` lists the keys this call lifted (absent when none). A call that neither adds the label nor lifts a veto is a no-op (changed:false, no commit).',
+      description: 'Append one alt_label to a table, event, or concept, read-modify-write inside the corpus lock. Adding back a suppressed label LIFTS its veto — removal is the veto, re-assertion is its mirror — and the receipt\'s `unsuppressed` lists the keys this call lifted (absent when none). A call that neither adds the label nor lifts a veto is a no-op (changed:false, no commit).',
       inputSchema: AddAliasInputSchema,
     },
     async (input, ctx: ServerContext) => {
@@ -124,7 +128,7 @@ function registerRemoveAlias(server: McpServer, deps: ServerDeps): void {
     'remove_alias',
     {
       title: 'Remove aliases (and veto their return)',
-      description: 'Remove alt_labels from a table or event, read-modify-write inside the corpus lock — one locked write for the whole same-target batch. Every removal records a persistent suppression keyed on the label\'s normalized form: enrichment rounds (deterministic AND LLM) will never re-assert a suppressed label — removal IS the veto; it does not depend on the label being present (ensure-absent: pre-vetoing a word the rounds have not found yet). Per-item verdicts in `results`: `removed` (was present, now gone), `absent` (was not present; the veto this call records is the write), `idempotent` (absent and already vetoed — the only true no-op). `suppressed` says whether THIS call recorded the key\'s veto; `reasserted` says whether the same write\'s on-write hook immediately re-derived it (cannot happen for a vetoed label — it is reported per item so a receipt never has to be trusted on faith). Adding the label back (add_alias) lifts the veto.',
+      description: 'Remove alt_labels from a table, event, or concept, read-modify-write inside the corpus lock — one locked write for the whole same-target batch. Every removal records a persistent suppression keyed on the label\'s normalized form: enrichment rounds (deterministic AND LLM) will never re-assert a suppressed label — removal IS the veto; it does not depend on the label being present (ensure-absent: pre-vetoing a word the rounds have not found yet). Per-item verdicts in `results`: `removed` (was present, now gone), `absent` (was not present; the veto this call records is the write), `idempotent` (absent and already vetoed — the only true no-op). `suppressed` says whether THIS call recorded the key\'s veto; `reasserted` says whether the same write\'s on-write hook immediately re-derived it (cannot happen for a vetoed label, and never happens on concepts — they have no enrichment rounds — the field is reported per item so a receipt never has to be trusted on faith). Adding the label back (add_alias) lifts the veto.',
       inputSchema: RemoveAliasInputSchema,
     },
     async (input, ctx: ServerContext) => {
@@ -153,7 +157,7 @@ function registerAddRelation(server: McpServer, deps: ServerDeps): void {
     'add_relation',
     {
       title: 'Add a relation',
-      description: 'Append one dimension/external relation (dim_table + join_keys) to a table or event, read-modify-write inside the corpus lock. Omits origin and derivation on write — the appended ref is treated as curated (ADR-0005 rulings 9-10); your basis for the join belongs in summary. A no-op when the exact same relation is already present. Re-asserting a dim_table whose relations are suppressed LIFTS that veto (granularity: one dim_table per veto) — the receipt\'s `unsuppressed` names the lifted key when this call lifted one.',
+      description: 'Append one relation to a table, event, or concept, read-modify-write inside the corpus lock. Two shapes: a join (dim_table + join_keys) on a table/event subject, or a concept-side edge ({target_kind, name}) for the entity layer — concept→concept, concept→table, or table→concept (event subjects take joins only). A concept-side edge lands on the concept\'s related_refs — for a table subject naming a concept target, that is the TARGET concept\'s file, so expected_version is that concept\'s fingerprint (from get_definition kind:"concept"); for a concept subject it is the subject\'s own. Omits origin and derivation on write — the appended ref is treated as curated (ADR-0005 rulings 9-10); your basis for the relation belongs in summary. A no-op when the exact same relation is already present. Re-asserting a dim_table whose relations are suppressed LIFTS that veto (granularity: one dim_table per veto) — the receipt\'s `unsuppressed` names the lifted key when this call lifted one.',
       inputSchema: AddRelationInputSchema,
     },
     async (input, ctx: ServerContext) => {
@@ -182,7 +186,7 @@ function registerRemoveRelation(server: McpServer, deps: ServerDeps): void {
     'remove_relation',
     {
       title: 'Remove relations (machine-derived ones are vetoed)',
-      description: 'Remove exactly-matching dimension/external relations (dim_table + join_keys) from a table or event, read-modify-write inside the corpus lock — one locked write for the whole same-target batch. Per-item verdicts in `results` with three facts: `outcome` (`removed` / `absent` / `idempotent`), `suppressed` (did THIS call record the veto), and `reasserted` (did the same write\'s on-write hook immediately re-derive it). Removal routes by the stored entry\'s origin (#37 §1): deleting a machine-derived ref (origin deterministic/llm) records a persistent suppression for that dim_table — enrichment rounds will never re-derive the join; deleting a curated ref (origin manual/absent: hand-added or agent-asserted) is a pure content correction, and if the deterministic round CAN re-derive that join it comes back in the same call (`reasserted: true`) — remove it again and THAT removal vetoes it. Removing an absent relation records the veto (ensure-absent: pre-veto a DIM you know is noise). Adding the dim_table back (add_relation) lifts the veto.',
+      description: 'Remove exactly-matching relations from a table, event, or concept, read-modify-write inside the corpus lock — one locked write for the whole same-target batch. Two shapes, one per call: joins (dim_table + join_keys) or concept-side edges ({target_kind, name}); the Core refuses a mix. Concept-edge removals write the home concept (a table subject\'s concept-target edge lives on the TARGET concept — expected_version is that concept\'s fingerprint) and have no enrichment rounds, so their `reasserted` is always false. Join removals route by the stored entry\'s origin (#37 §1): deleting a machine-derived ref (origin deterministic/llm) records a persistent suppression for that dim_table — enrichment rounds will never re-derive the join; deleting a curated ref (origin manual/absent: hand-added or agent-asserted) is a pure content correction, and if the deterministic round CAN re-derive that join it comes back in the same call (`reasserted: true`) — remove it again and THAT removal vetoes it. Per-item verdicts in `results` with three facts: `outcome` (`removed` / `absent` / `idempotent`), `suppressed` (did THIS call record the veto), and `reasserted`. Removing an absent relation records the veto (ensure-absent: pre-veto a DIM you know is noise). Adding the dim_table back (add_relation) lifts the veto.',
       inputSchema: RemoveRelationInputSchema,
     },
     async (input, ctx: ServerContext) => {
