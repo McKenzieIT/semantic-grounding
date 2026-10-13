@@ -1,11 +1,12 @@
 /**
- * ADR-0005's five read tools — behaviour: `search_definitions`, `get_definition`,
- * `get_join_path`, `get_relations`, `resolve_alias`.
+ * ADR-0005's read tools — behaviour: `search_definitions`, `get_definition`,
+ * `get_join_path`, `get_relations`, `resolve_alias`, and #105's sixth,
+ * `list_definitions`.
  *
- * @see docs/adr/0005-mcp-tool-surface.md
+ * @see docs/adr/0005-mcp-tool-surface.md (2026-10-14 Update — the #105 rulings)
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { rankDefinitions, type SearchCandidate } from '../src/tools/read.ts'
+import { LIST_DEFINITIONS_CAP, listDefinitionsIndex, rankDefinitions, type SearchCandidate } from '../src/tools/read.ts'
 import { buildIntentToolHarness, type IntentToolHarness } from './helpers/intent-tools-harness.ts'
 import { toolJson } from './helpers/inprocess-client.ts'
 
@@ -212,5 +213,122 @@ describe('get_join_path / get_relations / resolve_alias', () => {
     expect(res.result?.['isError']).toBeUndefined()
     const body = toolJson(res) as { node_ids: unknown[] }
     expect(body.node_ids).toEqual([])
+  })
+})
+
+describe('listDefinitionsIndex (pure — #105)', () => {
+  const nodes = [
+    { id: 'dws_order', kind: 'dws', label: 'dws_order', domains: ['交易'] },
+    { id: 'dim_shop', kind: 'dim', label: '店铺', domains: [] },
+    { id: 'pay_success', kind: 'event', label: 'pay_success', domains: ['biz'] },
+    { id: 'concept:sales', kind: 'concept', label: '销售', domains: ['sales'] },
+    { id: 'dws_order__gmv', kind: 'metric', label: 'dws_order__gmv', domains: [] },
+  ]
+
+  it('orders rows by kind then id (code-unit order), not insertion order', () => {
+    const { definitions } = listDefinitionsIndex(nodes, undefined, 1000)
+    expect(definitions.map(r => [r.kind, r.id])).toEqual([
+      ['concept', 'concept:sales'],
+      ['dim', 'dim_shop'],
+      ['dws', 'dws_order'],
+      ['event', 'pay_success'],
+      ['metric', 'dws_order__gmv'],
+    ])
+  })
+
+  it('folds dws/dim into "table" for the kinds filter while the rows keep the projection kind', () => {
+    const { definitions, total } = listDefinitionsIndex(nodes, ['table'], 1000)
+    expect(definitions.map(r => r.id).sort()).toEqual(['dim_shop', 'dws_order'])
+    expect(definitions.map(r => r.kind).sort()).toEqual(['dim', 'dws'])
+    expect(total).toBe(2)
+  })
+
+  it('narrows by the pass-through kinds directly (event/concept/metric)', () => {
+    expect(listDefinitionsIndex(nodes, ['metric'], 1000).definitions.map(r => r.id)).toEqual(['dws_order__gmv'])
+    expect(listDefinitionsIndex(nodes, ['event'], 1000).total).toBe(1)
+    expect(listDefinitionsIndex(nodes, ['event', 'concept'], 1000).total).toBe(2)
+  })
+
+  it('caps rows with total/truncated honest about the drop (ADR-0008 ruling 4 precedent)', () => {
+    const capped = listDefinitionsIndex(nodes, undefined, 2)
+    expect(capped.truncated).toBe(true)
+    expect(capped.total).toBe(5)
+    expect(capped.definitions).toHaveLength(2)
+    // the cap keeps the deterministic head, not an arbitrary tail
+    expect(capped.definitions.map(r => r.id)).toEqual(['concept:sales', 'dim_shop'])
+    // rows == cap means nothing was dropped — the cap is inclusive
+    expect(listDefinitionsIndex(nodes, undefined, 5).truncated).toBe(false)
+  })
+
+  it('the cap is the ruled code constant, not config (#105 ruling 3)', () => {
+    expect(LIST_DEFINITIONS_CAP).toBe(1000)
+  })
+})
+
+describe('list_definitions (wired — #105, the inventory index)', () => {
+  /** Add one derived metric to dws_order through the real write door (the only producer of metric nodes). */
+  async function addGmvMetric(h2: IntentToolHarness): Promise<void> {
+    await h2.client.callTool('update_definition', { scope_id: 'fixture',
+      kind: 'table', name: 'dws_order',
+      fields: { metrics: { gmv: { expression: 'sum(pay_amt)', description: '', alt_labels: [], caliber_variants: [] } } },
+      summary: '补充指标', derivation: 'agent', confidence: 0.9,
+      expected_version: (toolJson(await h2.client.callTool('get_definition', { kind: 'table', name: 'dws_order' })) as { version: string }).version,
+    })
+  }
+
+  it('lists the whole corpus — concepts, tables (storage kinds), events, derived metrics — in deterministic order, rows exactly {id, kind, label, domains}', async () => {
+    h = await buildIntentToolHarness({ fixtureOpts: { withEvents: true } })
+    // The metric write FIRST — writing the concept file straight to disk afterwards
+    // leaves the tree dirty (a posture a read tolerates and a write refuses), so the
+    // order here is load-bearing, not incidental.
+    await addGmvMetric(h)
+    // A concept: the fixture ships no concepts/ dir — same convention get_definition's spec uses.
+    const { mkdirSync, writeFileSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const { dumpYaml } = await import('@semantic-grounding/substrate')
+    mkdirSync(join(h.fixture.root, 'concepts'), { recursive: true })
+    writeFileSync(join(h.fixture.root, 'concepts', 'sales.yaml'), dumpYaml({ name: 'sales', description: '销售域' }), 'utf8')
+    const body = toolJson(await h.client.callTool('list_definitions', {})) as {
+      scope: { id: string }
+      total: number
+      truncated: boolean
+      definitions: Array<{ id: string; kind: string; label: string; domains: string[] }>
+    }
+    expect(body.scope.id).toBe('fixture')
+    expect(body.total).toBe(5)
+    expect(body.truncated).toBe(false)
+    expect(body.definitions.map(r => [r.kind, r.id])).toEqual([
+      ['concept', 'concept:sales'],
+      ['dim', 'dim_shop'],
+      ['dws', 'dws_order'],
+      ['event', 'pay_success'],
+      ['metric', 'dws_order__gmv'],
+    ])
+    // The index/detail split, pinned on the wire: an index row is the four fields
+    // only — no description (that is get_definition's to give), no version
+    // fingerprint (ADR-0005 ruling 6: reads are not a write precondition).
+    expect(Object.keys(body.definitions[0] ?? {}).sort()).toEqual(['domains', 'id', 'kind', 'label'])
+  })
+
+  it('kinds:["table"] returns the tables — the filter folds dws/dim, the rows do not', async () => {
+    h = await buildIntentToolHarness()
+    const body = toolJson(await h.client.callTool('list_definitions', { kinds: ['table'] })) as { total: number; definitions: Array<{ id: string; kind: string }> }
+    expect(body.definitions.map(r => r.id).sort()).toEqual(['dim_shop', 'dws_order'])
+    expect(body.total).toBe(2)
+  })
+
+  it('kinds:["metric"] lists derived metrics (ruling 6: the compile target includes derived nodes)', async () => {
+    h = await buildIntentToolHarness()
+    await addGmvMetric(h)
+    const body = toolJson(await h.client.callTool('list_definitions', { kinds: ['metric'] })) as { total: number; definitions: Array<{ id: string; kind: string }> }
+    expect(body.definitions.map(r => [r.kind, r.id])).toEqual([['metric', 'dws_order__gmv']])
+    expect(body.total).toBe(1)
+  })
+
+  it('a repeated call returns identical output — the audit-comparability claim, executed', async () => {
+    h = await buildIntentToolHarness()
+    const first = toolJson(await h.client.callTool('list_definitions', {}))
+    const second = toolJson(await h.client.callTool('list_definitions', {}))
+    expect(JSON.stringify(second)).toBe(JSON.stringify(first))
   })
 })

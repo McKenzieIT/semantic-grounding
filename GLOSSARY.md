@@ -360,8 +360,9 @@ functions in this table and do their read-modify-write inside the corpus lock. T
 raw-edit row never appears as a tool: `create_definition` routes through the primitives
 with a recorder passed on every call (ADR-0004 ruling 2's constraint). Implemented in
 [#20](https://github.com/McKenzieIT/semantic-grounding/issues/20) (`packages/mcp/src/tools/`),
-alongside the five read-only intent tools (`search_definitions` / `get_definition` /
-`get_join_path` / `get_relations` / `resolve_alias`) ADR-0005 also rules on. Tool-layer
+alongside the six read-only intent tools (`search_definitions` / `get_definition` /
+`get_join_path` / `get_relations` / `resolve_alias`, plus #105's inventory index
+`list_definitions`) ADR-0005 also rules on. Tool-layer
 errors are discriminated through a payload inside the `isError` result, not the
 JSON-RPC `error.code` field — `toToolErrorResult`, `packages/mcp/src/errors.ts` —
 because `registerTool`'s handler wrapper reduces any *thrown* error to its bare

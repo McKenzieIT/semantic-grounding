@@ -267,3 +267,25 @@ map #89 的工作流前提踩中：接手无 manifest 的预存 scope（单宿�
 裁决 6 的读面清单由五扩六（工具总数 27→28）；当年拒绝的「**verbatim 全量倾倒**（321 表原文非
 agent 所需）」维持拒绝——索引行不是 verbatim definition，被拒形状与被采纳形状不同物。执行见
 [#112](https://github.com/McKenzieIT/semantic-grounding/issues/112)。
+
+### #112 执行核正（2026-10-14）
+
+七项如裁兑现，零 substrate 改动；一处实现层核正随落地记下（前提核验新发现，非裁决偏离）：
+
+裁决 1 的「`kinds` 复用 search 的缩围语义」按**声明语义**（`ReadableKind` 数组缩围）兑现时，
+实测发现 search 的**实现**把过滤域对到了图投影 kind——表节点投影携带的是存储 kind
+（`def.kind` ∈ {`dws`,`dim`}，`table-kind.ts:48`），而 `ReadableKindSchema` 的 `table` 在该域上
+无命中，即 `search_definitions(kinds:['table'])` 今日实际返回空（潜在词汇错配，无测试钉住，
+本票不修、维持原行为——修 search 是未经裁决的行为变更，另票处理）。`list_definitions` 的
+过滤域因此折算：`dws`/`dim` → `table`（恰为 `TableDefinitionSchema.kind` 封闭枚举的全部取值，
+`types.ts:285`，折算集合收在 `read.ts` 的 `TABLE_STORAGE_KINDS`），其余投影 kind 直通；索引行的
+`kind` 仍逐字携带投影 kind（`dws`/`dim` 进清单——库存视线正要存储粒度，#93 审计透镜），由
+mcp spec 钉死「过滤器折算、行不折算」。
+
+门禁全绿（分支 `wf/112`）：typecheck 双包 0 错 / substrate test **450 恒定**（28 files，零改动）/
+mcp test **385 pass + 1 skip**（25 files，较基线 +10：catalog 27→28 名单 + list_definitions
+形态钉死 + kinds 过滤·total/truncated·cap 截断·确定性排序·derived metrics 在列·索引行四字段）
+/ e2e **21 步**（不加步：catalog 相位经 `TOOL_NAMES` 自动纳入 28 名 reconciliation，行为面无
+启动缝特异性，由 mcp spec 钉死）。GLOSSARY「five read-only intent tools」句已改六；「库存清单」
+词条经 domain-modeling 三条件现场裁**不加**（单用例术语，未达复现条件；索引/题面分离语义已有
+GLOSSARY「enrichment work」词条与 ADR-0008 承载）。合入 main `<sha>`。

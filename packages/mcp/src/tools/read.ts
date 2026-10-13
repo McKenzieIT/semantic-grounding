@@ -1,8 +1,9 @@
 /**
- * ADR-0005's five read tools: `search_definitions`, `get_definition`, `get_join_path`,
- * `get_relations`, `resolve_alias`.
+ * ADR-0005's read tools: `search_definitions`, `get_definition`, `get_join_path`,
+ * `get_relations`, `resolve_alias` — plus ruling 6's sixth (#105 / ADR-0005's
+ * 2026-10-14 Update): the `list_definitions` inventory index.
  *
- * All five are pure reads over the already-loaded `SemanticGroundingCore` — no lock, no
+ * All six are pure reads over the already-loaded `SemanticGroundingCore` — no lock, no
  * recorder, no `AuditContext`. Registration here is the same pure-registration contract
  * every `ToolRegistrar` must satisfy (`server.ts`'s module doc): the corpus reads happen
  * per call, inside each handler, never while `registerTool` itself runs.
@@ -17,13 +18,14 @@ import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { scopeStamp } from './audited.ts'
 import { ReadableKindSchema } from './shared.ts'
 
-/** The five read tool names, in ADR-0005's listing order. */
+/** The six read tool names — ADR-0005 ruling 6's five in listing order, then #105's `list_definitions` (read face five→six, 2026-10-14 Update). */
 export const READ_TOOL_NAMES = [
   'search_definitions',
   'get_definition',
   'get_join_path',
   'get_relations',
   'resolve_alias',
+  'list_definitions',
 ] as const
 
 // ── search_definitions ───────────────────────────────────────────────────────────────
@@ -339,11 +341,116 @@ function registerResolveAlias(server: McpServer, deps: ServerDeps): void {
   )
 }
 
-/** Registers all five read tools. */
+// ── list_definitions ─────────────────────────────────────────────────────────────────
+
+/**
+ * The inventory-index row cap (#105 ruling 3, on ADR-0008 ruling 4's precedent): a
+ * code constant, deliberately NOT config — response sizing is a contract, not a
+ * tuning knob. The 786-definition k11 flagship corpus fits under it untruncated.
+ */
+export const LIST_DEFINITIONS_CAP = 1000
+
+/**
+ * Projection kinds that belong to the readable `table` kind. A table node's graph
+ * projection carries its STORAGE kind — `dws`/`dim`, the only values
+ * `TableDefinitionSchema.kind`'s closed enum permits (`types.ts`), carried open on
+ * the projection so a new table kind needs no gateway change (`table-kind.ts`) —
+ * while the tool face's kind vocabulary is `ReadableKindSchema`'s
+ * (`table`/`event`/`concept`/`metric`). Folding exactly these two keeps the `kinds`
+ * filter speaking the declared vocabulary without forking the projection's open
+ * one; every other projection kind passes through and is narrowed by its own name
+ * once (and if) the readable enum grows to know it.
+ */
+const TABLE_STORAGE_KINDS: ReadonlySet<string> = new Set(['dws', 'dim'])
+
+/** One `list_definitions` index row — the four fields an inventory needs, and nothing else (no `description`, no `version`). */
+export interface DefinitionIndexRow {
+  readonly id: string
+  readonly kind: string
+  readonly label: string
+  readonly domains: readonly string[]
+}
+
+/**
+ * Order rows by kind, then id — plain code-unit comparison, not `localeCompare`:
+ * the ruling asks for an order audit comparisons can reproduce (#105 ruling 2),
+ * and a locale-sensitive comparator would order CJK-bearing ids differently per
+ * host. Search keeps its ranking order; list keeps this inventory order — two
+ * orders coexisting, never mixed.
+ */
+function byKindThenId(a: GraphNodeProjection, b: GraphNodeProjection): number {
+  return a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+}
+
+/**
+ * Project the live corpus into `list_definitions`' deterministic inventory index.
+ *
+ * Exported standalone, same rule as {@link rankDefinitions}: the ordering/filter/cap
+ * behaviour gets focused tests independent of the registrar plumbing. Rows carry
+ * `{id, kind, label, domains}` only — including `description` is the shape #105
+ * ruling 2 rejected on ADR-0008's index/detail precedent (k11's 786 rows would go
+ * from ~2–3万 to 十几万 tokens); a row's description is `get_definition`'s to give.
+ * `kind` rides the projection verbatim (`dws`/`dim` for tables — an inventory
+ * wants the storage granularity, which is exactly the #93 audit lens), while the
+ * `kinds` FILTER folds table storage kinds into `table` per
+ * {@link TABLE_STORAGE_KINDS}.
+ * @param nodes - the projection to index (`core.projectGraphNodes({includeDerived: true})` — derived metrics included, #105 ruling 6).
+ * @param kinds - the caller's kind narrowing (already zod-validated), or undefined for every kind.
+ * @param cap - the row cap (the handler passes {@link LIST_DEFINITIONS_CAP}; a parameter so tests can pin truncation without a 1001-definition corpus).
+ * @returns `{total, truncated, definitions}` with `total` counting the POST-filter rows and `truncated` true exactly when rows were dropped.
+ */
+export function listDefinitionsIndex(
+  nodes: readonly GraphNodeProjection[],
+  kinds: readonly string[] | undefined,
+  cap: number,
+): { readonly total: number; readonly truncated: boolean; readonly definitions: readonly DefinitionIndexRow[] } {
+  const filter = kinds !== undefined ? new Set(kinds) : undefined
+  const rows = nodes
+    .filter(n => filter === undefined || filter.has(TABLE_STORAGE_KINDS.has(n.kind) ? 'table' : n.kind))
+    .sort(byKindThenId)
+  return {
+    total: rows.length,
+    truncated: rows.length > cap,
+    definitions: rows.slice(0, cap).map(n => ({ id: n.id, kind: n.kind, label: n.label, domains: n.domains })),
+  }
+}
+
+const ListDefinitionsInputSchema = z.object({
+  kinds: z.array(ReadableKindSchema).optional().describe('Restrict to these kinds; omit to list every kind.'),
+})
+
+/** Registers `list_definitions`. */
+function registerListDefinitions(server: McpServer, deps: ServerDeps): void {
+  server.registerTool(
+    'list_definitions',
+    {
+      title: 'List definitions (inventory index)',
+      description: 'Enumerate every definition in the active scope as a compact inventory index — one row {id, kind, label, domains} each, in deterministic kind-then-id order (an inventory order for audit comparability, not a search ranking), derived metrics included. Rows carry no description on purpose — an index stays cheap while a description per row would inflate a large corpus by an order of magnitude (ADR-0008\'s index/detail split); fetch a row\'s description via get_definition. Capped at 1000 rows with total and truncated alongside. Narrow with kinds (table/event/concept/metric; omit for every kind). Read-only; makes no commit.',
+      inputSchema: ListDefinitionsInputSchema,
+      annotations: { readOnlyHint: true },
+    },
+    async (input) => {
+      try {
+        const snap = deps.bindings.requireSnapshot()
+        const { total, truncated, definitions } = listDefinitionsIndex(
+          snap.core.projectGraphNodes({ includeDerived: true }),
+          input.kinds,
+          LIST_DEFINITIONS_CAP,
+        )
+        return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), total, truncated, definitions }) }] }
+      } catch (e) {
+        return toToolErrorResult(e)
+      }
+    },
+  )
+}
+
+/** Registers all six read tools. */
 export const registerReadTools: ToolRegistrar = (server, deps) => {
   registerSearchDefinitions(server, deps)
   registerGetDefinition(server, deps)
   registerGetJoinPath(server, deps)
   registerGetRelations(server, deps)
   registerResolveAlias(server, deps)
+  registerListDefinitions(server, deps)
 }

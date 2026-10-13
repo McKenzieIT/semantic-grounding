@@ -1,5 +1,5 @@
 /**
- * ADR-0005's fifteen intent tools — the `#20` half of the `ToolRegistrar` seam
+ * ADR-0005's intent tools — the `#20` half of the `ToolRegistrar` seam
  * `server.ts` declares (`#21`'s three enrichment tools are the other half).
  *
  * `INTENT_TOOL_REGISTRARS` is what `server.ts` appends to `TOOL_REGISTRARS`; each
@@ -21,8 +21,9 @@ import { WRITE_TOOL_NAMES, registerWriteTools } from './write.ts'
 
 /**
  * Every intent tool name this ticket registers, grouped the way ADR-0005 lists them
- * (read five, then the two definition-level writes, then the four item-level writes,
- * then the Tier-1 quartet) — ten write tools plus five read tools, fifteen total.
+ * (read six — ruling 6's five plus #105's `list_definitions` — then the two
+ * definition-level writes, then the four item-level writes, then the Tier-1
+ * quartet) — ten write tools plus six read tools, sixteen total.
  *
  * Derived from each tool file's own name constant rather than hand-listed again here,
  * so a future tool addition changes one file and this list follows automatically —
@@ -45,9 +46,10 @@ export const INTENT_TOOL_REGISTRARS: readonly ToolRegistrar[] = [
 ]
 
 /**
- * Every tool name the server registers — ADR-0005's fifteen intent tools plus
- * ADR-0006/0008's four enrichment tools plus ADR-0011's five scope tools plus
- * #55/#63's playbook tool plus ADR-0013's bulk-import tool. This is the single
+ * Every tool name the server registers — ADR-0005's sixteen intent tools (ruling
+ * 6's five reads + #105's sixth) plus ADR-0006/0008's four enrichment tools plus
+ * ADR-0011's five scope tools plus #55/#63's playbook tool plus ADR-0013's
+ * bulk-import tool. This is the single
  * source for anything that needs "the whole surface" as a list (the catalog
  * spec's `tools/list` reconciliation, the e2e gate's inventory check): compose
  * from here, never hand-glue the families again — the hand-glued copy in

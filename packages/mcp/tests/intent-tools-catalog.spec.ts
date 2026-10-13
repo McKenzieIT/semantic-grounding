@@ -1,8 +1,9 @@
 /**
  * The tool catalog: names, and the schema shapes the ADRs' rulings bake in —
- * ADR-0005's fifteen intent tools plus ADR-0006/0008's four enrichment tools
+ * ADR-0005's sixteen intent tools (ruling 6's five reads + #105's `list_definitions`)
+ * plus ADR-0006/0008's four enrichment tools
  * plus #63's playbook tool plus ADR-0013's import tool plus #72's deregister
- * tool, twenty-seven total
+ * tool, twenty-eight total
  * today. ADR-0005's own Verification
  * section asks for exactly this ("门禁脚本断言：十五个工具名与 input/output schema
  * 快照"); ADR-0006/0008 inherited the same ask, and the e2e gate's header defers
@@ -63,20 +64,21 @@ function byName(tools: readonly ListedTool[], name: string): ListedTool {
   return found
 }
 
-describe('the twenty-seven names', () => {
-  it('registers exactly ADR-0005\'s fifteen + ADR-0006/0008\'s four + ADR-0011\'s five + #63\'s playbook + ADR-0013\'s import + #72\'s deregister, reconciled against TOOL_NAMES', async () => {
+describe('the twenty-eight names', () => {
+  it('registers exactly ADR-0005\'s sixteen + ADR-0006/0008\'s four + ADR-0011\'s five + #63\'s playbook + ADR-0013\'s import + #72\'s deregister, reconciled against TOOL_NAMES', async () => {
     const tools = await listTools()
     expect(tools.map(t => t.name).sort()).toEqual([...TOOL_NAMES].sort())
     // Deliberate hard count, not TOOL_NAMES.length: growing the surface must
     // edit this line, so the change is visible in the diff for review.
-    expect(tools).toHaveLength(27)
+    expect(tools).toHaveLength(28)
   })
 
-  it('names every read tool ADR-0005 ruling 6 lists', async () => {
+  it('names every read tool ADR-0005 ruling 6 lists (five→six, 2026-10-14 Update)', async () => {
     const tools = await listTools()
     const names = tools.map(t => t.name)
     expect(names).toEqual(expect.arrayContaining([
       'search_definitions', 'get_definition', 'get_join_path', 'get_relations', 'resolve_alias',
+      'list_definitions',
     ]))
   })
 
@@ -153,6 +155,16 @@ describe('read tool schemas', () => {
   it('resolve_alias requires term', async () => {
     const tool = byName(await listTools(), 'resolve_alias')
     expect(tool.inputSchema.required).toEqual(['term'])
+  })
+
+  it('list_definitions takes only the optional kinds narrowing — the four readable kinds, nothing required (#105 ruling 1)', async () => {
+    const tool = byName(await listTools(), 'list_definitions')
+    expect(tool.inputSchema.required).toBeUndefined() // zod omits the key when nothing is required
+    expect(Object.keys(tool.inputSchema.properties ?? {}).sort()).toEqual(['kinds'])
+    const kinds = tool.inputSchema.properties?.['kinds'] as { type?: string; items?: { enum?: readonly string[] } }
+    expect(kinds.type).toBe('array')
+    expect(kinds.items?.enum?.slice().sort()).toEqual(['concept', 'event', 'metric', 'table'])
+    expect(tool.annotations?.readOnlyHint).toBe(true)
   })
 })
 
