@@ -1,12 +1,11 @@
 /**
  * Table kind plugin — wraps TableDefinition into the DataSourceKindPlugin interface.
- * G1 §D2/D3 aligned: schema field, raw-based getId, CriticFields with partitionCols,
- * relations with G2 types.
+ * G1 §D2/D3 aligned: schema field, raw-based getId, relations with G2 types.
  *
  * @module kinds/table-kind (internal; only `"."` is importable — see ADR-0002)
  */
 import { TableDefinitionSchema, type TableDefinition } from '../types.ts'
-import type { DataSourceKindPlugin, RelationDef, CriticFields, CorpusItem, GraphNodeProjection } from '../registry.ts'
+import type { DataSourceKindPlugin, RelationDef, CorpusItem, GraphNodeProjection } from '../registry.ts'
 import { deriveMetricRelations, extractMetricsFromTable, metricGraphNode, projectMetricCorpusItem } from '../metrics.ts'
 /** tableKindPlugin */
 export const tableKindPlugin: DataSourceKindPlugin<TableDefinition> = {
@@ -40,40 +39,6 @@ export const tableKindPlugin: DataSourceKindPlugin<TableDefinition> = {
       id: def.table_name,
       ...(parts.length > 0 ? { description: parts.join(' ') } : {}),
       payload: def,
-    }
-  },
-
-  toPromptContext(def): string {
-    const lines: string[] = []
-    lines.push(`Table: ${def.table_name}`)
-    if (def.table_comment) lines.push(`Comment: ${def.table_comment}`)
-    if (def.description) lines.push(`Description: ${def.description}`)
-    lines.push(`Kind: ${def.kind}`)
-    lines.push(`Engine: ${def.engine}`)
-    if (def.granularity) lines.push(`Granularity: ${def.granularity}`)
-    if (def.domains.length > 0) lines.push(`Domains: ${def.domains.join(', ')}`)
-    if (def.columns.length > 0) {
-      lines.push('')
-      lines.push('Columns:')
-      lines.push('| Name | Type | Comment | Role |')
-      lines.push('|------|------|---------|------|')
-      for (const col of def.columns) {
-        lines.push(`| ${col.name} | ${col.type || '-'} | ${col.comment || '-'} | ${col.role || '-'} |`)
-      }
-    }
-    if (def.partitions.length > 0) {
-      lines.push('')
-      lines.push('Partitions:')
-      for (const p of def.partitions) {
-        lines.push(`  - ${p.name} (${p.type || 'string'})`)
-      }
-    }
-    return lines.join('\n')
-  },
-
-  toCriticContext(def): CriticFields {
-    return {
-      partitionCols: def.partitions.map(p => p.name),
     }
   },
 

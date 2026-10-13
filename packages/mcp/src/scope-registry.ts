@@ -30,10 +30,9 @@
  * that; `switch_scope` updates its own binding and, in passing, the default.
  * "Where I was last" is shared like a shell cwd; "where I am" is per-process.
  *
- * Structurally implements substrate's `ScopeRegistryLike` (`active`/`activeId`/
- * `get`) — duck-typed, deliberately **not** handed to `setScopeRegistry`:
- * ADR-0011 constant 8 keeps per-scope cores on static roots, so the substrate's
- * registry delegation stays unmounted (zero substrate changes).
+ * Multi-scope serving is this package's BindingStore + per-scope core
+ * arrangement (ADR-0011 constant 8); the registry no longer exposes a
+ * substrate-compatible access surface (removed in S1.6).
  *
  * YAML is parsed with `js-yaml` directly rather than through the substrate's
  * barrel because the barrel exposes no generic loader (ADR-0003's allow-list is
@@ -145,25 +144,7 @@ export class ScopeRegistryFile {
     return this.parse(this.readFileOrEmpty())
   }
 
-  /** substrate `ScopeRegistryLike.active()` — the in-file default, not any process's live binding. */
-  active(): { readonly id: string; readonly semanticRoot: string } | undefined {
-    const state = this.read()
-    const entry = state.active !== null ? state.scopes.get(state.active) : undefined
-    return entry !== undefined ? { id: entry.id, semanticRoot: entry.semanticRoot } : undefined
-  }
-
-  /** substrate `ScopeRegistryLike.activeId()`. */
-  activeId(): string | undefined {
-    return this.read().active ?? undefined
-  }
-
-  /** substrate `ScopeRegistryLike.get()`. */
-  get(id: string): { readonly id: string; readonly semanticRoot: string } | undefined {
-    const entry = this.read().scopes.get(id)
-    return entry !== undefined ? { id: entry.id, semanticRoot: entry.semanticRoot } : undefined
-  }
-
-  /** Like {@link get} but returning the full entry; the management tools' own lookup. */
+  /** One scope's full entry by id — the management tools' own lookup; undefined when not registered. */
   getEntry(id: string): ScopeEntry | undefined {
     return this.read().scopes.get(id)
   }

@@ -48,21 +48,6 @@ export const conceptKindPlugin: DataSourceKindPlugin<ConceptDefinition> = {
     }
   },
 
-  toPromptContext(def): string {
-    const lines: string[] = []
-    lines.push(`Concept: ${def.name}`)
-    if (def.description) lines.push(`Description: ${def.description}`)
-    if (def.pref_label) lines.push(`Preferred Label: ${def.pref_label}`)
-    if (def.alt_labels.length > 0) {
-      lines.push(`Aliases: ${def.alt_labels.join(', ')}`)
-    }
-    const props = Object.entries(def.properties ?? {})
-    if (props.length > 0) {
-      lines.push(`Properties: ${props.map(([k, v]) => `${k}=${typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v)}`).join(', ')}`)
-    }
-    return lines.join('\n')
-  },
-
   // Q4(b) Update: concepts are the entity layer, not just the taxonomy — a
   // concept's own `related_refs` are declared entity-graph edges (concept→
   // concept, concept→table), projected as `related_to` with no join

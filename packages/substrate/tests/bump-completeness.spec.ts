@@ -3,10 +3,9 @@
  * primitive bumps `getCorpusVersion(semanticLayer)` after a successful write.
  *
  * Background: `corpusVersion` is a per-path monotonic counter bumped by
- * `invalidateCaches`. The live `getRelationGraph` per-scope LRU already depends
- * on it (`per-scope-read.spec.ts` covers it), but until this spec there was no
- * assertion that *every* write path bumps. A missing bump would silently serve
- * stale data from the LRU cache indefinitely.
+ * `invalidateCaches`. The live `getRelationGraph` cache depends on it, but
+ * until this spec there was no assertion that *every* write path bumps. A
+ * missing bump would silently serve stale data from the cache indefinitely.
  *
  * Audit result (2026-10-13): all 7 public write primitives route through
  * `auditedFileWrite` (io.ts:707), which calls `invalidateCaches` at line 717

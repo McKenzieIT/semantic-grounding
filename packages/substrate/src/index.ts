@@ -6,7 +6,6 @@
  *
  *     const core = new SemanticGroundingCore({ semanticRoot, scopeId })
  *     core.setTier2Recorder(recorder)   // REQUIRED before any auditable write (D5)
- *     core.setScopeRegistry(scopes)     // optional
  *     core.setSchemaProvider(provider)  // optional
  *     core.dispose()
  *
@@ -211,7 +210,6 @@ export {
   type DataSourceKindPlugin,
   type SchemaLike,
   type CorpusItem,
-  type CriticFields,
   type RelationDef,
   type GraphNodeProjection,
   type DerivedNodeContributor,
@@ -233,21 +231,6 @@ export { conceptKindPlugin } from './kinds/concept-kind.ts'
 // barrel (ADR-0003: test double, no host consumer). Re-exported here because
 // setSchemaProvider's signature needs it and it is a documented extension seam.
 export type { SchemaProvider } from './schema-provider.ts'
-
-// ── ScopeRegistry: optional per-scope registry (P1) ───────────────────
-// Structural — no static dep on @deepseek-ai/dsh-scope-registry, the same probe
-// pattern as SchemaProvider above and tool-search-data-sources' SchemaCorpusSource.
-// When the scope-registry plugin is mounted, semanticRoot/scopeId delegate to
-// the active scope; otherwise the Service falls back to its static mount config.
-/** Optional per-scope registry probed via `ctx.get('scopes')` (undefined when unmounted). */
-interface ScopeRegistryLike {
-  /** The active scope definition, or undefined when no scope is active. */
-  active(): { readonly id: string; readonly semanticRoot: string } | undefined
-  /** The active scope id, or undefined when no scope is active. */
-  activeId(): string | undefined
-  /** GA-GT1 Phase 2: resolve a scope by id for per-request scope (undefined when not found). */
-  get(id: string): { readonly id: string; readonly semanticRoot: string } | undefined
-}
 
 // ── On-write enrichment health (slice 2 ②) ────────────────────────────────
 // The on-write enrichment hook is best-effort by design: a failure must not
@@ -354,7 +337,6 @@ function resolveSemanticLayerConfig(config: SemanticLayerConfig): ResolvedSemant
  * ```ts
  * const core = new SemanticGroundingCore({ semanticRoot, scopeId })
  * core.setTier2Recorder(recorder)    // REQUIRED before any auditable write (D5)
- * core.setScopeRegistry(scopes)      // optional — falls back to static config
  * core.setSchemaProvider(provider)   // optional — discover/describe/sample throw without one
  * // ...
  * core.dispose()                     // releases the kind registrations + cache listener
@@ -363,13 +345,12 @@ function resolveSemanticLayerConfig(config: SemanticLayerConfig): ResolvedSemant
  * Nothing above is cordis-specific, and the class imports no host framework
  * (slice 2 ③, map #1). A host adapts it by wrapping, not by being reached for:
  * the dsh adapter wraps this as a cordis `Service` exposing the `ctx.schema`
- * seam and forwards `ctx.audit` / `ctx.get('scopes')` into the setters above.
+ * seam and forwards `ctx.audit` into the setters above.
  *
- * Instances are independent — the recorder, scope registry and provider are
- * per-instance state — so one process can hold several cores over
- * different corpora (the MCP management-surface case, which the former
- * `extends Service` made impossible: a cordis context admits only one service
- * under a given name).
+ * Instances are independent — the recorder and provider are per-instance
+ * state — so one process can hold several cores over different corpora (the
+ * MCP management-surface case, which the former `extends Service` made
+ * impossible: a cordis context admits only one service under a given name).
  */
 // ── Item-method helpers (#49) ─────────────────────────────────────────────────────
 //
@@ -504,8 +485,6 @@ export class SemanticGroundingCore {
 
   private readonly resolved: ResolvedSemanticLayerConfig
   private provider: SchemaProvider | undefined
-  /** P1: setter-injected per-scope registry (undefined => fall back to static mount config). */
-  private scopeRegistry: ScopeRegistryLike | undefined
   /** D5: setter-injected Tier-2 recorder. Undefined is NOT "audit off" — every
    * auditable mutation throws until one is wired (ADR-0001). */
   private tier2Recorder: Tier2Recorder | undefined
@@ -516,28 +495,12 @@ export class SemanticGroundingCore {
   /** Health records from the most recent on-write enrichment run (reset per run). */
   private enrichmentHealth: EnrichmentHealthEntry[] = []
 
-  /** P1: strictly-monotonic counter bumped when the active scope id changes
-   * (detected lazily in corpusVersion() — no event listener, so the constructor
-   * has no ctx side-effect and test stand-ins without ctx.on still construct).
-   * Combined into corpusVersion() so the value changes on every scope switch —
-   * including switch-BACK, where the new scope's per-path counter can otherwise
-   * collide with the cached version and serve the wrong scope's corpus (the
-   * silent semantic-layer leak tool-search-data-sources would otherwise hit). */
-  private scopeEpoch = 0
-  /** P1: the active scope id seen at the last corpusVersion() call. Drives lazy
-   * switch-detection (undefined until the first call). */
-  private lastScopeId: string | undefined
-  /** P1: false until the first corpusVersion() call, so the first call records
-   * the id without bumping (an unmounted scope-registry thus keeps epoch=0 =
-   * unchanged pre-P1 behavior). */
-  private hasObservedScope = false
-
   constructor(config: SemanticLayerConfig) {
     this.resolved = resolveSemanticLayerConfig(config)
     // W27: invalidate the relation-graph cache when a kind is added or removed
     // so a withdrawn kind's nodes/edges do not linger. The node projection
     // (projectGraphNodes) is not cached — it iterates the live registry — so
-    // only the edge-graph caches need clearing.
+    // only the edge-graph cache needs clearing.
     //
     // `registry.onChange` and `registry.register` each already return their own
     // disposer; the core collects them and surfaces them on `dispose()` rather
@@ -547,7 +510,6 @@ export class SemanticGroundingCore {
     this.disposers.push(this.registry.onChange(() => {
       this.graphCache = undefined
       this.graphVersion = -1
-      this.graphCacheByScope.clear()
     }))
     for (const p of [eventKindPlugin, tableKindPlugin, conceptKindPlugin]) {
       this.disposers.push(this.registry.register(p))
@@ -571,76 +533,12 @@ export class SemanticGroundingCore {
   }
 
   /**
-   * P1: the optional scope-registry, probed by name (undefined when unmounted).
-   *
-   * Fail-loud: a corrupt `scopes.yaml` makes the registry's `load()` throw a
-   * YAMLException, which propagates through `corpusVersion()` rather than
-   * silently falling back to static config — a silent fallback could serve the
-   * wrong scope's corpus (the exact leak this change prevents). The registry
-   * writes atomically, so self-corruption is impossible; only external
-   * tampering/disk failure trips this, and failing visibly is the
-   * intranet-security-first choice. Locked by the corrupt-yaml test below.
+   * The semantic-layer root this core was constructed with (the per-scope
+   * core's own root; mcp 的 write/import/enrichment 工具经此取根).
+   * @returns the semantic-layer root path this instance was constructed with.
    */
-  private scopes(): ScopeRegistryLike | undefined {
-    return this.scopeRegistry
-  }
-
-  /**
-   * P1: inject (or clear) the per-scope registry. When absent, `semanticRoot`
-   * and `scopeId` fall back to this instance's static mount config.
-   *
-   * Setter-injected rather than looked up by name (slice 2 ② replaced
-   * `ctx.get('scopes')`): the registry is a *collaborator* of the core, so the
-   * wiring is visible at the call site instead of depending on whether some
-   * host happened to mount a service under the string `'scopes'`.
-   * @param registry - the scope registry to delegate to, or undefined to clear.
-   */
-  setScopeRegistry(registry: ScopeRegistryLike | undefined): void {
-    this.scopeRegistry = registry
-  }
-
-  /**
-   * GA-GT1 Phase 2: resolve the semanticRoot for a (optional) scopeId.
-   *  - scopeId undefined → active scope's root (current behavior; backward-compatible).
-   *  - scopeId provided + registry mounted + scope found → that scope's root.
-   *  - scopeId provided + registry mounted + scope NOT found → throw
-   *    (intranet-security: refuse silent fallback to active scope to prevent
-   *    cross-tenant corpus leak).
-   *  - scopeId provided + registry unmounted → active/cfg root (test stand-in).
-   * @param scopeId - optional scope id; omit for the active scope.
-   * @returns the resolved semantic-layer root path.
-   */
-  private resolveRoot(scopeId?: string): string {
-    if (scopeId === undefined) return this.semanticRoot
-    const reg = this.scopes()
-    if (reg === undefined) return this.semanticRoot // unmounted: fall back (test stand-in)
-    const def = reg.get(scopeId)
-    if (def !== undefined) return def.semanticRoot
-    throw new Error(`ctx.schema: scope "${scopeId}" not found in registry (intranet-security: refusing silent fallback to prevent cross-tenant corpus leak)`)
-  }
-
-  /**
-   * GA-GT1 Phase 5a: PUBLIC per-scope root-resolution seam. Delegates to the
-   * private `resolveRoot` (4-branch semantics unchanged) so consumer packages
-   * (tool-retrieve/tool-search-data-sources/tool-search-schema enrichedLinkers
-   * + retrieval-inproc scopedRetrievers) can resolve a scope's root for the
-   * #19/#22 root-check fix (5b adds `root` to the per-scope cache entry +
-   * checks `entry.root === root` — parity with the Phase 2 I-1
-   * `graphCacheByScope` root guard). Dormant in 5a: no consumer calls it yet;
-   * the method is exposed now so 5b can wire it through `SchemaCorpusSource`.
-   *
-   * 4 branches (same as `resolveRoot`):
-   *  - scopeId undefined → active scope's root (backward-compatible).
-   *  - scopeId provided + registry mounted + scope found → that scope's root.
-   *  - scopeId provided + registry mounted + scope NOT found → throw
-   *    (intranet-security: refuse silent fallback to active scope to prevent
-   *    cross-tenant corpus leak).
-   *  - scopeId provided + registry unmounted → active/cfg root (test stand-in).
-   * @param scopeId - optional scope id; omit for the active scope.
-   * @returns the resolved semantic-layer root path.
-   */
-  resolveScopeRoot(scopeId?: string): string {
-    return this.resolveRoot(scopeId)
+  resolveScopeRoot(): string {
+    return this.semanticRoot
   }
 
   /**
@@ -653,17 +551,6 @@ export class SemanticGroundingCore {
 
   private graphCache: RelationGraph | undefined
   private graphVersion = -1
-  /** GA-GT1 Phase 2 (D4 β): per-scope cache (plain Map; LRU eviction deferred
-   * to Phase 3/4 — scope count is small) for `getRelationGraph(scopeId)` —
-   * layered ALONGSIDE the existing instance cache (the no-arg path is
-   * unchanged). Keyed by scopeId; each entry ALSO records the `root` the graph
-   * was built from + `corpusVersionForRoot(root)`, so the entry is invalidated
-   * when the version changes OR the scope is re-registered with a different
-   * `semanticRoot` (cross-tenant corpus leak guard — I-1: without the root
-   * check a re-registration onto a never-written root keeps version=0=0 and
-   * the cache would silently serve the OLD root's graph). Phase 3/4 cleanup
-   * unifies the two cache paths. */
-  private readonly graphCacheByScope = new Map<string, { graph: RelationGraph; version: number; root: string }>()
   /** CL-2 D2: dangling domain→concept refs collected during the last
    * getRelationGraph() build — assets whose `domains` reference a concept
    * name with no matching definition in concepts/. Such refs are SKIPPED
@@ -679,56 +566,23 @@ export class SemanticGroundingCore {
    * corpus-version counter advances (a write bumps it via `invalidateCaches`).
    * Events only enter the graph once `enrichAllEvents` has written their
    * `external_refs` (Part B).
-   *
-   * GA-GT1 Phase 2 (D4 β): an optional `scopeId` resolves a per-request scope's
-   * root (via `resolveRoot`); the no-arg path is unchanged (active scope, single
-   * instance cache — backward-compatible). The scopeId path uses a separate
-   * per-scope cache (`graphCacheByScope` — plain Map, LRU eviction deferred to
-   * Phase 3/4) keyed by scopeId + root + `corpusVersionForRoot(root)`. The root
-   * is part of the cache key so re-registering the scope with a different
-   * `semanticRoot` invalidates the entry even when the new root's content
-   * counter is still 0 (I-1: cross-tenant corpus leak guard). It is acceptable
-   * that `getRelationGraph()` and `getRelationGraph(activeId)` produce separate
-   * cache entries for the same active scope (data is identical; duplicate entry
-   * is harmless — Phase 3/4 cleanup unifies the two paths).
-   * @param scopeId - optional scope id; omit to use the active scope (backward-compatible).
    * @returns the cached `RelationGraph`, rebuilt when stale.
    */
-  getRelationGraph(scopeId?: string): RelationGraph {
-    if (scopeId === undefined) {
-      // Existing no-arg path — single instance cache (backward-compatible; do not alter).
-      if (this.graphCache !== undefined && this.graphVersion === this.corpusVersion()) {
-        return this.graphCache
-      }
-      const g = this.buildGraph(this.semanticRoot)
-      this.graphCache = g
-      this.graphVersion = this.corpusVersion()
-      return g
+  getRelationGraph(): RelationGraph {
+    if (this.graphCache !== undefined && this.graphVersion === this.corpusVersion()) {
+      return this.graphCache
     }
-    // GA-GT1 Phase 2: per-scope cache path — keyed by scopeId + root +
-    // corpusVersionForRoot(root). The root is resolved ONCE (M-2: avoids a
-    // duplicate resolveRoot/YAML read that corpusVersion(scopeId) would
-    // otherwise re-run); the root is ALSO stored in the entry + checked on hit
-    // so a re-registration that changes the scope's `semanticRoot` invalidates
-    // the entry even when the new root's per-path content counter is still 0
-    // (I-1: silent cross-tenant corpus leak guard).
-    const root = this.resolveRoot(scopeId)
-    const version = this.corpusVersionForRoot(root)
-    const entry = this.graphCacheByScope.get(scopeId)
-    if (entry !== undefined && entry.version === version && entry.root === root) {
-      return entry.graph
-    }
-    const g = this.buildGraph(root)
-    this.graphCacheByScope.set(scopeId, { graph: g, version, root })
+    const g = this.buildGraph(this.semanticRoot)
+    this.graphCache = g
+    this.graphVersion = this.corpusVersion()
     return g
   }
 
   /**
-   * GA-GT1 Phase 2: build a fresh `RelationGraph` from `root` — the ~60-line
-   * build body shared by both the no-arg + per-scope paths of
-   * `getRelationGraph`, so the build logic is NOT duplicated. Pure w.r.t.
-   * cache state — the caller assigns the result to the relevant cache slot.
-   * Updates `danglingDomainRefs` as a build side-effect (same as pre-Phase-2).
+   * Build a fresh `RelationGraph` from `root` — the ~60-line build body behind
+   * `getRelationGraph`'s cache. Pure w.r.t. cache state — the caller assigns
+   * the result to the cache slot. Updates `danglingDomainRefs` as a build
+   * side-effect.
    */
   private buildGraph(root: string): RelationGraph {
     const g = new RelationGraph()
@@ -807,14 +661,7 @@ export class SemanticGroundingCore {
    * name with no matching definition in concepts/. Such refs are skipped
    * (warned) rather than aborting the graph build, so valid assets still get
    * their edges. Empty when all domain refs resolve or no concepts are loaded.
-   *
-   * M-1: `danglingDomainRefs` is shared INSTANCE state — `buildGraph` is now
-   * called by BOTH the no-arg + scopeId paths of `getRelationGraph`, so this
-   * reflects the last build ACROSS ALL SCOPES (whichever `getRelationGraph`
-   * call ran last), NOT a per-scope view. Per-scope keying of this health
-   * surface is deferred to Phase 3/4 (scope count is small; the leak guard is
-   * on the graph cache, not this health-check surface).
-   * @returns a snapshot of the dangling refs (`asset="..." domain="..."`) from the last build (across all scopes).
+   * @returns a snapshot of the dangling refs (`asset="..." domain="..."`) from the last build.
    */
   getDanglingDomainRefs(): string[] {
     return [...this.danglingDomainRefs]
@@ -1260,21 +1107,15 @@ export class SemanticGroundingCore {
     return [...this.enrichmentHealth]
   }
 
-  /** The semantic-layer scope root (the dir with config.yaml/events/tables), or
-   * empty string when unset. P1: delegates to `ctx.scopes.active().semanticRoot`
-   * when the scope-registry is mounted; otherwise falls back to static config. */
+  /** The semantic-layer scope root (the dir with config.yaml/events/tables),
+   * or empty string when unset. */
   get semanticRoot(): string {
-    const active = this.scopes()?.active()
-    if (active !== undefined) return active.semanticRoot
     return this.resolved.semanticRoot
   }
 
   /** The default scope id for Tier-2 audit + schema discovery, or empty string
-   * when unset. P1: delegates to `ctx.scopes.activeId()` when the scope-registry
-   * is mounted; otherwise falls back to static config. */
+   * when unset. */
   get scopeId(): string {
-    const id = this.scopes()?.activeId()
-    if (id !== undefined) return id
     return this.resolved.scopeId
   }
 
@@ -1296,11 +1137,10 @@ export class SemanticGroundingCore {
   /**
    * Load a validated table definition by name from the substrate.
    * @param name - the table `table_name` key to match.
-   * @param scopeId - GA-GT1 Phase 2: optional scope id; omit to use the active scope (backward-compatible).
    * @returns the parsed `TableDefinition`, or null when no table matches.
    */
-  loadTableDefinition(name: string, scopeId?: string): TableDefinition | null {
-    return loadTableDefinitionFromLayer(this.resolveRoot(scopeId), name)
+  loadTableDefinition(name: string): TableDefinition | null {
+    return loadTableDefinitionFromLayer(this.semanticRoot, name)
   }
 
   /**
@@ -1350,16 +1190,15 @@ export class SemanticGroundingCore {
    * ADR-0005's update-class tools are built on; `get_definition` (the MCP
    * tool compiling onto this method) is its wire surface.
    * @param name - the table `table_name` key to match.
-   * @param scopeId - GA-GT1 Phase 2: optional scope id; omit to use the active scope.
    * @returns the parsed definition and its `version` fingerprint, or null when no table matches.
    * @throws an internal error when the table loads but its backing file does
    *   not resolve under `tables/` — a hand-renamed file, not a "not found";
    *   stays loud rather than reporting a definition no write could target.
    */
-  loadTableDefinitionWithVersion(name: string, scopeId?: string): { readonly definition: TableDefinition; readonly version: string } | null {
-    const definition = this.loadTableDefinition(name, scopeId)
+  loadTableDefinitionWithVersion(name: string): { readonly definition: TableDefinition; readonly version: string } | null {
+    const definition = this.loadTableDefinition(name)
     if (definition === null) return null
-    const version = definitionVersion(this.resolveRoot(scopeId), 'table', name)
+    const version = definitionVersion(this.semanticRoot, 'table', name)
     if (version === null) {
       throw new Error(`table "${name}" loaded but its backing file could not be resolved under tables/ (non-conventional filename?)`)
     }
@@ -1382,7 +1221,7 @@ export class SemanticGroundingCore {
   loadEventDefinitionWithVersion(name: string): { readonly definition: EventDefinition; readonly version: string } | null {
     const definition = this.loadEventDefinition(name)
     if (definition === null) return null
-    const version = definitionVersion(this.resolveRoot(), 'event', name)
+    const version = definitionVersion(this.semanticRoot, 'event', name)
     if (version === null) {
       throw new Error(`event "${name}" loaded but its backing file could not be resolved under events/ (non-conventional filename?)`)
     }
@@ -1400,7 +1239,7 @@ export class SemanticGroundingCore {
   loadConceptDefinitionWithVersion(name: string): { readonly definition: import('./types.ts').ConceptDefinition; readonly version: string } | null {
     const definition = this.loadConceptDefinition(name)
     if (definition === null) return null
-    const version = definitionVersion(this.resolveRoot(), 'concept', name)
+    const version = definitionVersion(this.semanticRoot, 'concept', name)
     if (version === null) {
       throw new Error(`concept "${name}" loaded but its backing file could not be resolved under concepts/ (non-conventional filename?)`)
     }
@@ -1412,11 +1251,10 @@ export class SemanticGroundingCore {
    * `alt_labels` (SKOS aliases) + `params_fields` packed into the indexed
    * `description`. The `corpusVariant` config selects slices: 'params+term'
    * (default) packs both; 'term-only' packs aliases only.
-   * @param scopeId - GA-GT1 Phase 2: optional scope id; omit to use the active scope (backward-compatible).
    * @returns enriched corpus items ready for `Bm25Linker` / `HybridRetriever` indexing.
    */
-  loadRetrievalCorpus(scopeId?: string): readonly EventCorpusItem[] {
-    return loadRetrievalCorpusFromLayer(this.resolveRoot(scopeId), this.corpusVariant)
+  loadRetrievalCorpus(): readonly EventCorpusItem[] {
+    return loadRetrievalCorpusFromLayer(this.semanticRoot, this.corpusVariant)
   }
 
   // ── W11 C1: MVCC query snapshot ──────────────────────────────────────────
@@ -1432,15 +1270,10 @@ export class SemanticGroundingCore {
    *
    * Cheap: if the corpus version has not changed since the last call, the
    * cached data arrays are reused (no disk re-scan).
-   *
-   * GA-GT1 Phase 2: an optional `scopeId` resolves a per-request scope's root
-   * + corpus version (via `resolveRoot`/`corpusVersion(scopeId)`); the no-arg
-   * path is unchanged (active scope — backward-compatible).
-   * @param scopeId - optional scope id; omit to use the active scope (backward-compatible).
    * @returns a frozen `DefinitionSnapshot` pinned at the current corpus version.
    */
-  acquireSnapshot(scopeId?: string): DefinitionSnapshot {
-    return captureSnapshot(this.resolveRoot(scopeId), this.corpusVersion(scopeId), this.corpusVariant)
+  acquireSnapshot(): DefinitionSnapshot {
+    return captureSnapshot(this.semanticRoot, this.corpusVersion(), this.corpusVariant)
   }
 
   /**
@@ -1480,61 +1313,10 @@ export class SemanticGroundingCore {
    * Bm25Linker rebuilds after a mid-session event edit instead of staying stale
    * until reboot (D2e-deferred cache-invalidation). Reads the per-path counter
    * for `this.semanticRoot` (0 until the first write).
-   * @param scopeId - optional per-request scope; when omitted, the undefined (root) path's counter is read.
    * @returns the current corpus-version counter.
    */
-  corpusVersion(scopeId?: string): number {
-    if (scopeId !== undefined) {
-      // GA-GT1 Phase 2: per-request scope path — the per-scope cache is keyed
-      // by scopeId (switch-back collision is handled by keying, not by epoch),
-      // so only the substrate's per-path content counter is needed here. The
-      // epoch stays for the undefined path (Phase 4 removes it entirely). M-2:
-      // delegates to corpusVersionForRoot(resolveRoot) so getRelationGraph
-      // (scopeId) can share the resolveRoot result + avoid a duplicate
-      // resolveRoot/YAML read (resolveRoot re-runs scopes()→ctx.get('scopes')
-      // →reg.get→load()→readFileSync each call).
-      return this.corpusVersionForRoot(this.resolveRoot(scopeId))
-    }
-    // P1: lazily detect an active-scope change (no event listener — keeps the
-    // constructor free of ctx side-effects, so test stand-ins without ctx.on
-    // still construct the Service). When the active scope id differs from the
-    // last call, bump the epoch; the first call only records the id (no bump, so
-    // an unmounted scope-registry keeps epoch=0 = unchanged pre-P1 behavior).
-    //
-    // Combine the epoch with the substrate's per-path content counter: the
-    // consumer (tool-search-data-sources) caches its BM25 linker in a
-    // WeakMap<instance, {version}> keyed by THIS instance + the number returned;
-    // the instance is the same singleton across scope switches, so the number
-    // alone must change on every switch — including switch-BACK, where the new
-    // scope's per-path counter can otherwise collide with the cached value and
-    // serve the wrong scope's corpus. 1e6 offsets the small per-path counter out
-    // of the epoch's bits (per-path counters stay << 1e6; if a single path ever
-    // reached 1e6 writes/session its value would collide with the next epoch's
-    // zero-counter — reopening the stale-linker bug — so do not raise this
-    // constant lightly; Number.MAX_SAFE_INTEGER allows ~9e9 switches).
-    const currentId = this.scopes()?.activeId()
-    if (this.hasObservedScope && currentId !== this.lastScopeId) {
-      this.scopeEpoch++
-    }
-    this.lastScopeId = currentId
-    this.hasObservedScope = true
-    return this.scopeEpoch * 1_000_000 + getCorpusVersionFromLayer(this.semanticRoot)
-  }
-
-  /**
-   * M-2: the corpus-version counter for a RESOLVED root — the substrate's
-   * per-path content counter (0 until the first invalidateCaches on that
-   * path). Factored out of the `corpusVersion(scopeId)` scopeId path so
-   * `getRelationGraph(scopeId)` can resolve the root ONCE + reuse the version
-   * without a second `resolveRoot` (which re-runs `scopes()`→
-   * `ctx.get('scopes')`→`reg.get`→`load()`→`readFileSync`). The no-arg path
-   * does NOT route here — it combines `scopeEpoch` + the active root's counter
-   * inline (byte-for-byte unchanged).
-   * @param root - the resolved semantic-layer root path.
-   * @returns the per-path corpus-version counter for `root`.
-   */
-  private corpusVersionForRoot(root: string): number {
-    return getCorpusVersionFromLayer(root)
+  corpusVersion(): number {
+    return getCorpusVersionFromLayer(this.semanticRoot)
   }
 
   // ── live-engine schema (deferred; throws until a provider is mounted) ──
@@ -1616,8 +1398,7 @@ export class SemanticGroundingCore {
    * (gated by `autoEnrich`).
    * @param name - the table `table_name` to update.
    * @param updates - the field overrides merged over the existing table YAML.
-   * @param opts - optional scope id override (default scope id is used when
-   *   omitted) + optional `expected_version` (#18, ADR-0004 ruling 8: sha256
+   * @param opts - optional `expected_version` (#18, ADR-0004 ruling 8: sha256
    *   baseline checked against the on-disk fingerprint before the write
    *   lands; a mismatch throws `StaleBaselineError`).
    * @returns `{ ok: true, table_name }` on success, or `{ ok: false, error }` when the table is missing/malformed or validation fails.
@@ -1625,11 +1406,11 @@ export class SemanticGroundingCore {
   async updateTableMeta(
     name: string,
     updates: Record<string, unknown>,
-    opts: { readonly scopeId?: string; readonly expected_version?: string } = {},
+    opts: { readonly expected_version?: string } = {},
   ): Promise<{ ok: true; table_name: string } | { ok: false; error: string }> {
-    const res = await updateTableMetaFromLayer(this.resolveRoot(opts.scopeId), name, updates, {
+    const res = await updateTableMetaFromLayer(this.semanticRoot, name, updates, {
       recorder: this.recorder(),
-      scope_id: opts.scopeId ?? this.scopeId,
+      scope_id: this.scopeId,
       ...opts.expected_version !== undefined ? { expected_version: opts.expected_version } : {},
     })
     if (res.ok && this.resolved.autoEnrich) {
@@ -1653,8 +1434,7 @@ export class SemanticGroundingCore {
    * `writeEventYaml` surface.
    * @param name - the event `name` to update (must already exist on disk).
    * @param updates - the field overrides merged over the existing event YAML.
-   * @param opts - optional scope id override (default scope id is used when
-   *   omitted) + optional `expected_version` (#18, ADR-0004 ruling 8: sha256
+   * @param opts - optional `expected_version` (#18, ADR-0004 ruling 8: sha256
    *   baseline checked against the on-disk fingerprint before the write
    *   lands; a mismatch throws `StaleBaselineError`).
    * @returns `{ ok: true, event_name }` on success, or `{ ok: false, error }` when the event is missing/malformed or validation fails.
@@ -1662,11 +1442,11 @@ export class SemanticGroundingCore {
   async updateEventMeta(
     name: string,
     updates: Record<string, unknown>,
-    opts: { readonly scopeId?: string; readonly expected_version?: string } = {},
+    opts: { readonly expected_version?: string } = {},
   ): Promise<{ ok: true; event_name: string } | { ok: false; error: string }> {
-    return updateEventMetaFromLayer(this.resolveRoot(opts.scopeId), name, updates, {
+    return updateEventMetaFromLayer(this.semanticRoot, name, updates, {
       recorder: this.recorder(),
-      scope_id: opts.scopeId ?? this.scopeId,
+      scope_id: this.scopeId,
       ...opts.expected_version !== undefined ? { expected_version: opts.expected_version } : {},
     })
   }
@@ -1701,7 +1481,7 @@ export class SemanticGroundingCore {
     data: unknown,
     opts: { skipValidation?: boolean } = {},
   ): Promise<WriteConceptYamlResult> {
-    return writeConceptYamlFromLayer(this.resolveRoot(), name, data, opts, {
+    return writeConceptYamlFromLayer(this.semanticRoot, name, data, opts, {
       recorder: this.recorder(),
       scope_id: this.scopeId,
     })
@@ -1716,19 +1496,19 @@ export class SemanticGroundingCore {
    * post-write health.
    * @param name - the concept `name` to update (must already exist on disk).
    * @param updates - the field overrides merged over the existing concept YAML.
-   * @param opts - optional scope id override + optional `expected_version`
-   *   (sha256 baseline checked against the on-disk fingerprint before the
-   *   write lands; a mismatch throws `StaleBaselineError`).
+   * @param opts - optional `expected_version` (sha256 baseline checked against
+   *   the on-disk fingerprint before the write lands; a mismatch throws
+   *   `StaleBaselineError`).
    * @returns `{ ok: true, concept_name }` on success, or `{ ok: false, error }` when the concept is missing/malformed or validation fails.
    */
   async updateConceptMeta(
     name: string,
     updates: Record<string, unknown>,
-    opts: { readonly scopeId?: string; readonly expected_version?: string } = {},
+    opts: { readonly expected_version?: string } = {},
   ): Promise<{ ok: true; concept_name: string } | { ok: false; error: string }> {
-    return updateConceptMetaFromLayer(this.resolveRoot(opts.scopeId), name, updates, {
+    return updateConceptMetaFromLayer(this.semanticRoot, name, updates, {
       recorder: this.recorder(),
-      scope_id: opts.scopeId ?? this.scopeId,
+      scope_id: this.scopeId,
       ...opts.expected_version !== undefined ? { expected_version: opts.expected_version } : {},
     })
   }
@@ -1779,7 +1559,7 @@ export class SemanticGroundingCore {
     alias: string,
     expectedVersion: string,
   ): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string] }> {
-    const root = this.resolveRoot()
+    const root = this.semanticRoot
     const raw = itemReadRawDef(root, kind, name)
     const existing = itemStringArray(raw, 'alt_labels')
     const key = normalizeLabel(alias)
@@ -1828,7 +1608,7 @@ export class SemanticGroundingCore {
     labels: readonly string[],
     expectedVersion: string,
   ): Promise<{ readonly results: readonly ItemVerdict[] }> {
-    const root = this.resolveRoot()
+    const root = this.semanticRoot
     const raw = itemReadRawDef(root, kind, name)
     const existing = itemStringArray(raw, 'alt_labels')
     const removalKeys = labels.map(normalizeLabel)
@@ -1905,12 +1685,12 @@ export class SemanticGroundingCore {
       throw new Error('join-shaped relations (dim_table + join_keys) are not supported for concepts — a concept declares entity-layer edges with target_kind instead (Q4(b))')
     }
     if (kind === 'table') {
-      const dimDef = loadTableDefinitionFromLayer(this.resolveRoot(), relation.dim_table)
+      const dimDef = loadTableDefinitionFromLayer(this.semanticRoot, relation.dim_table)
       if (dimDef === null) {
         throw new Error(`Table not found: ${relation.dim_table}`)
       }
     }
-    const root = this.resolveRoot()
+    const root = this.semanticRoot
     const field = itemRelationFieldName(kind)
     const supField = itemSuppressionFieldName(kind, 'relation')
     const raw = itemReadRawDef(root, kind, name)
@@ -1981,7 +1761,7 @@ export class SemanticGroundingCore {
     if (kind === 'concept') {
       throw new Error('join-shaped relations (dim_table + join_keys) are not supported for concepts — a concept declares entity-layer edges with target_kind instead (Q4(b))')
     }
-    const root = this.resolveRoot()
+    const root = this.semanticRoot
     const field = itemRelationFieldName(kind)
     const supField = itemSuppressionFieldName(kind, 'relation')
     const raw = itemReadRawDef(root, kind, name)
@@ -2068,7 +1848,7 @@ export class SemanticGroundingCore {
     if (kind === 'event') {
       throw new Error('concept-target relations are not supported for events — the legal concept-side edges are concept→concept, concept→table, and table→concept (Q4(b))')
     }
-    const root = this.resolveRoot()
+    const root = this.semanticRoot
     if (kind === 'table') {
       if (loadTableDefinitionFromLayer(root, name) === null) throw new Error(`Table not found: ${name}`)
       if (loadConceptDefinitionFromLayer(root, edge.name) === null) throw new Error(`Concept not found: ${edge.name}`)
@@ -2135,7 +1915,7 @@ export class SemanticGroundingCore {
     if (kind === 'event') {
       throw new Error('concept-target relations are not supported for events — the legal concept-side edges are concept→concept, concept→table, and table→concept (Q4(b))')
     }
-    const root = this.resolveRoot()
+    const root = this.semanticRoot
     let home: string
     let records: Array<{ readonly target_kind: 'table' | 'concept'; readonly target: string }>
     if (kind === 'concept') {

@@ -1,7 +1,7 @@
 /**
  * DataSourceRegistry — a typed plugin registry for semantic-layer data-source
  * kinds (G1 Decision B: DataSourceKindPlugin<T>). Each kind plugin declares how
- * to identify, index, format, and relate definitions of its type.
+ * to identify, index, and relate definitions of its type.
  *
  * Aligned with G1 §D2 interface design + G2 ontology decisions.
  *
@@ -15,15 +15,6 @@ export interface CorpusItem {
   readonly description?: string
   readonly metrics?: Readonly<Record<string, unknown>>
   readonly payload?: unknown
-}
-
-/**
- * Aggregated critic-context fields from one or more definitions (G1 §D2).
- * Fields are optional — not all kinds provide all axes.
- */
-export interface CriticFields {
-  readonly eventParams?: Readonly<Record<string, unknown>>
-  readonly partitionCols?: readonly string[]
 }
 
 /**
@@ -145,12 +136,6 @@ export interface DataSourceKindPlugin<T = unknown> {
    * Returns null to skip indexing for this definition.
    */
   toCorpusItem(def: T): CorpusItem | null
-
-  /** Format a definition into prompt context (for model-facing tools). */
-  toPromptContext(def: T): string
-
-  /** Extract critic-relevant fields from a definition (optional; not all kinds have critic logic). */
-  toCriticContext?(def: T): CriticFields
 
   /**
    * Declare relations this definition has to other data sources (G2: required).

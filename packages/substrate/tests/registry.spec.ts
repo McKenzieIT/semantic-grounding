@@ -1,7 +1,7 @@
 /**
  * P2-impl registry unit tests — DataSourceRegistry + kind plugins.
  * G1/G2 aligned: schema field, toCorpusItem (reads alt_labels from def),
- * raw-based getId, CriticFields with Record, three relation types, MetricPlugin.
+ * raw-based getId, three relation types, MetricPlugin.
  */
 import { test, expect } from 'vitest'
 import yaml from 'js-yaml'
@@ -43,34 +43,19 @@ test('registry — duplicate kind throws', () => {
   expect(() =>{  reg.register(eventKindPlugin) }).toThrow('already registered')
 })
 
-test('disposing a kind contribution removes only that registration and permits reload', async () => {
-  const { Context } = await import('@deepseek-ai/cordis')
-  const ctx = new Context()
+test('disposing a kind registration removes only that registration and permits re-register', () => {
   const reg = new DataSourceRegistry()
-  let disposeContribution: () => void = () => {}
-  const contributor = (scope: InstanceType<typeof Context>) => {
-    scope.effect(() => {
-      disposeContribution = reg.register(eventKindPlugin)
-      return disposeContribution
-    })
-  }
-  try {
-    const fiber = ctx.plugin(contributor)
-    await fiber
-    expect(reg.getKind('event')).toBe(eventKindPlugin)
-    const oldDisposer = disposeContribution
-    await fiber.dispose()
-    expect(reg.allKinds()).toEqual([])
-    const reloaded = ctx.plugin(contributor)
-    await reloaded
-    oldDisposer()
-    oldDisposer()
-    expect(reg.getKind('event')).toBe(eventKindPlugin)
-    await reloaded.dispose()
-    expect(reg.allPlugins()).toEqual([])
-  } finally {
-    await ctx.fiber.dispose()
-  }
+  const disposer = reg.register(eventKindPlugin)
+  expect(reg.getKind('event')).toBe(eventKindPlugin)
+  // The old disposer withdraws only its own registration and is idempotent.
+  disposer()
+  expect(reg.allKinds()).toEqual([])
+  // Re-registering the same kind after disposal succeeds (reload permitted).
+  const reDisposer = reg.register(eventKindPlugin)
+  disposer() // re-calling the old disposer must not touch the new registration
+  expect(reg.getKind('event')).toBe(eventKindPlugin)
+  reDisposer()
+  expect(reg.allPlugins()).toEqual([])
 })
 
 // ── eventKindPlugin — G1 aligned ────────────────────────────────────────
@@ -102,23 +87,6 @@ test('eventKindPlugin — toCorpusItem works without alt_labels (no aliases inje
   expect(item!.id).toBe('role.online')
   expect(item!.description).toContain('role_id')
   expect(item!.description).not.toContain('登录')
-})
-
-test('eventKindPlugin — toPromptContext formats params table', () => {
-  const ctx = eventKindPlugin.toPromptContext(EVENT_DEF)
-  expect(ctx).toContain('Event: role.online')
-  expect(ctx).toContain('| role_id |')
-  expect(ctx).toContain('| level |')
-  expect(ctx).toContain('int')
-})
-
-test('eventKindPlugin — toCriticContext returns full Record (G1 §D2)', () => {
-  const ctx = eventKindPlugin.toCriticContext!(EVENT_DEF)
-  expect(ctx.eventParams).toBeDefined()
-  expect(Object.keys(ctx.eventParams!)).toContain('role_id')
-  expect(Object.keys(ctx.eventParams!)).toContain('level')
-  // Preserves the full ParamField object, not just keys
-  expect((ctx.eventParams as Record<string, { type: string }>).role_id!.type).toBe('int')
 })
 
 test('eventKindPlugin — relations returns empty for no external_refs', () => {
@@ -161,21 +129,6 @@ test('tableKindPlugin — toCorpusItem indexes name + comment + columns (A3)', (
   expect(item).not.toBeNull()
   expect(item!.id).toBe('dws_pay_order_di')
   expect(item!.description).toContain('dws_pay_order_di')
-})
-
-test('tableKindPlugin — toPromptContext formats columns table', () => {
-  const ctx = tableKindPlugin.toPromptContext(DWS_DEF)
-  expect(ctx).toContain('Table: dws_pay_order_di')
-  expect(ctx).toContain('Kind: dws')
-  expect(ctx).toContain('Engine: maxcompute')
-  expect(ctx).toContain('| order_id |')
-  expect(ctx).toContain('Partitions:')
-  expect(ctx).toContain('ds')
-})
-
-test('tableKindPlugin — toCriticContext returns partitionCols (G1 §D3)', () => {
-  const ctx = tableKindPlugin.toCriticContext!(DWS_DEF)
-  expect(ctx.partitionCols).toEqual(['ds'])
 })
 
 test('tableKindPlugin — relations maps dimension_refs with G2 type', () => {

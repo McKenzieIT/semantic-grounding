@@ -36,7 +36,6 @@ describe('register', () => {
     expect(alreadyRegistered).toBe(false)
     expect(entry).toMatchObject({ id: 'a', semanticRoot: '/corpora/a', name: 'Alpha', registeredBy: 'bot' })
     expect(registry.getEntry('a')).toMatchObject({ semanticRoot: '/corpora/a' })
-    expect(registry.get('a')).toEqual({ id: 'a', semanticRoot: '/corpora/a' })
   })
 
   it('is idempotent for the same id and the same real path — no second write', async () => {
@@ -85,19 +84,18 @@ describe('register', () => {
 })
 
 describe('setActive', () => {
-  it('persists the default and activeId() reflects it', async () => {
+  it('persists the default and read().active reflects it', async () => {
     const registry = new ScopeRegistryFile(path)
     await registry.register({ id: 'a', semanticRoot: '/corpora/a', name: 'Alpha', registeredBy: 'bot' })
-    expect(registry.activeId()).toBeUndefined()
+    expect(registry.read().active).toBeNull()
     await registry.setActive('a')
-    expect(registry.activeId()).toBe('a')
-    expect(registry.active()).toEqual({ id: 'a', semanticRoot: '/corpora/a' })
+    expect(registry.read().active).toBe('a')
   })
 
   it('refuses an id that is not registered', async () => {
     const registry = new ScopeRegistryFile(path)
     await expect(registry.setActive('ghost')).rejects.toThrow(ScopeNotFoundError)
-    expect(registry.activeId()).toBeUndefined()
+    expect(registry.read().active).toBeNull()
   })
 
   it('clears the default with null', async () => {
@@ -105,8 +103,7 @@ describe('setActive', () => {
     await registry.register({ id: 'a', semanticRoot: '/corpora/a', name: 'Alpha', registeredBy: 'bot' })
     await registry.setActive('a')
     await registry.setActive(null)
-    expect(registry.activeId()).toBeUndefined()
-    expect(registry.active()).toBeUndefined()
+    expect(registry.read().active).toBeNull()
   })
 })
 
@@ -118,7 +115,6 @@ describe('deregister (#72)', () => {
     expect(entry).toMatchObject({ id: 'a', semanticRoot: '/corpora/a' })
     expect(activeCleared).toBe(false)
     expect(registry.getEntry('a')).toBeUndefined()
-    expect(registry.get('a')).toBeUndefined()
   })
 
   it('frees both 1:1 halves — the same path re-registers under a new id, the same id under a new path (the #69 rename exit)', async () => {
@@ -136,8 +132,7 @@ describe('deregister (#72)', () => {
     await registry.setActive('a')
     const { activeCleared } = await registry.deregister('a')
     expect(activeCleared).toBe(true)
-    expect(registry.activeId()).toBeUndefined()
-    expect(registry.active()).toBeUndefined()
+    expect(registry.read().active).toBeNull()
   })
 
   it('leaves a default naming another scope alone', async () => {
@@ -147,7 +142,7 @@ describe('deregister (#72)', () => {
     await registry.setActive('b')
     const { activeCleared } = await registry.deregister('a')
     expect(activeCleared).toBe(false)
-    expect(registry.activeId()).toBe('b')
+    expect(registry.read().active).toBe('b')
   })
 
   it('refuses an id that was never registered — the −31061 condition, not a silent ok', async () => {

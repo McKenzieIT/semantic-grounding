@@ -9,11 +9,9 @@ import { defineConfig } from 'tsdown'
  * ships a host-framework entry at all. That is why `exports` is down to `"."`
  * + `"./package.json"` and why `peerDependencies` is empty.
  *
- * `external` is retained as a guard, not a need: nothing under `src/` imports
- * a host framework any more (`scripts/check-core-purity.mjs` enforces it with
- * an empty allow-list), so these three would never be bundled regardless.
- * Keeping them listed makes a reintroduction fail loudly at build time instead
- * of silently inlining a host framework into the substrate.
+ * src/ has zero host imports — guarded by `scripts/check-core-purity.mjs`
+ * (empty allow-list) + `tsc --noEmit` — and the host-framework dependency
+ * trace was fully removed in S1.6, so there is no `external` list to keep.
  * The vendored `atomic-write` source IS bundled (it lives in `src/vendor/`).
  *
  * tsdown emits ESM + `.d.ts` in one pass; `tsc --noEmit` (see `typecheck`
@@ -28,9 +26,4 @@ export default defineConfig({
   dts: true,
   clean: true,
   outExtensions: () => ({ js: '.js', dts: '.d.ts' }),
-  external: [
-    '@deepseek-ai/cordis',
-    '@deepseek-ai/schemastery',
-    '@deepseek-ai/cosmokit',
-  ],
 })

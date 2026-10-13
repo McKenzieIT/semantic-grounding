@@ -86,7 +86,6 @@ function fixtureKind(options: {
     seen: schema.seen,
     getId: raw => (typeof raw.name === 'string' ? `${prefix}${raw.name}` : undefined),
     toCorpusItem: (def): CorpusItem => ({ id: `${prefix}${def.name}`, description: def.name }),
-    toPromptContext: def => def.name,
     relations: (def): RelationDef[] => (def.target === undefined
       ? []
       : [{ type: options.relationType ?? 'related_to', target: def.target }]),
@@ -214,7 +213,6 @@ describe('declared kind capabilities (I6)', () => {
     schema: gadgetSchema,
     getId: raw => (typeof raw.name === 'string' ? `gadget:${raw.name}` : undefined),
     toCorpusItem: def => ({ id: `gadget:${def.name}`, description: def.name }),
-    toPromptContext: def => def.name,
     relations: () => [],
     toGraphNode: def => ({ id: `gadget:${def.name}`, kind: 'gadget', label: def.name, domains: [] }),
     derivedNodes: {

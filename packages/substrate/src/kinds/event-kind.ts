@@ -1,12 +1,12 @@
 /**
  * Event kind plugin — wraps EventDefinition into the DataSourceKindPlugin interface.
  * G1 §D2/D3 aligned: schema field, toCorpusItem (reads alt_labels from def), raw-based getId,
- * CriticFields with full Record, relations with G2 types.
+ * relations with G2 types.
  *
  * @module kinds/event-kind (internal; only `"."` is importable — see ADR-0002)
  */
 import { EventDefinitionSchema, type EventDefinition } from '../types.ts'
-import type { DataSourceKindPlugin, RelationDef, CriticFields, CorpusItem, GraphNodeProjection } from '../registry.ts'
+import type { DataSourceKindPlugin, RelationDef, CorpusItem, GraphNodeProjection } from '../registry.ts'
 import { isPlainObject } from '../corpus.ts'
 import { deriveMetricRelations, extractMetricsFromEvent, metricGraphNode, projectMetricCorpusItem } from '../metrics.ts'
 
@@ -43,30 +43,6 @@ export const eventKindPlugin: DataSourceKindPlugin<EventDefinition> = {
       ...(parts.length > 0 ? { description: parts.join(' ') } : {}),
       ...(Object.keys(def.metrics).length > 0 ? { metrics: def.metrics } : {}),
       payload: def,
-    }
-  },
-
-  toPromptContext(def): string {
-    const lines: string[] = []
-    lines.push(`Event: ${def.name}`)
-    if (def.description) lines.push(`Description: ${def.description}`)
-    if (def.event_filter) lines.push(`Filter: ${def.event_filter}`)
-    if (def.domains.length > 0) lines.push(`Domains: ${def.domains.join(', ')}`)
-    if (Object.keys(def.params_fields).length > 0) {
-      lines.push('')
-      lines.push('Parameters:')
-      lines.push('| Field | Type | Description |')
-      lines.push('|-------|------|-------------|')
-      for (const [fname, fdef] of Object.entries(def.params_fields)) {
-        lines.push(`| ${fname} | ${fdef.type || '-'} | ${fdef.description || '-'} |`)
-      }
-    }
-    return lines.join('\n')
-  },
-
-  toCriticContext(def): CriticFields {
-    return {
-      eventParams: def.params_fields,
     }
   },
 

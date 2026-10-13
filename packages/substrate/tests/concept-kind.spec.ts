@@ -76,20 +76,6 @@ test('conceptKindPlugin — toCorpusItem produces searchable description', () =>
   expect(item!.description).toContain('monetization')
 })
 
-test('conceptKindPlugin — toPromptContext formats for model', () => {
-  const def = ConceptDefinitionSchema.parse({
-    name: '社交公会',
-    description: '公会操作、好友互动',
-    pref_label: '社交',
-    alt_labels: ['guild', 'social'],
-  })
-  const ctx = conceptKindPlugin.toPromptContext(def)
-  expect(ctx).toContain('Concept: 社交公会')
-  expect(ctx).toContain('Description: 公会操作、好友互动')
-  expect(ctx).toContain('Preferred Label: 社交')
-  expect(ctx).toContain('Aliases: guild, social')
-})
-
 test('conceptKindPlugin — relations returns empty array when related_refs is empty', () => {
   const def = ConceptDefinitionSchema.parse({ name: 'test' })
   expect(conceptKindPlugin.relations(def)).toEqual([])
@@ -139,24 +125,6 @@ test('conceptKindPlugin — toCorpusItem skips an empty-string property value', 
   const item = conceptKindPlugin.toCorpusItem(def)
   // The key is still indexed; only the empty value contributes nothing extra.
   expect(item!.description).toContain('note')
-})
-
-test('conceptKindPlugin — toPromptContext adds a Properties line when properties is non-empty', () => {
-  const def = ConceptDefinitionSchema.parse({ name: '装备', properties: { rarity: '传说', level_cap: 60 } })
-  const ctx = conceptKindPlugin.toPromptContext(def)
-  expect(ctx).toContain('Properties: rarity=传说, level_cap=60')
-})
-
-test('conceptKindPlugin — toPromptContext omits the Properties line when properties is empty', () => {
-  const def = ConceptDefinitionSchema.parse({ name: '装备' })
-  const ctx = conceptKindPlugin.toPromptContext(def)
-  expect(ctx).not.toContain('Properties:')
-})
-
-test('conceptKindPlugin — toPromptContext stringifies an object property value as JSON', () => {
-  const def = ConceptDefinitionSchema.parse({ name: '装备', properties: { meta: { source: 'design-doc' } } })
-  const ctx = conceptKindPlugin.toPromptContext(def)
-  expect(ctx).toContain('Properties: meta={"source":"design-doc"}')
 })
 
 // ── Q4(b): relations() projects declared related_refs ──────────────────────

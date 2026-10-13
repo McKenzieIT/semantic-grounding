@@ -77,7 +77,7 @@ describe('bindStartup — the --scope path', () => {
     expect(binding.scopeId).toBe('a')
     expect(store.snapshot()?.scopeId).toBe('a')
     // explicit --scope is a per-process flag, not a new default for every other process
-    expect(registry.activeId()).toBeUndefined()
+    expect(registry.read().active).toBeNull()
   })
 
   it('refuses an unregistered id, remedy pointing at register_scope', async () => {
@@ -107,7 +107,7 @@ describe('switchTo', () => {
     await registry.register({ id: 'a', semanticRoot: fixtureA.root, name: 'a', registeredBy: 'bot' })
     const store = newStore()
     await store.switchTo('a')
-    expect(registry.activeId()).toBe('a')
+    expect(registry.read().active).toBe('a')
   })
 
   it('reports definition counts for the scope just landed in', async () => {

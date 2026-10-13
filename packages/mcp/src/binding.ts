@@ -26,10 +26,9 @@
  * lock), a quiescence barrier (a slow read could block a switch indefinitely), and
  * "agents call tools one at a time anyway" (falsified by the probe above).
  *
- * `setScopeRegistry` is deliberately **not** called on any core (ADR-0011 constant
- * 8): each per-scope core gets its root statically at construction; the substrate's
- * registry delegation stays unmounted, which is what keeps substrate changes at
- * zero for this whole ticket.
+ * No core is ever handed a scope registry (ADR-0011 constant 8): each
+ * per-scope core gets its root statically at construction, which is what
+ * keeps substrate changes at zero for this whole ticket.
  *
  * @module binding
  */
@@ -205,7 +204,7 @@ export class BindingStore {
    * @returns the restored binding, or undefined when there was no default or it would not serve.
    */
   async restoreActive(): Promise<ScopeBinding | undefined> {
-    const activeId = this.registry.activeId()
+    const activeId = this.registry.read().active ?? undefined
     if (activeId === undefined) return undefined
     try {
       return await this.bindStartup(activeId)
