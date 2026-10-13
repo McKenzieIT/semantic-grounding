@@ -23,7 +23,7 @@
 | C6 | guidance/playbook 阶段编排分叉 → 一个评估函数 | mcp | Worth exploring |
 | C7 | 测试拓扑三处「合并做了一半」的尾巴 | 测试拓扑 | Strong |
 | C8 | 六个小收口（seam 已挣得口粮但没盖满） | 混合 | Worth exploring |
-| S1 | dsh 姿态面集群：snapshot / LLM seam / SchemaProvider / sync-write 链 / barrel 收窄 / scope-epoch | substrate+mcp | Strong 证据 · **需拍板**（ADR supersession） |
+| S1 | dsh 姿态面集群：snapshot / LLM seam / SchemaProvider / sync-write 链 / barrel 收窄 / scope-epoch | substrate+mcp | Strong 证据 · **已拍板**（[#82](https://github.com/McKenzieIT/semantic-grounding/issues/82) 六项裁决，2026-10-13）→ 落地 charting 为 [map #88](https://github.com/McKenzieIT/semantic-grounding/issues/88) |
 | S2 | A 类死码 ~650 行（vendor 三件套 / loadDomains / recorder 预留字段 / 死导出） | 混合 | 免费（直删，零行为损失） |
 | S3 | 文档/注释漂移（README 工具数 26→27 契约行等） | docs | 修字（部分与 C3 重叠） |
 | S4 | 小粒度整合 + 段位挪用（−31024） | mcp | 顺手批（部分与 C5/C6/C8 重叠） |
@@ -174,7 +174,9 @@ flowchart TD
 
 ---
 
-## S1 · dsh 姿态面集群：客户已断、维护照旧（Strong 证据 · 需拍板）
+## S1 · dsh 姿态面集群：客户已断、维护照旧（Strong 证据 · 已拍板）
+
+> **状态更新（2026-10-13）**：六项裁决已拍板（S1.1 暂缓 / S1.2 删 / S1.3 暂缓 / S1.4 删 / S1.5 九名全收 / S1.6 删），[#82](https://github.com/McKenzieIT/semantic-grounding/issues/82) 同日三轮 grilling 用户确认，票面存前提总纲（第一方前端独占）；落地 effort 已 charting 为 [map #88](https://github.com/McKenzieIT/semantic-grounding/issues/88)（五张线性票），ADR supersession 归 ADR-0017（随关图票 accepted）。本节其余文字为巡检时点证据记录，防重查用，不再重开。
 
 **共同前提**：2026-10-13 #79 用户裁决「不再考虑 dsh、semantic-grounding 独立发展」。下列六项的 ADR 保留理由原文都是「为 dsh 保留」，而 mcp 生产面（src + scripts）经 rg 亲验**零消费**——客户已不存在，代码/测试/barrel 名单/GLOSSARY 词条仍在全额维护。全部属「收窄公共行为」：有显式损失，需 ADR supersession + 用户拍板，非自动删除。合计约 1200-1500 行 + 公共面收缩；**任何 barrel 收窄必须同步改 `check-tarball-acceptance.mjs` 的两个名单**（EXPECTED_RUNTIME_NAMES + must-absent；本仓无 CI，它是 ADR-0003 的手动执行器）。
 
