@@ -1,4 +1,4 @@
-# 2026-10-13 架构巡检报告（improve-codebase-architecture）
+# 2026-10-13 架构巡检报告（improve-codebase-architecture）· 两轴合并版
 
 **基线** `main e6607fa`（#81 后：substrate 481 / mcp 373 pass + 1 skip / e2e 21 步 / 工具面 27）。
 扫描按热点加权（近 200 commit churn：substrate `io.ts`/`index.ts`/enrichment 家族、mcp `tools/*`/`server.ts`/e2e 脚本），三路并行走查（substrate / mcp / 测试拓扑）+ 主会话抽查核验。
@@ -8,6 +8,8 @@
 **术语**沿用 codebase-design 词表：module / interface / depth / seam / adapter / leverage / locality；deep = 小 interface 背后大行为，shallow = interface 复杂度接近 implementation。图中约定：红色 = 泄漏/漂移，深色 = deep module。
 
 > 交互版 HTML 报告（Tailwind + Mermaid，含手绘 before/after 图）生成于巡检会话的临时目录，未入库；本文件是其 GitHub 可渲染的等价落盘，内容一致并增补健康区清单。
+
+> **同日合并（2026-10-13）**：简化巡检（dsh-find-simplifications 方法改查本仓，**删除/收窄轴**）结果并入本报告为 **S 系列**（§S1-S4）。两轴正交——C 系列 = 深化/合并（同样的行为用更少的摊派），S 系列 = 删除/收窄（不再维护没有客户的负担）。S 系列基线 `main 27554fc`（代码与 e6607fa 同树），三域并行子代理巡检（substrate / mcp / 测试+文档）+ 主会话 rg 亲验消费者证据；重叠候选一律交叉标注（§两轴重叠对照），两侧内容均保留未丢弃。C 系列原文未动。
 
 ## 候选总览
 
@@ -21,6 +23,10 @@
 | C6 | guidance/playbook 阶段编排分叉 → 一个评估函数 | mcp | Worth exploring |
 | C7 | 测试拓扑三处「合并做了一半」的尾巴 | 测试拓扑 | Strong |
 | C8 | 六个小收口（seam 已挣得口粮但没盖满） | 混合 | Worth exploring |
+| S1 | dsh 姿态面集群：snapshot / LLM seam / SchemaProvider / sync-write 链 / barrel 收窄 / scope-epoch | substrate+mcp | Strong 证据 · **需拍板**（ADR supersession） |
+| S2 | A 类死码 ~650 行（vendor 三件套 / loadDomains / recorder 预留字段 / 死导出） | 混合 | 免费（直删，零行为损失） |
+| S3 | 文档/注释漂移（README 工具数 26→27 契约行等） | docs | 修字（部分与 C3 重叠） |
+| S4 | 小粒度整合 + 段位挪用（−31024） | mcp | 顺手批（部分与 C5/C6/C8 重叠） |
 
 ---
 
@@ -168,9 +174,101 @@ flowchart TD
 
 ---
 
+## S1 · dsh 姿态面集群：客户已断、维护照旧（Strong 证据 · 需拍板）
+
+**共同前提**：2026-10-13 #79 用户裁决「不再考虑 dsh、semantic-grounding 独立发展」。下列六项的 ADR 保留理由原文都是「为 dsh 保留」，而 mcp 生产面（src + scripts）经 rg 亲验**零消费**——客户已不存在，代码/测试/barrel 名单/GLOSSARY 词条仍在全额维护。全部属「收窄公共行为」：有显式损失，需 ADR supersession + 用户拍板，非自动删除。合计约 1200-1500 行 + 公共面收缩；**任何 barrel 收窄必须同步改 `check-tarball-acceptance.mjs` 的两个名单**（EXPECTED_RUNTIME_NAMES + must-absent；本仓无 CI，它是 ADR-0003 的手动执行器）。
+
+**S1.1 snapshot 子系统（最大单项）** — `substrate/src/snapshot.ts`（238 行）+ Core.`acquireSnapshot`/`withSnapshot`（index.ts:1463/1486）+ barrel `captureSnapshot`/`DefinitionSnapshot`（index.ts:142）+ `snapshot.spec.ts`（271 行）+ GLOSSARY `snapshot` 词条。
+
+- 证据：`acquireSnapshot|withSnapshot|captureSnapshot|DefinitionSnapshot` 在 packages/mcp 全仓零命中；mcp 并发读走 `withReadEpoch`（server.ts:168）。
+- rationale 原文即 dsh：ADR-0015 R9「snapshot 是 ADR-0005 裁决 6 背书的公共 dsh 面（MVCC）」；read-epoch.ts:40-41 同。
+- 连带：acceptance gate 36→34；`per-scope-read.spec:134,151-277` 用 acquireSnapshot 表达 scope 解析不变量——**scope 解析本身是活的**，需换读法而非共删；连带 `clearSnapshotCache`/`getSnapshotCacheSize`/`SNAPSHOT_CACHE_MAX`（snapshot.ts:184-217 自认 test-only）；io.ts:536 `loadRetrievalCorpus` 失去第二个消费者（见 S1.5）。
+- supersede：ADR-0005 裁决 6 + ADR-0015 R9。
+- 与健康区条目不矛盾：结构健康 ≠ 有客户（§两轴重叠对照末行）。
+
+**S1.2 LLM 回调 seam** — Core.`setLlmCall`（index.ts:965）+ `wireEnrichmentLlm`（:2293）+ `TextLlm`（:2278）+ barrel `wireEnrichmentLlm`/`LlmCall`（:193）。
+
+- 证据：三符号 mcp 零调用零导入；消费仅 substrate 测试（llm-wiring-integration / service-wiring / read-count-probe）+ acceptance 名单钉名（mjs:300）。
+- rationale 原文即 dsh：ADR-0006「dsh keeps using the former [setLlmCall 回调], the MCP host uses the latter [ask-answer 对]」——前半句服务对象已断；mcp 的 enrichment 管线恒 deterministic-only。
+- 损失：进程内 LLM 富化姿态消失（ask-answer 工具对保留）。supersede：ADR-0006 相应段。
+
+**S1.3 SchemaProvider / live-engine 三件套** — `schema-provider.ts`（54 行）+ Core.`setSchemaProvider`（index.ts:953）+ Core.`discover`/`describe`/`sample`（:1568/:1580/:1593）+ barrel `SchemaProvider`（:240）。
+
+- 证据：**从无真实 provider**——只有测试桩 `StandInSchemaProvider`（schema-provider.ts:34，消费者仅 scenarios.spec:35,132）；三 Core 方法无 provider 恒 throw（:1570 文案自认「P6b Q3 deferred」）；mcp 零调用。
+- 损失：放弃 live-engine 接入方向（P6b 显式延期的能力）。supersede：ADR-0003 (c)「文档化 seam」条款。
+
+**S1.4 sync-write 链（约 220 行）** — Core.`syncWrite`（index.ts:1643）→ io.`syncWriteDefinitions`（io.ts:1183）→ `generateTableYaml`/`generateDimYaml`/`inferRole`/`mergeColumns`/`mergeChangedYaml`（io.ts:1052-1161）。
+
+- 证据：mcp 对 `syncWrite(` 零调用；`tools/write.ts:58` 明文记录 MCP 选 raw-edit 面、拒绝此路（ADR-0005 裁决 5 的被拒方案）。ADR-0003 预留复审条款「syncWriteDefinitions…MCP map 起票时按 (b) 重审」——map 已关、**无人认领**。
+- 与 C8.2 交互：C8.2 提议把 sync 生成约定族「搬出 I/O module」；若 S1.4 裁决删除，C8.2 的搬移半边直接消解——**先裁 S1.4**。
+
+**S1.5 barrel 收窄组** — metrics 五名（`extractMetricsFromTable`/`extractMetricsFromEvent`/`deriveMetricRelations`/`projectMetricCorpusItem`/`loadMetricDefinitions`，index.ts:203-209）+ `isValidId`（:177）+ `updateTableMeta`/`updateEventMeta` 自由函数形态（:154-155）+ `loadRetrievalCorpus`（Core 方法 index.ts:1439 + io.ts:536；mcp 用 registry 驱动的 `loadRetrievalCorpusAll`，read.ts:146）。
+
+- 证据：全部 mcp 零导入（`core.updateTableMeta` 等方法调用不算 barrel 消费）；ADR-0003 记录的 (a) 消费证据全是 dsh 仓（retrieval-experiment/graph-snapshot）。`loadMetricDefinitions` 连 substrate 内部消费都没有（仅 k11-graph.spec:16）；`loadRetrievalCorpus` 的 io 版消费者仅 snapshot.ts:8（随 S1.1 生死）。
+- 操作：一次 ADR-0003 Update 段批量覆盖 + acceptance 两名单同步。
+
+**S1.6 setScopeRegistry + scope-epoch 机制（最需亲自拍）** — Core.`setScopeRegistry` + scopeEpoch×1e6 合成（index.ts:527-541,606,1536-1542）+ `ScopeRegistryLike`（:248-255）。
+
+- 证据：mcp 显式不接线（binding.ts:29-32，ADR-0011 常量 8「keeps substrate changes at zero」）；mcp 每 core 恒静态 root，`scopes()` 恒 undefined、epoch 恒 0。
+- 损失：进程内单 core 多租户切换模式（ADR-0011 当日刻意保留的能力）。
+- 连带集群：① `tests/fixtures/scope-registry.ts`（360 行 vendored dsh stub，import `@deepseek-ai/cordis`/`schemastery`）换手写桩可连带落两个 devDep；② mcp 侧 `ScopeRegistryFile.active()`/`.get()`（scope-registry.ts:149-164）零生产调用（binding 用 `activeId()`/`getEntry()`）——ScopeRegistryLike 鸭子 conformity 只有测试在验；③ registry plugin 的 `toPromptContext`（registry.ts:150，必选）/`toCriticContext`（:153，可选）Core 从不调用（实现仅三个内置 kind，调用全在测试）——即 C8.3 的重估条款，见对照表。
+
+## S2 · A 类死码（~650 行，直删零行为损失）
+
+| 条目 | 位置 | 证据 |
+|---|---|---|
+| `vendor/nl2sql` 三件套（300+129+172 行） | substrate/src/vendor/ | 生产零 import：bm25-linking 只有死码 ontology 引（ontology.ts:10,104）；`expandCandidates` 仅 concept-kind.spec:315,342；`makeCriticCtx` 仅 critic-fields.spec:15 + scenarios.spec:36。lockstep 注释（nl2sql-types.ts:24-27）对齐对象是 dsh PipelineConfig——已断。`vendor/atomic-write.ts` 是活依赖（io.ts:33），**不在内** |
+| `loadDomains` | io.ts:231 + k11-seed.spec:70 | 注释自认「legacy domains.yaml, superseded by the concept kind」；acceptance must-absent 已列（mjs:323） |
+| `AuditContext.files`/`.rounds` | mcp recorder.ts:133-137,505-506 | 全仓唯一填值者是 `beginBatch().end()` 自己（:442）——#21 预留入参被 beginBatch 机制取代；`CommitContext.files/rounds`（message.ts:92-94）与 X-SG-Files/Rounds trailer 是线格式**保留** |
+| `WritableKindSchema` | mcp shared.ts:94 | 全仓只剩定义本身；import.ts:69/78 用自己的 `ImportKind`/内联 enum（顺手把 import.ts:68 注释改自指） |
+| `ScopeRegistryFile.location` getter | mcp scope-registry.ts:139-141 | 零调用；banner 实用 config 副本（main.ts:164） |
+| `toExecutableRule` | registry.ts:187 | 接口可选成员零实现零调用（**= C8.3 第 3 条，重叠**；其已注「窗口内免费删」） |
+| devDeps `@standard-schema/spec` + `tsx` | substrate/package.json:42,46 | 全仓零引用（零 import、零 scripts 调用） |
+| mcp barrel `DERIVATIONS` | message.ts:60 / index.ts:162 | 连测试消费者都没有（1 行，A 类末流） |
+
+弱 A（有观察面损失，拍板项）：`Core.getDanglingDomainRefs()`（index.ts:827）仅测试调用（graph-projection.spec:267、relation-graph.spec:379,393）——它是 getEnrichmentHealth 的模式先例、registry.ts:101 扩展点文档引用它；删则 `buildGraph` 的 skip-and-collect（index.ts:787-803）随之简化。
+
+## S3 · 文档/注释漂移（修字）
+
+- **README.md:100「应报 26 个工具」→ 27**（#72 加 deregister 时漏改的**契约行**）；连带 catalog spec:22 注释自称 `toHaveLength(26)` 与 :72 断言 27 自相矛盾；e2e loop:246 步骤标签加总漏 deregister（= C3 漂移实证，**重叠**）；server.ts:175/248 两处注释「26」→ 27。→ **归 C3 一票修**（家族描述符落地时散文对账一并）。
+- `docs/mcp-dogfood.md:8`「13 步」→ 实为 21 步（e2e 实数），另 :44/:58/:121 三处空「**记录：**」占位符可顺手清。
+- GLOSSARY.md:560「optional peer dependency, for the shell」——两包 peerDependencies 实为空，与同文件 :224 自相矛盾，一句改写为 devDependency 事实。
+- 三处测试头注旧路径 `packages/data/semantic-layer` → `packages/substrate`（scenarios.spec:30 / k11-seed.spec:6 / k11-graph.spec:8）。
+
+## S4 · 小粒度整合 + 段位挪用（mcp，顺手批）
+
+- `UpdateResult`（shared.ts:327）与 `ApplyResult`（audited.ts:177）同形两份 → 合一处导出。
+- `toolSuccess` 已存在（audited.ts:170-172）但 read.ts / suggestions.ts 仍有 9 处内联 `{content:[{type:'text',…}]}`（read :186,225,232,239,248,277,306,334；suggestions :65,88,118,143）→ 收敛为一个调用。
+- `countsOrThrow`（binding.ts:295-297）单行委托同文件模块函数 `scopeCountsOrThrow`，唯一调用 :173 → fold 直呼。
+- `runAudited` 的 `entryHead`（recorder.ts:281）无条件 `await this.head()`（一次 git 子进程），仅 `window.commits` 为空时被读（:300）→ 惰性求值，行为等价。
+- 首次 switch 双跑 posture（binding.ts:171 switchTo + :267 bindingFor 缓存未命中再跑）→ `report.paths` 线程穿下去减半 git 探测。
+- **行为问题（无论删否都该修）**：scope.ts:152 把 scope-id 字符集错误包成 `DefinitionValidationError`（−31024「merged document failed re-validation」）——离段挪用，违 errors.ts 头部段位纪律；根因 `assertScopeIdShape`（scope-registry.ts:109-115）的 throw 分支对真实请求不可达（zod `ScopeIdSchema` 同 regex `/^[a-z0-9][a-z0-9-]*$/` + min(1).max(64) 先拦，shared.ts:64-67）——删调用与换 errorFactory 可并行做。
+- （not-found 前缀串两份、laggard 规则两份：**重叠**，归 C5/C6，见对照表。）
+
+## 两轴重叠对照（相同发现，两侧均保留，处置归属一行说清）
+
+| C 系列 | S 系列 | 相同内容 | 处置 |
+|---|---|---|---|
+| C3 | S3 | 工具总数散文烂（e2e loop:246 双方都点；S 另发现 README:100 契约行、catalog spec:22 自矛盾、server.ts:175/248） | 归 **C3**（家族描述符单一来源落地时一并修） |
+| C5 | S4 | not-found 前缀串两份（shared.ts:344 / items.ts:38） | 归 **C5**（chokepoint 收编时建共享 not-found adapter） |
+| C6 | S4 | laggard 规则两份（guidance.ts:162 / playbook.ts:286-288） | 归 **C6**（评估函数） |
+| C8.2 | S1.4 | sync 生成约定族（唯一 caller = syncWriteDefinitions） | **先裁 S1.4**：若删整链，C8.2 的「搬出 io.ts」半边消解 |
+| C8.3 | S2 | `toExecutableRule` 死成员 | 归 **S2** 直删（C8.3 已注「窗口内免费删」） |
+| C8.3 | S1.6 | `toPromptContext`/`toCriticContext`/`getId` 测试-only 消费 | 归 **S1.6**（C8.3 自己的条款「#79 定调下重估 dsh 消费证据后再动」即此票） |
+| C8.5 | （简化巡检 tests 域同发现） | read-count-probe 收窄为带宽不变量 | 归 **C8.5** |
+| 健康区 | S1.1 | snapshot.ts：健康区列为「干净的纯投影」vs 删除候选 | **不矛盾**：结构好 ≠ 有客户。S1.1 开票不受健康区条目约束；若 S1.1 裁决保留，健康区条目照旧 |
+
+## 简化轴否决清单（查过，勿重查）
+
+errors.ts 18 个错误类全有生产发射点（LockTimeout→lock.ts:254、StaleBaseline→recorder.ts:689、PostureRefused→posture.ts×6+recorder.ts:595 等，逐类 rg 过）；flag×env 双通道是 README 文档化契约；posture 检查全落 ADR-0011 三时机 + 写前 assertCleanBeforeWrite（recorder.ts:592）；`pending.ts` 活（suggestions 工具消费，tools/suggestions.ts:21）；`metrics.ts` 主体活（kind plugins 消费，table-kind.ts:10 / event-kind.ts:11）；substrate `registry.ts` 与 mcp `scope-registry.ts` 非重复（进程内 kind 注册表 vs `~/.semantic-grounding/scopes.yaml` 跨进程持久表）；`invalidateCaches`/`corpusVersion` 是 ADR-0015 活依赖；`check-core-purity.mjs` 是 pretest 活门禁；`check-tarball-acceptance.mjs` 是 ADR-0003 活执行器（本机 npm-ENOENT 是环境坑非死脚本）；`migrate-k11-event-filenames.mjs` 文件头自述保留为审计轨迹（弱 B：git 历史 3d37df8 已有同轨迹，删否用户定）；CorpusLockOptions 三调参测试-only 是 config.ts:44-47 明文裁决；recorder 的 sessionId/agentEmailPattern/serverIdentity/corpusName/构造期 clientName setter 测试-only 但属 barrel embedding 面 + trailer 线格式（X-SG-Session 是裁决 10 集合成员，动它过一句 ADR，弱 B）；`CorpusLock.releaseSync()` 生产零调用但属关机半边（接不接 beforeExit 是行为增强非简化，弱 B）；parked 项（epoch 外自由函数治理/epoch 可观测性/注销缓存淘汰）触发条件未满足，未重提。
+
+---
+
 ## 首推
 
 **C1 · item 写语义深化**：与 #61 在 io.ts 治过的是同一疾病的第二现场——overlay 仪式 6 份手抄、最微妙的 byte-stability gate 无独立测试钉住，下一次手抄（新 kind、新配对字段）抄错 gate 的概率正是 #61 已量化过的那种。抽取形状有仓内先例（enrichment-work.ts 薄转发），公开 interface 零变化（ADR-0002/0003 白名单不动），顺带把 index.ts 从 2317 行降回可浏览规模。**C2 同包同型，可并成一张图（两个 subagent 各管一文件面）。快赢序：C3 最便宜（一处编辑 + 杀掉三类散文漂移），适合当热身。**
+
+**S 系列建议序**：S2 直删最便宜（~650 行零行为损失，可与 C3 同批热身）；S1 集群一张票走 grilling 逐项裁决（六项独立可拆，S1.4 必须先于 C8.2）；S3 归 C3、S4 重叠项归 C5/C6 后所剩三件为顺手批。S1 若全数落地，substrate 公共面从「dsh 宿主 + MCP 宿主」收缩为纯 MCP 单宿主——这是一次方向性收窄，逐项的「能力放弃」清单就是 grilling 的议题单。
 
 ## 健康区清单（勿重扫）
 
@@ -179,7 +277,7 @@ flowchart TD
 - `read-epoch.ts`（102 行）：单一职责、依赖方向显式单向、嵌套 epoch 规则明文。
 - `auditedFileWrite` seam（io.ts:734-754）：已验收的 7→1，bump-completeness.spec 钉住。
 - `definitionVersion` / `checkExpectedVersion` 指纹往返（io.ts:594-655 ↔ index.ts:1380-1429）：读写两侧同源，by construction 不漂移。
-- `snapshot.ts` / `pending.ts` / `metrics.ts` / `corpus.ts` / `relation-graph.ts`：干净的纯投影 / 纯数据结构 module。
+- `snapshot.ts` / `pending.ts` / `metrics.ts` / `corpus.ts` / `relation-graph.ts`：干净的纯投影 / 纯数据结构 module。（S 系列复核：pending.ts / metrics.ts / relation-graph.ts 确认有活消费者——suggestions 工具、kind plugins、read.ts；**snapshot.ts 结构健康 ≠ 有客户，S1.1 删除候选成立**，见重叠对照末行。）
 - registry 三条核心消费循环（buildGraph / projectGraphNodes / loadRetrievalCorpusAll）：registry 驱动迭代、零 per-kind 分支——seam 的投影半边是真的（3 真 adapter + dsh 消费证据）。
 - D5 chokepoint（`this.recorder()` + d5-invariant.spec）：单点强制、有回归测试。
 - mcp `server.ts` epoch Proxy chokepoint、`binding.ts` 入口快照（两个同步赋值即全部活状态）、`scope-registry.ts` 三层并发、`git/lock.ts` 双信号活性判定、`git/posture.ts` 四格表、`config.ts` 双载波单一校验。
@@ -189,4 +287,4 @@ flowchart TD
 
 ---
 
-*证据均带 file:line，以 `main e6607fa` 为准。*
+*证据均带 file:line：C 系列以 `main e6607fa` 为准；S 系列以 `main 27554fc` 为准（代码同树，仅多本文件首版落盘提交）。*
