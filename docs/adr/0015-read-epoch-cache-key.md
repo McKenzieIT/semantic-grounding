@@ -75,8 +75,22 @@ charting 同时核实：
 
 ## References
 
-- 源票：[#60](https://github.com/McKenzieIT/semantic-grounding/issues/60)（C7 corpus 读上下文，Speculative）
-- 地图：`.scratch/read-epoch/map.md`
-- 子票：01-probe（度量探针）、02-bump-audit（bump 完备性审计，已解）、03-adr-0015（本 ADR）、04-epoch-impl（实现）、05-cleanup（删 BasicIndex）
+- 源票：[#60](https://github.com/McKenzieIT/semantic-grounding/issues/60)（C7 corpus 读上下文，Speculative——已随图关闭）
+- 地图：[#73](https://github.com/McKenzieIT/semantic-grounding/issues/73)（2026-10-13 自本地 `.scratch/` 迁入 GitHub issues，五子票全解关图）
+- 子票：[#74](https://github.com/McKenzieIT/semantic-grounding/issues/74)（01-probe 度量探针）、[#75](https://github.com/McKenzieIT/semantic-grounding/issues/75)（02-bump-audit bump 完备性审计）、[#76](https://github.com/McKenzieIT/semantic-grounding/issues/76)（03-adr-0015 本 ADR）、[#77](https://github.com/McKenzieIT/semantic-grounding/issues/77)（04-epoch-impl 实现）、[#78](https://github.com/McKenzieIT/semantic-grounding/issues/78)（05-cleanup 删 BasicIndex，关图票）
 - 关联 map：[#64](https://github.com/McKenzieIT/semantic-grounding/issues/64)（扫管引擎，与本图完全正交、可并行）
 - 代码落点（预期）：`packages/substrate/src/read-epoch.ts`（新文件）、`packages/substrate/src/io.ts:311,350`（`loadTables` / `loadEvents` 内嵌 epoch 检查）、`packages/mcp/src/server.ts`（handler chokepoint）
+- 写路径分票：[#79](https://github.com/McKenzieIT/semantic-grounding/issues/79)（findEventPath fast path 永不命中——01-probe 发现的 run_enrichment 262× 主因，与本 ADR 正交）
+
+## Update — #77 / #78（2026-10-13 落地）
+
+Status `proposed` → `accepted`（随 #76 关票记录，#77 落地兑现）。实现 commits：#77 `c1663ee` / #78 `5f226ce`，均合入 main。
+
+**与「实现落点」草图的两处偏差**（R1 裁决为本，草图让位）：
+
+1. **epoch store = per-epoch memo 实例**（`{ memo: Map<layer\0kind, {version, data}> }`），非草图的 `{ corpusVersion: number }`——corpusVersion 是 per-layer 的 Map，单数数字既表达不了多层版本也钉不住跨 epoch 隔离；「跨 epoch 解析次数 = 2」断言由 store 新生即隔离来保证，版本核对在每次访问时对活 `_corpusVersion` 做
+2. **memo 键 `(semanticLayer, kind)` 复合**——裸 `semanticLayer` 键会让 `loadEvents` 命中 tables 的数组
+
+其余按图落地：`readThroughEpoch` 无 epoch 直读（R3 逐字节相同）；mcp 侧 chokepoint 为 `createServerFactory` 内 `epochEnteringServer` Proxy 拦 `registerTool` 包 `cb`，26 个工具调用位零改动；mcp 取用经 `SemanticGroundingCore.withReadEpoch` 静态委托（barrel 36 名零变化）。`invalidateCaches` 本体与 `_corpusVersion` bump 保留（#78 删 hook 时明确为复合键活依赖）。
+
+**路径断言实测**（k11，全库 767 readYaml）：work listing / prompts / filter names / 单条 lookup 全部 **1.00×**（filter names 对照 epoch 外 10×）；跨 epoch 2× 不泄漏；epoch 内 `writeTable` 后复合键 miss 重解析；另有经真实 `tools/call` 的 epoch 进入证明（`mcp/tests/read-epoch-entry.spec.ts`）。门禁终态：substrate 479 绿（480 − 删除的 S4 一条）/ mcp 345 pass（超 #61 留档 7 环境失败名单零个）/ e2e 21 步 / typecheck 双包 0 / barrel 36 名构建产物逐字节不变。
