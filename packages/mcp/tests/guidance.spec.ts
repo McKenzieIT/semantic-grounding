@@ -122,20 +122,20 @@ describe('_guidance — DW progress, observed through metrics while KG stays the
     h = await buildIntentToolHarness({ guidanceThreshold: { dw: 3 } })
 
     const r1 = toolJson(await h.client.callTool('add_alias', { scope_id: 'fixture',
-      kind: 'table', name: 'dim_shop', alias: '店铺维度',
+      kind: 'table', name: 'dim_shop', labels: ['店铺维度'],
       ...tier2('补别名', 0.9), expected_version: await versionOf(h, 'dim_shop'),
     })) as { _guidance?: Guidance }
     expect(r1._guidance).toMatchObject({ phase: 'seeding', metrics: { dw: { count: 2, phase: 'backfill' } } })
 
     const r2 = toolJson(await h.client.callTool('add_alias', { scope_id: 'fixture',
-      kind: 'table', name: 'dws_order', alias: '订单宽表',
+      kind: 'table', name: 'dws_order', labels: ['订单宽表'],
       ...tier2('补别名', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })) as { _guidance?: Guidance }
     expect(r2._guidance).toMatchObject({ phase: 'seeding', metrics: { dw: { count: 2, phase: 'backfill' } } })
 
     const r3 = toolJson(await h.client.callTool('add_relation', { scope_id: 'fixture',
       kind: 'table', name: 'dws_order',
-      relation: { dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] },
+      relations: [{ dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] }],
       ...tier2('补关联，清空确定性缺口', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })) as { _guidance?: Guidance }
     // The enrichment-work queue is now empty: DW exits backfill for llm_supplement
@@ -155,16 +155,16 @@ describe('_guidance — KG progress, observed as the reported laggard once DW is
     // and stays there — a fixed ceiling the rest of this test's KG moves are
     // compared against.
     await h.client.callTool('add_alias', { scope_id: 'fixture',
-      kind: 'table', name: 'dim_shop', alias: '店铺维度',
+      kind: 'table', name: 'dim_shop', labels: ['店铺维度'],
       ...tier2('补别名', 0.9), expected_version: await versionOf(h, 'dim_shop'),
     })
     await h.client.callTool('add_alias', { scope_id: 'fixture',
-      kind: 'table', name: 'dws_order', alias: '订单宽表',
+      kind: 'table', name: 'dws_order', labels: ['订单宽表'],
       ...tier2('补别名', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const cleared = toolJson(await h.client.callTool('add_relation', { scope_id: 'fixture',
       kind: 'table', name: 'dws_order',
-      relation: { dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] },
+      relations: [{ dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] }],
       ...tier2('补关联，清空确定性缺口', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })) as { _guidance?: Guidance }
     expect(cleared._guidance).toMatchObject({ phase: 'seeding', metrics: { dw: { count: 2, phase: 'mature' }, kg: { count: 0, phase: 'seeding' } } })

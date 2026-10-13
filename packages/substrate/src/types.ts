@@ -414,3 +414,20 @@ export interface ItemVerdict {
   /** Whether the same write's on-write enrichment hook immediately re-derived it. */
   readonly reasserted: boolean
 }
+
+/**
+ * Per-item verdict row returned by the Core item-level add methods
+ * (`addAliases` / `addRelations`) — `ItemVerdict`'s mirror for the add side
+ * (#109 / #107 Q5: two values and one boolean, never a third outcome).
+ * Adding a vetoed key is `added` **and** `unsuppressed: true`.
+ */
+export interface AddVerdict {
+  /** The normalized label, `dim_table`, or concept-edge key. */
+  readonly key: string
+  /** `added` = THIS call landed the content or lifted the key's veto (either
+   * is a real change); `idempotent` = already present and not vetoed — the
+   * only true no-op. */
+  readonly outcome: 'added' | 'idempotent'
+  /** Whether THIS call lifted the key's veto (re-assertion is the veto's mirror). */
+  readonly unsuppressed: boolean
+}

@@ -195,7 +195,7 @@ describe('get_join_path / get_relations / resolve_alias', () => {
     await h.client.callTool('add_alias', { scope_id: 'fixture',
       kind: 'table',
       name: 'dws_order',
-      alias: '订单宽表',
+      labels: ['订单宽表'],
       summary: '添加别名',
       derivation: 'agent',
       confidence: 0.9,

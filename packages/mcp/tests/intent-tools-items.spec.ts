@@ -18,10 +18,16 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { buildIntentToolHarness, tier2, versionOf, type IntentToolHarness } from './helpers/intent-tools-harness.ts'
+import { fixtureGit } from './helpers/fixture-corpus.ts'
 import { toolJson } from './helpers/inprocess-client.ts'
 
 let h: IntentToolHarness | undefined
 afterEach(() => h?.close())
+
+/** @returns the fixture repo's commit count — the wire-level lens on "N writes, one commit". */
+function commitCount(harness: IntentToolHarness): number {
+  return Number(fixtureGit(['rev-list', '--count', 'HEAD'], harness.fixture.root).trim())
+}
 
 /** One per-item verdict row as `remove_*` receipts return them (#37 §2). */
 interface ItemVerdict {
@@ -37,7 +43,7 @@ describe('item tools — wire shape', () => {
   it('add_alias response carries commit, changed, and enrichment_health', async () => {
     h = await buildIntentToolHarness()
     const res = await h.client.callTool('add_alias', { scope_id: 'fixture',
-      kind: 'table', name: 'dws_order', alias: '订单宽表',
+      kind: 'table', name: 'dws_order', labels: ['订单宽表'],
       ...tier2('添加别名', 0.9),
       expected_version: await versionOf(h, 'dws_order'),
     })
@@ -53,7 +59,7 @@ describe('item tools — wire shape', () => {
   it('remove_alias response carries per-item verdicts in results array', async () => {
     h = await buildIntentToolHarness()
     await h.client.callTool('add_alias', { scope_id: 'fixture',
-      kind: 'table', name: 'dws_order', alias: '临时别名',
+      kind: 'table', name: 'dws_order', labels: ['临时别名'],
       ...tier2('x', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     const res = await h.client.callTool('remove_alias', { scope_id: 'fixture',
@@ -72,7 +78,7 @@ describe('item tools — wire shape', () => {
     const relation = { dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] }
     // Add a curated ref.
     await h.client.callTool('add_relation', { scope_id: 'fixture',
-      kind: 'table', name: 'dws_order', relation,
+      kind: 'table', name: 'dws_order', relations: [relation],
       ...tier2('人工关联', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })
     // Step 1: remove curated → reasserted by hook.
@@ -99,7 +105,7 @@ describe('item tools — error mapping', () => {
   it('DefinitionNotFoundError → -31021 on the wire for a missing table', async () => {
     h = await buildIntentToolHarness()
     const res = await h.client.callTool('add_alias', { scope_id: 'fixture',
-      kind: 'table', name: 'nope', alias: 'x',
+      kind: 'table', name: 'nope', labels: ['x'],
       ...tier2('x', 0.9), expected_version: 'f'.repeat(64),
     })
     expect(res.result?.['isError']).toBe(true)
@@ -111,7 +117,7 @@ describe('item tools — error mapping', () => {
   it('StaleBaselineError → coded stale baseline error on the wire', async () => {
     h = await buildIntentToolHarness()
     const res = await h.client.callTool('add_alias', { scope_id: 'fixture',
-      kind: 'table', name: 'dws_order', alias: 'x',
+      kind: 'table', name: 'dws_order', labels: ['x'],
       ...tier2('x', 0.9), expected_version: 'a'.repeat(64),
     })
     expect(res.result?.['isError']).toBe(true)
@@ -160,5 +166,63 @@ describe('update_definition rejects the suppression key fields', () => {
     })
     expect(toolJson(event)['code']).toBe(-31020)
     expect((toolJson(event)['data'] as { use_instead?: string }).use_instead).toContain('remove_relation')
+  })
+})
+
+// ── add_* same-target batch on the wire (#109 / #107 Q4-Q7) ─────────────
+
+describe('add_* same-target batch — wire shape', () => {
+  it('a multi-label add_alias is ONE commit, per-row verdicts, no top-level unsuppressed', async () => {
+    h = await buildIntentToolHarness()
+    const before = commitCount(h)
+    const res = await h.client.callTool('add_alias', { scope_id: 'fixture',
+      kind: 'table', name: 'dws_order', labels: ['订单宽表', '支付宽表'],
+      ...tier2('批量补别名', 0.9), expected_version: await versionOf(h, 'dws_order'),
+    })
+    const body = toolJson(res) as { changed: boolean; version: string; results: Array<{ key: string; outcome: string; unsuppressed: boolean }> }
+    expect(body.changed).toBe(true)
+    // N serial writes collapsed to ONE commit — the batch's whole point.
+    expect(commitCount(h)).toBe(before + 1)
+    expect(body.results).toEqual([
+      { key: '订单宽表', outcome: 'added', unsuppressed: false },
+      { key: '支付宽表', outcome: 'added', unsuppressed: false },
+    ])
+    // #107 Q5: the top-level `unsuppressed` key is gone — the fact rides each row.
+    expect(body).not.toHaveProperty('unsuppressed')
+    expect(body.version).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('a fully-idempotent re-issue makes no commit and its receipt names the current fingerprint', async () => {
+    h = await buildIntentToolHarness()
+    const first = toolJson(await h.client.callTool('add_alias', { scope_id: 'fixture',
+      kind: 'table', name: 'dws_order', labels: ['订单宽表'],
+      ...tier2('批量补别名', 0.9), expected_version: await versionOf(h, 'dws_order'),
+    })) as { version: string }
+    const before = commitCount(h)
+    const repeat = toolJson(await h.client.callTool('add_alias', { scope_id: 'fixture',
+      kind: 'table', name: 'dws_order', labels: ['订单宽表'],
+      ...tier2('再发同一批', 0.9), expected_version: first.version,
+    })) as { changed: boolean; version: string; results: Array<{ outcome: string }> }
+    expect(repeat.changed).toBe(false)
+    expect(commitCount(h)).toBe(before)
+    expect(repeat.results[0]?.outcome).toBe('idempotent')
+    expect(repeat.version).toBe(first.version)
+  })
+
+  it('add_relation rejects a joins+edges mix with a coded error, zero commits', async () => {
+    h = await buildIntentToolHarness()
+    const before = commitCount(h)
+    const res = await h.client.callTool('add_relation', { scope_id: 'fixture',
+      kind: 'table', name: 'dws_order',
+      relations: [
+        { dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] },
+        { target_kind: 'concept', name: '订单生命周期' },
+      ],
+      ...tier2('混批', 0.9), expected_version: await versionOf(h, 'dws_order'),
+    })
+    expect(res.result?.['isError']).toBe(true)
+    const text = (res.result?.['content'] as Array<{ text: string }>)[0]?.text ?? ''
+    expect(text).toMatch(/cannot mix join-shaped relations with concept edges/)
+    expect(commitCount(h)).toBe(before)
   })
 })

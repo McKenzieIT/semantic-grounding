@@ -5,12 +5,13 @@
  * #49 thinning: handlers are now **schema + auditedWrite + Core call + response
  * formatting**. All domain logic (normalizeLabel, read-modify-write, dual-field
  * overlay, origin routing, veto lift) lives in `SemanticGroundingCore` methods
- * (`addAlias`, `removeAliases`, `addRelation`, `removeRelations`). The handler's
- * only jobs are:
+ * (`addAliases`, `removeAliases`, `addRelations`, `removeRelations` — #109
+ * reshaped the add side to the same-target batch shape its removal twin
+ * already had). The handler's only jobs are:
  * 1. Zod schema validation (input shape).
  * 2. `auditedWrite` wrapping (lock + audit context).
  * 3. Core method call (domain logic).
- * 4. Response formatting (`commit`, `changed`, `enrichment_health`, verdicts).
+ * 4. Response formatting (`commit`, `changed`, `version`, `enrichment_health`, verdicts).
  * 5. Error mapping (Core `Error` → MCP `DefinitionNotFoundError`).
  *
  * @see docs/adr/0005-mcp-tool-surface.md + docs/adr/0010-suppression.md
@@ -43,12 +44,14 @@ function mapCoreError(e: unknown, kind: 'table' | 'event' | 'concept', name: str
   throw e
 }
 
-/** Common input shape for `add_alias` / `add_relation` (single-item — #37 §3 keeps
- * `add_*` single: no measured pain, nothing pre-built). */
+/** `add_alias` input: same-target batch of labels — the add-side mirror of
+ * `remove_alias`'s array (#37 §3 / #109 / #107 Q4: same thing, same name;
+ * the empty array is closed at the door, map #27 precedent). Breaking
+ * reshape of ADR-0005's single `alias`. */
 const AddAliasInputSchema = z.object({
   kind: AliasKindSchema,
   name: z.string().min(1),
-  alias: z.string().min(1),
+  labels: z.array(z.string().min(1)).min(1),
   ...UPDATE_COMMON_FIELDS,
 })
 
@@ -61,11 +64,15 @@ const RemoveAliasInputSchema = z.object({
   ...UPDATE_COMMON_FIELDS,
 })
 
-/** Common input shape for `add_relation` (single). */
+/** `add_relation` input: same-target batch of relations — the add-side
+ * mirror of `remove_relation`'s array (#109 / #107 Q4). One shape per call:
+ * joins and concept-side edges cannot mix (the Core refuses the mix —
+ * different files, different baselines), and a table subject's edges must
+ * all name the same target concept. */
 const AddRelationInputSchema = z.object({
   kind: RelationSubjectKindSchema,
   name: z.string().min(1),
-  relation: RelationRefInputSchema,
+  relations: z.array(RelationRefInputSchema).min(1),
   ...UPDATE_COMMON_FIELDS,
 })
 
@@ -85,8 +92,8 @@ function registerAddAlias(server: McpServer, deps: ServerDeps): void {
   server.registerTool(
     'add_alias',
     {
-      title: 'Add an alias',
-      description: 'Append one alt_label to a table, event, or concept, read-modify-write inside the corpus lock. Adding back a suppressed label LIFTS its veto — removal is the veto, re-assertion is its mirror — and the receipt\'s `unsuppressed` lists the keys this call lifted (absent when none). A call that neither adds the label nor lifts a veto is a no-op (changed:false, no commit).',
+      title: 'Add aliases (and lift their vetoes)',
+      description: 'Append alt_labels to a table, event, or concept, read-modify-write inside the corpus lock — one locked write (one commit) for the whole same-target batch. Adding back a suppressed label LIFTS its veto — removal is the veto, re-assertion is its mirror. Per-item verdicts in `results`: `outcome` (`added` = this call landed the label or lifted its veto, either is a real change; `idempotent` = already present and not vetoed, the only true no-op) and `unsuppressed` (did THIS call lift that key\'s veto — adding a vetoed word is `added` AND `unsuppressed: true`, one boolean, never a third outcome). A batch where every row is idempotent makes no commit (changed:false). The receipt\'s `version` is the written file\'s fingerprint — feed it straight back as the next write\'s expected_version.',
       inputSchema: AddAliasInputSchema,
     },
     async (input, ctx: ServerContext) => {
@@ -97,13 +104,13 @@ function registerAddAlias(server: McpServer, deps: ServerDeps): void {
           snap,
           ctx,
           { tool: 'add_alias', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-          () => snap.core.addAlias(input.kind, input.name, input.alias, input.expected_version),
+          () => snap.core.addAliases(input.kind, input.name, input.labels, input.expected_version),
         )
         return toolSuccess(await writeReceipt(snap, deps, res, {
           tool: 'add_alias',
           writePath: input.kind,
           version: res.value.version,
-          ...res.value.unsuppressed !== undefined ? { domain: { unsuppressed: res.value.unsuppressed } } : {},
+          domain: { results: res.value.results },
         }))
       } catch (e) {
         try { mapCoreError(e, input.kind, input.name) } catch (mapped) { return toToolErrorResult(mapped) }
@@ -149,8 +156,8 @@ function registerAddRelation(server: McpServer, deps: ServerDeps): void {
   server.registerTool(
     'add_relation',
     {
-      title: 'Add a relation',
-      description: 'Append one relation to a table, event, or concept, read-modify-write inside the corpus lock. Two shapes: a join (dim_table + join_keys) on a table/event subject, or a concept-side edge ({target_kind, name}) for the entity layer — concept→concept, concept→table, or table→concept (event subjects take joins only). A concept-side edge lands on the concept\'s related_refs — for a table subject naming a concept target, that is the TARGET concept\'s file, so expected_version is that concept\'s fingerprint (from get_definition kind:"concept"); for a concept subject it is the subject\'s own. Omits origin and derivation on write — the appended ref is treated as curated (ADR-0005 rulings 9-10); your basis for the relation belongs in summary. A no-op when the exact same relation is already present. Re-asserting a dim_table whose relations are suppressed LIFTS that veto (granularity: one dim_table per veto) — the receipt\'s `unsuppressed` names the lifted key when this call lifted one.',
+      title: 'Add relations (one landing file per batch)',
+      description: 'Append relations to a table, event, or concept, read-modify-write inside the corpus lock — one locked write (one commit) for the whole same-target batch. Two shapes, one per call: a join (dim_table + join_keys) on a table/event subject, or a concept-side edge ({target_kind, name}) for the entity layer — concept→concept, concept→table, or table→concept (event subjects take joins only); the Core refuses a mix, and a table subject\'s edges must all name the SAME target concept — a batch spanning landing files is rejected whole with a split-the-call error. A concept-side edge lands on the concept\'s related_refs — for a table subject naming a concept target, that is the TARGET concept\'s file, so expected_version is that concept\'s fingerprint (from get_definition kind:"concept"); for a concept subject it is the subject\'s own. Omits origin and derivation on write — the appended ref is treated as curated (ADR-0005 rulings 9-10); your basis for the relation belongs in summary. Re-asserting a dim_table whose relations are suppressed LIFTS that veto (granularity: one dim_table per veto). Per-item verdicts in `results`: `outcome` (`added` = landed the relation or lifted the key\'s veto; `idempotent` = already present and not vetoed) and `unsuppressed` (did THIS call lift that key\'s veto). A fully-idempotent batch makes no commit; the receipt\'s `version` feeds the next write\'s expected_version.',
       inputSchema: AddRelationInputSchema,
     },
     async (input, ctx: ServerContext) => {
@@ -161,13 +168,13 @@ function registerAddRelation(server: McpServer, deps: ServerDeps): void {
           snap,
           ctx,
           { tool: 'add_relation', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-          () => snap.core.addRelation(input.kind, input.name, input.relation, input.expected_version),
+          () => snap.core.addRelations(input.kind, input.name, input.relations, input.expected_version),
         )
         return toolSuccess(await writeReceipt(snap, deps, res, {
           tool: 'add_relation',
           writePath: input.kind,
           version: res.value.version,
-          ...res.value.unsuppressed !== undefined ? { domain: { unsuppressed: res.value.unsuppressed } } : {},
+          domain: { results: res.value.results },
         }))
       } catch (e) {
         try { mapCoreError(e, input.kind, input.name) } catch (mapped) { return toToolErrorResult(mapped) }

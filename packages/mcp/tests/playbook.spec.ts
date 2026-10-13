@@ -53,9 +53,9 @@ async function codedErrorOf(name: string, args: Readonly<Record<string, unknown>
  * describe one journey, not two). */
 async function clearDwGaps(): Promise<void> {
   if (h === undefined) throw new Error('harness not built')
-  await h.client.callTool('add_alias', { scope_id: 'fixture', kind: 'table', name: 'dim_shop', alias: '店铺维度', ...tier2('补别名', 0.9), expected_version: await versionOf(h, 'dim_shop') })
-  await h.client.callTool('add_alias', { scope_id: 'fixture', kind: 'table', name: 'dws_order', alias: '订单宽表', ...tier2('补别名', 0.9), expected_version: await versionOf(h, 'dws_order') })
-  await h.client.callTool('add_relation', { scope_id: 'fixture', kind: 'table', name: 'dws_order', relation: { dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] }, ...tier2('补关联，清空确定性缺口', 0.9), expected_version: await versionOf(h, 'dws_order') })
+  await h.client.callTool('add_alias', { scope_id: 'fixture', kind: 'table', name: 'dim_shop', labels: ['店铺维度'], ...tier2('补别名', 0.9), expected_version: await versionOf(h, 'dim_shop') })
+  await h.client.callTool('add_alias', { scope_id: 'fixture', kind: 'table', name: 'dws_order', labels: ['订单宽表'], ...tier2('补别名', 0.9), expected_version: await versionOf(h, 'dws_order') })
+  await h.client.callTool('add_relation', { scope_id: 'fixture', kind: 'table', name: 'dws_order', relations: [{ dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] }], ...tier2('补关联，清空确定性缺口', 0.9), expected_version: await versionOf(h, 'dws_order') })
 }
 
 // ── 1. The reuse contract: playbook phases ARE _guidance's phases ────────────────────
@@ -66,7 +66,7 @@ describe('get_initialization_playbook — phase equivalence with _guidance (the 
     // The write's response carries _guidance for the state it PRODUCED; the
     // playbook then reads that same state (no write in between).
     const added = toolJson(await h.client.callTool('add_alias', { scope_id: 'fixture',
-      kind: 'table', name: 'dws_order', alias: '订单宽表',
+      kind: 'table', name: 'dws_order', labels: ['订单宽表'],
       ...tier2('补别名', 0.9), expected_version: await versionOf(h, 'dws_order'),
     })) as { _guidance?: Guidance }
     const pb = await playbookOf('fixture')
@@ -275,11 +275,11 @@ describe('get_initialization_playbook — R6 boundary walk (scope_registration �
 
     await h.client.callTool('add_relation', { scope_id: 'fixture',
       kind: 'table', name: 'dws_third',
-      relation: { dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] },
+      relations: [{ dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] }],
       ...tier2('补关联，清空确定性缺口', 0.9), expected_version: await versionOf(h, 'dws_third'),
     })
     await h.client.callTool('add_alias', { scope_id: 'fixture',
-      kind: 'table', name: 'dws_third', alias: '第三张宽表',
+      kind: 'table', name: 'dws_third', labels: ['第三张宽表'],
       ...tier2('补别名，清空最后一项缺口', 0.9), expected_version: await versionOf(h, 'dws_third'),
     })
     const pb5 = await playbookOf('fixture')

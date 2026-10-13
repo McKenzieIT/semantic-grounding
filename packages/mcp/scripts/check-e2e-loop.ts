@@ -422,28 +422,41 @@ async function main(): Promise<void> {
       assert.equal(retried['changed'], true, 'the retry loop closes')
     }
 
-    step('add_alias: commit + 问数 answered; the repeat is a no-commit idempotent no-op')
+    step('add_alias (batch): two labels ONE commit; the receipt\'s version chains the next write with zero read-backs')
     {
       const v3 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
+      const before = commitCount()
       const added = await call(client, 'add_alias', { scope_id: 'fixture',
-        kind: 'table', name: 'dws_order', alias: '订单宽表',
+        kind: 'table', name: 'dws_order', labels: ['订单宽表', '宽表_订单'],
         expected_version: v3,
-        ...tier2('添加别名「订单宽表」', 0.9),
+        ...tier2('批量添加别名「订单宽表」「宽表_订单」', 0.9),
       })
       assert.equal(added['changed'], true)
       assert.ok(Array.isArray(added['enrichment_health']))
+      assert.equal(commitCount(), before + 1, 'TWO labels, ONE commit — the same-target batch collapse is visible in git history (#109)')
+      assert.deepEqual(
+        (added['results'] as Array<Record<string, unknown>>)?.map(r => [r['key'], r['outcome'], r['unsuppressed']]),
+        [['订单宽表', 'added', false], ['宽表_订单', 'added', false]],
+        'per-row verdicts in input order (#107 Q5)',
+      )
       const resolved = await call(client, 'resolve_alias', { term: '订单宽表' })
       assert.ok(((resolved['node_ids'] as string[]) ?? []).includes('dws_order'), 'the 问数 scenario now resolves its alias')
 
-      const v4 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
-      const before = commitCount()
+      // #107 Q7 invariant ②: the receipt's version IS the next write's
+      // baseline — no get_definition between the writes; the loop closes on
+      // receipts alone, and a no-op receipt still names the current
+      // fingerprint.
+      const receiptV = fieldString(added, 'version')
+      assert.match(receiptV, SHA256)
+      const before2 = commitCount()
       const repeat = await call(client, 'add_alias', { scope_id: 'fixture',
-        kind: 'table', name: 'dws_order', alias: '订单宽表',
-        expected_version: v4,
+        kind: 'table', name: 'dws_order', labels: ['订单宽表'],
+        expected_version: receiptV,
         ...tier2('重复添加同一别名', 0.9),
       })
       assert.equal(repeat['changed'], false, 'idempotent no-op reports changed:false')
-      assert.equal(commitCount(), before, 'and produces no commit (ADR-0005 ruling 8)')
+      assert.equal(commitCount(), before2, 'and produces no commit (ADR-0005 ruling 8)')
+      assert.equal(fieldString(repeat, 'version'), receiptV, 'the no-op receipt names the file\'s current fingerprint')
     }
 
     step('add_relation(dws_order→dim_region): agent-asserted ref with origin omitted (curated)')
@@ -458,7 +471,7 @@ async function main(): Promise<void> {
       const v5 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
       const related = await call(client, 'add_relation', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
-        relation: { dim_table: 'dim_region', join_keys: [{ dws_column: 'region_id', dim_column: 'region_id' }] },
+        relations: [{ dim_table: 'dim_region', join_keys: [{ dws_column: 'region_id', dim_column: 'region_id' }] }],
         expected_version: v5,
         ...tier2('订单表挂区域维度（业务口径）', 0.8),
       })
@@ -555,12 +568,13 @@ async function main(): Promise<void> {
       const v2 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
       const readded = await call(client, 'add_relation', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
-        relation: { dim_table: 'dim_pay', join_keys: payRef.join_keys },
+        relations: [{ dim_table: 'dim_pay', join_keys: payRef.join_keys }],
         expected_version: v2,
         ...tier2('恢复订单表到支付方式维度的关联', 0.9),
       })
       assert.equal(readded['changed'], true)
-      assert.deepEqual(readded['unsuppressed'], ['dim_pay'], 'add_relation reports the veto it lifted')
+      assert.deepEqual(readded['results'], [{ key: 'dim_pay', outcome: 'added', unsuppressed: true }],
+        'add_relation reports the veto it lifted in its verdict row (#107 Q5: the top-level key is gone)')
       const afterReadd = (await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }))['definition'] as Record<string, unknown>
       assert.ok((afterReadd['dimension_refs'] as RelationRefLike[]).some(r => r.dim_table === 'dim_pay'), 'dim_pay back on the table')
       assert.ok(!(afterReadd['suppressed_dimension_refs'] as string[]).includes('dim_pay'), 'and its veto lifted')
@@ -596,7 +610,7 @@ async function main(): Promise<void> {
       const relationInput = { dim_table: 'dim_channel', join_keys: [{ dws_column: 'channel_id', dim_column: 'channel_id' }] }
       const curated = await call(client, 'add_relation', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
-        relation: relationInput,
+        relations: [relationInput],
         expected_version: v2,
         ...tier2('订单表挂渠道维度（业务口径，先于确定性轮次手动认领）', 0.8),
       })
@@ -648,11 +662,11 @@ async function main(): Promise<void> {
       const v5 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
       const relifted = await call(client, 'add_relation', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
-        relation: relationInput,
+        relations: [relationInput],
         expected_version: v5,
         ...tier2('重新认领渠道维度关联', 0.8),
       })
-      assert.deepEqual(relifted['unsuppressed'], ['dim_channel'])
+      assert.deepEqual(relifted['results'], [{ key: 'dim_channel', outcome: 'added', unsuppressed: true }])
     }
 
     // ── Phase 4.5 — the concept write path (ADR-0012 / Q4(b)) ───────────────────────
@@ -687,7 +701,7 @@ async function main(): Promise<void> {
       const wrongBaseline = await callCodedError(client, 'add_relation', {
         scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
-        relation: { target_kind: 'concept', name: '订单生命周期' },
+        relations: [{ target_kind: 'concept', name: '订单生命周期' }],
         expected_version: dwsOrderVersion, // dws_order's OWN fingerprint — the wrong file for this write
         ...tier2('table→concept 边，故意传错 baseline', 0.8),
       })
@@ -699,7 +713,7 @@ async function main(): Promise<void> {
       const tableToConcept = await call(client, 'add_relation', {
         scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
-        relation: { target_kind: 'concept', name: '订单生命周期' },
+        relations: [{ target_kind: 'concept', name: '订单生命周期' }],
         expected_version: lifecycleV1, // the TARGET concept's fingerprint — the right file
         ...tier2('table→concept 边：dws_order 归属订单生命周期', 0.8),
       })
@@ -716,7 +730,7 @@ async function main(): Promise<void> {
       const conceptToConcept = await call(client, 'add_relation', {
         scope_id: 'fixture',
         kind: 'concept', name: '订单生命周期',
-        relation: { target_kind: 'concept', name: '渠道' },
+        relations: [{ target_kind: 'concept', name: '渠道' }],
         expected_version: lifecycleV2,
         ...tier2('concept→concept 边：订单生命周期 关联 渠道', 0.8),
       })
@@ -726,7 +740,7 @@ async function main(): Promise<void> {
       const conceptToTable = await call(client, 'add_relation', {
         scope_id: 'fixture',
         kind: 'concept', name: '渠道',
-        relation: { target_kind: 'table', name: 'dws_pay_flow' },
+        relations: [{ target_kind: 'table', name: 'dws_pay_flow' }],
         expected_version: channelV1,
         ...tier2('concept→table 边：渠道 关联 dws_pay_flow', 0.8),
       })
@@ -750,7 +764,7 @@ async function main(): Promise<void> {
       const lifecycleV3 = fieldString(await call(client, 'get_definition', { kind: 'concept', name: '订单生命周期' }), 'version')
       const aliasAdded = await call(client, 'add_alias', {
         scope_id: 'fixture',
-        kind: 'concept', name: '订单生命周期', alias: '订单周期',
+        kind: 'concept', name: '订单生命周期', labels: ['订单周期'],
         expected_version: lifecycleV3,
         ...tier2('概念别名：订单周期', 0.85),
       })
@@ -1002,7 +1016,7 @@ async function main(): Promise<void> {
         // The reuse contract, observed on one state: the write's _guidance reports
         // the state it produced; the playbook then reads that same state.
         const aliased = await call(pbClient, 'add_alias', { scope_id: 'pb-probe',
-          kind: 'table', name: 'dws_order', alias: '订单宽表',
+          kind: 'table', name: 'dws_order', labels: ['订单宽表'],
           ...tier2('补别名', 0.9), expected_version: fieldString(await call(pbClient, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version'),
         })
         const guidance = aliased['_guidance'] as { phase: string; metrics: { dw: { phase: string }; kg: { phase: string } } }

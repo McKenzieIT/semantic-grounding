@@ -39,7 +39,7 @@ import {
   loadConceptDefinition as loadConceptDefinitionFromLayer,
   normalizeLabel,
 } from './io.ts'
-import type { ItemVerdict } from './types.ts'
+import type { AddVerdict, ItemVerdict } from './types.ts'
 
 /** The kinds an item-level write may target — concepts joined the set when the
  * concept write path opened (#52 / ADR-0012); the alias semantics are isomorphic
@@ -204,53 +204,72 @@ function removalVerdict(key: string, present: boolean, recordsVeto: boolean, rea
 export type ApplyItemUpdate = (kind: ItemKind, name: string, updates: Readonly<Record<string, unknown>>, expectedVersion: string) => Promise<string>
 
 /**
- * Add one alias to a table or event, lifting its veto if suppressed.
+ * Add aliases to a table, event, or concept, lifting each key's veto if
+ * suppressed — the add-side mirror of `removeItemAliases`' same-target batch
+ * (#109 / #107 Q4: one read, one dual-field overlay, one commit for the
+ * whole labels array).
  *
- * Dual-field overlay: appends to `alt_labels` (if not already present by
- * normalized key) AND removes the key from `suppressed_alt_labels` (the veto
- * lift, #37 §5). The suppression field joins the overlay only when it
- * changed or already exists on disk — never introduces `suppressed_*` onto a
- * definition that never had one when nothing changed.
+ * Dual-field overlay: appends each not-yet-present label to `alt_labels`
+ * (normalized-key identity) AND removes every added key from
+ * `suppressed_alt_labels` (the veto lift, #37 §5). The suppression field
+ * joins the overlay only when it changed or already exists on disk — never
+ * introduces `suppressed_*` onto a definition that never had one when
+ * nothing changed.
  *
- * Idempotent when the alias is already present AND not vetoed: `added: false`,
- * `unsuppressed` absent, and the underlying `updateTableMeta` / `updateEventMeta`
- * reports `changed: false` (no commit).
+ * Verdicts (#107 Q5 — two values and one boolean): `outcome` is `added`
+ * when THIS call landed the label or lifted its veto (either is a real
+ * change — adding a vetoed word is `added` AND `unsuppressed: true`, never
+ * a third outcome), `idempotent` when the label was already present and not
+ * vetoed. A batch where every row is idempotent writes byte-identical
+ * content — no commit (`changed: false`).
  * @param root - the semantic-layer scope root this write targets.
  * @param applyUpdate - the Core's `applyItemUpdate` (audited kind dispatch, throws on failure).
  * @param kind - `'table'`, `'event'`, or `'concept'`.
  * @param name - the table_name / event name.
- * @param alias - the alias to add (verbatim form; normalized for comparison).
+ * @param labels - the aliases to add (verbatim forms; normalized for comparison).
  * @param expectedVersion - the sha256 fingerprint from `get_definition`.
- * @returns `{added, unsuppressed?, version}` — `version` is the written
- *   file's fingerprint as the whole write left it (post-hook for tables,
- *   #108); a byte-stable no-op returns the file's current fingerprint.
+ * @returns per-item verdicts, plus the written file's `version` fingerprint
+ *   (post-hook for tables, #108).
  * @throws Error when the target definition does not exist.
  * @throws StaleBaselineError when the fingerprint mismatches.
  */
-export async function addItemAlias(
+export async function addItemAliases(
   root: string,
   applyUpdate: ApplyItemUpdate,
   kind: ItemKind,
   name: string,
-  alias: string,
+  labels: readonly string[],
   expectedVersion: string,
-): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string]; readonly version: string }> {
+): Promise<{ readonly results: readonly AddVerdict[]; readonly version: string }> {
   const raw = itemReadRawDef(root, kind, name)
   const existing = itemStringArray(raw, 'alt_labels')
-  const key = normalizeLabel(alias)
-  const present = existing.some(a => normalizeLabel(a) === key)
-  const next = present ? existing : [...existing, alias]
-  // Veto lift: remove the key from suppressed_alt_labels.
   const supField = 'suppressed_alt_labels'
   const existingSup = itemStringArray(raw, supField)
-  const wasVetoed = existingSup.some(s => normalizeLabel(s) === key)
-  const nextSup = existingSup.filter(s => normalizeLabel(s) !== key)
+  // In-order duplicate semantics, mirroring the removal paths: each label is
+  // judged against the state the earlier labels in this same call left — the
+  // first occurrence of a key does the adding/lifting, repeats read as
+  // idempotent, and only the first reports the veto lift.
+  let next = existing
+  const supSeen = new Set(existingSup.map(normalizeLabel))
+  const lifted = new Set<string>()
+  const results: AddVerdict[] = labels.map(label => {
+    const key = normalizeLabel(label)
+    const present = next.some(a => normalizeLabel(a) === key)
+    const wasVetoed = supSeen.has(key)
+    if (!present) next = [...next, label]
+    if (wasVetoed) {
+      supSeen.delete(key)
+      lifted.add(key)
+    }
+    return { key, outcome: !present || wasVetoed ? 'added' : 'idempotent', unsuppressed: wasVetoed }
+  })
+  const nextSup = existingSup.filter(s => !lifted.has(normalizeLabel(s)))
   const updates: Record<string, unknown> = { alt_labels: next }
   if (suppressionJoinsUpdate(raw, supField, existingSup, nextSup)) {
     updates[supField] = nextSup
   }
   const version = await applyUpdate(kind, name, updates, expectedVersion)
-  return { added: !present, ...(wasVetoed ? { unsuppressed: [key] as const } : {}), version }
+  return { results, version }
 }
 
 /**
@@ -326,73 +345,101 @@ export async function removeItemAliases(
 }
 
 /**
- * Add one relation (dim_table + join_keys) to a table or event, lifting its
- * veto if suppressed.
+ * Add relations to a table or event, lifting each key's veto if suppressed —
+ * `addItemAliases`' mirror over the relation fields (#109 / #107 Q4: one
+ * read, one dual-field overlay, one commit for the whole batch).
  *
- * Dual-field overlay: appends the relation (omitting `origin` / `derivation`
- * per ADR-0005 rulings 9–10, so the entry is treated as curated) AND removes
- * the `dim_table` key from the relation suppression field (the veto lift).
+ * One shape per call (Q6): joins (`dim_table` + `join_keys`) or concept-side
+ * edges (`{target_kind, name}`) — the Core refuses a mix with a
+ * split-the-call error, exactly `removeItemRelations`' rule (different
+ * files, different baselines).
  *
- * Relation identity is structural: same `dim_table` + same `join_keys` in the
- * same order — a different order is treated as a different relation rather
- * than invisibly normalized (ADR-0010 ruling 5's order-sensitive precedent).
+ * Dual-field overlay: appends each structurally-new relation (omitting
+ * `origin` / `derivation` per ADR-0005 rulings 9–10, so entries are treated
+ * as curated) AND removes each added `dim_table` key from the relation
+ * suppression field (the veto lift; granularity: one dim_table per veto).
  *
- * Idempotent when the exact same relation is already present AND the
- * dim_table is not vetoed: `added: false`, `unsuppressed` absent, no commit.
+ * Relation identity is structural: same `dim_table` + same `join_keys` in
+ * the same order — a different order is a different relation rather than
+ * invisibly normalized (ADR-0010 ruling 5's order-sensitive precedent).
+ * Verdicts carry `ItemVerdict`'s add-side mirror shape (`AddVerdict`); a
+ * fully-idempotent batch writes byte-identical content — no commit.
  * @param root - the semantic-layer scope root this write targets.
  * @param applyUpdate - the Core's `applyItemUpdate` (audited kind dispatch, throws on failure).
- * @param kind - `'table'`, `'event'` (join-shaped relation), or `'concept'` (concept-side edge).
+ * @param kind - `'table'`, `'event'` (join-shaped relations), or `'concept'` (concept-side edges).
  * @param name - the table_name / event / concept name.
- * @param relation - a join `{dim_table, join_keys}` for table/event subjects, or `{target_kind, name}` for a concept-side edge (Q4(b)).
+ * @param relations - the joins or same-shape concept edges to add; the two shapes cannot mix in one call.
  * @param expectedVersion - the sha256 fingerprint from `get_definition`.
- * @returns `{added, unsuppressed?, version}` — `version` is the fingerprint
- *   of the file this write touched (the HOME concept for a concept-side
- *   edge, the subject for a join), as the whole write left it (#108).
- * @throws Error when the target definition does not exist, or when
- *   `kind === 'table'` and `relation.dim_table` has no table definition.
+ * @returns per-item verdicts, plus the written file's `version` fingerprint
+ *   — the fingerprint of the file this write touched (the HOME concept for
+ *   a concept-side edge batch, the subject for joins), as the whole write
+ *   left it (#108).
+ * @throws Error when the target definition does not exist, when `kind === 'table'`
+ *   and a `relation.dim_table` has no table definition, or when the batch
+ *   mixes joins with concept edges.
  * @throws StaleBaselineError when the fingerprint mismatches.
  */
-export async function addItemRelation(
+export async function addItemRelations(
   root: string,
   applyUpdate: ApplyItemUpdate,
   kind: ItemKind,
   name: string,
-  relation: RelationInput,
+  relations: readonly RelationInput[],
   expectedVersion: string,
-): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string]; readonly version: string }> {
-  // Concept-side edge (Q4(b) Update): 概念→概念 / 概念→表 / 表→概念.
-  if (isConceptEdge(relation)) {
-    return addItemConceptEdge(root, applyUpdate, kind, name, relation, expectedVersion)
+): Promise<{ readonly results: readonly AddVerdict[]; readonly version: string }> {
+  // Partition first (Q6): concept edges and join-shaped relations write
+  // different files with different baselines — one call carries one shape.
+  const edges: Array<{ readonly target_kind: 'table' | 'concept'; readonly name: string }> = []
+  const joins: Array<{ readonly dim_table: string; readonly join_keys: readonly { readonly dws_column: string; readonly dim_column: string }[] }> = []
+  for (const rel of relations) {
+    if (isConceptEdge(rel)) edges.push(rel)
+    else joins.push(rel)
   }
-  // For tables, verify the dim_table has its own definition.
+  if (edges.length > 0 && joins.length > 0) {
+    throw new Error('add_relation cannot mix join-shaped relations with concept edges in one call — they write different files with different baselines; split the call')
+  }
+  if (edges.length > 0) {
+    return addItemConceptEdges(root, applyUpdate, kind, name, edges, expectedVersion)
+  }
   if (kind === 'concept') {
     throw new Error('join-shaped relations (dim_table + join_keys) are not supported for concepts — a concept declares entity-layer edges with target_kind instead (Q4(b))')
   }
+  // For tables, verify every distinct dim_table has its own definition —
+  // checked per batch up front so a bad key rejects the whole call before
+  // any write lands (same all-or-nothing door the mix rule above keeps).
   if (kind === 'table') {
-    const dimDef = loadTableDefinitionFromLayer(root, relation.dim_table)
-    if (dimDef === null) {
-      throw new Error(`Table not found: ${relation.dim_table}`)
+    for (const rel of joins) {
+      if (loadTableDefinitionFromLayer(root, rel.dim_table) === null) {
+        throw new Error(`Table not found: ${rel.dim_table}`)
+      }
     }
   }
   const field = itemRelationFieldName(kind)
   const supField = itemSuppressionFieldName(kind, 'relation')
   const raw = itemReadRawDef(root, kind, name)
   const existing = itemObjectArray(raw, field)
-  const alreadyPresent = existing.some(e => itemMatchesRelation(e, relation))
-  const next = alreadyPresent
-    ? existing
-    : [...existing, { dim_table: relation.dim_table, join_keys: relation.join_keys }]
-  // Veto lift: remove the dim_table key from the suppression field.
-  const key = relation.dim_table
+  // In-order duplicate semantics, mirroring the removal paths and
+  // addItemAliases: the first structural occurrence does the adding, repeats
+  // read as idempotent, and only the first row reports a dim_table's lift.
+  let next = existing
   const existingSup = itemStringArray(raw, supField)
-  const wasVetoed = existingSup.includes(key)
-  const nextSup = existingSup.filter(k => k !== key)
+  const supSeen = new Set(existingSup)
+  const results: AddVerdict[] = joins.map(rel => {
+    const alreadyPresent = next.some(e => itemMatchesRelation(e, rel))
+    const wasVetoed = supSeen.has(rel.dim_table)
+    if (!alreadyPresent) next = [...next, { dim_table: rel.dim_table, join_keys: rel.join_keys }]
+    if (wasVetoed) supSeen.delete(rel.dim_table)
+    return { key: rel.dim_table, outcome: !alreadyPresent || wasVetoed ? 'added' : 'idempotent', unsuppressed: wasVetoed }
+  })
+  // `supSeen` holds the still-suppressed keys (each lift removes its key as
+  // it happens), so what survives IS the next suppression list.
+  const nextSup = existingSup.filter(k => supSeen.has(k))
   const updates: Record<string, unknown> = { [field]: next }
   if (suppressionJoinsUpdate(raw, supField, existingSup, nextSup)) {
     updates[supField] = nextSup
   }
   const version = await applyUpdate(kind, name, updates, expectedVersion)
-  return { added: !alreadyPresent, ...(wasVetoed ? { unsuppressed: [key] as const } : {}), version }
+  return { results, version }
 }
 
 /**
@@ -500,78 +547,101 @@ export async function removeItemRelations(
 // a table subject).
 
 /**
- * Add one declared concept edge, lifting its veto if suppressed.
+ * Add declared concept edges to their home concept, lifting each key's veto
+ * if suppressed — the batch form of the add-side dual-field overlay over
+ * `related_refs` / `suppressed_related_refs` (#109).
  *
- * Dual-field overlay on the home concept, exactly `addAlias`'s shape over
- * `related_refs` / `suppressed_related_refs`: append the edge when absent
- * (omitting `origin`/`derivation` — rulings 9–10, curated) and remove the
- * target key from the suppression field (the veto lift).
+ * One batch touches ONE concept file (Q6): a concept subject's whole batch
+ * lands on the subject (its edges may mix target kinds — 概念→概念 and
+ * 概念→表 both store on the subject); a table subject's edges must all name
+ * the SAME target concept (each target is a different file with its own
+ * baseline), enforced with a split-the-call error that rejects the batch
+ * whole before any write lands.
  *
  * Existence checks: the subject (concept or table) and — for a declared
  * target — the target concept must both exist; a concept→table edge's
- * target table must exist. Mirrors `addItemRelation`'s dim-table check.
+ * target table must exist. Mirrors the join path's per-batch dim check.
  * @param root - the semantic-layer scope root this write targets.
  * @param applyUpdate - the Core's `applyItemUpdate` (audited kind dispatch, throws on failure).
- * @param kind - the SUBJECT kind: `'concept'` (edge lands on it) or
- * `'table'` (edge lands on the target concept). `'event'` is refused — the
- * Q4(b) edge set is concept→concept / concept→table / table→concept.
+ * @param kind - the SUBJECT kind: `'concept'` (edges land on it) or
+ * `'table'` (edges land on the one shared target concept). `'event'` is
+ * refused — the Q4(b) edge set is concept→concept / concept→table / table→concept.
  * @param name - the subject concept/table name.
- * @param edge - `{target_kind, name}` — the target kind and the target's
- * bare name (concept name or table name; the plugin resolves graph ids).
+ * @param edges - `{target_kind, name}` edges; for a table subject they must
+ *   all name the same target concept.
  * @param expectedVersion - the sha256 fingerprint of the CONCEPT file this
  *   write modifies (the home concept — see the section note above).
- * @returns `{added, unsuppressed?, version}` — `version` is the home
- *   concept file's fingerprint after this write (#108), the same file the
- *   caller's `expected_version` named.
- * @throws Error when the subject or a declared target does not exist, or
- *   when `kind === 'event'`.
+ * @returns per-item verdicts, plus the home concept file's `version`
+ *   fingerprint after this write (#108) — the same file the caller's
+ *   `expected_version` named.
+ * @throws Error when the subject or a declared target does not exist, when
+ *   `kind === 'event'`, or when a table subject's edges name more than one
+ *   target concept.
  * @throws StaleBaselineError when the fingerprint mismatches.
  */
-async function addItemConceptEdge(
+async function addItemConceptEdges(
   root: string,
   applyUpdate: ApplyItemUpdate,
   kind: ItemKind,
   name: string,
-  edge: { readonly target_kind: 'table' | 'concept'; readonly name: string },
+  edges: readonly { readonly target_kind: 'table' | 'concept'; readonly name: string }[],
   expectedVersion: string,
-): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string]; readonly version: string }> {
+): Promise<{ readonly results: readonly AddVerdict[]; readonly version: string }> {
   if (kind === 'event') {
     throw new Error('concept-target relations are not supported for events — the legal concept-side edges are concept→concept, concept→table, and table→concept (Q4(b))')
   }
-  if (kind === 'table') {
-    if (loadTableDefinitionFromLayer(root, name) === null) throw new Error(`Table not found: ${name}`)
-    if (loadConceptDefinitionFromLayer(root, edge.name) === null) throw new Error(`Concept not found: ${edge.name}`)
-  } else {
-    if (edge.target_kind === 'concept' && loadConceptDefinitionFromLayer(root, edge.name) === null) {
-      throw new Error(`Concept not found: ${edge.name}`)
-    }
-    if (edge.target_kind === 'table' && loadTableDefinitionFromLayer(root, edge.name) === null) {
-      throw new Error(`Table not found: ${edge.name}`)
-    }
-  }
   // The stored record names the edge's OTHER side; the home is whoever owns
-  // the file: the concept subject itself, or the target concept for a table
-  // subject.
-  const home = kind === 'concept' ? name : edge.name
-  const record = kind === 'concept'
-    ? { target_kind: edge.target_kind, target: edge.name }
-    : { target_kind: 'table' as const, target: name }
-  const key = conceptEdgeKey(record)
+  // the file: the concept subject itself, or the (single) target concept for
+  // a table subject.
+  let home: string
+  let records: Array<{ readonly target_kind: 'table' | 'concept'; readonly target: string }>
+  if (kind === 'concept') {
+    home = name
+    records = edges.map(e => ({ target_kind: e.target_kind, target: e.name }))
+    for (const e of edges) {
+      if (e.target_kind === 'concept' && loadConceptDefinitionFromLayer(root, e.name) === null) {
+        throw new Error(`Concept not found: ${e.name}`)
+      }
+      if (e.target_kind === 'table' && loadTableDefinitionFromLayer(root, e.name) === null) {
+        throw new Error(`Table not found: ${e.name}`)
+      }
+    }
+  } else {
+    if (loadTableDefinitionFromLayer(root, name) === null) throw new Error(`Table not found: ${name}`)
+    const targets = new Set(edges.map(e => e.name))
+    if (targets.size !== 1) {
+      throw new Error('add_relation from a table subject takes concept edges that all name the SAME target concept — each target concept is a different file with its own baseline; split the call')
+    }
+    const first = edges[0]
+    if (first === undefined) throw new Error('empty concept-edge batch')
+    home = first.name
+    if (loadConceptDefinitionFromLayer(root, home) === null) throw new Error(`Concept not found: ${home}`)
+    records = [{ target_kind: 'table', target: name }]
+  }
   const raw = itemReadRawDef(root, 'concept', home)
   const existing = itemObjectArray(raw, 'related_refs')
-  const alreadyPresent = existing.some(e => itemMatchesConceptEdge(e, record))
-  const next = alreadyPresent ? existing : [...existing, record]
-  // Veto lift: remove the key from suppressed_related_refs.
+  // In-order duplicate semantics: the first structural occurrence appends,
+  // repeats read as idempotent, and only the first row reports a key's lift
+  // (structural identity: target_kind + target — order-free, unlike joins).
+  let next = existing
   const supField = 'suppressed_related_refs'
   const existingSup = itemStringArray(raw, supField)
-  const wasVetoed = existingSup.includes(key)
-  const nextSup = existingSup.filter(k => k !== key)
+  const supSeen = new Set(existingSup)
+  const results: AddVerdict[] = records.map(record => {
+    const key = conceptEdgeKey(record)
+    const alreadyPresent = next.some(e => itemMatchesConceptEdge(e, record))
+    const wasVetoed = supSeen.has(key)
+    if (!alreadyPresent) next = [...next, record]
+    if (wasVetoed) supSeen.delete(key)
+    return { key, outcome: !alreadyPresent || wasVetoed ? 'added' : 'idempotent', unsuppressed: wasVetoed }
+  })
+  const nextSup = existingSup.filter(k => supSeen.has(k))
   const updates: Record<string, unknown> = { related_refs: next }
   if (suppressionJoinsUpdate(raw, supField, existingSup, nextSup)) {
     updates[supField] = nextSup
   }
   const version = await applyUpdate('concept', home, updates, expectedVersion)
-  return { added: !alreadyPresent, ...(wasVetoed ? { unsuppressed: [key] as const } : {}), version }
+  return { results, version }
 }
 
 /**

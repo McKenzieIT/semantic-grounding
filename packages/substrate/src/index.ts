@@ -84,7 +84,7 @@ import {
   type Tier2Recorder,
   type Tier2Opts,
 } from './io.ts'
-import type { TableMeta, EventDefinition, TableDefinition, MetricDefinition, ItemVerdict } from './types.ts'
+import type { TableMeta, EventDefinition, TableDefinition, MetricDefinition, ItemVerdict, AddVerdict } from './types.ts'
 import { type CorpusVariant, type EventCorpusItem } from './corpus.ts'
 import {
   enrichAllDwsTables as enrichAllDwsTablesFromLayer,
@@ -106,7 +106,7 @@ import { listEnrichmentWorkItems, fetchEnrichmentPrompts, applyEnrichmentResults
 // #49's item-write ritual: the helper family + the six entry functions that
 // the four public item methods below forward into — the same off-barrel
 // internal-module split as enrichment-work.ts (ADR-0002/0003).
-import { addItemAlias, removeItemAliases, addItemRelation, removeItemRelations, type ItemKind, type RelationInput } from './item-write.ts'
+import { addItemAliases, removeItemAliases, addItemRelations, removeItemRelations, type ItemKind, type RelationInput } from './item-write.ts'
 import { withReadEpoch } from './read-epoch.ts'
 import { DataSourceRegistry, type CorpusItem, type GraphNodeProjection } from './registry.ts'
 import { eventKindPlugin } from './kinds/event-kind.ts'
@@ -1451,16 +1451,16 @@ export class SemanticGroundingCore {
   // Item-write ritual lives in ./item-write.ts (off-barrel internal module,
   // the same split as enrichment-work.ts); these forwards keep the
   // ADR-0002/0003 public method names. JSDoc: see the module. Each return
-  // carries the written file's fingerprint (`version`, #108) — the receipt
-  // key the item tools inline so a caller can chain its next write without a
-  // read-back.
-  async addAlias(
+  // carries per-item verdicts (`results`) plus the written file's
+  // fingerprint (`version`, #108) — the receipt keys the item tools inline
+  // so a caller can chain its next write without a read-back.
+  async addAliases(
     kind: ItemKind,
     name: string,
-    alias: string,
+    labels: readonly string[],
     expectedVersion: string,
-  ): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string]; readonly version: string }> {
-    return addItemAlias(this.semanticRoot, (k, n, u, v) => this.applyItemUpdate(k, n, u, v), kind, name, alias, expectedVersion)
+  ): Promise<{ readonly results: readonly AddVerdict[]; readonly version: string }> {
+    return addItemAliases(this.semanticRoot, (k, n, u, v) => this.applyItemUpdate(k, n, u, v), kind, name, labels, expectedVersion)
   }
 
   async removeAliases(
@@ -1472,13 +1472,13 @@ export class SemanticGroundingCore {
     return removeItemAliases(this.semanticRoot, (k, n, u, v) => this.applyItemUpdate(k, n, u, v), kind, name, labels, expectedVersion)
   }
 
-  async addRelation(
+  async addRelations(
     kind: ItemKind,
     name: string,
-    relation: RelationInput,
+    relations: readonly RelationInput[],
     expectedVersion: string,
-  ): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string]; readonly version: string }> {
-    return addItemRelation(this.semanticRoot, (k, n, u, v) => this.applyItemUpdate(k, n, u, v), kind, name, relation, expectedVersion)
+  ): Promise<{ readonly results: readonly AddVerdict[]; readonly version: string }> {
+    return addItemRelations(this.semanticRoot, (k, n, u, v) => this.applyItemUpdate(k, n, u, v), kind, name, relations, expectedVersion)
   }
 
   async removeRelations(

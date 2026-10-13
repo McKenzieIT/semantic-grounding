@@ -217,11 +217,14 @@ describe('update_definition — ADR-0005 ruling 4 (+ ADR-0012 concept arm)', () 
 })
 
 describe('item-level tool schemas — ADR-0005 ruling 3 (reshaped by ADR-0010 / #38: remove_* takes arrays)', () => {
-  it('add_alias requires kind, name, alias, and the full update-class common block', async () => {
+  it('add_alias requires kind, name, labels (a same-target batch, #109/#107 Q4), and the full update-class common block', async () => {
     const tool = byName(await listTools(), 'add_alias')
     expect(tool.inputSchema.required?.slice().sort()).toEqual(
-      ['alias', 'confidence', 'derivation', 'expected_version', 'kind', 'name', 'scope_id', 'summary'].sort(),
+      ['confidence', 'derivation', 'expected_version', 'kind', 'labels', 'name', 'scope_id', 'summary'].sort(),
     )
+    const labels = tool.inputSchema.properties?.['labels'] as { type?: string; minItems?: number }
+    expect(labels.type).toBe('array')
+    expect(labels.minItems).toBe(1)
   })
 
   it('remove_alias requires kind, name, labels (a same-target batch, #37 §3), and the full update-class common block', async () => {
@@ -234,10 +237,12 @@ describe('item-level tool schemas — ADR-0005 ruling 3 (reshaped by ADR-0010 / 
     expect(labels.minItems).toBe(1)
   })
 
-  it('add_relation takes a union: a join (dim_table + join_keys) or a concept-side edge (target_kind + name), never origin or derivation on either arm', async () => {
+  it('add_relation takes an array of the union: a join (dim_table + join_keys) or a concept-side edge (target_kind + name), never origin or derivation on either arm (#109/#107 Q4)', async () => {
     const tool = byName(await listTools(), 'add_relation')
-    const relation = tool.inputSchema.properties?.['relation'] as { anyOf?: readonly { properties?: Record<string, unknown>; required?: readonly string[] }[] }
-    const arms = relation.anyOf
+    const relations = tool.inputSchema.properties?.['relations'] as { type?: string; minItems?: number; items?: { anyOf?: readonly { properties?: Record<string, unknown>; required?: readonly string[] }[] } }
+    expect(relations.type).toBe('array')
+    expect(relations.minItems).toBe(1)
+    const arms = relations.items?.anyOf
     expect(arms).toHaveLength(2)
     const join = arms?.find(a => a.properties?.['dim_table'] !== undefined)
     const edge = arms?.find(a => a.properties?.['target_kind'] !== undefined)

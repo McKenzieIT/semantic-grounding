@@ -245,7 +245,7 @@ describe('preserve-filter regression — an origin-omitted tool write survives e
     await h.client.callTool('add_relation', { scope_id: 'fixture',
       kind: 'table',
       name: 'dws_order',
-      relation: { dim_table: 'dim_other', join_keys: [{ dws_column: 'pay_amt', dim_column: 'other_id' }] },
+      relations: [{ dim_table: 'dim_other', join_keys: [{ dws_column: 'pay_amt', dim_column: 'other_id' }] }],
       ...tier2('人工补充的关联', 0.7),
       expected_version: await versionOf(h, 'dws_order'),
     })
@@ -289,7 +289,7 @@ describe('write receipts — the version round-trip closes without a read-back (
     expect(updated.version).not.toBe(created.version)
 
     const aliased = toolJson(await h.client.callTool('add_alias', { scope_id: 'fixture',
-      kind: 'table', name: 'dws_chain', alias: '链式表',
+      kind: 'table', name: 'dws_chain', labels: ['链式表'],
       ...tier2('加别名', 0.9), expected_version: updated.version,
     })) as { version: string; changed: boolean }
     expect(aliased.changed).toBe(true)
@@ -298,7 +298,7 @@ describe('write receipts — the version round-trip closes without a read-back (
     // The idempotent repeat: no commit, and the receipt still names the
     // file's CURRENT fingerprint (#107 Q2/Q3's "no-op 恒返当前指纹").
     const repeat = toolJson(await h.client.callTool('add_alias', { scope_id: 'fixture',
-      kind: 'table', name: 'dws_chain', alias: '链式表',
+      kind: 'table', name: 'dws_chain', labels: ['链式表'],
       ...tier2('再加同名别名', 0.9), expected_version: aliased.version,
     })) as { version: string; changed: boolean }
     expect(repeat.changed).toBe(false)

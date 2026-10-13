@@ -169,8 +169,8 @@ describe('addRelation — concept-side edges', () => {
     writeConcept('付费经济')
     writeConcept('用户生命周期')
     const core = newCore()
-    const res = await core.addRelation('concept', '付费经济', { target_kind: 'concept', name: '用户生命周期' }, ver('concept', '付费经济'))
-    expect(res.added).toBe(true)
+    const res = await core.addRelations('concept', '付费经济', [{ target_kind: 'concept', name: '用户生命周期' }], ver('concept', '付费经济'))
+    expect(res.results[0]?.outcome).toBe('added')
     const def = core.loadConceptDefinition('付费经济')
     expect(def?.related_refs).toEqual([{ target_kind: 'concept', target: '用户生命周期', derivation: '' }])
     expect(core.loadConceptDefinition('用户生命周期')?.related_refs).toEqual([])
@@ -180,8 +180,8 @@ describe('addRelation — concept-side edges', () => {
     writeConcept('付费经济')
     writeTable('dws_pay')
     const core = newCore()
-    const res = await core.addRelation('concept', '付费经济', { target_kind: 'table', name: 'dws_pay' }, ver('concept', '付费经济'))
-    expect(res.added).toBe(true)
+    const res = await core.addRelations('concept', '付费经济', [{ target_kind: 'table', name: 'dws_pay' }], ver('concept', '付费经济'))
+    expect(res.results[0]?.outcome).toBe('added')
     expect(core.loadConceptDefinition('付费经济')?.related_refs).toEqual([{ target_kind: 'table', target: 'dws_pay', derivation: '' }])
   })
 
@@ -189,8 +189,8 @@ describe('addRelation — concept-side edges', () => {
     writeTable('dws_pay')
     writeConcept('付费经济')
     const core = newCore()
-    const res = await core.addRelation('table', 'dws_pay', { target_kind: 'concept', name: '付费经济' }, ver('concept', '付费经济'))
-    expect(res.added).toBe(true)
+    const res = await core.addRelations('table', 'dws_pay', [{ target_kind: 'concept', name: '付费经济' }], ver('concept', '付费经济'))
+    expect(res.results[0]?.outcome).toBe('added')
     expect(core.loadConceptDefinition('付费经济')?.related_refs).toEqual([{ target_kind: 'table', target: 'dws_pay', derivation: '' }])
     // The table definition itself carries no edge field.
     expect(core.loadTableDefinition('dws_pay')).not.toHaveProperty('related_refs')
@@ -200,25 +200,25 @@ describe('addRelation — concept-side edges', () => {
     writeTable('dws_pay')
     writeConcept('付费经济')
     const core = newCore()
-    await expect(core.addRelation('table', 'dws_pay', { target_kind: 'concept', name: '付费经济' }, ver('table', 'dws_pay'))).rejects.toThrow(StaleBaselineError)
+    await expect(core.addRelations('table', 'dws_pay', [{ target_kind: 'concept', name: '付费经济' }], ver('table', 'dws_pay'))).rejects.toThrow(StaleBaselineError)
   })
 
   it('is idempotent when the exact same edge is already present (added: false)', async () => {
     writeConcept('付费经济', { related_refs: [{ target_kind: 'concept', target: '用户生命周期' }] })
     writeConcept('用户生命周期')
     const core = newCore()
-    const res = await core.addRelation('concept', '付费经济', { target_kind: 'concept', name: '用户生命周期' }, ver('concept', '付费经济'))
-    expect(res.added).toBe(false)
-    expect(res.unsuppressed).toBeUndefined()
+    const res = await core.addRelations('concept', '付费经济', [{ target_kind: 'concept', name: '用户生命周期' }], ver('concept', '付费经济'))
+    expect(res.results[0]?.outcome).toBe('idempotent')
+    expect(res.results[0]?.unsuppressed).toBe(false)
   })
 
   it('lifts the veto when re-adding a suppressed edge (unsuppressed reports the key)', async () => {
     writeConcept('付费经济', { suppressed_related_refs: ['concept:用户生命周期'] })
     writeConcept('用户生命周期')
     const core = newCore()
-    const res = await core.addRelation('concept', '付费经济', { target_kind: 'concept', name: '用户生命周期' }, ver('concept', '付费经济'))
-    expect(res.added).toBe(true)
-    expect(res.unsuppressed).toEqual(['concept:用户生命周期'])
+    const res = await core.addRelations('concept', '付费经济', [{ target_kind: 'concept', name: '用户生命周期' }], ver('concept', '付费经济'))
+    expect(res.results[0]?.outcome).toBe('added')
+    expect(res.results[0]).toMatchObject({ key: 'concept:用户生命周期', unsuppressed: true })
     const def = core.loadConceptDefinition('付费经济')
     expect(def?.related_refs).toEqual([{ target_kind: 'concept', target: '用户生命周期', derivation: '' }])
     expect(def?.suppressed_related_refs).toEqual([])
@@ -228,44 +228,44 @@ describe('addRelation — concept-side edges', () => {
     writeConcept('付费经济', { suppressed_related_refs: ['dws_pay'] })
     writeTable('dws_pay')
     const core = newCore()
-    const res = await core.addRelation('concept', '付费经济', { target_kind: 'table', name: 'dws_pay' }, ver('concept', '付费经济'))
-    expect(res.unsuppressed).toEqual(['dws_pay'])
+    const res = await core.addRelations('concept', '付费经济', [{ target_kind: 'table', name: 'dws_pay' }], ver('concept', '付费经济'))
+    expect(res.results[0]).toMatchObject({ key: 'dws_pay', unsuppressed: true })
   })
 
   it('throws when the target concept does not exist', async () => {
     writeConcept('付费经济')
     const core = newCore()
-    await expect(core.addRelation('concept', '付费经济', { target_kind: 'concept', name: 'nope' }, ver('concept', '付费经济'))).rejects.toThrow(/Concept not found: nope/)
+    await expect(core.addRelations('concept', '付费经济', [{ target_kind: 'concept', name: 'nope' }], ver('concept', '付费经济'))).rejects.toThrow(/Concept not found: nope/)
   })
 
   it('throws when the target table does not exist (concept subject)', async () => {
     writeConcept('付费经济')
     const core = newCore()
-    await expect(core.addRelation('concept', '付费经济', { target_kind: 'table', name: 'nope' }, ver('concept', '付费经济'))).rejects.toThrow(/Table not found: nope/)
+    await expect(core.addRelations('concept', '付费经济', [{ target_kind: 'table', name: 'nope' }], ver('concept', '付费经济'))).rejects.toThrow(/Table not found: nope/)
   })
 
   it('throws when the target concept does not exist (table subject)', async () => {
     writeTable('dws_pay')
     const core = newCore()
-    await expect(core.addRelation('table', 'dws_pay', { target_kind: 'concept', name: 'nope' }, 'f'.repeat(64))).rejects.toThrow(/Concept not found: nope/)
+    await expect(core.addRelations('table', 'dws_pay', [{ target_kind: 'concept', name: 'nope' }], 'f'.repeat(64))).rejects.toThrow(/Concept not found: nope/)
   })
 
   it('refuses an event subject', async () => {
     const core = newCore()
-    await expect(core.addRelation('event', 'pay_success', { target_kind: 'concept', name: 'x' }, 'f'.repeat(64))).rejects.toThrow(/not supported for events/)
+    await expect(core.addRelations('event', 'pay_success', [{ target_kind: 'concept', name: 'x' }], 'f'.repeat(64))).rejects.toThrow(/not supported for events/)
   })
 
   it('refuses a join-shaped relation on a concept subject', async () => {
     writeConcept('付费经济')
     const core = newCore()
-    await expect(core.addRelation('concept', '付费经济', { dim_table: 'dim_shop', join_keys: [{ dws_column: 'a', dim_column: 'b' }] }, ver('concept', '付费经济'))).rejects.toThrow(/not supported for concepts/)
+    await expect(core.addRelations('concept', '付费经济', [{ dim_table: 'dim_shop', join_keys: [{ dws_column: 'a', dim_column: 'b' }] }], ver('concept', '付费经济'))).rejects.toThrow(/not supported for concepts/)
   })
 
   it('throws StaleBaselineError on version mismatch', async () => {
     writeConcept('付费经济')
     writeConcept('用户生命周期')
     const core = newCore()
-    await expect(core.addRelation('concept', '付费经济', { target_kind: 'concept', name: '用户生命周期' }, 'a'.repeat(64))).rejects.toThrow(StaleBaselineError)
+    await expect(core.addRelations('concept', '付费经济', [{ target_kind: 'concept', name: '用户生命周期' }], 'a'.repeat(64))).rejects.toThrow(StaleBaselineError)
   })
 })
 
@@ -384,8 +384,8 @@ describe('addAlias / removeAliases on a concept (AliasKindSchema parity)', () =>
   it('addAlias appends to a concept\'s alt_labels', async () => {
     writeConcept('付费经济')
     const core = newCore()
-    const res = await core.addAlias('concept', '付费经济', '氪金', ver('concept', '付费经济'))
-    expect(res.added).toBe(true)
+    const res = await core.addAliases('concept', '付费经济', ['氪金'], ver('concept', '付费经济'))
+    expect(res.results[0]?.outcome).toBe('added')
     expect(core.loadConceptDefinition('付费经济')?.alt_labels).toContain('氪金')
   })
 
@@ -399,5 +399,56 @@ describe('addAlias / removeAliases on a concept (AliasKindSchema parity)', () =>
     const def = core.loadConceptDefinition('付费经济')
     expect(def?.alt_labels).not.toContain('氪金')
     expect(def?.suppressed_alt_labels).toContain('氪金')
+  })
+})
+
+// ── addRelations concept-edge batch (#109 / #107 Q6) ───────────────────────
+
+describe('addRelations concept-edge batch', () => {
+  it('a concept subject batch lands all edges on the subject in one write, verdicts in input order', async () => {
+    writeConcept('付费经济')
+    writeConcept('用户生命周期')
+    writeTable('dws_pay')
+    const core = newCore()
+    const res = await core.addRelations('concept', '付费经济', [
+      { target_kind: 'concept', name: '用户生命周期' },
+      { target_kind: 'table', name: 'dws_pay' },
+    ], ver('concept', '付费经济'))
+    expect(res.results).toEqual([
+      { key: 'concept:用户生命周期', outcome: 'added', unsuppressed: false },
+      { key: 'dws_pay', outcome: 'added', unsuppressed: false },
+    ])
+    expect(core.loadConceptDefinition('付费经济')?.related_refs).toEqual([
+      { target_kind: 'concept', target: '用户生命周期', derivation: '' },
+      { target_kind: 'table', target: 'dws_pay', derivation: '' },
+    ])
+  })
+
+  it('a table subject batch naming two target concepts is rejected whole, before any write lands', async () => {
+    writeTable('dws_pay')
+    writeConcept('付费经济')
+    writeConcept('用户生命周期')
+    const core = newCore()
+    await expect(core.addRelations('table', 'dws_pay', [
+      { target_kind: 'concept', name: '付费经济' },
+      { target_kind: 'concept', name: '用户生命周期' },
+    ], ver('concept', '付费经济'))).rejects.toThrow(/SAME target concept/)
+    expect(core.loadConceptDefinition('付费经济')?.related_refs).toEqual([])
+    expect(core.loadConceptDefinition('用户生命周期')?.related_refs).toEqual([])
+  })
+
+  it('a table subject batch to ONE target concept is one write landing one stored record', async () => {
+    writeTable('dws_pay')
+    writeConcept('付费经济')
+    const core = newCore()
+    const res = await core.addRelations('table', 'dws_pay', [
+      { target_kind: 'concept', name: '付费经济' },
+      { target_kind: 'concept', name: '付费经济' },
+    ], ver('concept', '付费经济'))
+    // Two input edges, one landing file, ONE structural record — mirroring
+    // removeRelations' collapse: the verdict is per stored record, so a
+    // same-target batch from a table subject reports one row.
+    expect(res.results).toEqual([{ key: 'dws_pay', outcome: 'added', unsuppressed: false }])
+    expect(core.loadConceptDefinition('付费经济')?.related_refs).toEqual([{ target_kind: 'table', target: 'dws_pay', derivation: '' }])
   })
 })
