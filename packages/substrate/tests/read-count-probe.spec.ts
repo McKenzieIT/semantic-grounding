@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { cpSync, mkdtempSync, rmSync } from 'node:fs'
+import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { _resetReadYamlCount, _getReadYamlCount } from '../src/io.ts'
 import {
@@ -21,6 +21,8 @@ import {
   loadTableDefinition,
   loadEventDefinition,
   loadConfig,
+  writeEventYaml,
+  definitionVersion,
 } from '../src/io.ts'
 import { assertKnownFilterNames } from '../src/enrichment.ts'
 import { listEnrichmentWorkItems, fetchEnrichmentPrompts } from '../src/enrichment-work.ts'
@@ -242,11 +244,14 @@ describe('path 5: run_enrichment (one full invocation)', () => {
       record(
         'run_enrichment (full: relations + event-relations + alt_labels)',
         count,
-        `discoverRelations(642) + discoverEventRelations(100371: 767 pipeline + ~99604 findEventPath scans) + discoverAltLabels(100371: same). CRITICAL: 99% of reads are write-path findEventPath scans, not read-path re-reads.`,
+        `discoverRelations(${afterRel}) + discoverEventRelations(+${afterEvtRel - afterRel}) + discoverAltLabels(+${count - afterEvtRel}). ADR-0016 (#80): findEventPath fast-path now hits on filename=name — pre-migration this was ~100371 reads in each of discoverEventRelations/discoverAltLabels (99% broad-scan), a 262.56× corpus baseline.`,
       )
-      // Expected: 642 + 767 + 767 = ~2176 (loadSuppressions adds 0 since no suppressions.yaml)
-      console.log(`  [probe] run_enrichment (full): ${count} YAML reads (${(count / ONE_FULL_CORPUS).toFixed(2)}× full corpus)`)
-      expect(count).toBeGreaterThan(0)
+      console.log(`  [probe] run_enrichment (full): ${count} YAML reads (${(count / ONE_FULL_CORPUS).toFixed(2)}× full corpus, vs 262.56× pre-ADR-0016 baseline)`)
+      // ADR-0016 regression guard: the pathology this fixed was a full
+      // broad-scan of the event tree on every write (262.56× corpus). 20×
+      // leaves headroom for unrelated cost growth while still failing loudly
+      // if findEventPath's fast path stops hitting.
+      expect(count).toBeLessThan(20 * ONE_FULL_CORPUS)
     } finally {
       rmSync(tmp, { recursive: true, force: true })
     }
@@ -321,6 +326,46 @@ describe('path 6: graph/search paths', () => {
     )
     console.log(`  [probe] search_definitions (warm graph): ${count} YAML reads (${(count / ONE_FULL_CORPUS).toFixed(2)}× full corpus)`)
     expect(count).toBeGreaterThan(0)
+  })
+})
+
+// ── Path 7: write-path fast-path hit (ADR-0016 / #80) ─────────────────────
+
+describe('path 7: write-path fast-path hit (ADR-0016)', () => {
+  it('writeEventYaml resolves via fast path: ≤2 YAML reads', async () => {
+    const tmp = mkdtempSync(join(tmpdir(), 'sg-probe-write-'))
+    cpSync(K11, tmp, { recursive: true })
+    try {
+      const name = 'game.role.online'
+      const raw = readFileSync(join(tmp, 'events/account', `${name}.yaml`), 'utf-8')
+      const count = await measureAsync(async () => {
+        const result = await writeEventYaml(tmp, name, raw)
+        expect(result.ok).toBe(true)
+      })
+      record(
+        'writeEventYaml (fast-path hit)',
+        count,
+        'ADR-0016 R1/R6: filename=name post-migration — findEventPath hits its candidate on the first readYaml, zero broad-scan reads',
+      )
+      console.log(`  [probe] writeEventYaml (fast-path hit): ${count} YAML reads`)
+      expect(count).toBeLessThanOrEqual(2)
+    } finally {
+      rmSync(tmp, { recursive: true, force: true })
+    }
+  })
+
+  it('definitionVersion(event) resolves via fast path: ≤2 YAML reads', () => {
+    const count = measure(() => {
+      const v = definitionVersion(K11, 'event', 'game.role.online')
+      expect(v).not.toBeNull()
+    })
+    record(
+      'definitionVersion(event, fast-path hit)',
+      count,
+      'ADR-0016 R1/R6: the Tier-2 write-gate fingerprint path (findEventPath) hits fast path post-migration',
+    )
+    console.log(`  [probe] definitionVersion(event, fast-path hit): ${count} YAML reads`)
+    expect(count).toBeLessThanOrEqual(2)
   })
 })
 
