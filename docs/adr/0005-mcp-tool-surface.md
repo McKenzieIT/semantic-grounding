@@ -288,4 +288,5 @@ mcp test **385 pass + 1 skip**（25 files，较基线 +10：catalog 27→28 名�
 / e2e **21 步**（不加步：catalog 相位经 `TOOL_NAMES` 自动纳入 28 名 reconciliation，行为面无
 启动缝特异性，由 mcp spec 钉死）。GLOSSARY「five read-only intent tools」句已改六；「库存清单」
 词条经 domain-modeling 三条件现场裁**不加**（单用例术语，未达复现条件；索引/题面分离语义已有
-GLOSSARY「enrichment work」词条与 ADR-0008 承载）。合入 main `<sha>`。
+GLOSSARY「enrichment work」词条与 ADR-0008 承载）。合入 main `417d1a4`（与 #104/#111 同批
+集成分支复跑四门禁：typecheck 双包 0 / substrate 450 / mcp **420+1skip** / e2e 21 / catalog 28）。

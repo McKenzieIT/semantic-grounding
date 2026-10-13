@@ -114,6 +114,23 @@ map #89 缺口 (b)：`import_definitions`（ADR-0013）单 commit 批量落盘�
 - substrate / mcp 全量 test、e2e、双包 typecheck 不红（对标 ADR-0016 基线）。
 - 不新增 tools/list 条目（catalog 断言不变）。
 
+## Update — #104 落地（2026-10-14）
+
+合入 main `660f80d`（集成分支复跑四门禁：typecheck 双包 0 / substrate 450 / mcp **420+1skip** /
+e2e 21 步 / tools/list 27 不变）。Verification 各条全数兑现：dry 零 commit 不开窗不注入、dry vs
+真写 verdict 逐项一致、冷启动 60 created 静默、51 超阈 WARN+标注而恰好 50 静默（严格 `>` 钉死）、
+阈值 flag/env/default 测试钉死（0 合法、负/小数拒绝带 remedy）。执行核正三则：
+
+1. **锚点漂移**（#108/#109 所致，语义锚成立）：`auditedWrite` 调用点与 `intentTarget` 通道行号
+   较本 ADR 落稿时下移；dry_run 早返回与守卫仍精确插在「Phase 1 后、audit 窗前」「intent
+   target 通道」两语义锚上。
+2. **WARN 通道形状**（与 #111 集成统一）：守卫信号落响应顶层 `warnings: string[]`（零税缺席，
+   恒非空数组）；dry_run 预检与真写共享同一组守卫行——预检必须精确预言真写的告警，否则预检
+   不是预检。ADR-0019 R6 的占比守卫同通道并列，双守卫独立触发（51/53 场景双标注有测试钉死）。
+3. **「commit trailer」措辞**：被裁机制（「骑 `import.ts` 的 intent target 通道」）实际落
+   commit **subject**（`buildSubject` 的 `<tool>(<target>): <summary>` 形），subject 同样可
+   `git log --grep` 命中；本 ADR 的 trailer 措辞按宽泛描述理解，机制以裁决原文的通道为准。
+
 ## References
 
 - 决策票：[#93](https://github.com/McKenzieIT/semantic-grounding/issues/93)（三轮 grilling

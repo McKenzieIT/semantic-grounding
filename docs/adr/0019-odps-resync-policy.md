@@ -142,6 +142,25 @@ config 存快照无版本；唯一 fingerprint 是**写并发用**的 content-sh
 - substrate / mcp 全量 test、e2e、双包 typecheck 不红（对标 ADR-0016 基线）；不新增 tools/list
   条目；不新增 substrate 公共面导出。
 
+## Update — #111 落地（2026-10-14）
+
+合入 main `c741c5d`（wf 分支原 `901c117`，与 #104 同批集成分支复跑四门禁：typecheck 双包 0 /
+substrate 450 / mcp **420+1skip** / e2e 21 步 / tools/list 27 不变；substrate 零改动——R2 走既有
+`updateConceptMeta` 公共 Tier-2 seam，不新增公共面）。Verification 各条全数兑现：concept
+`updated` 后盘上三 item-verb 键保全（data-loss 回归钉死，行级 version 回执与 get_definition
+闭合）、`get_definition` 输出原样回灌不再 zod 硬失败（round-trip 闭合）、真未知键仍拒、
+table/event `.loose()` round-trip 不变、占比守卫冷启动/floor 静默 + 超阈 WARN+trailer + 阈值
+可配且 default 钉死。执行核正两则：
+
+1. **R6 分母口径**：`existing(kind)` = `projectGraphNodes({includeDerived:false})` 的
+   schema-valid 图内计数（沿用 guidance `layerCounts` 既定口径，拒计 malformed 残留；表节点
+   kind 是开放存储 kind，按排除法归 table）。守卫在 Phase 2 入口、写前计数，分母天然含本次
+   updated 项。
+2. **WARN 通道与 ADR-0018 统一**：占比守卫信号落响应顶层 `warnings: string[]`（零税缺席），
+   trailer 骑 intent target 通道（ADR-0018 R4 同通道）；与 count 守卫各自独立触发，集成后同一
+   批可双标注（51/53 场景有测试钉死）。锚点漂移（`import.ts:287`→305、`io.ts:1028`→1055 等，
+   #108/#109 所致）语义核实一致。
+
 ## References
 
 - 决策票：[#94](https://github.com/McKenzieIT/semantic-grounding/issues/94)（五点 grilling
