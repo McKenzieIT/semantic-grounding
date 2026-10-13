@@ -272,14 +272,14 @@ halves are independently necessary:
 The epoch is provided via `AsyncLocalStorage` (`withReadEpoch(fn)` in
 `src/read-epoch.ts`); `loadTables` / `loadEvents` check for an active epoch and either
 return the memoised array or read straight from disk when none is open. The
-no-epoch-when-open path is byte-identical to today, so hosts that do not opt in
-(including dsh, which uses its own [`snapshot`](#snapshot) for MVCC) are unaffected.
+no-epoch-when-open path is byte-identical to today, so any caller that does not enter
+an epoch is unaffected.
 
 Distinct from [`snapshot`](#snapshot), which pins definitions for the duration of a
-single query for MVCC isolation and is a public host-facing API (ADR-0005 ruling 6
-explicitly refused snapshot handles on the MCP read surface, reserving MVCC for "dsh's
-query-execution needs"). The two caches have genuinely different lifetime requirements;
-merging them would bend one correct semantic toward the other.
+single query for MVCC isolation and is currently a deferred capability (ADR-0005 ruling 6
+refused snapshot handles on the MCP read surface; ADR-0017 parks it behind a trigger —
+cross-call consistent-read requirements). The two caches have genuinely different
+lifetime requirements; merging them would bend one correct semantic toward the other.
 
 ### snapshot
 
@@ -556,8 +556,11 @@ property it claims to prove: slice 1 passed it by vendoring the host framework's
 into the repo while core still imported `@deepseek-ai/cordis` on line 40. The current
 formulation cannot be satisfied that way.
 
-Do not re-express this as a `node_modules` check. The core legitimately has a host
-framework on `node_modules` — as an optional peer dependency, for the shell.
+Do not re-express this as a `node_modules` check. It has been empty of host frameworks
+since slice 4a (`peerDependencies` went empty then, and the last host-framework
+devDependencies — the vendored dsh stub's `@deepseek-ai/*` — went with map #88), which
+is exactly the point: packaging facts drift, and a `node_modules` check would silently
+flip from meaningful to vacuous, while the source-level formulation above does not.
 
 ### tarball acceptance
 

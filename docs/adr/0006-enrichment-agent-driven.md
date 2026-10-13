@@ -112,3 +112,17 @@ lock timeout / commit failure / dirty-tree refusal / missing audit context 全�
 **门禁全绿**（main 上 #20 + #21 合并后）：substrate typecheck / test(299+) / negation / acceptance 全过；
 mcp typecheck 0 错 / test 248 passed（17 files，含 intent-tools 84 + tool-error-contract +
 enrichment-tools + git-recorder 33 + server-startup/build-shape/config 等）。
+
+## Update 2026-10-13 — 「同一 seam、两种宿主姿态」教条被推翻（ADR-0017 / S1.2）
+
+Decision 段的「`setLlmCall` seam 在 MCP host 不接线、dsh 继续进程内使用——**同一 seam、
+两种宿主姿态**：进程内宿主塞回调，MCP 宿主把回调拆成一对工具」是双姿态教条的源头，随
+[ADR-0017](./0017-first-party-frontend-exclusivity.md) 前提总纲（第一方前端独占：harness
+含 dsh 一律经前端使用，不存在「宿主进程内直接 import substrate」的形态）被推翻：
+**ask-answer 工具对（`get_enrichment_work` / `get_enrichment_prompts` /
+`apply_enrichment`）升格为唯一 LLM 形态**，进程内回调姿态整删——#83 删
+`setLlmCall`/`TextLlm`/`wireEnrichmentLlm`/`LlmCall` 全链（barrel 名 + 引擎 `llmCall`
+参数链；`*For` 三入口保留为 deterministic-only 薄入口）。裁决 2 的出题-答题纪律不受影响
+（prompt/parse/merge 家族全留 substrate 内部服务 ask-answer 对，#83 零改动）；
+Consequences 的「dsh 不受影响：进程内姿态继续 `setLlmCall`」同转历史（受众已断）。
+原文保留作裁决史。

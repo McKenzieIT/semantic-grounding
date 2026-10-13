@@ -57,8 +57,14 @@ barrel——它们在 dsh 侧只剩测试/脚本消费，(a) 不成立（口径 
 | 写路径 | `updateTableMeta`、`updateEventMeta`、`writeTable`、`writeEventYaml`、`dumpYaml`、`invalidateCaches`、`Tier2Recorder`、`Tier2Opts`、`WriteEventYamlResult`、`UpdateTableMetaResult`、`UpdateEventMetaResult` | (a)：`updateTableMeta` 生产、`writeTable`/`writeEventYaml`/`dumpYaml`/`invalidateCaches` 生产**动态**导入；`updateEventMeta` 为 (b)（GLOSSARY § write tier 文档化的 Tier-2 approve 路径，与 `updateTableMeta` 成对）；其余为签名闭包（口径 2）。raw-edit 面的公共性问题是 MCP map 的雾，不在本票 |
 | Tier-1 队列 | `submit`、`loadPending`、`listing`、`discard`、`isValidId`、`PendingSuggestion`、`SubmitArgs` | (b)：MCP 管理面已确认需要建议队列（`docs/mcp-map-seed.md`） |
 | 快照 | `captureSnapshot`、`DefinitionSnapshot` | (b)：MCP 已确认；且为 core `acquireSnapshot`/`withSnapshot` 签名（口径 2） |
-| LLM seam | `LlmCall`、`TextLlm`、`wireEnrichmentLlm` | (c)：`setLlmCall` 的参数型（ADR-0002 (c)）；(a)：`TextLlm`/`wireEnrichmentLlm` 由 adapter `llm-wiring-plugin.ts` 具名消费（#7 修正 #2） |
+| LLM seam | ~~`LlmCall`、`TextLlm`、`wireEnrichmentLlm`~~ | (c)：`setLlmCall` 的参数型（ADR-0002 (c)）；(a)：`TextLlm`/`wireEnrichmentLlm` 由 adapter `llm-wiring-plugin.ts` 具名消费（#7 修正 #2）。**2026-10-13 整行退役**（S1.2/#83，ADR-0017）：seam 整删，两项依据随扩展点删除与宿主通道退役失效 |
 | 配置与健康 | `CorpusVariant`、`EventCorpusItem`、`EnrichmentRound`、`EnrichmentHealthEntry`、`SchemaProvider` | 口径 2：`SemanticLayerConfig`/`corpusVariant` getter、`core.loadRetrievalCorpus` 返回、`getEnrichmentHealth()`（slice 2 ② 的结构化健康面）、`setSchemaProvider`；(c)：`SchemaProvider` 是文档化 seam（实现移至 `src/schema-provider.ts`，本模块只 re-export 型） |
+
+> 2026-10-13（ADR-0017 / map #88）：上表以下名字已退役——指标投影行全部四名与读 API 行的
+> `loadMetricDefinitions`、写路径行的 `updateTableMeta`/`updateEventMeta` 自由函数形态、
+> Tier-1 行的 `isValidId`（S1.5/#85 收名留码）；kind 扩展点行的 `CriticFields`
+> （S1.6/#86 随 `toCriticContext` 插件面整删）；LLM seam 行整行（S1.2/#83）。现行名单
+> **27 runtime + default**，逐名对账见文末 Update 2026-10-13。
 
 ### 裁掉名单（81 = 61 runtime + 20 type）
 
@@ -83,12 +89,15 @@ barrel——它们在 dsh 侧只剩测试/脚本消费，(a) 不成立（口径 
   kind 取代）、`loadRawDir`、`loadEventDefinition`/`loadTableDefinition`/`loadConceptDefinition`
   与 `loadRetrievalCorpus`（core 同名方法是公共路由）、`buildRetrievalCorpus`、
   `EventCorpusInput`、`BasicIndex`/`EventIndexEntry`/`TableIndexEntry`、`mergeColumns`、
-  `mergeChangedYaml`、`syncWriteDefinitions`（P6b sync 流，无消费者；MCP map 起票时按 (b)
-  重审）、`canonicalizeType`、`inferAggregation`、`toMetricDefinition`、`metricGraphNode`、
+  `mergeChangedYaml`、`syncWriteDefinitions`（P6b sync 流，无消费者；复审条款已于
+  2026-10-13 关闭——MCP map #50 已关、无人认领，S1.4/#84 随链整删）、`canonicalizeType`、
+  `inferAggregation`、`toMetricDefinition`、`metricGraphNode`、
   `extractMetricsFromTables`、`isPlainObject`、`ResolvedSemanticLayerConfig`（仅 private 使用）。
 
 所有被裁名字**仍在源模块导出**，本仓测试经 `../src/<module>.ts` 直达（裁剪前后 276 passed
 + 1 expected-fail 不变）；`default` 导出保留（dsh e2e 与 acceptance gate 锚定）。
+（2026-10-13 起有例外：sync-write 六名与 LLM seam 名随 S1.4/#84、S1.2/#83 **源码整删**，
+不再「仍在源模块导出」——见文末 Update。）
 
 ## Consequences
 
@@ -99,10 +108,13 @@ barrel——它们在 dsh 侧只剩测试/脚本消费，(a) 不成立（口径 
   `alpha.2` tarball，今天没有任何 dsh gate 变红。升级到 `alpha.3` 时 4 个测试/脚本文件
   需小改（回填脚本 5 名、seed-event-external-refs 1 名、d2c probes ×2 的
   `loadRetrievalCorpus`），已记录在 dsh 升级 pointer ticket。生产代码**零改动**。
-- **MCP map 的晋升通道**：本 map 关闭后按用户方向下一程是 MCP 管理面
-  （`docs/mcp-map-seed.md`）。若 MCP 需要某个被裁名字（例如 `syncWriteDefinitions`、
-  raw-edit 面、`loadRetrievalCorpus` 模块函数），按 (b) 重新举证加回——alpha 发布不关窗，
-  首个稳定版才关。
+
+> ⚠️ **2026-10-13 作废转历史（ADR-0017）**：dsh 独立发展（#79 裁决；#11 已以 not planned
+> 关闭），本仓不再跟踪 dsh 升级事件。断点清单留 #11 票面永久可查。
+- **晋升通道**（2026-10-13 换血，ADR-0017）：若 mcp 或第一方 CLI 需要某个被裁/收编名字
+  （例如 S1.5/#85 收名留码的 `updateTableMeta` 自由函数形态、io 版 `loadRetrievalCorpus`），
+  按 (b) 重新举证加回；第一方前端的具名消费按 (a) 举证。原例 `syncWriteDefinitions` 已随
+  S1.4/#84 整删，不再是可晋升对象——alpha 发布不关窗，首个稳定版才关。
 - **publish 是独立 effort**（map #1 Out-of-scope）：本票只 bump 版本到 `0.1.6-alpha.3`
   并产出 tarball，不发布。发布 alpha 不影响本 ADR 的免费裁剪窗口。
 - 版本 bump `0.1.6-alpha.2` → `0.1.6-alpha.3`；tarball 76.1KB → 62.6KB。
@@ -146,3 +158,35 @@ audited write-and-record 仪式收进单一 `auditedFileWrite` seam，并归一�
   `Concept validation failed: …`；`writeTable` 返回型从 `string` 变
   `WriteTableResult`，取路径改 `res.ok && res.path`）。substrate 未正式发布，
   tarball 直装，无 registry 消费者。
+  〔2026-10-13 转历史（ADR-0017）：dsh 不再是消费者，升级义务无对象；(a) 证据渠道已改
+  第一方前端。〕
+
+## Update 2026-10-13 — map #88（S1 单宿主收窄）：barrel 36 → 27，LLM seam 退役 + 活条款转历史
+
+[ADR-0017](./0017-first-party-frontend-exclusivity.md)（第一方前端独占：接入形态 = 第一方
+前端独占，永不与 harness 耦合，仓内公共面唯一消费者 = mcp 及将来第一方 CLI）落地后，本 ADR
+名单与条款的变更统一在此对账（执行：#83 `abef1d2` / #84 `3561278` / #85 `ba66229` /
+#86 `294a1aa`，均 2026-10-13 合入 main）：
+
+- **S1.2/#83（36→35）**：LLM seam 整行退役——`wireEnrichmentLlm`（runtime 名）下桶并随
+  seam 源码整删；`LlmCall`/`TextLlm`（type-only，不计 runtime 断言）同删；`setLlmCall`
+  是 Core 方法非 barrel 名。原 (c)/(a) 依据随扩展点删除与 dsh 退役失效——ADR-0006
+  「同一 seam、两种宿主姿态」由 ask-answer 工具对升格唯一 LLM 形态推翻。
+- **S1.5/#85（35→27）**：八名收名留码——指标投影四名（`extractMetricsFromTable`/
+  `extractMetricsFromEvent`/`deriveMetricRelations`/`projectMetricCorpusItem`）、
+  `loadMetricDefinitions`、`isValidId`、`updateTableMeta`/`updateEventMeta` 自由函数形态
+  下桶，**源模块导出全保留**，公共路由 = kind 插件 `derivedNodes` + Core 同名方法；各名
+  原 (a) 证据（dsh `retrieval-experiment/graph-snapshot`）随宿主通道退役失效，再裁不依
+  (a)。巡检第九名 `loadRetrievalCorpus` 核验为本就 off barrel（acceptance must-absent
+  既有收录 + index.ts 既有注记双证），零改动。
+- **S1.6/#86（type 面）**：`CriticFields` 随 `toCriticContext` 插件面整删（type-only，
+  runtime 断言不可见；构建产物 `.d.ts` 五名清零验证）。
+- **复审条款关闭**：裁掉名单 `syncWriteDefinitions` 的「MCP map 起票时按 (b) 重审」——
+  map #50 已关、无人认领，S1.4/#84 随链**源码整删**（连同 `generateTableYaml`/
+  `generateDimYaml`/`inferRole`/`mergeColumns`/`mergeChangedYaml`，是「仍在源模块导出」
+  条款的首批例外，LLM seam 名同例）。
+- **活条款转历史**：Consequences「dsh 升级断点」bullet 作废（#11 not planned）；#61
+  Update 的「dsh 迁移注记」升级义务无对象。
+- **acceptance 执行器**：`EXPECTED_RUNTIME_NAMES` 现为 **27 + default** deepEqual；
+  must-absent 补上述整删/收编名（随各票同 commit 原子落地）。本 ADR 的 67 名表与后续各
+  Update 的计数均为历史存档；现行名单以 acceptance 脚本为准。

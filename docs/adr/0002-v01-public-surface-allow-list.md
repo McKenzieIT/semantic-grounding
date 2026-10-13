@@ -42,10 +42,10 @@ subpath 指 `"."` / `"./llm-wiring-plugin"` 这种路径条目；barrel 指 `src
 一个 name 或 subpath 公开，必须服务于**底座自身的域**（即 `GLOSSARY.md` 定义的概念），
 且满足以下至少一条：
 
-- **(a)** 在某个 host 有具名的活消费点（今天：dsh）；
+- **(a)** 在某个第一方前端有具名的活消费点（2026-10-13 修订，ADR-0017：原「host（今天：dsh）」宿主通道退役——harness 不再直接 import substrate；今天无 (a) 消费，仓内消费走 (b)）；
 - **(b)** 被已确认的 host 需求要求（今天：MCP 管理面，见 `docs/mcp-map-seed.md`）；
 - **(c)** 实现某个文档化扩展点所必需（`DataSourceKindPlugin` / `SchemaProvider` /
-  `Tier2Recorder` / `LlmCall`）。
+  `Tier2Recorder`；~~`LlmCall`~~ 已于 2026-10-13 随 S1.2 除名——seam 整删，ADR-0017）。
 
 **host 的消费是域需求的*证据*，不是域需求的*定义*。**
 
@@ -94,6 +94,9 @@ registry（`npm view` → E404）、无 git tag、版本 `0.1.6-alpha.2`，所�
 against `ctx.llm`/`ctx.schema`」。shell 搬进 adapter 之后，**adapter 成了它们具名的活
 消费者** —— 依据 (a) 成立，应当**保留**。
 
+> 2026-10-13 推翻（ADR-0017 / #83）：adapter 随 dsh 退役，(a) 证据渠道不复存在，
+> `TextLlm`/`wireEnrichmentLlm` 已随 LLM seam 整删。本段保留为裁决史。
+
 本修订**不改**本 ADR 的规则本身（两级白名单、(a)/(b)/(c)、举证责任在「加」的一侧、
 约定耦合条款），只改 subpath 表的内容。
 
@@ -104,6 +107,22 @@ against `ctx.llm`/`ctx.schema`」。shell 搬进 adapter 之后，**adapter 成�
 barrel 从 148 名裁到 67 名（含三条适用口径的明确化：(a) 只认生产消费、签名闭包属于公共
 面、zod 子模型不公共），acceptance gate 从计数断言升级为精确名单断言。本 ADR 的 subpath
 表（2 条）不变。
+
+### 修订（2026-10-13，ADR-0017 第一方前端独占）
+
+规则集（两级白名单、(a)/(b)/(c)、举证责任在「加」侧、约定耦合条款）不变，三处随
+[ADR-0017](./0017-first-party-frontend-exclusivity.md)（接入形态 = 第一方前端独占，MCP
+现有、CLI+skills 可能后续、永不与 harness 耦合）修订：
+
+1. **(a) 的宿主通道退役**：消费证据渠道改为第一方前端的具名消费；subpath 表依据栏与
+   barrel 缺口一节的 dsh 例证全部转历史。仓内公共面的唯一消费者 = mcp（及将来第一方
+   CLI），走 (b)。
+2. **(c) 清单去 `LlmCall`**：LLM 回调 seam 随 S1.2 整删（#83），不再是文档化扩展点；
+   `SchemaProvider` 留存（S1.3 暂缓项，触发条件见 ADR-0017 暂缓区）。
+3. **slice 4a 修订的 dsh 前提失效**：`cordis`/`schemastery` 两条 devDependency（服务
+   宿主 fiber 测试）已随 #86 删（vendored dsh 桩整删，`@deepseek-ai` 仓内清零）。
+   执行与名单对账见 [ADR-0003](./0003-v01-root-barrel-name-allow-list.md) 的
+   2026-10-13 Update。
 
 ### 本次同时补上的 barrel 缺口
 

@@ -81,6 +81,9 @@ tokens——`work_id` 的 64 字符指纹是大头。e2e oracle 按 `work_id`+`g
   这是自包含设计的必然代价，不是本票留下的尺寸账。
 - dsh 不受影响：索引/题面分离只发生在 MCP 工具面；dsh 的进程内 `setLlmCall` 路径不经过
   `get_enrichment_work`/`get_enrichment_prompts`，两个新 Core 层方法只服务 MCP handler。
+  〔2026-10-13 回声勘误（ADR-0017 / S1.2/#83）：进程内 `setLlmCall` 路径已随 LLM seam
+  整删，「dsh 不受影响」检查无对象；两个 Core 方法只服务 MCP handler 的结论照常成立——
+  现亦为唯一消费者。〕
 
 ## Verification
 

@@ -120,8 +120,9 @@ ADR-0005 裁决 2 的 concept 排除条款**（metric 排除维持）。
 - `RelatedRefSchema`（`types.ts:356`）与扩展后的 `ConceptDefinitionSchema`
   （`types.ts:383`，新增 `properties`/`related_refs`/`suppressed_related_refs`）均
   `.loose()`——语料兼容是既有的 `.loose()` 哲学，工具侧输入仍 strict。
-  `properties`/`related_refs` 的索引面在 `concept-kind.ts` 的 `toCorpusItem`
-  （`:30`）/`toPromptContext`（`:51`）完成。
+`properties`/`related_refs` 的索引面在 `concept-kind.ts` 的 `toCorpusItem`（`:30`）
+完成。〔2026-10-13（#86，ADR-0017 / S1.6）：原并列的 `toPromptContext`（`:51`）已随
+kinds 插件面整删，索引面唯一落点为 `toCorpusItem`。〕
 - dsh 不受影响：substrate 的对外契约只新增两个原语和若干类型字段，不改变既有方法签名。
 
 ## Verification
@@ -130,8 +131,9 @@ ADR-0005 裁决 2 的 concept 排除条款**（metric 排除维持）。
   `tests/concept-write.spec.ts`（33 tests：`writeConceptYaml`/`updateConceptMeta`、
   `addConceptEdge`/`removeConceptEdges` 的存储归属不对称、stale baseline 的重读重试、
   curated 边一次移除即终、三种合法边形+event 拒绝）与新增 `tests/concept-kind.spec.ts`
-  （30 tests：`toGraphNode`/`relations(def)`/`toCorpusItem`/`toPromptContext` 的
-  properties 索引与 `related_to` 投射）。mcp 全量 `pnpm test`——17 个文件，255/255 通过
+  （30 tests：`toGraphNode`/`relations(def)`/`toCorpusItem` 的
+  properties 索引与 `related_to` 投射；原并列的 `toPromptContext` 测试段 4 例已随
+  #86 删，现 26 tests）。mcp 全量 `pnpm test`——17 个文件，255/255 通过
   （含既有文件对六个工具 concept 分支的回归覆盖）。
 - e2e（`packages/mcp/scripts/check-e2e-loop.ts`）：Step 14（`:675`）新增，走
   `create_definition(kind:'concept')` ×2、properties 读写回环、一次刻意的错误 baseline
@@ -163,8 +165,8 @@ ADR-0005 裁决 2 的 concept 排除条款**（metric 排除维持）。
   （`removeConceptEdges`，`reasserted` 恒 `false` 的实现与文档）、
   `packages/substrate/src/types.ts:356`（`RelatedRefSchema`）、`:383`
   （`ConceptDefinitionSchema`，Q4(b) 的 `properties`/`related_refs` 落点）、
-  `packages/substrate/src/kinds/concept-kind.ts:30`（`toCorpusItem`）、`:51`
-  （`toPromptContext`）、`:73`（`relations(def)`，`related_to` 投射）、
+  `packages/substrate/src/kinds/concept-kind.ts:30`（`toCorpusItem`）、`:58`
+  （`relations(def)`，`related_to` 投射；原 `:51` `toPromptContext` 引用已随 #86 删）、
   `packages/mcp/src/tools/shared.ts:81`（`WritableKindSchema`）、`:93`
   （`AliasKindSchema`）、`:96`（`RelationSubjectKindSchema`）、`:105`
   （`RelationTargetKindSchema`，Q4(b) 的落点）、`:135`（`JoinRelationInputSchema`）、

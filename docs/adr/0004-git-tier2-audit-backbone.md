@@ -172,3 +172,14 @@ are measuring the lock rather than passing regardless. Commit failure is forced 
 rejecting `pre-commit` hook, which also exercises the decision *not* to pass
 `--no-verify`: a hook that refuses a commit is a real audit failure and must roll the
 write back.
+
+## Update 2026-10-13 — erratum: the "dsh is unaffected" check has no subject (ADR-0017)
+
+The Consequences line "dsh is unaffected by every ruling except the substrate contract
+change (#1–#3), where its fail-silent recorder never raises" was written when dsh was the
+in-repo downstream consumer. It no longer has a subject: semantic-grounding develops
+independently ([#79](https://github.com/McKenzieIT/semantic-grounding/issues/79)), and
+the substrate's public surface has exactly one in-repo consumer — the MCP frontend
+([ADR-0017](./0017-first-party-frontend-exclusivity.md)). The contract changes #1–#3
+stand as ruled; the in-repo obligation they create is mcp's, and #61's `auditedFileWrite`
+seam is where the rollback-on-recorder-failure invariant now lives single-point.

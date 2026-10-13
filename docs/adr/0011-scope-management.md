@@ -39,7 +39,7 @@ handler，下一条消息不等上一条办完就进 handler。v1 单 scope 下�
 | 5 | trailer | **恒由 registry identity 派生**——注册即有 identity，`X-SG-Scope` 恒存在于每次写入的响应与 commit trailer。 | 「给 flag 才有」（标签存在与否取决于启动开关而非事实，不诚实） |
 | 6 | 工具面 | **5 个新管理工具**（`get_scope_scaffold`/`register_scope`/`list_scopes`/`switch_scope`/`get_scope`）+ 既有 8 个提交类工具（`create_definition`/`update_definition`/`add_alias`/`remove_alias`/`add_relation`/`remove_relation`/`apply_enrichment`/`run_enrichment`）新增必填 `scope_id`，handler 入口与快照比对（`assertScopeMatch`，不一致 → `scope_mismatch`）；全部 definition 工具响应顶层盖快照戳 `scope:{id, root}`。 | #44 裁决三的直接落位：断言而非路由、单门而非双门、`create_definition` 免 `expected_version` 但不免 `scope_id` |
 | 7 | 错误码 | scope 段 `-31060..-31065` 六码（见下表）；`register_scope` 的 posture 失败复用 `#19` 的 `posture_refused`（`-31004`）——段位表顺延，一条件一号码。 | 新开独立段位或把 posture 失败另编号（没有新语义，复用是诚实的） |
-| 8 | substrate | **零改动**。per-scope `SemanticGroundingCore` 各自以静态根构造；`ScopeRegistryFile` 结构性实现 substrate 的 `ScopeRegistryLike`（`active`/`activeId`/`get`，鸭子类型），但**不**调用 `setScopeRegistry`。 | 单 core + per-call `scopeId` 路由（要求 19 个工具 schema 全部携带路由参数，违反 ADR-0005 裁决 7 的工具无 scope 参数形状） |
+| 8 | substrate | **零改动**。per-scope `SemanticGroundingCore` 各自以静态根构造；`ScopeRegistryFile` 结构性实现 substrate 的 `ScopeRegistryLike`（`active`/`activeId`/`get`，鸭子类型），但**不**调用 `setScopeRegistry`。〔2026-10-13 终结注记（ADR-0017 / S1.6 / #86）：`ScopeRegistryLike` 与 `setScopeRegistry` 已整删——seam 保留面终结，per-scope core + BindingStore 是唯一且已验证的多 scope 机制，见文末 Update。〕 | 单 core + per-call `scopeId` 路由（要求 19 个工具 schema 全部携带路由参数，违反 ADR-0005 裁决 7 的工具无 scope 参数形状） |
 | 9 | active 持久化 | 注册表顶层 `active:` 是**下一进程的缺省**，仅此而已：每个进程启动时读一次，此后活在内存；`switch_scope` 更新自己的绑定，顺手更新这个缺省。 | 运行时共享的 active（多进程互踩——"上次在哪"和"现在在哪"是两件事，前者才该共享，像 shell cwd） |
 | 10 | scope id | 无默认 id；字符集 `^[a-z0-9][a-z0-9-]*$`，1–64 字符，`register_scope` 时显式给出。 | basename 启发式（魔法，且随 `--corpus` 删除失去了"从路径推一个默认值"的输入） |
 
@@ -114,7 +114,9 @@ get_scope(scope_id?) → 读
   统一答 `no_active_scope`（−31060），remedy 指向 `switch_scope`。
 - substrate 包零改动：`ScopeRegistryFile` 结构性满足 `ScopeRegistryLike`，但
   `setScopeRegistry` 全程不被调用——per-scope core 各自以静态根构造，substrate 的
-  registry 委托路径保持未挂载状态。
+  registry 委托路径保持未挂载状态。〔2026-10-13（#86，ADR-0017 / S1.6）：委托路径已从
+  substrate **删除**——「未挂载」升级为「不存在」；mcp 侧 `ScopeRegistryFile` 的
+  `active()`/`activeId()`/`get()` dsh 兼容面同删，`restoreActive` 改 `read().active`。〕
 - 内存：per-scope `{core, recorder}` 实例按进程生命周期驻留，切走不 dispose（k11
   量级约 5.5MB 解析物+图缓存/scope）。实例淘汰、`remove_scope`、运维级单 scope
   进程锁（`--lock-scope`）均列 Followup——各自需要一个尚未出现的触发条件（驻留
@@ -199,6 +201,19 @@ mutex 交错不复活条目）、`binding.spec.ts` +4（清除后 `no_active_sco
 在真 wire 一次观测。门禁：typecheck 双包 0 错；mcp 361 pass（7 存量失败逐一对上
 #61 留档名单，零新增）；substrate 零改动（478/479，`read-count-probe` 超时 1 例经
 干净 HEAD 复现同败，判环境性留痕）；e2e 21/21。
+
+## Update — ADR-0017 / S1.6（2026-10-13）：裁决 8 的 seam 保留面终结
+
+裁决 8 当年「substrate 零改动、`ScopeRegistryLike` 委托路径保留但不挂载」的形状，依赖的
+前提是「substrate 级多租户可能启用」；[ADR-0017](./0017-first-party-frontend-exclusivity.md)
+前提总纲（第一方前端独占，多 scope 服务由 mcp 层承担）使该前提失效，#86 将
+`setScopeRegistry`/`ScopeRegistryLike`/scope-epoch 合成全链删除——**mcp 的 BindingStore +
+per-scope core + `switch_scope` 是唯一且已验证的多 scope 机制**（本 ADR 裁决 1/6 的形状
+未动）。连带：360 行 vendored dsh 桩（`tests/fixtures/scope-registry.ts`）与
+`@deepseek-ai/cordis`/`@deepseek-ai/schemastery` 两 devDep 整删（`@deepseek-ai` 仓内
+清零）；mcp `ScopeRegistryFile` 的 `active()`/`activeId()`/`get()` 兼容面删
+（`restoreActive` 换 `read().active`）。substrate 测试基线 462→432（scope-delegation /
+per-scope-read 两 spec 随被测机制整删，对账详 #86 resolution）。
 
 ## References
 

@@ -28,13 +28,13 @@ charting 同时核实：
 |---|---|---|
 | R1 | 键复合 | `(per-call epoch) × 进程内 corpusVersion`，两半各有可证的必要性（见 Context） |
 | R2 | epoch 提供方式 | `AsyncLocalStorage` 环境式，substrate 内一处进入（`withReadEpoch(fn)`） |
-| R3 | 未开 epoch 时行为 | `loadTables` / `loadEvents` 与今天逐字节相同（缓存纯增量开关），dsh 宿主不进入 epoch 则完全不受影响 |
+| R3 | 未开 epoch 时行为 | `loadTables` / `loadEvents` 与今天逐字节相同（缓存纯增量开关），任何未进入 epoch 的调用方完全不受影响（2026-10-13 勘误，ADR-0017：原「dsh 宿主」受众措辞已断） |
 | R4 | 写位形状前提 | `{ ...raw, field: value }` 展开复制是复合键成立的必要前提；写位若就地改 `raw`，epoch 共享对象会丢写 |
 | R5 | 别名风险实测 | 7 处写位全部 spread，无就地改 —— memo 共享对象的最大顾虑不存在 |
 | R6 | 否决 mtime 校验式跨调用缓存 | 同秒内两次写在某些文件系统上测不出，「错过一次写」的后果是丢写而非变慢 —— 拿正确性换性能，方向错 |
 | R7 | 否决 `corpusVersion` 单独做键 | 进程内计数器看不见跨进程写，`concurrent-write.spec.ts` 实测 |
 | R8 | 否决纯 per-call epoch | 写位之间隔写（`run_enrichment` 四管线各 4 次 `writeTable` / `writeEventYaml`），纯 per-call epoch 会让管线 N 用管线 N-1 之前的旧 `raw` 重写，静默丢写 |
-| R9 | 不合并 `snapshot.ts` | snapshot 是 ADR-0005 裁决 6 背书的公共 dsh 面（MVCC），键在 `corpusVersion` 上 —— 对它自己的用例是正确的；两套缓存生命周期需求真的不同，合并会把一条正确语义拗向另一条 |
+| R9 | 不合并 `snapshot.ts` | snapshot 是暂缓项（2026-10-13 勘误，ADR-0017：原「ADR-0005 裁决 6 背书的公共 dsh 面（MVCC）」受众已断，S1.1 暂缓、触发条件 = 跨调用一致性读需求立项），键在 `corpusVersion` 上 —— 对它自己的用例是正确的；两套缓存生命周期需求真的不同，合并会把一条正确语义拗向另一条（本条理由不变） |
 | R10 | 不触碰 ADR-0004 裁决 8 | 写门指纹走 `definitionVersion` → `readFileSync` 不经 loader，本裁决独立 |
 
 ### 实现落点
@@ -57,10 +57,12 @@ charting 同时核实：
 ## Consequences
 
 - 26 处调用位一行不改；缓存完全内聚在 `io.ts` + `read-epoch.ts` + `server.ts` handler chokepoint
-- 未开 epoch 时行为与今天逐字节相同 —— dsh 宿主、自由函数、单测都不受影响
+- 未开 epoch 时行为与今天逐字节相同 —— 自由函数、单测、任何未进入 epoch 的调用方都不受影响
 - `run_enrichment` 的全库解析次数**不在本裁决范围**：门(1) + `assertKnownFilterNames`(N) + 四管线(4) 这些 `loadTables` 调用彼此之间都隔着写，复合键下全部 miss —— 缓存在这条路上无能为力。它是 map #64 扫管引擎的收益（四条管线折成一条，`loadTables` 自然 4→1）。
 - **bump 完备性由 `auditedFileWrite` 设计保证**（02-bump-audit 实测无遗漏，`bump-completeness.spec.ts` 8 tests 全绿），不是本裁决要新增的 invariant
-- **snapshot.ts 继续独立存在**：dsh MVCC 的缓存，与本裁决的 MCP 读 epoch 生命周期需求不同，不合并
+- **snapshot.ts 继续独立存在**（S1.1 暂缓项，ADR-0017）：它键在 `corpusVersion` 上的
+  MVCC 语义与本裁决的 MCP 读 epoch 生命周期需求不同，不合并（原「dsh MVCC 的缓存」
+  措辞已于 2026-10-13 勘误）
 - 新增 GLOSSARY 词条 `读 epoch` / `read epoch`
 
 ## Verification
@@ -94,3 +96,7 @@ Status `proposed` → `accepted`（随 #76 关票记录，#77 落地兑现）。
 其余按图落地：`readThroughEpoch` 无 epoch 直读（R3 逐字节相同）；mcp 侧 chokepoint 为 `createServerFactory` 内 `epochEnteringServer` Proxy 拦 `registerTool` 包 `cb`，26 个工具调用位零改动；mcp 取用经 `SemanticGroundingCore.withReadEpoch` 静态委托（barrel 36 名零变化）。`invalidateCaches` 本体与 `_corpusVersion` bump 保留（#78 删 hook 时明确为复合键活依赖）。
 
 **路径断言实测**（k11，全库 767 readYaml）：work listing / prompts / filter names / 单条 lookup 全部 **1.00×**（filter names 对照 epoch 外 10×）；跨 epoch 2× 不泄漏；epoch 内 `writeTable` 后复合键 miss 重解析；另有经真实 `tools/call` 的 epoch 进入证明（`mcp/tests/read-epoch-entry.spec.ts`）。门禁终态：substrate 479 绿（480 − 删除的 S4 一条）/ mcp 345 pass（超 #61 留档 7 环境失败名单零个）/ e2e 21 步 / typecheck 双包 0 / barrel 36 名构建产物逐字节不变。
+
+## Update — 2026-10-13 勘误（ADR-0017）
+
+随 [ADR-0017](./0017-first-party-frontend-exclusivity.md)（第一方前端独占）三处措辞勘误：R3 与 Consequences 的「dsh 宿主」受众改「任何未进入 epoch 的调用方」；R9 与 Consequences 的「公共 dsh 面（MVCC）/ dsh MVCC 的缓存」改「暂缓项（S1.1：跨调用一致性读需求立项时重开）」——不合并的缓存生命周期理由不变，snapshot 代码与 GLOSSARY snapshot 词条零改动（暂缓区边界）。另：Context 第 3 点的「③`corpusVersion`-keyed per-scope LRU（`getRelationGraph`）是活的」已随 S1.6/#86 转历史——`graphCacheByScope` 随 scope-epoch 机制整删，`getRelationGraph` 的缓存现为单实例按 `graphVersion === corpusVersion()` 核对；覆盖它的 `per-scope-read.spec` 同删（对账详 #86 resolution）。

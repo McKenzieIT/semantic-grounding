@@ -19,8 +19,8 @@ relation / alias。#13 落定了审计主干（ADR-0004），其中三项输入�
 | 2 | 写侧清单 | definition 级 `create_definition` / `update_definition` + 条目级 `add_alias` / `remove_alias` / `add_relation` / `remove_relation` + Tier-1 四件套 `submit_suggestion` / `list_suggestions` / `get_suggestion` / `discard_suggestion`，共十 | 复合 `set_*(op)` 动词（subject 语义模糊：增和删在审计史里就该是两种 commit）；concept 写路径（无 Tier-2 函数、无写原语——v1 全程只读，与 Q2 边界一致） |
 | 3 | 条目级语义 | add/remove 在 **server 锁内**做读改写（append / 移除单条），不暴露全量数组替换 | agent 侧 read-modify-write：浅合并整字段覆盖会在两次调用之间砸掉并发写入——恰是整仓锁防不住的那类丢更新（ADR-0004 裁决 8 所指） |
 | 4 | 有界通用 | `update_definition` 的 fields 以 zod 枚举收界：**拒绝**身份字段（table_name/name/kind）与数组引用字段（alt_labels / dimension_refs / external_refs——报错指路对应 intent 工具）；其余 kind schema 字段放行 | 「任意 updates dict」的第二扇门：双门即双险，条目级防线可被绕过 |
-| 5 | 创建路径 | `create_definition(kind: table\|event)` 编译到 writeTable/writeEventYaml + **必传** recorder（ADR-0004 裁决 2 的「MCP host 全链路必传」，#18 后形态）；输入 schema 复用 `TableDefinitionSchema` / `EventDefinitionSchema` | `sync_tables`：TableMeta 断言引擎观测，agent 手搓 = provenance 造假，随 SchemaProvider 接线（未来宿主姿态）另行成票；concept 创建同裁决 2 排除 |
-| 6 | 读侧清单 | `search_definitions(query, top_k?, kinds?)` / `get_definition(kind, name)` / `get_join_path(from, to)` / `get_relations(target, type?)` / `resolve_alias(term)`，共五；**version（sha256 指纹）只在 get_definition 返回**——搜索摘要不作写前提 | 复合 context 工具（三原语可组合，stdio 往返便宜）；list 全量倾倒（321 表 verbatim 非 agent 所需）；快照句柄（2026-07-28 协议无状态 + 写已串行，grounding 读不需要 MVCC——那是 dsh 执行查询的需要） |
+| 5 | 创建路径 | `create_definition(kind: table\|event)` 编译到 writeTable/writeEventYaml + **必传** recorder（ADR-0004 裁决 2 的「MCP host 全链路必传」，#18 后形态）；输入 schema 复用 `TableDefinitionSchema` / `EventDefinitionSchema` | `sync_tables`：TableMeta 断言引擎观测，agent 手搓 = provenance 造假，随 live-engine 接入（S1.3 暂缓项，触发条件见 ADR-0017；原措辞「SchemaProvider 接线·未来宿主姿态」已勘误）另行成票；concept 创建同裁决 2 排除 |
+| 6 | 读侧清单 | `search_definitions(query, top_k?, kinds?)` / `get_definition(kind, name)` / `get_join_path(from, to)` / `get_relations(target, type?)` / `resolve_alias(term)`，共五；**version（sha256 指纹）只在 get_definition 返回**——搜索摘要不作写前提 | 复合 context 工具（三原语可组合，stdio 往返便宜）；list 全量倾倒（321 表 verbatim 非 agent 所需）；快照句柄（2026-07-28 协议无状态 + 写已串行，grounding 读不需要 MVCC；〔2026-10-13 立项根勘误，ADR-0017：原「那是 dsh 执行查询的需要」受众已断——拒绝理由自立于前两点，snapshot 记 S1.1 暂缓项，触发条件 = 跨调用一致性读需求立项〕） |
 | 7 | 公共参数块 | 五个 Tier-2 工具统一 `{summary(必, 1–100 字符), derivation(枚举 agent\|llm, 必, 无默认), confidence(必, float 0–1), expected_version}`；expected_version **更新类必传 / 创建免传 / Tier-1 无此参**（采纳 #13 建议，落到五个更新类工具）；工具**无 scope 参数**（charting：v1 一进程一 corpus 一 scope） | derivation 全三值（`deterministic` 是 server 内部流类别，工具面不可达——给 agent 开误报之门）；可选 confidence（trailer 槽位无条件存在，宁要如实粗估不要缺省） |
 | 8 | 响应契约 | 统一 `{commit, changed, enrichment_health?}`：`changed:false` = 幂等空转（alias 已存在等）**不产 commit**；`enrichment_health` 内联自 `getEnrichmentHealth()`（刚写完即见，无竞态）；错误可判别：`stale_baseline`（锁内指纹不符，重读重试）/ 锁超时 / 校验失败，码值归实现票（研究票定段：JSON-RPC 保留区外） | 独立 health 读工具（存在竞态且多一次往返）；server 自拼 summary（只有字段回声，没有「依据什么」） |
 | 9 | origin 语义 | 工具写**省略** YAML `origin`——undefined 在合并优先级（`ORIGIN_PRIORITY ?? 2`）与 preserve-filter（`origin === 'manual' \|\| null`）两处**实测**按 curated 对待，agent 精选 ref 今日即获「不被轮覆盖」保护，零 substrate 改动；authorship 只归 trailer | 枚举加 `'agent'`：preserve-filter 精确匹配 manual/null，天真扩展反被轮吃掉；复用 `'manual'`：语义漂移；YAML 再记 authorship：状态与历史两个可不一致的数据集（裁决 4/5 反对的形状） |
@@ -29,9 +29,11 @@ relation / alias。#13 落定了审计主干（ADR-0004），其中三项输入�
 ## Decision
 
 采纳全部十项。工具面 = **读五 + 写十共十五个 intent 工具**，动词层级为 definition 级
-`create_`/`update_`、条目级 `add_`/`remove_`；Tier-2 编译目标全部是既有公共面
-（`updateTableMeta` / `updateEventMeta` / `writeTable` / `writeEventYaml` + class 方法），
-Tier-1 编译到 pending 四件套——**root barrel 零新名，ADR-0002 规则集未动用**。
+`create_`/`update_`、条目级 `add_`/`remove_`；Tier-2 编译目标全部是既有 core 方法
+（`writeTable` / `writeEventYaml` 公共原语 + `updateTableMeta` / `updateEventMeta` 等 Core
+同名方法；〔2026-10-13 口径勘误，ADR-0017：原「既有公共面」的 barrel 自由函数形态已随
+S1.5/#85 收名留码，编译目标与行为未变〕），Tier-1 编译到 pending 四件套——**root barrel
+零新名，ADR-0002 规则集未动用**。
 
 两个概念澄清随本票固化（GLOSSARY 同步）：YAML `origin` 是 **enrichment 合并优先级机制**，
 trailer `X-SG-Derivation` 是**提交归属类别**——两者同名相邻实为两类概念，对齐它们是范畴错误；
@@ -45,7 +47,8 @@ git backbone 下「谁写的、依据什么」由 commit + trailer + `git log -p
   重新推导回来（deterministic 的必然重加）。agent 持久否决权（tombstone / 负知识）是新机制，
   v1 不做；**触发条件：dogfood 中出现 agent 与 enrichment 轮的写-删循环时成票**。
 - Followup（各有触发条件，不预做）：复合 `get_context`（dogfood 摩擦显著时）、
-  `list_definitions` 全量（审计扫描类场景出现时）、`sync_tables`（SchemaProvider 接线时）。
+  `list_definitions` 全量（审计扫描类场景出现时）、`sync_tables`（live-engine 接入立项时，
+  S1.3 暂缓项——原「SchemaProvider 接线时」措辞已勘误，ADR-0017）。
 - dsh 不受影响：工具面全在 packages/mcp，substrate 契约零改动（对照 ADR-0004 的 #1–#3）。
 
 ## Verification
@@ -199,3 +202,19 @@ substrate 新增两个原语（`writeConceptYaml`/`updateConceptMeta`，对齐 `
 `update_definition`/`add_alias`/`remove_alias`/`add_relation`/`remove_relation` 六个既有
 工具加 `kind:'concept'` 分支，`tools/list` 的工具总数不受影响。细节、Q4(b) 对
 `add_relation`/`remove_relation` 的后续修正、门禁结果见 ADR-0012 自身的 Update 段落。
+
+## Update 2026-10-13 — ADR-0017 勘误三处（裁决 5/6 措辞、Decision 编译目标口径）
+
+随 [ADR-0017](./0017-first-party-frontend-exclusivity.md)（第一方前端独占）落地三处勘误：
+
+1. **裁决 5 与 Consequences 的「SchemaProvider 接线（未来宿主姿态）」**措辞改
+   「live-engine 接入（S1.3 暂缓项，触发条件见 ADR-0017）」——「未来宿主姿态」预设了
+   宿主进程内 import substrate 的形态，该形态已随前提总纲退役。
+2. **裁决 6 拒绝快照句柄的立项根**：「那是 dsh 执行查询的需要」受众已断。拒绝理由自立于
+   两点（2026-07-28 协议无状态 + 写已串行），结论不变；snapshot 子系统记 **S1.1 暂缓项**
+   （触发条件：跨调用一致性读需求〔多工具事务 / diff 类工具〕立项时重开，按 ADR-0003 (b)
+   重新举证）。snapshot 代码、`captureSnapshot`/`DefinitionSnapshot` barrel 名、GLOSSARY
+   snapshot 词条零改动（暂缓区边界）。
+3. **Decision 的「Tier-2 编译目标全部是既有公共面」**口径勘误为 core 方法：barrel 自由
+   函数形态（`updateTableMeta`/`updateEventMeta`）已随 S1.5/#85 收名留码，工具编译目标
+   （Core 同名方法）与行为未变。
