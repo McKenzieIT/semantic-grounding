@@ -1,6 +1,6 @@
 /**
  * The alt_labels enrichment family's pure machinery (CL-1 Phase 3, G3
- * 同构): target projection, the two discovery rounds, the extractor
+ * 同構): target projection, the deterministic discovery round, the extractor
  * guardrail, and the union merge. Moved verbatim out of `enrichment.ts`
  * (map #64 / ticket #65) so the kind adapters in `table-adapter.ts` /
  * `event-adapter.ts` can build on it without cycling the barrel —
@@ -11,7 +11,6 @@
  */
 import type { TableDefinition, EventDefinition } from '../types.ts'
 import { normalizeLabel } from '../io.ts'
-import type { LlmCall } from './types.ts'
 import { extractJsonArray } from './relations.ts'
 
 // ── Types ───────────────────────────────────────────────────────────────
@@ -276,41 +275,16 @@ export function mergeAltLabels(existing: readonly string[], added: readonly stri
 }
 
 /**
- * Discover alt_labels for one definition (two-round: deterministic + LLM).
- * Returns the candidate labels to ADD (already deduped against existing).
+ * Discover alt_labels for one definition (deterministic round only — the LLM
+ * half lives in the agent-driven ask-answer pair). Returns the candidate
+ * labels to ADD (already deduped against existing).
  * @param target - target
- * @param llmCall - llmCall
  * @returns the result
  */
 export async function discoverAltLabelsFor(
   target: AltLabelsTarget,
-  llmCall?: LlmCall,
 ): Promise<string[]> {
-  const det = discoverAltLabelsDeterministic(target)
-  if (!llmCall) return det
-  let llm: string[] = []
-  try {
-    const prompt = buildAltLabelsPrompt(target)
-    const text = await llmCall(prompt)
-    llm = parseAltLabelsResponse(text)
-  } catch {
-    // best-effort: LLM failure leaves the deterministic seed intact
-  }
-  // Merge deterministic + LLM, dedupe against existing
-  const existing = new Set([
-    ...target.existingAltLabels.map(normalizeLabel),
-    ...(target.existingPrefLabel ? [normalizeLabel(target.existingPrefLabel)] : []),
-    normalizeLabel(target.id),
-  ])
-  const seen = new Set(existing)
-  const out: string[] = []
-  for (const label of [...det, ...llm]) {
-    const key = normalizeLabel(label)
-    if (!key || seen.has(key)) continue
-    seen.add(key)
-    out.push(label)
-  }
-  return out
+  return discoverAltLabelsDeterministic(target)
 }
 
 /**

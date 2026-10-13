@@ -1,6 +1,5 @@
 import { test, expect, describe, it } from 'vitest'
 import { SemanticGroundingCore } from '../src/index.ts'
-import { wireEnrichmentLlm, type TextLlm } from '../src/index.ts'
 import { RelationGraph } from '../src/relation-graph.ts'
 import { tableKindPlugin } from '../src/kinds/table-kind.ts'
 import { TableDefinitionSchema, type TableDefinition } from '../src/types.ts'
@@ -87,19 +86,6 @@ test('B2 — discoverEventRelations writes events external_refs via the Service'
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
-})
-
-test('B3 — wireEnrichmentLlm adapts a text-LLM into the Service llmCall seam', async () => {
-  const seen: string[] = []
-  const fakeLlm: TextLlm = { text: async (prompt: string) => { seen.push(prompt); return '[]' } }
-  let injected: ((p: string) => Promise<string>) | undefined
-  const fakeSchema = { setLlmCall: (fn?: (p: string) => Promise<string>) => { injected = fn } }
-
-  wireEnrichmentLlm(fakeSchema, fakeLlm)
-  expect(typeof injected).toBe('function')
-  const out = await injected!('discover refs for X')
-  expect(seen).toEqual(['discover refs for X'])
-  expect(out).toBe('[]')
 })
 
 // ── M1 virtual metric projection (Task 3) ──────────────────────────────

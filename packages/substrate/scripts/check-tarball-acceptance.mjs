@@ -297,15 +297,18 @@ const EXPECTED_RUNTIME_NAMES = [
   'invalidateCaches', 'isValidId', 'listing', 'loadConcepts', 'loadConfig', 'loadEvents',
   'loadMetricDefinitions', 'loadPending', 'loadTables', 'projectMetricCorpusItem',
   'resolveSemanticLayer', 'submit', 'tableKindPlugin', 'updateEventMeta', 'updateTableMeta',
-  'wireEnrichmentLlm', 'writeEventYaml', 'writeTable',
+  'writeEventYaml', 'writeTable',
 ].sort()
 const names = Object.keys(mod).sort()
 assert.deepEqual(names, [...EXPECTED_RUNTIME_NAMES, 'default'].sort(),
-  'barrel runtime surface must equal the ADR-0003 allow-list (36 names + default), got: ' + names.join(', '))
+  'barrel runtime surface must equal the ADR-0003 allow-list (35 names + default), got: ' + names.join(', '))
 // Headline names that must STAY off the barrel (ADR-0002/0003: convention-
 // coupled, test utilities, internals). getCorpusVersion / registerInvalidationHook
 // / SemanticLayerService are asserted separately above and not repeated here.
+// wireEnrichmentLlm + TextLlm: the in-process LLM callback seam was removed
+// wholesale (S1.2, #83) — they must not creep back onto the barrel.
 for (const absent of [
+  'wireEnrichmentLlm', 'TextLlm',
   'enrichAllDwsTables', 'discoverRelationsDeterministic', 'discoverEventRelationsDeterministic',
   'buildDimInventory', 'buildLlmPrompt', 'buildEventLlmPrompt', 'buildAltLabelsPrompt',
   'parseLlmRefs', 'parseAltLabelsResponse', 'mergeRefs', 'mergeAltLabels',

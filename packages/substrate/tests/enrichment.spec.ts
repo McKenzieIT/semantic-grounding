@@ -1,10 +1,11 @@
 /**
  * Enrichment (B1/B2) pure-machinery tests — discoverRelationsDeterministic /
  * discoverEventRelationsDeterministic (deterministic PK-name round), mergeRefs
- * (origin-priority union), discoverRelationsFor (two-round merge), prompt
- * building + parseLlmRefs. The sweep orchestration over these (the four free
- * functions on the sweep engine) lives in sweep.spec.ts, parameterized per
- * kind (map #64 / #67); fixtures are shared via enrichment-fixtures.ts.
+ * (origin-priority union), discoverRelationsFor (deterministic round), prompt
+ * building + parseLlmRefs (the ask-answer pair's prompt/parse family). The
+ * sweep orchestration over these (the four free functions on the sweep
+ * engine) lives in sweep.spec.ts, parameterized per kind (map #64 / #67);
+ * fixtures are shared via enrichment-fixtures.ts.
  */
 import { test, expect, describe } from 'vitest'
 import {
@@ -125,35 +126,10 @@ describe('mergeRefs', () => {
 })
 
 describe('discoverRelationsFor', () => {
-  test('without llmCall -> deterministic round only', async () => {
+  test('deterministic round only (the LLM half lives in the ask-answer pair)', async () => {
     const refs = await discoverRelationsFor(dws(), [DIM_SERVER])
     expect(refs).toHaveLength(1)
     expect(refs[0]!.dim_table).toBe('dim_10000251_server_info')
-  })
-
-  test('with mock llmCall -> merges LLM refs with deterministic', async () => {
-    const llmCall = async () => JSON.stringify([
-      { dim_table: 'dim_10000251_server_info', join_keys: [{ dws_column: 'srv_id', dim_column: 'server_id' }], derivation: 'llm semantic' },
-      { dim_table: 'dim_10000251_charm_info', join_keys: [{ dws_column: 'charm_id', dim_column: 'charm_id' }], derivation: 'llm new' },
-    ])
-    const refs = await discoverRelationsFor(dws(), [DIM_SERVER], llmCall)
-    expect(refs).toHaveLength(2)
-    const s = refs.find(r => r.dim_table === 'dim_10000251_server_info')!
-    expect(s.join_keys).toHaveLength(2) // deterministic server_id + llm srv_id
-  })
-
-  test('llmCall throwing -> graceful, deterministic round returned', async () => {
-    const llmCall = async () => { throw new Error('boom') }
-    const refs = await discoverRelationsFor(dws(), [DIM_SERVER], llmCall)
-    expect(refs).toHaveLength(1)
-    expect(refs[0]!.derivation).toContain('确定性')
-    expect(refs[0]!.origin).toBe('deterministic')
-  })
-
-  test('llmCall returning invalid JSON -> graceful, deterministic round returned', async () => {
-    const llmCall = async () => 'not json {{{'
-    const refs = await discoverRelationsFor(dws(), [DIM_SERVER], llmCall)
-    expect(refs).toHaveLength(1)
   })
 
   test('buildLlmPrompt includes target columns + dim inventory', () => {

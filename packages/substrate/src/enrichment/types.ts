@@ -24,15 +24,6 @@
 import type { Tier2Opts } from '../io.ts'
 
 /**
- * An injectable one-shot text LLM call (prompt in, text out). When omitted,
- * a discover round runs its deterministic stage only. Production wires
- * this to `ctx.llm` (B3/B4); the substrate stays free of the LLM dependency.
- * Lives here (not in either family's file) because both the relations and
- * alt_labels rounds inject it.
- */
-export type LlmCall = (prompt: string) => Promise<string>
-
-/**
  * The merge semantics a sweep runs under, threaded by the engine into
  * {@link EnrichmentKindAdapter.merge}. The ADAPTER decides what these mean
  * for its pipeline: the relations family reads both flags (merge-existing =
@@ -97,8 +88,6 @@ export type EnrichmentWriteOutcome = { ok: true; path: string } | { ok: false; e
  * context and apply it in `discover`.
  */
 export interface SweepOpts<TDef = unknown> {
-  /** Optional one-shot LLM call; the engine hands it straight to `discover`. */
-  readonly llmCall?: LlmCall | undefined
   /** Optional definition-name filter; omit/empty = every definition of the kind. */
   readonly names?: readonly string[] | undefined
   /** Merge semantics threaded into `merge`; defaults to `{ mergeExisting: false, preserveCurated: true }`. */
@@ -153,16 +142,16 @@ export interface EnrichmentKindAdapter<TDef, TItem, TCtx = undefined> {
   list(semanticLayer: string): readonly ListedTarget<TDef, TItem>[]
   /**
    * Stage 1 — discover candidate enrichment items for one target
-   * (deterministic round always; LLM round only when `llmCall` is passed —
-   * the engine hands the runtime call straight through, it is not config).
+   * (deterministic round only — the LLM half of enrichment lives in the
+   * agent-driven ask-answer pair, `enrichment-work.ts`, not in-process).
    */
-  discover(target: SweepTarget<TDef, TItem>, ctx: TCtx, llmCall?: LlmCall): Promise<readonly TItem[]>
+  discover(target: SweepTarget<TDef, TItem>, ctx: TCtx): Promise<readonly TItem[]>
   /**
    * Stage 2 — the suppression exit (#36 输入 2, ADR-0010): filter the
-   * discovered candidates. Runs AFTER both discovery rounds (so LLM
-   * suggestions are gated too) and BEFORE the merge, whichever round
-   * proposed an item. Receives the sweep ctx (the alt_labels veto needs the
-   * corpus word list; the relations veto is per-def only).
+   * discovered candidates. Runs AFTER discovery and BEFORE the merge,
+   * whichever round proposed an item. Receives the sweep ctx (the
+   * alt_labels veto needs the corpus word list; the relations veto is
+   * per-def only).
    */
   veto(target: SweepTarget<TDef, TItem>, discovered: readonly TItem[], ctx: TCtx): readonly TItem[]
   /**

@@ -25,7 +25,7 @@ import {
   type DimensionRef,
 } from '../types.ts'
 import { loadTables } from '../io.ts'
-import type { LlmCall, MergeContext, SweepTarget } from './types.ts'
+import type { MergeContext, SweepTarget } from './types.ts'
 
 // ── Types ───────────────────────────────────────────────────────────────
 
@@ -227,35 +227,23 @@ export function parseLlmRefs(text: string): DimensionRef[] {
 }
 
 /**
- * Discover dimension relations for one DWS table (G3 two-round strategy).
- * Round 1 (deterministic, no LLM) always runs; round 2 (LLM) runs only when
- * `llmCall` is provided and is best-effort (a thrown call or invalid JSON
- * degrades to round-1 results only).
+ * Discover dimension relations for one DWS table (G3). Deterministic round
+ * only — the LLM half of enrichment lives in the agent-driven ask-answer pair
+ * (`enrichment-work.ts`), not in an in-process callback.
  *
  * CL-18 Phase 2: `excludeColumns` (optional) is forwarded to the
  * deterministic round to filter out partition-column PK matches (noise JOINs).
  * @param targetDef - the DWS table definition.
  * @param dimInventory - the DIM tables to match against.
- * @param llmCall - optional one-shot LLM call for the semantic round.
  * @param excludeColumns - optional set of column names to exclude from deterministic PK matching.
- * @returns the merged DimensionRefs for the target.
+ * @returns the DimensionRefs for the target.
  */
 export async function discoverRelationsFor(
   targetDef: TableDefinition,
   dimInventory: readonly DimInventoryEntry[],
-  llmCall?: LlmCall,
   excludeColumns?: ReadonlySet<string>,
 ): Promise<DimensionRef[]> {
-  const det = discoverRelationsDeterministic(targetDef, dimInventory, excludeColumns)
-  if (!llmCall) return det
-  let llm: DimensionRef[] = []
-  try {
-    const text = await llmCall(buildLlmPrompt(targetDef, dimInventory))
-    llm = parseLlmRefs(text)
-  } catch {
-    // best-effort: LLM round failure leaves the deterministic seed intact
-  }
-  return mergeRefs(det, llm)
+  return discoverRelationsDeterministic(targetDef, dimInventory, excludeColumns)
 }
 
 // ── B2: batch enrich all DWS tables ────────────────────────────────────
@@ -461,32 +449,23 @@ export function buildEventLlmPrompt(eventDef: EventDefinition, dimInventory: rea
 }
 
 /**
- * Discover dimension relations for one event (two-round: deterministic + LLM).
+ * Discover dimension relations for one event. Deterministic round only —
+ * the LLM half lives in the agent-driven ask-answer pair, parallel to
+ * `discoverRelationsFor`.
  *
  * CL-18 Phase 2: `excludeColumns` (optional) is forwarded to the
- * deterministic round to filter out partition-column PK matches.
+ * deterministic round to filter out partition-column PK matches (noise JOINs).
  * @param eventDef - the event definition.
  * @param dimInventory - the DIM tables to match against.
- * @param llmCall - optional one-shot LLM call for the semantic round.
  * @param excludeColumns - optional set of field names to exclude from deterministic PK matching.
- * @returns the merged DimensionRefs for the event.
+ * @returns the DimensionRefs for the event.
  */
 export async function discoverEventRelationsFor(
   eventDef: EventDefinition,
   dimInventory: readonly DimInventoryEntry[],
-  llmCall?: LlmCall,
   excludeColumns?: ReadonlySet<string>,
 ): Promise<DimensionRef[]> {
-  const det = discoverEventRelationsDeterministic(eventDef, dimInventory, excludeColumns)
-  if (!llmCall) return det
-  let llm: DimensionRef[] = []
-  try {
-    const text = await llmCall(buildEventLlmPrompt(eventDef, dimInventory))
-    llm = parseLlmRefs(text)
-  } catch {
-    // best-effort: LLM round failure leaves the deterministic seed intact
-  }
-  return mergeRefs(det, llm)
+  return discoverEventRelationsDeterministic(eventDef, dimInventory, excludeColumns)
 }
 
 // ── Suppression filter (#36 / #37, ADR-0010): merge 前, deterministic or LLM alike ──

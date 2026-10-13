@@ -231,7 +231,7 @@ describe('mergeAltLabels', () => {
   })
 })
 
-// ── discoverAltLabelsFor (two-round) ─────────────────────────────────────
+// ── discoverAltLabelsFor (deterministic round) ───────────────────────────
 
 describe('discoverAltLabelsFor', () => {
   const target: AltLabelsTarget = {
@@ -244,37 +244,10 @@ describe('discoverAltLabelsFor', () => {
     existingPrefLabel: undefined,
   }
 
-  test('deterministic only when no llmCall', async () => {
+  test('deterministic round (the LLM half lives in the ask-answer pair)', async () => {
     const labels = await discoverAltLabelsFor(target)
     expect(labels).toContain('DAU')
     expect(labels).toContain('活跃')
-  })
-
-  test('LLM round supplements deterministic', async () => {
-    const llmCall = async () => '["月活用户", "MAU"]'
-    const labels = await discoverAltLabelsFor(target, llmCall)
-    expect(labels).toContain('DAU')
-    expect(labels).toContain('活跃')
-    expect(labels).toContain('月活用户')
-    expect(labels).toContain('MAU')
-  })
-
-  test('LLM failure degrades gracefully to deterministic', async () => {
-    const llmCall = async () => { throw new Error('LLM unavailable') }
-    const labels = await discoverAltLabelsFor(target, llmCall)
-    expect(labels).toContain('DAU')
-    expect(labels).toContain('活跃')
-  })
-
-  test('dedupes LLM results against existing + deterministic', async () => {
-    const targetWithExisting: AltLabelsTarget = {
-      ...target,
-      existingAltLabels: ['MAU'],
-    }
-    const llmCall = async () => '["MAU", "新标签"]'
-    const labels = await discoverAltLabelsFor(targetWithExisting, llmCall)
-    expect(labels).not.toContain('MAU')
-    expect(labels).toContain('新标签')
   })
 })
 

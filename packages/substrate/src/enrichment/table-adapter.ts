@@ -28,7 +28,6 @@ import {
 } from './relations.ts'
 import { sweepEnrichment } from './sweep.ts'
 import type { EnrichmentKindAdapter, ListedTarget, SweepTarget } from './types.ts'
-import type { LlmCall } from './types.ts'
 
 /** The alt_labels adapter for tables: gain-only writes (zero-commit
  * idempotency), corpus veto list resolved once per sweep in `prepare`,
@@ -46,13 +45,13 @@ export const tableAltLabelsAdapter: EnrichmentKindAdapter<TableDefinition, strin
         : { name: t.table_name, parseError: true }
     })
   },
-  discover: (target: SweepTarget<TableDefinition, string>, _ctx: AltLabelsSweepCtx, llmCall?: LlmCall) =>
-    discoverAltLabelsFor(tableToAltLabelsTarget(target.def), llmCall),
+  discover: (target: SweepTarget<TableDefinition, string>, _ctx: AltLabelsSweepCtx) =>
+    discoverAltLabelsFor(tableToAltLabelsTarget(target.def)),
   veto: (target: SweepTarget<TableDefinition, string>, discovered: readonly string[], ctx: AltLabelsSweepCtx): readonly string[] => {
     // Suppression filter (#36 输入 2, ADR-0010): the candidate exit — AFTER
-    // `discoverAltLabelsFor` (so the LLM round's suggestions are gated too),
-    // BEFORE `mergeAltLabels`. All candidates vetoed ⇒ zero new labels ⇒ the
-    // engine's gain-only branch leaves the file untouched (zero write, zero commit).
+    // `discoverAltLabelsFor`, BEFORE `mergeAltLabels`. All candidates vetoed
+    // ⇒ zero new labels ⇒ the engine's gain-only branch leaves the file
+    // untouched (zero write, zero commit).
     const vetoes = aliasVetoSet(target.def.suppressed_alt_labels, ctx.corpusVetoes)
     return vetoes.size === 0 ? discovered : discovered.filter(l => !vetoes.has(normalizeLabel(l)))
   },
@@ -66,11 +65,11 @@ export const tableAltLabelsAdapter: EnrichmentKindAdapter<TableDefinition, strin
 
 /**
  * Enrich all tables in a semantic layer with alt_labels: discover aliases and
- * write them back into each table's YAML. Two-round (deterministic + LLM).
- * Merges with existing alt_labels (never removes curated labels).
+ * write them back into each table's YAML (deterministic round only — the LLM
+ * half of enrichment lives in the agent-driven ask-answer pair). Merges with
+ * existing alt_labels (never removes curated labels).
  *
  * @param semanticLayer - the semantic-layer directory path.
- * @param llmCall - optional LLM call for the semantic round.
  * @param tables - optional table_name filter; omit/empty to enrich all.
  * @param tier2 - optional Tier-2 options (#18); passed, each table write
  *   below takes `writeTable`'s audited write-and-record path.
@@ -78,11 +77,10 @@ export const tableAltLabelsAdapter: EnrichmentKindAdapter<TableDefinition, strin
  */
 export async function enrichAllTablesAltLabels(
   semanticLayer: string,
-  llmCall?: LlmCall,
   tables?: readonly string[],
   tier2?: Tier2Opts,
 ): Promise<{ enriched: number; written: number; errors: string[] }> {
-  return sweepEnrichment(tableAltLabelsAdapter, semanticLayer, { llmCall, names: tables, tier2 })
+  return sweepEnrichment(tableAltLabelsAdapter, semanticLayer, { names: tables, tier2 })
 }
 
 // ── Relations family (map #64 / ticket #66) ─────────────────────────────
@@ -125,12 +123,12 @@ export const tableRelationsAdapter: EnrichmentKindAdapter<TableDefinition, Dimen
     }
     return out
   },
-  discover: (target: SweepTarget<TableDefinition, DimensionRef>, ctx: RelationsSweepCtx<TableDefinition>, llmCall?: LlmCall) =>
-    discoverRelationsFor(target.def, ctx.dimInventory, llmCall, ctx.excludeColumnsFn?.(target.def)),
+  discover: (target: SweepTarget<TableDefinition, DimensionRef>, ctx: RelationsSweepCtx<TableDefinition>) =>
+    discoverRelationsFor(target.def, ctx.dimInventory, ctx.excludeColumnsFn?.(target.def)),
   veto: (target: SweepTarget<TableDefinition, DimensionRef>, discovered: readonly DimensionRef[]): readonly DimensionRef[] => {
     // Suppression filter (#36 输入 2, ADR-0010): the discovered exit — a vetoed
-    // `dim_table` never reaches merge, whichever round proposed it (deterministic
-    // or LLM: a veto constrains enrichment rounds, not just one of them).
+    // `dim_table` never reaches merge, whichever round proposed it (a veto
+    // constrains enrichment rounds, not just one of them).
     const vetoes = relationVetoSet(target.def.suppressed_dimension_refs)
     return vetoes.size === 0 ? discovered : discovered.filter(ref => !vetoes.has(ref.dim_table))
   },
@@ -169,7 +167,6 @@ export const tableRelationsAdapter: EnrichmentKindAdapter<TableDefinition, Dimen
  * `ds`-only DIM snapshots) do not generate noise JOIN relations. The calling
  * layer supplies this function; the substrate applies it opaquely.
  * @param semanticLayer - the semantic-layer directory path.
- * @param llmCall - optional one-shot LLM call for the semantic round.
  * @param tables - optional table_name filter; omit or empty to enrich all DWS tables.
  * @param mergeExisting - when true, merge discovered refs with existing (preserve curated); default false (replace).
  * @param excludeColumnsFn - optional per-target exclude-set builder (CL-18 Phase 2).
@@ -186,7 +183,6 @@ export const tableRelationsAdapter: EnrichmentKindAdapter<TableDefinition, Dimen
  */
 export async function enrichAllDwsTables(
   semanticLayer: string,
-  llmCall?: LlmCall,
   tables?: readonly string[],
   mergeExisting = false,
   excludeColumnsFn?: (def: TableDefinition) => ReadonlySet<string> | undefined,
@@ -194,7 +190,6 @@ export async function enrichAllDwsTables(
   tier2?: Tier2Opts,
 ): Promise<{ enriched: number; written: number; errors: string[]; note?: string }> {
   return sweepEnrichment(tableRelationsAdapter, semanticLayer, {
-    llmCall,
     names: tables,
     mergeContext: { mergeExisting, preserveCurated },
     excludeColumnsFn,

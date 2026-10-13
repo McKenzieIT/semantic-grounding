@@ -15,7 +15,7 @@
  * @module enrichment/sweep (internal; only `"."` is importable — see ADR-0002)
  */
 import type { Tier2Opts } from '../io.ts'
-import type { EnrichmentKindAdapter, LlmCall, SweepOpts } from './types.ts'
+import type { EnrichmentKindAdapter, SweepOpts } from './types.ts'
 import { enrichAllTablesAltLabels } from './table-adapter.ts'
 import { enrichAllEventsAltLabels } from './event-adapter.ts'
 
@@ -52,10 +52,10 @@ export interface SweepResult {
  *   becomes `${name}: ${message}` — the batch never aborts.
  * @param adapter - the kind adapter driving this sweep.
  * @param semanticLayer - the semantic-layer directory path.
- * @param opts - llmCall (forwarded verbatim to discover), names filter,
- *   merge context (default `{ mergeExisting: false, preserveCurated: true }`),
- *   tier2 (forwarded verbatim to write), excludeColumnsFn (forwarded to
- *   `prepare` only — the relations adapters park it in their sweep context).
+ * @param opts - names filter, merge context (default
+ *   `{ mergeExisting: false, preserveCurated: true }`), tier2 (forwarded
+ *   verbatim to write), excludeColumnsFn (forwarded to `prepare` only — the
+ *   relations adapters park it in their sweep context).
  * @returns the sweep report.
  */
 export async function sweepEnrichment<TDef, TItem, TCtx>(
@@ -82,7 +82,7 @@ export async function sweepEnrichment<TDef, TItem, TCtx>(
       continue
     }
     try {
-      const discovered = await adapter.discover(listed, ctx as TCtx, opts.llmCall)
+      const discovered = await adapter.discover(listed, ctx as TCtx)
       const kept = adapter.veto(listed, discovered, ctx as TCtx)
       if (adapter.writePolicy === 'gain-only' && kept.length === 0) continue
       const merged = adapter.merge(listed, listed.existing, kept, mergeContext)
@@ -105,7 +105,6 @@ export async function sweepEnrichment<TDef, TItem, TCtx>(
  * Convenience wrapper: runs `enrichAllTablesAltLabels` + `enrichAllEventsAltLabels`.
  *
  * @param semanticLayer - the semantic-layer directory path.
- * @param llmCall - optional LLM call for the semantic round.
  * @param tables - optional table_name filter (omit to enrich all tables).
  * @param events - optional event-name filter (omit to enrich all events).
  * @param tier2 - optional Tier-2 options (#18); forwarded verbatim to both
@@ -114,13 +113,12 @@ export async function sweepEnrichment<TDef, TItem, TCtx>(
  */
 export async function discoverAltLabels(
   semanticLayer: string,
-  llmCall?: LlmCall,
   tables?: readonly string[],
   events?: readonly string[],
   tier2?: Tier2Opts,
 ): Promise<{ enriched: number; written: number; errors: string[] }> {
-  const tRes = await enrichAllTablesAltLabels(semanticLayer, llmCall, tables, tier2)
-  const eRes = await enrichAllEventsAltLabels(semanticLayer, llmCall, events, tier2)
+  const tRes = await enrichAllTablesAltLabels(semanticLayer, tables, tier2)
+  const eRes = await enrichAllEventsAltLabels(semanticLayer, events, tier2)
   return {
     enriched: tRes.enriched + eRes.enriched,
     written: tRes.written + eRes.written,

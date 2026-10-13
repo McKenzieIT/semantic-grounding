@@ -25,7 +25,6 @@ import {
   enrichAllEvents,
   enrichAllTablesAltLabels,
   enrichAllEventsAltLabels,
-  type LlmCall,
   type EnrichmentKindAdapter,
 } from '../src/enrichment.ts'
 import { dumpYaml, type Tier2Opts } from '../src/io.ts'
@@ -41,7 +40,7 @@ interface SynthDef {
  * captured; any stage overridable per test. No filesystem involved. */
 function synthKit() {
   const calls: string[] = []
-  const discovers: Array<{ name: string; ctx: unknown; llm: unknown }> = []
+  const discovers: Array<{ name: string; ctx: unknown }> = []
   const merges: Array<{ name: string; existing: readonly string[]; discovered: readonly string[]; mergeContext: unknown }> = []
   const writes: Array<{ name: string; items: readonly string[]; tier2: unknown }> = []
   const target = (name: string) => ({ semanticLayer: '/x', name, raw: {}, def: { label: name }, existing: [] as string[] })
@@ -51,8 +50,8 @@ function synthKit() {
     kind: 'table',
     writePolicy: 'always',
     list: () => [target('a'), target('b')],
-    discover: async (t, ctx, llmCall) => {
-      discovers.push({ name: t.name, ctx, llm: llmCall })
+    discover: async (t, ctx) => {
+      discovers.push({ name: t.name, ctx })
       calls.push(`discover:${t.name}`)
       return ['new']
     },
@@ -149,12 +148,11 @@ describe('sweepEnrichment — engine invariants (synthetic adapter)', () => {
     ])
   })
 
-  test('opts pass-through: llmCall → discover, tier2 → write (verbatim identity)', async () => {
+  test('opts pass-through: tier2 → write (verbatim identity)', async () => {
     const k = synthKit()
-    const llmCall: LlmCall = async () => '[]'
     const tier2 = { recorder: {} } as Tier2Opts
-    await sweepEnrichment(k.adapter(), '/x', { llmCall, tier2 })
-    expect(k.discovers.map(d => d.llm)).toEqual([llmCall, llmCall])
+    await sweepEnrichment(k.adapter(), '/x', { tier2 })
+    expect(k.discovers.map(d => d.name)).toEqual(['a', 'b'])
     expect(k.writes.map(w => w.tier2)).toEqual([tier2, tier2])
   })
 
@@ -200,7 +198,6 @@ interface RefOut {
  * through it keeps both kinds' signatures assignable to one case type). */
 type RelationsRun = (
   semanticLayer: string,
-  llmCall?: LlmCall,
   names?: readonly string[],
   mergeExisting?: boolean,
   excludeColumnsFn?: undefined,
@@ -283,23 +280,11 @@ describe.each(relationsKinds)('sweepEnrichment — relations ($title)', k => {
     k.assertPreserved(readYaml(k.targetPath(dir)))
   })
 
-  test('with mock llmCall → LLM refs merge with the deterministic round', async () => {
-    writeDim()
-    k.writeTarget(dir)
-    const llmCall = async () => JSON.stringify([
-      { dim_table: 'dim_server', join_keys: [{ dws_column: 'srv_id', dim_column: 'server_id' }], derivation: 'llm semantic' },
-    ])
-    const res = await k.run(dir, llmCall)
-    expect(res.enriched).toBe(1)
-    const s = refsOf().find(r => r.dim_table === 'dim_server')!
-    expect(s.join_keys).toHaveLength(2) // deterministic server_id + llm srv_id
-  })
-
   test('names filter enriches only the named defs', async () => {
     writeDim()
     k.writeTarget(dir)
     k.writeSecond(dir)
-    const res = await k.run(dir, undefined, [k.targetName])
+    const res = await k.run(dir, [k.targetName])
     expect(res.written).toBe(1)
     expect(refsOf()).toHaveLength(1)
     expect((readYaml(k.secondPath(dir))[k.refsKey] as unknown[])).toHaveLength(0) // filtered out → untouched
@@ -327,7 +312,7 @@ describe.each(relationsKinds)('sweepEnrichment — relations ($title)', k => {
   test('mergeExisting=true preserves curated refs the deterministic round does not rediscover', async () => {
     writeDim()
     k.writeTarget(dir, CURATED_REFS)
-    const res = await k.run(dir, undefined, undefined, true)
+    const res = await k.run(dir, undefined, true)
     expect(res.written).toBe(1)
     const dimTables = refsOf().map(r => r.dim_table).sort()
     expect(dimTables).toEqual(['dim_manual', 'dim_other', 'dim_server']) // curated kept + dim_server rediscovered
@@ -336,8 +321,8 @@ describe.each(relationsKinds)('sweepEnrichment — relations ($title)', k => {
   test('preserveCurated=false (escape-hatch) drops curated refs for a raw full replace (GA-GT3-5b)', async () => {
     writeDim()
     k.writeTarget(dir, CURATED_REFS)
-    // 6th positional param preserveCurated=false -> raw full replace
-    const res = await k.run(dir, undefined, undefined, false, undefined, false)
+    // 5th positional param preserveCurated=false -> raw full replace
+    const res = await k.run(dir, undefined, false, undefined, false)
     expect(res.written).toBe(1)
     const refs = refsOf()
     // only the rediscovered dim_server remains; curated dim_other + dim_manual DROPPED
@@ -370,7 +355,6 @@ describe.each(relationsKinds)('sweepEnrichment — relations ($title)', k => {
 
 type AltRun = (
   semanticLayer: string,
-  llmCall?: LlmCall,
   names?: readonly string[],
 ) => Promise<{ enriched: number; written: number; errors: string[] }>
 
@@ -484,17 +468,9 @@ describe.each(altKinds)('sweepEnrichment — alt_labels ($title)', k => {
   test('names filter enriches only the named defs', async () => {
     k.writeTarget(dir)
     k.writeSecond(dir)
-    const res = await k.run(dir, undefined, [k.secondName])
+    const res = await k.run(dir, [k.secondName])
     expect(res.enriched).toBe(1)
     expect((readYaml(k.targetPath(dir)).alt_labels as string[]).length).toBe(0) // filtered out → untouched
-  })
-
-  test('LLM round supplements the deterministic labels when provided', async () => {
-    k.writeTarget(dir)
-    const llmCall = async () => '["新标签甲", "新标签乙"]'
-    const res = await k.run(dir, llmCall)
-    expect(res.enriched).toBe(1)
-    for (const l of ['新标签甲', '新标签乙']) expect(labelsOf()).toContain(l)
   })
 })
 

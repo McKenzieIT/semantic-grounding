@@ -28,7 +28,6 @@ import {
 } from './relations.ts'
 import { sweepEnrichment } from './sweep.ts'
 import type { EnrichmentKindAdapter, ListedTarget, SweepTarget } from './types.ts'
-import type { LlmCall } from './types.ts'
 
 /** The alt_labels adapter for events: the events mirror of
  * `tableAltLabelsAdapter` (gain-only writes, per-sweep corpus veto list,
@@ -45,8 +44,8 @@ export const eventAltLabelsAdapter: EnrichmentKindAdapter<EventDefinition, strin
         : { name: e.name, parseError: true }
     })
   },
-  discover: (target: SweepTarget<EventDefinition, string>, _ctx: AltLabelsSweepCtx, llmCall?: LlmCall) =>
-    discoverAltLabelsFor(eventToAltLabelsTarget(target.def), llmCall),
+  discover: (target: SweepTarget<EventDefinition, string>, _ctx: AltLabelsSweepCtx) =>
+    discoverAltLabelsFor(eventToAltLabelsTarget(target.def)),
   veto: (target: SweepTarget<EventDefinition, string>, discovered: readonly string[], ctx: AltLabelsSweepCtx): readonly string[] => {
     // Suppression filter — the candidate exit (see tableAltLabelsAdapter).
     const vetoes = aliasVetoSet(target.def.suppressed_alt_labels, ctx.corpusVetoes)
@@ -61,11 +60,11 @@ export const eventAltLabelsAdapter: EnrichmentKindAdapter<EventDefinition, strin
 
 /**
  * Enrich all events in a semantic layer with alt_labels: discover aliases and
- * write them back into each event's YAML. Two-round (deterministic + LLM).
- * Merges with existing alt_labels (never removes curated labels).
+ * write them back into each event's YAML (deterministic round only — the LLM
+ * half of enrichment lives in the agent-driven ask-answer pair). Merges with
+ * existing alt_labels (never removes curated labels).
  *
  * @param semanticLayer - the semantic-layer directory path.
- * @param llmCall - optional LLM call for the semantic round.
  * @param events - optional event-name filter; omit/empty to enrich all.
  * @param tier2 - optional Tier-2 options (#18); passed, each event write
  *   below takes `writeEventYaml`'s audited write-and-record path.
@@ -73,11 +72,10 @@ export const eventAltLabelsAdapter: EnrichmentKindAdapter<EventDefinition, strin
  */
 export async function enrichAllEventsAltLabels(
   semanticLayer: string,
-  llmCall?: LlmCall,
   events?: readonly string[],
   tier2?: Tier2Opts,
 ): Promise<{ enriched: number; written: number; errors: string[] }> {
-  return sweepEnrichment(eventAltLabelsAdapter, semanticLayer, { llmCall, names: events, tier2 })
+  return sweepEnrichment(eventAltLabelsAdapter, semanticLayer, { names: events, tier2 })
 }
 
 // ── Relations family (map #64 / ticket #66) ─────────────────────────────
@@ -111,8 +109,8 @@ export const eventRelationsAdapter: EnrichmentKindAdapter<EventDefinition, Dimen
         : { name: e.name, parseError: true }
     })
   },
-  discover: (target: SweepTarget<EventDefinition, DimensionRef>, ctx: RelationsSweepCtx<EventDefinition>, llmCall?: LlmCall) =>
-    discoverEventRelationsFor(target.def, ctx.dimInventory, llmCall, ctx.excludeColumnsFn?.(target.def)),
+  discover: (target: SweepTarget<EventDefinition, DimensionRef>, ctx: RelationsSweepCtx<EventDefinition>) =>
+    discoverEventRelationsFor(target.def, ctx.dimInventory, ctx.excludeColumnsFn?.(target.def)),
   veto: (target: SweepTarget<EventDefinition, DimensionRef>, discovered: readonly DimensionRef[]): readonly DimensionRef[] => {
     // Suppression filter — the events mirror of the table adapter's discovered
     // exit (445 of the 446 polluted definitions were events: day-one coverage).
@@ -128,8 +126,7 @@ export const eventRelationsAdapter: EnrichmentKindAdapter<EventDefinition, Dimen
 /**
  * Enrich every event in a semantic layer: discover its DIM relations and write
  * them back into the event YAML's `external_refs`. Mirrors `enrichAllDwsTables`
- * (two-round; deterministic round always runs, LLM round runs only when a
- * `llmCall` is provided). Writes via `writeEventYaml` (raw-edit surface: read
+ * (deterministic round only). Writes via `writeEventYaml` (raw-edit surface: read
  * the existing raw, inject `external_refs`, re-dump to YAML text, name-match
  * check; no schema validation — `loadEvents` validates on read).
  * `mergeExisting`: when true, discovered refs merge WITH the event's existing
@@ -146,7 +143,6 @@ export const eventRelationsAdapter: EnrichmentKindAdapter<EventDefinition, Dimen
  * `enrichAllDwsTables`). The calling layer supplies the builder; the
  * substrate applies it opaquely.
  * @param semanticLayer - the semantic-layer directory path.
- * @param llmCall - optional one-shot LLM call for the semantic round.
  * @param events - optional event-name filter; omit/empty to enrich all events.
  * @param mergeExisting - when true, merge discovered with existing; default false.
  * @param excludeColumnsFn - optional per-event exclude-set builder (CL-18 Phase 2).
@@ -161,7 +157,6 @@ export const eventRelationsAdapter: EnrichmentKindAdapter<EventDefinition, Dimen
  */
 export async function enrichAllEvents(
   semanticLayer: string,
-  llmCall?: LlmCall,
   events?: readonly string[],
   mergeExisting = false,
   excludeColumnsFn?: (def: EventDefinition) => ReadonlySet<string> | undefined,
@@ -169,7 +164,6 @@ export async function enrichAllEvents(
   tier2?: Tier2Opts,
 ): Promise<{ enriched: number; written: number; errors: string[]; note?: string }> {
   return sweepEnrichment(eventRelationsAdapter, semanticLayer, {
-    llmCall,
     names: events,
     mergeContext: { mergeExisting, preserveCurated },
     excludeColumnsFn,

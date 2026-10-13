@@ -8,7 +8,6 @@
  *     core.setTier2Recorder(recorder)   // REQUIRED before any auditable write (D5)
  *     core.setScopeRegistry(scopes)     // optional
  *     core.setSchemaProvider(provider)  // optional
- *     core.setLlmCall(fn)               // optional
  *     core.dispose()
  *
  * A host wraps it; it does not mount into a host. The dsh adapter is what
@@ -19,9 +18,10 @@
  *
  * ## Enrichment (G3, resolved 2026-08-22)
  *
- *  - `discoverRelations(opts)` delegates to `enrichAllDwsTables` (two-round
- *    DWS→DIM discovery). `llmCall` arrives via `setLlmCall` and is optional —
- *    absent means the deterministic round only, never a failure.
+ *  - `discoverRelations(opts)` delegates to `enrichAllDwsTables` (DWS→DIM
+ *    discovery, deterministic round only — the in-process LLM callback seam
+ *    was removed in S1.2; the LLM half of enrichment is the agent-driven
+ *    ask-answer loop below).
  *  - On-write hook: after `syncWrite`/`updateTableMeta` writes a DWS, discovery
  *    re-runs and persists `dimension_refs` (best-effort, unaudited because
  *    auto-derived; gated by `autoEnrich`, default true). It persists through the
@@ -35,10 +35,10 @@
  *    `apply_enrichment` tools compile onto: a work item is a definition whose relation
  *    or alt_labels array is still empty, offered as a self-contained
  *    `{work_id, target, gap, prompt}` (the baseline fingerprint lives inside `work_id`,
- *    so a server restart between the two calls orphans nothing). `setLlmCall`'s
- *    in-process callback and this ask-answer pair are the same seam in two host
- *    postures — dsh keeps using the former, the MCP host uses the latter, and neither
- *    adds a name to this barrel (the pure prompt/parse/merge family stays in
+ *    so a server restart between the two calls orphans nothing). This
+ *    ask-answer pair is the only LLM form (S1.2 removed the in-process
+ *    LLM callback that used to parallel it), and neither adds a name
+ *    to this barrel (the pure prompt/parse/merge family stays in
  *    `enrichment-work.ts`, same as `enrichment.ts`'s).
  *  - `discoverRelations` / `discoverEventRelations` / `discoverAltLabels`'s existing
  *    `tier2` parameter (#18) now also composes with a recorder's `beginBatch`: when
@@ -94,7 +94,6 @@ import {
   enrichAllEventsAltLabels as enrichAllEventsAltLabelsFromLayer,
   enrichAllTablesAltLabels as enrichAllTablesAltLabelsFromLayer,
   assertKnownFilterNames,
-  type LlmCall,
 } from './enrichment.ts'
 // ADR-0006: the LLM half of enrichment's agent-driven ask-answer loop
 // (listEnrichmentWork / getEnrichmentPrompts / applyEnrichmentResults). The pure
@@ -188,9 +187,7 @@ export {
 // convention-coupled (DWS→DIM typing, CJK label heuristics, k11-sized metric
 // keys) with no production host consumer — off the public barrel per
 // ADR-0002's convention clause. The public entry is the core class's
-// discoverRelations / discoverEventRelations / discoverAltLabels. LlmCall
-// stays: it types setLlmCall, one of the documented extension seams.
-export { type LlmCall } from './enrichment.ts'
+// discoverRelations / discoverEventRelations / discoverAltLabels.
 // #31 (ADR-0007): on the barrel for the same reason #18 put 'StaleBaselineError'
 // here (acceptance script's own evidence note) — the MCP host needs instanceof to
 // tell the dimension-filter door rejection apart from every other discovery failure
@@ -361,7 +358,6 @@ function resolveSemanticLayerConfig(config: SemanticLayerConfig): ResolvedSemant
  * core.setTier2Recorder(recorder)    // REQUIRED before any auditable write (D5)
  * core.setScopeRegistry(scopes)      // optional — falls back to static config
  * core.setSchemaProvider(provider)   // optional — discover/describe/sample throw without one
- * core.setLlmCall(fn)                // optional — enrichment runs deterministic-only without one
  * // ...
  * core.dispose()                     // releases the kind registrations + cache listener
  * ```
@@ -371,8 +367,8 @@ function resolveSemanticLayerConfig(config: SemanticLayerConfig): ResolvedSemant
  * the dsh adapter wraps this as a cordis `Service` exposing the `ctx.schema`
  * seam and forwards `ctx.audit` / `ctx.get('scopes')` into the setters above.
  *
- * Instances are independent — the recorder, scope registry, provider and LLM
- * call are per-instance state — so one process can hold several cores over
+ * Instances are independent — the recorder, scope registry and provider are
+ * per-instance state — so one process can hold several cores over
  * different corpora (the MCP management-surface case, which the former
  * `extends Service` made impossible: a cordis context admits only one service
  * under a given name).
@@ -510,8 +506,6 @@ export class SemanticGroundingCore {
 
   private readonly resolved: ResolvedSemanticLayerConfig
   private provider: SchemaProvider | undefined
-  /** G3: injected one-shot LLM call for the semantic relation round (undefined => deterministic round only). */
-  private llmCall: LlmCall | undefined
   /** P1: setter-injected per-scope registry (undefined => fall back to static mount config). */
   private scopeRegistry: ScopeRegistryLike | undefined
   /** D5: setter-injected Tier-2 recorder. Undefined is NOT "audit off" — every
@@ -955,25 +949,14 @@ export class SemanticGroundingCore {
   }
 
   /**
-   * G3: inject (or clear) the one-shot LLM call used by the semantic relation
-   * round. When undefined, `discoverRelations` + the on-write hook run the
-   * deterministic PK-name round only. Production wires this to `ctx.llm`
-   * (BlockAssembler-assembled text); the substrate itself stays free of the
-   * LLM dependency.
-   * @param fn - the llmCall to use, or undefined to run deterministic-only.
-   */
-  setLlmCall(fn?: LlmCall): void {
-    this.llmCall = fn
-  }
-
-  /**
    * G3: discover DWS→DIM dimension relations for the layer (or a subset when
    * `tables` is given) and write them back into each DWS table's
-   * `dimension_refs`. Delegates to the substrate `enrichAllDwsTables` (two-round
-   * strategy; deterministic round always runs, LLM round runs only when a
-   * `llmCall` is injected via `setLlmCall`). No Tier-2 audit — this is the
-   * explicit enrichment entry (used by the `discover_relations` agent tool +
-   * batch seeding); the on-write hook is the auto path.
+   * `dimension_refs`. Delegates to the substrate `enrichAllDwsTables`
+   * (deterministic PK-name round only — the LLM half of enrichment is the
+   * agent-driven ask-answer pair, not an in-process callback). No Tier-2
+   * audit — this is the explicit enrichment entry (used by the
+   * `discover_relations` agent tool + batch seeding); the on-write hook is
+   * the auto path.
    *
    * GA-GT3-5b: `preserveCurated` (default `true`) toggles the replace strategy
    * when `mergeExisting=false` (the default): `true` = origin-aware replace
@@ -1010,7 +993,6 @@ export class SemanticGroundingCore {
     // false = raw full-replace escape-hatch).
     return enrichAllDwsTablesFromLayer(
       this.semanticRoot,
-      this.llmCall,
       opts.tables,
       false,
       buildExcludeColumns,
@@ -1022,9 +1004,9 @@ export class SemanticGroundingCore {
   /**
    * Discover event→DIM relations (parallel to `discoverRelations` for DWS
    * tables) and write them into each event's `external_refs`. Delegates to the
-   * substrate `enrichAllEvents` (two-round; deterministic always runs, LLM
-   * round runs only when a `llmCall` is injected via `setLlmCall`). No Tier-2
-   * audit — explicit enrichment entry.
+   * substrate `enrichAllEvents` (deterministic round only — the LLM half is
+   * the agent-driven ask-answer pair). No Tier-2 audit — explicit enrichment
+   * entry.
    *
    * NOTE: an on-write hook for events (parallel to `enrichOnWrite` for tables)
    * is deferred: there is no Service-level event-write path today (events are
@@ -1056,14 +1038,14 @@ export class SemanticGroundingCore {
     if (opts.events !== undefined) assertKnownFilterNames(this.semanticRoot, { events: opts.events })
     // GA-GT3-5b: forward preserveCurated (default true = origin-aware replace;
     // false = raw full-replace escape-hatch; parallel to discoverRelations).
-    return enrichAllEventsFromLayer(this.semanticRoot, this.llmCall, opts.events, false, undefined, opts.preserveCurated ?? true, opts.tier2)
+    return enrichAllEventsFromLayer(this.semanticRoot, opts.events, false, undefined, opts.preserveCurated ?? true, opts.tier2)
   }
 
   /**
    * CL-1 Phase 3: discover alt_labels (SKOS aliases) for definitions in the
-   * layer. Two-round strategy: deterministic extraction from description/columns/
-   * domains + optional LLM semantic suggestions. Merges with existing labels
-   * (never removes curated aliases).
+   * layer. Deterministic extraction from description/columns/domains (the
+   * LLM half of enrichment is the agent-driven ask-answer pair). Merges with
+   * existing labels (never removes curated aliases).
    *
    * ADR-0007 (call-wide dimension filter): naming `tables` puts ONLY the tables leg in
    * this call (events are not scanned), naming `events` the mirror, and omitting both
@@ -1094,10 +1076,10 @@ export class SemanticGroundingCore {
     // the narrower Core-layer semantics live.
     const bothOmitted = opts.tables === undefined && opts.events === undefined
     const tableRes = bothOmitted || opts.tables !== undefined
-      ? await enrichAllTablesAltLabelsFromLayer(this.semanticRoot, this.llmCall, opts.tables, opts.tier2)
+      ? await enrichAllTablesAltLabelsFromLayer(this.semanticRoot, opts.tables, opts.tier2)
       : { enriched: 0, written: 0, errors: [] as string[] }
     const eventRes = bothOmitted || opts.events !== undefined
-      ? await enrichAllEventsAltLabelsFromLayer(this.semanticRoot, this.llmCall, opts.events, opts.tier2)
+      ? await enrichAllEventsAltLabelsFromLayer(this.semanticRoot, opts.events, opts.tier2)
       : { enriched: 0, written: 0, errors: [] as string[] }
     return {
       enriched: tableRes.enriched + eventRes.enriched,
@@ -1179,8 +1161,8 @@ export class SemanticGroundingCore {
    * work item it answers by its self-contained `work_id`. Wraps
    * `applyEnrichmentResultsBatch` (`enrichment-work.ts`): in-lock per-item fingerprint
    * re-verification against the baseline embedded in each `work_id`, lenient parse,
-   * curated-preserving merge (the same `mergeRefs` / `mergeAltLabels` the deterministic
-   * + LLM rounds already use), and a single `beginBatch` commit for the whole call —
+   * curated-preserving merge (the same `mergeRefs` / `mergeAltLabels` the
+   * deterministic round already uses), and a single `beginBatch` commit for the whole call —
    * one stale or unparseable item never blocks the others (see each item's own
    * `verdict`).
    *
@@ -1244,7 +1226,7 @@ export class SemanticGroundingCore {
       // deterministic round does not rediscover (code-review B2).
       // CL-18 Phase 2: forward buildExcludeColumns so partition-column PK
       // matches (e.g. ds-only DIM snapshots) do not add noise JOIN relations.
-      const res = await enrichAllDwsTablesFromLayer(this.semanticRoot, this.llmCall, names, true, buildExcludeColumns)
+      const res = await enrichAllDwsTablesFromLayer(this.semanticRoot, names, true, buildExcludeColumns)
       if (res.errors.length > 0) {
         this.enrichmentHealth.push({ round: 'relation', outcome: 'partial', tables: [...names], errors: [...res.errors] })
       }
@@ -1253,7 +1235,7 @@ export class SemanticGroundingCore {
     }
     // CL-1 Phase 3: also discover alt_labels for the written tables
     try {
-      const res = await enrichAllTablesAltLabelsFromLayer(this.semanticRoot, this.llmCall, names)
+      const res = await enrichAllTablesAltLabelsFromLayer(this.semanticRoot, names)
       if (res.errors.length > 0) {
         this.enrichmentHealth.push({ round: 'alt_labels', outcome: 'partial', tables: [...names], errors: [...res.errors] })
       }
@@ -2269,30 +2251,6 @@ export class SemanticGroundingCore {
 // StandInSchemaProvider moved to ./schema-provider.ts in slice 5 — off the
 // public barrel (test double, no host consumer; ADR-0003), still exported
 // from its module for in-repo tests.
-
-/**
- * A text-only LLM seam: `text(prompt) -> string`. Production `ctx.llm`
- * (BlockAssembler-assembled text) satisfies this once mounted. Declared here
- * so the substrate + the wiring adapter stay free of the LLM dependency.
- */
-export interface TextLlm {
-  text(prompt: string): Promise<string>
-}
-
-/**
- * Wire a text-LLM into a schema service's enrichment `llmCall` seam. After
- * this, `discoverRelations` / `discoverEventRelations` / the on-write hook
- * run the LLM semantic round (absent => deterministic round only).
- *
- * Production (once the bundle mounts `ctx.schema` + `ctx.llm`):
- *   `wireEnrichmentLlm(ctx.schema, ctx.llm)`
- * The adapter wraps `llm.text` as the substrate's `LlmCall = (prompt) => Promise<string>`.
- * @param schema - the `SemanticGroundingCore` (or a structural `{ setLlmCall }` test double).
- * @param llm - the text-LLM to adapt.
- */
-export function wireEnrichmentLlm(schema: { setLlmCall(fn?: (prompt: string) => Promise<string>): void }, llm: TextLlm): void {
-  schema.setLlmCall(prompt => llm.text(prompt))
-}
 
 /**
  * Extract alias data (pref_label + alt_labels) structurally from any

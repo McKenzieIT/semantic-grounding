@@ -55,7 +55,7 @@ describe('ctx.schema.discoverRelations (B3)', () => {
   beforeEach(() => {}) // dir set per-test below
   afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }) })
 
-  test('discoverRelations writes dimension_refs into DWS tables (deterministic round, no llmCall)', async () => {
+  test('discoverRelations writes dimension_refs into DWS tables (deterministic round)', async () => {
     dir = newLayer({ name: 'dws_pay', cols: [{ name: 'server_id', comment: '区服ID' }] })
     const schema = new SemanticGroundingCore({ semanticRoot: dir })
     const res = await schema.discoverRelations()

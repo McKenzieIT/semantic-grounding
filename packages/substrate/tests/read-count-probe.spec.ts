@@ -202,8 +202,6 @@ describe('path 5: run_enrichment (one full invocation)', () => {
     cpSync(K11, tmp, { recursive: true })
     try {
       const core = new SemanticGroundingCore({ semanticRoot: tmp, scopeId: 'probe' })
-      // No-op LLM: deterministic-only round
-      core.setLlmCall(undefined)
 
       const count = await measureAsync(async () => {
         await core.discoverRelations({})
@@ -226,7 +224,6 @@ describe('path 5: run_enrichment (one full invocation)', () => {
     cpSync(K11, tmp, { recursive: true })
     try {
       const core = new SemanticGroundingCore({ semanticRoot: tmp, scopeId: 'probe' })
-      core.setLlmCall(undefined)
 
       // Mirror the MCP run_enrichment handler: discoverRelations + discoverEventRelations + discoverAltLabels
       _resetReadYamlCount()

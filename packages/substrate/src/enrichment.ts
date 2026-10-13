@@ -3,16 +3,16 @@
  * discover alt_labels (SKOS aliases) for definitions.
  *
  * G3 design (resolved 2026-08-22):
- *  - Two-round strategy: (1) deterministic inference (no LLM);
- *    (2) LLM-assisted semantic supplement via an injectable `llmCall`.
+ *  - Deterministic inference (no LLM): PK-name matching for relations,
+ *    description/domains extraction for alt_labels.
  *  - Results merged + deduped; written directly (no approval).
- *  - `llmCall` is OPTIONAL: when absent, only the deterministic round runs.
+ *  - The LLM half of enrichment is agent-driven (ADR-0006's ask-answer
+ *    pair, `enrichment-work.ts`) — there is no in-process LLM callback.
  *
  * CL-1 Phase 3 (alt_labels enrichment):
- *  - Same two-round pattern: (1) deterministic extraction from description +
- *    domains (NOT column comments — those feed only the LLM prompt; corrected
- *    in #38, this header and the round's own docstring both claimed otherwise);
- *    (2) LLM-suggested semantic aliases.
+ *  - Same pattern: deterministic extraction from description + domains (NOT
+ *    column comments — those feed only the ask-answer prompt; corrected in
+ *    #38, this header and the round's own docstring both claimed otherwise).
  *  - Targets all definition types (tables + events).
  *  - Merge preserves existing human-curated alt_labels.
  *
@@ -27,9 +27,8 @@
  * this file a pure barrel.
  *
  * Substrate discipline: this module imports ONLY the substrate (types/io) +
- * atomic-write — it does NOT import `@deepseek-ai/dsh-llm`. The `llmCall`
- * adapter that wraps `ctx.llm` lives at the service/tool layer (B3/B4), so the
- * semantic-layer substrate stays zod + js-yaml only.
+ * atomic-write — it does NOT import `@deepseek-ai/dsh-llm`. The semantic-layer
+ * substrate stays zod + js-yaml only.
  *
  * @module enrichment (internal; only `"."` is importable — see ADR-0002)
  */
@@ -159,7 +158,6 @@ export {
 } from './enrichment/event-adapter.ts'
 export { sweepEnrichment, discoverAltLabels, type SweepResult } from './enrichment/sweep.ts'
 export {
-  type LlmCall,
   type EnrichmentKindAdapter,
   type MergeContext,
   type SweepOpts,
