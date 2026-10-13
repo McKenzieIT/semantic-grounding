@@ -687,5 +687,55 @@ and annotates the batch commit's [provenance](#provenance) trailer so a post-hoc
 `git log` reader lands on exactly the risky commits — it does **not** reject the write
 (the 500-item cap already bounds runaway size, and a hard refusal is trivially evaded by
 splitting the batch). The corpus-relative *ratio* form of this guard (what fraction of
-the whole corpus a change touches) belongs to ODPS drift re-sync, not batch intake — see
-[#94](https://github.com/McKenzieIT/semantic-grounding/issues/94).
+the whole corpus a change touches) belongs to ODPS drift re-sync, not batch intake: it is
+decided in ADR-0019 as the [ratio guard](#ratio-guard), a second independent soft trigger
+that complements this count guard
+([#94](https://github.com/McKenzieIT/semantic-grounding/issues/94)).
+
+### passive drift discovery (被动漂移发现)
+
+How ODPS schema drift is found under the single-host model (decided in ADR-0019;
+implementation tracked in [#111](https://github.com/McKenzieIT/semantic-grounding/issues/111)).
+The server never probes ODPS — it has no engine client ([#79](https://github.com/McKenzieIT/semantic-grounding/issues/79)).
+Instead the connecting agent, which already holds ODPS access in its own trajectory,
+re-probes the drifted schema into its [scratch home](https://github.com/McKenzieIT/semantic-grounding/issues/92)
+(`<gitDir>/sg-scratch/`), regenerates the affected table/event
+[definitions](#definition), and feeds them back through [batch import](#batch-import).
+Drift is quantified *reactively* — by the Phase-1 `updated` verdicts (what the re-import
+overwrote) plus the [ratio guard](#ratio-guard) — not by any server-side baseline diff.
+The rejected alternative, a server-mounted schema provider that diffs ODPS itself, would
+need an ODPS execution face the single-host server deliberately lacks (a server-asserted
+table definition would be fabricated [provenance](#provenance); the live-engine `sync`
+path stays deferred, ADR-0005 ruling 5).
+
+### re-sync projection contract (可重导投影契约)
+
+The round-trip guarantee that a definition read back by `get_definition` feeds straight
+into `import_definitions` (decided in ADR-0019; implementation tracked in
+[#111](https://github.com/McKenzieIT/semantic-grounding/issues/111)). The relation /
+[suppression](#suppression) layer — the item-verb fields that only
+[`add_relation`](#relation) / `add_alias` write, never create/import (ADR-0005 ruling 4) —
+survives a re-import *per kind*, split on whether [enrichment](#enrichment) can
+deterministically re-derive it. A [concept](#kind) has **no** enrichment round (zero-hit
+across the enrichment sources, [#46](https://github.com/McKenzieIT/semantic-grounding/issues/46)),
+so import **strips** those keys from the create payload rather than rejecting them (a
+`get_definition` output is therefore re-importable) and **preserves** the on-disk ones on
+an `updated` overwrite rather than dropping them (re-sync never silently loses edges). A
+table / event carries its refs as ordinary `.loose()` payload fields that round-trip
+losslessly via client-side merge, backstopped by enrichment's deterministic relation round
+([enrichment work](#enrichment-work)) — so no server-side preserve. Genuinely-unknown keys
+are still rejected as typos.
+
+### ratio guard (占比守卫)
+
+The corpus-relative companion to the [mass-update guard](#mass-update-guard) (decided in
+ADR-0019; implementation tracked in
+[#111](https://github.com/McKenzieIT/semantic-grounding/issues/111)). Where the count
+guard trips on the absolute `updated` verdict count ("beyond the eyeball budget"), the
+ratio guard trips on the per-kind fraction `updated(kind) / existing(kind)` ("what share of
+the corpus a change touches — the blast radius"). The two fire **independently**, and both
+are **soft** signals — a WARN plus a commit-[provenance](#provenance)-trailer annotation,
+never a hard reject, because a whole re-sync is one `git revert`-able commit. A small-corpus
+floor (default ~10) below which only the count guard applies keeps the ratio out of its
+meaningless-on-a-tiny-corpus regime; threshold and floor live in `ServerConfig`, not the
+substrate ([#79](https://github.com/McKenzieIT/semantic-grounding/issues/79)).
