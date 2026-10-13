@@ -343,10 +343,11 @@ describe('import_definitions — ADR-0018 (#104 dry-run preview + mass-update gu
     }
     const dry = toolJson(await h.client.callTool('import_definitions', { ...batch, dry_run: true })) as unknown as DryRunBody
     const real = toolJson(await h.client.callTool('import_definitions', batch)) as unknown as ImportBody
-    // The four-tuple (index, kind, name, verdict) is identical row for row —
-    // version/detail-of-write are write-time facts, verdicts are Phase 1's.
-    expect(dry.results.map(r => [r.index, r.kind, r.name, r.verdict]))
-      .toEqual(real.results.map(r => [r.index, r.kind, r.name, r.verdict]))
+    // The five-tuple (index, kind, name, verdict, detail) is identical row for
+    // row — `version` is the one write-time fact; verdicts and the item-verb
+    // strip receipt are Phase 1's, so the preview carries them too.
+    expect(dry.results.map(r => [r.index, r.kind, r.name, r.verdict, r.detail ?? null]))
+      .toEqual(real.results.map(r => [r.index, r.kind, r.name, r.verdict, r.detail ?? null]))
     expect(dry.summary).toEqual(real.summary)
     // And the real rows now carry the receipts the preview correctly lacked.
     expect(real.results.filter(r => r.verdict === 'created' || r.verdict === 'updated').every(r => r.version !== undefined)).toBe(true)

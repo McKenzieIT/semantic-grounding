@@ -243,7 +243,7 @@ async function main(): Promise<void> {
     assert.equal(fixtureGit(['status', '--porcelain'], root).trim(), '', 'fixture must start clean')
 
     // ── Phase 1 — catalog over the wire ─────────────────────────────────────────────
-    step('tools/list: the full default tool catalog (ADR-0005 fifteen + ADR-0006 three + ADR-0008 one + ADR-0011 five + #63 playbook + ADR-0013 import)')
+    step('tools/list: the full default tool catalog (ADR-0005 intent + ADR-0006/0008 enrichment + ADR-0011 scope + #63 playbook + ADR-0013 import)')
     {
       const listed = (await client.listTools()).result?.['tools'] as Array<{ name: string; description?: string; inputSchema?: { type?: string } }>
       assert.deepEqual(listed.map(t => t.name).sort(), [...TOOL_NAMES].sort(), 'exactly the ruled tool surface')

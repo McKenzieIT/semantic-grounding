@@ -130,7 +130,7 @@ export interface ServerConfig {
    * reopening ADR-0018 R5 made for its count-guard sibling (`#104`). Absent
    * sides default to `tools/import.ts`'s `DEFAULT_RATIO_GUARD_THRESHOLD` (0.5)
    * / `DEFAULT_RATIO_GUARD_FLOOR` (10). Soft signal only: a trip WARNs and
-   * annotates the commit trailer, never rejects the write.
+   * annotates the commit subject, never rejects the write.
    */
   readonly massUpdateRatio?: MassUpdateRatioThresholds
   /**
@@ -139,8 +139,9 @@ export interface ServerConfig {
    * `mature` at its own count. An absent side defaults to that module's
    * `DEFAULT_DW_THRESHOLD` (50) / `DEFAULT_KG_THRESHOLD` (5). No flag/env var:
    * ADR-0011 ruling 3 closed the CLI surface at four flags, and neither #55 nor
-   * #56 asks for one (ADR-0018 R5's `massUpdateWarnThreshold` below is the one
-   * later, deliberate exception) — reachable today via `ServerConfig`
+   * #56 asks for one — the batch-overwrite guard flags (ADR-0018 R5 /
+   * ADR-0019 R6, see the module header) are the surface's only later
+   * additions — reachable today via `ServerConfig`
    * construction (tests, a future embedding host), not via the `sg-mcp`
    * binary's argv.
    */
@@ -260,7 +261,7 @@ export function usage(): string {
     `  --mass-update-ratio-threshold <f>`,
     `                           The import ratio guard's trip point: a kind's`,
     `                           updated/existing share above this fraction WARNs`,
-    `                           and annotates the commit trailer (ADR-0019 R6;`,
+    `                           and annotates the commit subject (ADR-0019 R6;`,
     `                           fraction in (0,1], default 0.5, soft signal).`,
     `                           env: ${ENV_VARS.massUpdateRatioThreshold}`,
     `  --mass-update-ratio-floor <n>`,

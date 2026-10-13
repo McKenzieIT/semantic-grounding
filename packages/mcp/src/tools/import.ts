@@ -502,7 +502,12 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
           // own them — same adjudication, same rows a real call would land.
           // A tripped guard previews too: the rehearsal must predict the real
           // write's `warnings` exactly, or the preview is not a preview.
-          const stagedRow = (s: StagedItem): ImportItemResult => ({ index: s.index, kind: s.kind, name: s.name, verdict: s.verdict })
+          const stagedRow = (s: StagedItem): ImportItemResult => ({
+            index: s.index, kind: s.kind, name: s.name, verdict: s.verdict,
+            // Same Phase-1 receipt the real write's rows carry: the item-verb
+            // strip count is adjudication, not a write-time fact.
+            ...s.ignoredItemVerbKeys !== undefined ? { detail: `ignored ${s.ignoredItemVerbKeys} item-verb keys (related_refs/suppressed_* are add_relation/add_alias territory)` } : {},
+          })
           const preview = [...results, ...staged.map(stagedRow)].sort((a, b) => a.index - b.index)
           return toolSuccess({
             scope: scopeStamp(snap),

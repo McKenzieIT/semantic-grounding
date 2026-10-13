@@ -318,7 +318,7 @@ describe('--help', () => {
 describe('usage text', () => {
   it('documents every flag and its environment variable', () => {
     const text = usage()
-    for (const flag of ['--agent-id', '--scope', '--registry', '--lock-timeout-ms', '--mass-update-warn-threshold', '--help']) {
+    for (const flag of ['--agent-id', '--scope', '--registry', '--lock-timeout-ms', '--mass-update-warn-threshold', '--mass-update-ratio-threshold', '--mass-update-ratio-floor', '--help']) {
       expect(text, `usage should mention ${flag}`).toContain(flag)
     }
     for (const name of Object.values(ENV_VARS)) {
