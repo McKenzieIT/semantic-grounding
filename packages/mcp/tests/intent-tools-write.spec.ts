@@ -84,6 +84,32 @@ describe('create_definition — ADR-0005 ruling 5', () => {
     expect(() => JSON.parse(text)).toThrow()
     expect(text).toMatch(/Invalid arguments|validation/i)
   })
+
+  it('creates a concept whose payload carries item-verb keys: stripped and ignored, never written (ADR-0019 R3)', async () => {
+    h = await buildIntentToolHarness()
+    const res = await h.client.callTool('create_definition', { scope_id: 'fixture',
+      kind: 'concept',
+      concept: {
+        name: 'item_verb_strip',
+        description: 'a concept that arrives carrying round-trip residue',
+        // All three item-verb keys present and NON-empty: the strip must ignore
+        // them (create never writes edges), not merge them in.
+        related_refs: [{ target_kind: 'table', name: 'dim_shop' }],
+        suppressed_alt_labels: ['弃用旧称'],
+        suppressed_related_refs: [],
+      },
+      ...tier2('首次落地', 0.9),
+    })
+    const body = toolJson(res) as { changed: boolean }
+    expect(body.changed).toBe(true)
+    const stored = h.core.loadConceptDefinition('item_verb_strip')
+    expect(stored).not.toBeNull()
+    // Ignored means absent from the write: the stored file carries the schema's
+    // empty defaults, not the payload's smuggled values.
+    expect(stored?.related_refs).toEqual([])
+    expect(stored?.suppressed_alt_labels).toEqual([])
+    expect(stored?.suppressed_related_refs).toEqual([])
+  })
 })
 
 describe('update_definition — ADR-0005 ruling 4', () => {

@@ -24,6 +24,7 @@ import { BindingStore } from '../../src/binding.ts'
 import type { GitTier2Recorder } from '../../src/git/recorder.ts'
 import { ScopeRegistryFile } from '../../src/scope-registry.ts'
 import { createServerFactory, TOOL_REGISTRARS, type ServerDeps, type ToolRegistrar } from '../../src/server.ts'
+import type { MassUpdateRatioThresholds } from '../../src/config.ts'
 import type { GuidanceThresholds } from '../../src/tools/guidance.ts'
 import { createFixtureCorpus, type FixtureCorpus, type FixtureCorpusOptions } from './fixture-corpus.ts'
 import { connectInProcess, toolJson, type InProcessClient } from './inprocess-client.ts'
@@ -69,6 +70,9 @@ export interface IntentToolHarnessOptions {
   /** Mass-update guard threshold override (ADR-0018; default: `import.ts`'s
    * `DEFAULT_MASS_UPDATE_WARN_THRESHOLD`, 50). */
   readonly massUpdateWarnThreshold?: number
+  /** Import ratio-guard override (ADR-0019 R6; default: `tools/import.ts`'s
+   * `DEFAULT_RATIO_GUARD_THRESHOLD`/`DEFAULT_RATIO_GUARD_FLOOR`, 0.5/10). */
+  readonly massUpdateRatio?: MassUpdateRatioThresholds
 }
 
 /** One built harness. */
@@ -114,6 +118,7 @@ export async function buildIntentToolHarness(opts: IntentToolHarnessOptions = {}
       scopeId: HARNESS_SCOPE_ID,
       ...opts.guidanceThreshold !== undefined ? { guidanceThreshold: opts.guidanceThreshold } : {},
       ...opts.massUpdateWarnThreshold !== undefined ? { massUpdateWarnThreshold: opts.massUpdateWarnThreshold } : {},
+      ...opts.massUpdateRatio !== undefined ? { massUpdateRatio: opts.massUpdateRatio } : {},
     },
   }
   const server = await buildServer(createServerFactory(deps, opts.registrars ?? TOOL_REGISTRARS))

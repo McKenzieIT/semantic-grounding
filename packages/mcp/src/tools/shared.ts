@@ -264,24 +264,47 @@ export const CONCEPT_ARRAY_REF_REDIRECT: Readonly<Record<string, string>> = {
 // ── `create_definition(kind:'concept')`'s payload + `update_definition`'s fields ─────
 
 /**
+ * The three item-verb keys a *stored* concept carries that the create-shaped
+ * payload never owns (ADR-0005 ruling 4): the declared-edge home `related_refs`
+ * plus its two suppression shadows. ADR-0019 R3's projection contract rules
+ * their presence in a create/import payload **round-trip legality, not a typo** —
+ * `get_definition` returns all eight keys, and feeding its output straight back
+ * must not zod-fail — so the schema strips them and ignores them, while every
+ * key outside the five describable fields + these three stays a genuinely
+ * unknown key zod rejects. Exported so the import path can count how many it
+ * stripped for its verdict receipt without a second copy of the list.
+ */
+export const CONCEPT_ITEM_VERB_KEYS = ['related_refs', 'suppressed_alt_labels', 'suppressed_related_refs'] as const
+
+/**
  * `create_definition(kind:'concept')`'s payload — the R3 full-payload shape plus
  * Q4(b)'s `properties`. Strict on purpose (ADR-0012's constant: tool inputs are
  * bounded by the kind's declared fields — `.loose()` is corpus compatibility, the
- * tool face rejects stray keys), and it deliberately omits `related_refs` /
- * `suppressed_*`: edges are item-level verbs (add_relation), exactly as for
- * tables/events, so they are absent here rather than redirected — a stray key is
- * a typo zod answers. `description` is required where the substrate schema
- * defaults it to `''`: a concept with no description carries nothing the
- * trajectory-driven cold start registered it FOR (the term's meaning), and the
- * search index would see a bare name.
+ * tool face rejects stray keys), with one carve-out ADR-0019 R3 adds: the three
+ * {@link CONCEPT_ITEM_VERB_KEYS} are *stripped* when present rather than
+ * rejected — edges and vetoes are item-level verbs (add_relation / add_alias),
+ * exactly as for tables/events, and a `get_definition` output carries them by
+ * construction, so their presence is a legal round-trip, not a typo. Any other
+ * stray key still is one, and zod answers it. `description` is required where
+ * the substrate schema defaults it to `''`: a concept with no description
+ * carries nothing the trajectory-driven cold start registered it FOR (the
+ * term's meaning), and the search index would see a bare name.
  */
-export const ConceptCreatePayloadSchema = z.object({
-  name: z.string().min(1),
-  description: z.string().min(1),
-  pref_label: z.string().optional(),
-  alt_labels: z.array(z.string()).default([]),
-  properties: z.record(z.string(), z.unknown()).default({}),
-}).strict()
+export const ConceptCreatePayloadSchema = z.preprocess(
+  (raw) => {
+    if (typeof raw !== 'object' || raw === null) return raw
+    const next = { ...(raw as Record<string, unknown>) }
+    for (const key of CONCEPT_ITEM_VERB_KEYS) delete next[key]
+    return next
+  },
+  z.object({
+    name: z.string().min(1),
+    description: z.string().min(1),
+    pref_label: z.string().optional(),
+    alt_labels: z.array(z.string()).default([]),
+    properties: z.record(z.string(), z.unknown()).default({}),
+  }).strict(),
+).describe('The concept\'s five describable fields (name, description, pref_label?, alt_labels, properties). related_refs / suppressed_alt_labels / suppressed_related_refs are item-verb fields managed by add_relation / add_alias — present-implies-ignored (stripped) so a get_definition output round-trips; any other unknown key is a typo and is rejected.')
 /** Parsed shape of {@link ConceptCreatePayloadSchema}. */
 export type ConceptCreatePayload = z.infer<typeof ConceptCreatePayloadSchema>
 

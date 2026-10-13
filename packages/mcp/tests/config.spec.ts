@@ -14,6 +14,7 @@
 import { describe, expect, it } from 'vitest'
 import { basename, isAbsolute, resolve } from 'node:path'
 import { ConfigError, ENV_VARS, HelpRequested, parseServerConfig, usage } from '../src/config.ts'
+import { DEFAULT_RATIO_GUARD_FLOOR, DEFAULT_RATIO_GUARD_THRESHOLD } from '../src/tools/import.ts'
 import { defaultRegistryPath } from '../src/scope-registry.ts'
 
 /** An environment with none of the server's variables set. */
@@ -228,6 +229,72 @@ describe('parseServerConfig — illegal branches', () => {
     // invocation is wrong" (64) from "your deployment is not serviceable" (78).
     const cfg = parseServerConfig(['--registry', '/definitely/not/here/scopes.yaml', '--agent-id', 'bad<name>'], NO_ENV)
     expect(cfg.agentId).toBe('bad<name>')
+  })
+})
+
+describe('parseServerConfig — mass-update ratio guard knobs (ADR-0019 R6)', () => {
+  it('leaves massUpdateRatio absent when neither knob is given, and the defaults are pinned where the guard lives', () => {
+    const cfg = parseServerConfig(['--agent-id', 'a'], NO_ENV)
+    expect(cfg.massUpdateRatio).toBeUndefined()
+    expect('massUpdateRatio' in cfg).toBe(false)
+    // The ADR-0019 numbers, pinned: 50% trip threshold, small-corpus floor 10.
+    expect(DEFAULT_RATIO_GUARD_THRESHOLD).toBe(0.5)
+    expect(DEFAULT_RATIO_GUARD_FLOOR).toBe(10)
+  })
+
+  it('accepts both knobs from flags', () => {
+    const cfg = parseServerConfig(
+      ['--agent-id', 'a', '--mass-update-ratio-threshold', '0.25', '--mass-update-ratio-floor', '25'],
+      NO_ENV,
+    )
+    expect(cfg.massUpdateRatio).toEqual({ threshold: 0.25, floor: 25 })
+  })
+
+  it('accepts one knob alone and leaves the other to its default', () => {
+    const cfg = parseServerConfig(['--agent-id', 'a', '--mass-update-ratio-floor', '3'], NO_ENV)
+    expect(cfg.massUpdateRatio).toEqual({ floor: 3 })
+  })
+
+  it('falls back to the environment, and a flag wins', () => {
+    const fromEnv = parseServerConfig([], {
+      [ENV_VARS.agentId]: 'a',
+      [ENV_VARS.massUpdateRatioThreshold]: '0.8',
+      [ENV_VARS.massUpdateRatioFloor]: '4',
+    })
+    expect(fromEnv.massUpdateRatio).toEqual({ threshold: 0.8, floor: 4 })
+    const flagWins = parseServerConfig(
+      ['--agent-id', 'a', '--mass-update-ratio-threshold', '0.1'],
+      { [ENV_VARS.massUpdateRatioThreshold]: '0.8' },
+    )
+    expect(flagWins.massUpdateRatio).toEqual({ threshold: 0.1 })
+  })
+
+  it.each([
+    ['zero', '0'],
+    ['above one', '1.5'],
+    ['negative', '-0.2'],
+    ['not a number', 'half'],
+    ['percent form', '50'],
+  ])('refuses a threshold that is %s', (_label, value) => {
+    // Refused rather than clamped: a threshold silently reinterpreted is a guard
+    // that fires (or stays silent) for reasons nobody chose — and `50` meaning
+    // 50% must be told the surface wants `0.5`.
+    expect(() => parseServerConfig(['--agent-id', 'a', '--mass-update-ratio-threshold', value], NO_ENV))
+      .toThrow(ConfigError)
+  })
+
+  it.each([
+    ['negative', '-1'],
+    ['fractional', '2.5'],
+    ['not a number', 'few'],
+  ])('refuses a floor that is %s', (_label, value) => {
+    expect(() => parseServerConfig(['--agent-id', 'a', '--mass-update-ratio-floor', value], NO_ENV))
+      .toThrow(ConfigError)
+  })
+
+  it('accepts a floor of zero (evaluating the ratio everywhere is a legal choice)', () => {
+    const cfg = parseServerConfig(['--agent-id', 'a', '--mass-update-ratio-floor', '0'], NO_ENV)
+    expect(cfg.massUpdateRatio).toEqual({ floor: 0 })
   })
 })
 

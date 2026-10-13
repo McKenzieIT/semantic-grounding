@@ -6,13 +6,17 @@
  * SDK envelope keeping one bad item from rejecting the whole call, the 500
  * cap, and the `derivation: 'agent'` narrowing. #104 later pinned ADR-0018's
  * review surface on the same tool: the `dry_run` read-only rehearsal and the
- * `updated`-keyed mass-update guard.
+ * `updated`-keyed mass-update guard. The ADR-0019 describe block below pins
+ * the re-sync policy layered on top (#111): the concept read-merge-write
+ * (R2), the round-trip projection contract (R3), table/event round-trip
+ * unchanged (R4), and the ratio guard (R6).
  *
  * @see docs/adr/0013-batch-definition-import.md
  * @see docs/adr/0018-batch-intake-review-surface.md
+ * @see docs/adr/0019-odps-resync-policy.md
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { buildIntentToolHarness, versionOf, type IntentToolHarness } from './helpers/intent-tools-harness.ts'
+import { buildIntentToolHarness, tier2, versionOf, type IntentToolHarness } from './helpers/intent-tools-harness.ts'
 import { fixtureGit } from './helpers/fixture-corpus.ts'
 import { toolJson } from './helpers/inprocess-client.ts'
 
@@ -27,7 +31,8 @@ interface ImportBody {
   readonly summary: { created: number; updated: number; skipped: number; errors: number }
   readonly _guidance?: unknown
   readonly version?: string
-  readonly warning?: string
+  /** Present only when a batch-overwrite guard tripped (zero-tax: absent, never empty). */
+  readonly warnings?: readonly string[]
 }
 
 /** The dry-run branch's response body (ADR-0018 R2) — a read-tool shape, not a write receipt. */
@@ -36,7 +41,8 @@ interface DryRunBody {
   readonly results: Array<{ index: number; kind: string; name: string; verdict: string; version?: string; detail?: string }>
   readonly staged: Array<{ index: number; kind: string; name: string; verdict: string; version?: string }>
   readonly summary: { created: number; updated: number; skipped: number; errors: number }
-  readonly warning?: string
+  /** Same guard lines a real write would carry — the preview must predict them exactly. */
+  readonly warnings?: readonly string[]
 }
 
 /** One fresh table payload — the minimal shape `TableDefinitionSchema` accepts. */
@@ -312,8 +318,8 @@ describe('import_definitions — ADR-0018 (#104 dry-run preview + mass-update gu
     expect(fixtureGit(['rev-parse', 'HEAD'], h.fixture.root).trim()).toBe(head)
     expect(h.core.loadTableDefinition('dws_dry_b')).toBeNull()
     expect(h.core.loadTableDefinition('dws_dry_a')?.table_comment).toBe('v1')
-    // A preview of a non-tripping batch carries no warning key (zero-tax: absent, not empty).
-    expect(body).not.toHaveProperty('warning')
+    // A preview of a non-tripping batch carries no warnings key (zero-tax: absent, not empty).
+    expect(body).not.toHaveProperty('warnings')
   })
 
   it('Verification: dry_run and the same call without it return item-for-item identical verdicts — the preview is a faithful rehearsal', async () => {
@@ -352,7 +358,7 @@ describe('import_definitions — ADR-0018 (#104 dry-run preview + mass-update gu
     const res = await h.client.callTool('import_definitions', { scope_id: 'fixture', items, ...provenance('cold start 60') })
     const body = toolJson(res) as unknown as ImportBody
     expect(body.summary).toEqual({ created: 60, updated: 0, skipped: 0, errors: 0 })
-    expect(body).not.toHaveProperty('warning')
+    expect(body).not.toHaveProperty('warnings')
     expect(lastMessage(h)).not.toContain('mass-update')
   })
 
@@ -364,7 +370,7 @@ describe('import_definitions — ADR-0018 (#104 dry-run preview + mass-update gu
       items: names.map(n => ({ kind: 'table' as const, definition: table(n, 'v1') })),
       ...provenance('seed v1'),
     })
-    expect((toolJson(seed) as unknown as ImportBody)).not.toHaveProperty('warning')
+    expect((toolJson(seed) as unknown as ImportBody)).not.toHaveProperty('warnings')
     const before = commitCount(h)
 
     // 51 updated > 50: the response warns, the subject is annotated, the write lands.
@@ -377,14 +383,20 @@ describe('import_definitions — ADR-0018 (#104 dry-run preview + mass-update gu
     expect(res.result?.['isError']).toBeFalsy() // soft signal, never a refusal
     expect(body.changed).toBe(true)
     expect(body.summary).toEqual({ created: 0, updated: 51, skipped: 0, errors: 0 })
-    expect(body.warning).toMatch(/^mass-update guard: this batch overwrote 51 existing definitions \(threshold 50\)/)
+    // Both guards fire independently on this batch (integration semantic):
+    // the count guard (51 > 50) AND the ratio guard (51/53 tables, 96% > 50%).
+    expect(body.warnings).toHaveLength(2)
+    expect(body.warnings?.[0]).toMatch(/^mass-update guard: 51 updated exceeds threshold 50$/)
+    expect(body.warnings?.[1]).toMatch(/ratio-guard \(ADR-0019 R6\): table 51\/53 \(96% > 50%\)/)
     expect(commitCount(h)).toBe(before + 1)
     const msg = lastMessage(h)
-    expect(msg).toMatch(/^import_definitions\(51\/51 items \(0 created, 51 updated\); mass-update guard: 51 updated exceeds threshold 50\): re-import v2$/m)
+    expect(msg).toMatch(/; mass-update guard: 51 updated exceeds threshold 50/)
+    expect(msg).toMatch(/ — ratio-guard: table 51\/53 \(96% > 50%\)/)
     // The annotation is the post-hoc reader's grep handle (ADR-0018 R4 role ③).
     expect(msg).toMatch(/X-SG-Tool: import_definitions/)
 
-    // Exactly 50 is AT the threshold, not over it: silent.
+    // Exactly 50 is AT the count threshold, not over it: the count guard is
+    // silent (the ratio guard still speaks — 50/53 is 94%).
     const at = await h.client.callTool('import_definitions', {
       scope_id: 'fixture',
       items: names.slice(0, 50).map(n => ({ kind: 'table' as const, definition: table(n, 'v3') })),
@@ -392,11 +404,11 @@ describe('import_definitions — ADR-0018 (#104 dry-run preview + mass-update gu
     })
     const atBody = toolJson(at) as unknown as ImportBody
     expect(atBody.summary).toEqual({ created: 0, updated: 50, skipped: 0, errors: 0 })
-    expect(atBody).not.toHaveProperty('warning')
+    expect(atBody.warnings?.some(w => w.startsWith('mass-update guard:'))).toBeFalsy()
     expect(lastMessage(h)).not.toContain('mass-update')
   })
 
-  it('R5: the threshold is configurable, and the dry-run preview carries the same warning the real write would get', async () => {
+  it('R5: the threshold is configurable, and the dry-run preview carries the same warnings the real write would get', async () => {
     h = await buildIntentToolHarness({ massUpdateWarnThreshold: 2 })
     const names = ['dws_thr_a', 'dws_thr_b', 'dws_thr_c']
     await h.client.callTool('import_definitions', {
@@ -407,9 +419,251 @@ describe('import_definitions — ADR-0018 (#104 dry-run preview + mass-update gu
     const v2 = { scope_id: 'fixture', items: names.map(n => ({ kind: 'table' as const, definition: table(n, 'v2') })), ...provenance('re-import v2') }
     const dry = toolJson(await h.client.callTool('import_definitions', { ...v2, dry_run: true })) as unknown as DryRunBody
     expect(dry.committed).toBe(false)
-    expect(dry.warning).toMatch(/^mass-update guard: committing this batch would overwrite 3 existing definitions \(threshold 2\)/)
+    expect(dry.warnings?.[0]).toMatch(/^mass-update guard: 3 updated exceeds threshold 2$/)
     const real = toolJson(await h.client.callTool('import_definitions', v2)) as unknown as ImportBody
-    expect(real.warning).toMatch(/^mass-update guard: this batch overwrote 3 existing definitions \(threshold 2\)/)
+    expect(real.warnings?.[0]).toMatch(/^mass-update guard: 3 updated exceeds threshold 2$/)
     expect(lastMessage(h)).toMatch(/mass-update guard: 3 updated exceeds threshold 2/)
+  })
+})
+
+describe('import_definitions — ADR-0019 (#111 re-sync projection + concept preserve + ratio guard)', () => {
+  /** Plant the full item-verb layer on a concept: one declared edge (related_refs)
+   * plus one vetoed alias (suppressed_alt_labels), both via the item-verb tools
+   * that own them — the state an `updated` overwrite must not erase. */
+  async function plantEdges(name: string): Promise<void> {
+    await h!.client.callTool('add_relation', {
+      scope_id: 'fixture', kind: 'concept', name,
+      relations: [{ target_kind: 'table', name: 'dim_shop' }],
+      expected_version: await versionOf(h!, name, 'concept'),
+      ...tier2('declare the edge', 0.9),
+    })
+    await h!.client.callTool('remove_alias', {
+      scope_id: 'fixture', kind: 'concept', name, labels: ['弃用旧称'],
+      expected_version: await versionOf(h!, name, 'concept'),
+      ...tier2('veto the stale label', 0.9),
+    })
+  }
+
+  it('R2: a concept `updated` preserves on-disk related_refs/suppressed_* — the data-loss regression', async () => {
+    h = await buildIntentToolHarness()
+    await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: [{ kind: 'concept', definition: concept('drift_concept', 'v1 meaning') }],
+      ...provenance('seed'),
+    })
+    await plantEdges('drift_concept')
+    const before = h.core.loadConceptDefinition('drift_concept')
+    expect(before?.related_refs).toHaveLength(1)
+    expect(before?.suppressed_alt_labels).toEqual(['弃用旧称'])
+
+    // The drifted re-import: five describable keys changed, item-verb keys absent.
+    const res = await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: [{ kind: 'concept', definition: concept('drift_concept', 'v2 meaning after ODPS drift') }],
+      ...provenance('re-sync after drift'),
+    })
+    const body = toolJson(res) as unknown as ImportBody
+    expect(body.summary).toEqual({ created: 0, updated: 1, skipped: 0, errors: 0 })
+    const after = h.core.loadConceptDefinition('drift_concept')
+    // The overwrite landed on the describable layer…
+    expect(after?.description).toBe('v2 meaning after ODPS drift')
+    // …and the item-verb layer survived it (R2: import never writes edges, so it
+    // must never erase them — concepts have no enrichment round to re-derive a
+    // dropped edge; before #111 this read back [] and the veto was gone).
+    expect(after?.related_refs).toEqual(before?.related_refs)
+    expect(after?.suppressed_alt_labels).toEqual(['弃用旧称'])
+    // #108's receipt still names the merged file: updateConceptMeta's version
+    // is the written sha, exactly what a later expected_version needs.
+    expect(row(body, 0).version).toBe(await versionOf(h, 'drift_concept', 'concept'))
+  })
+
+  it('R3: a get_definition concept output feeds straight back — no zod failure, keys stripped and receipted', async () => {
+    h = await buildIntentToolHarness()
+    await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: [{ kind: 'concept', definition: concept('roundtrip_c', 'v1 meaning') }],
+      ...provenance('seed'),
+    })
+    await plantEdges('roundtrip_c')
+    const read = toolJson(await h.client.callTool('get_definition', { kind: 'concept', name: 'roundtrip_c' })) as {
+      readonly definition: Record<string, unknown>
+    }
+    // get_definition's output carries all eight keys — the exact object #94's
+    // dogfood could not feed back.
+    expect('related_refs' in read.definition).toBe(true)
+    expect('suppressed_alt_labels' in read.definition).toBe(true)
+    expect('suppressed_related_refs' in read.definition).toBe(true)
+
+    // Unmodified re-feed: five-key projection equal → skipped (idempotent), with
+    // the strip receipt on the row.
+    const same = toolJson(await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: [{ kind: 'concept', definition: read.definition }],
+      ...provenance('round-trip, unchanged'),
+    })) as unknown as ImportBody
+    expect(same.summary).toEqual({ created: 0, updated: 0, skipped: 1, errors: 0 })
+    expect(row(same, 0).detail).toBe('ignored 3 item-verb keys (related_refs/suppressed_* are add_relation/add_alias territory)')
+
+    // Drifted re-feed (description changed, item-verb keys still riding along
+    // from the get_definition output): updated, edges preserved.
+    const changed = toolJson(await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: [{ kind: 'concept', definition: { ...read.definition, description: 'v2 meaning after drift' } }],
+      ...provenance('round-trip, drifted'),
+    })) as unknown as ImportBody
+    expect(changed.summary).toEqual({ created: 0, updated: 1, skipped: 0, errors: 0 })
+    expect(row(changed, 0).detail).toMatch(/^ignored 3 item-verb keys/)
+    expect(h.core.loadConceptDefinition('roundtrip_c')?.related_refs).toHaveLength(1)
+  })
+
+  it('R3: a genuinely unknown concept key is still REJECTED — typo-catching does not regress', async () => {
+    h = await buildIntentToolHarness()
+    const res = await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: [{ kind: 'concept', definition: { ...concept('typo_c'), relted_refs: [] } }],
+      ...provenance('s'),
+    })
+    const body = toolJson(res) as unknown as ImportBody
+    expect(body.summary).toEqual({ created: 0, updated: 0, skipped: 0, errors: 1 })
+    expect(row(body, 0).detail).toMatch(/zod:.*[Uu]nrecognized key/)
+  })
+
+  it('R4: table round-trip is unchanged — inline dimension_refs survive the full-payload overwrite', async () => {
+    h = await buildIntentToolHarness()
+    // Seed with an inline dimension_ref (the K11 shape: refs ride the payload).
+    await h.client.callTool('create_definition', {
+      scope_id: 'fixture', kind: 'table',
+      table: table('dws_rt', 'v1 comment'),
+      summary: 'seed', derivation: 'agent', confidence: 0.9,
+    })
+    await h.client.callTool('add_relation', {
+      scope_id: 'fixture', kind: 'table', name: 'dws_rt',
+      relations: [{ dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] }],
+      expected_version: await versionOf(h, 'dws_rt'),
+      ...tier2('declare the join', 0.9),
+    })
+    const read = toolJson(await h.client.callTool('get_definition', { kind: 'table', name: 'dws_rt' })) as {
+      readonly definition: Record<string, unknown>
+    }
+    // The get_definition output (dimension_refs riding inline, `.loose()`
+    // round-trip) fed straight back with a drifted comment: full overwrite for
+    // tables/events, refs are payload fields — behavior deliberately unchanged.
+    const res = await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: [{ kind: 'table', definition: { ...read.definition, table_comment: 'v2 comment' } }],
+      ...provenance('re-sync'),
+    })
+    const body = toolJson(res) as unknown as ImportBody
+    expect(body.summary).toEqual({ created: 0, updated: 1, skipped: 0, errors: 0 })
+    const after = h.core.loadTableDefinition('dws_rt')
+    expect(after?.table_comment).toBe('v2 comment')
+    expect(after?.dimension_refs).toHaveLength(1)
+  })
+
+  it('R6: cold start (all created) is silent — no warnings key, no trailer', async () => {
+    h = await buildIntentToolHarness({ fixtureOpts: { withDim: false } })
+    const res = await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: [0, 1, 2, 3].map(i => ({ kind: 'table' as const, definition: table(`dws_cold_${i}`) })),
+      ...provenance('cold start'),
+    })
+    const body = toolJson(res) as unknown as ImportBody
+    expect(body.summary).toEqual({ created: 4, updated: 0, skipped: 0, errors: 0 })
+    expect(body).not.toHaveProperty('warnings')
+    expect(lastMessage(h)).not.toMatch(/ratio-guard/)
+  })
+
+  it('R6: drift over the default threshold WARNs and annotates the commit trailer (default 50%/floor 10 pinned)', async () => {
+    h = await buildIntentToolHarness({ fixtureOpts: { withDim: false } })
+    // Existing tables after seeding: 1 fixture + 11 seeded = 12 (≥ floor 10).
+    await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: Array.from({ length: 11 }, (_, i) => ({ kind: 'table' as const, definition: table(`dws_ratio_${i}`) })),
+      ...provenance('seed the corpus'),
+    })
+    // Update 8 of 12 = 67% > 50% at the DEFAULT config — the guard fires.
+    const res = await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: Array.from({ length: 8 }, (_, i) => ({ kind: 'table' as const, definition: table(`dws_ratio_${i}`, 'drifted comment') })),
+      ...provenance('re-sync after drift'),
+    })
+    const body = toolJson(res) as unknown as ImportBody
+    expect(body.summary).toEqual({ created: 0, updated: 8, skipped: 0, errors: 0 })
+    expect(body.warnings).toHaveLength(1)
+    expect(body.warnings?.[0]).toMatch(/ratio-guard \(ADR-0019 R6\): table 8\/12 \(67% > 50%\)/)
+    // The trailer rides the commit subject via the intent target — the post-hoc
+    // git-log reader's grep handle (same channel ADR-0018 R4 chose).
+    const msg = lastMessage(h)
+    expect(msg).toMatch(/import_definitions\(8\/8 items \(0 created, 8 updated\) — ratio-guard: table 8\/12 \(67% > 50%\)\)/)
+  })
+
+  it('R6: below the default threshold (4/12 = 33%) stays silent', async () => {
+    h = await buildIntentToolHarness({ fixtureOpts: { withDim: false } })
+    await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: Array.from({ length: 11 }, (_, i) => ({ kind: 'table' as const, definition: table(`dws_quiet_${i}`) })),
+      ...provenance('seed the corpus'),
+    })
+    const res = await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: Array.from({ length: 4 }, (_, i) => ({ kind: 'table' as const, definition: table(`dws_quiet_${i}`, 'drifted comment') })),
+      ...provenance('re-sync after drift'),
+    })
+    const body = toolJson(res) as unknown as ImportBody
+    expect(body.summary).toEqual({ created: 0, updated: 4, skipped: 0, errors: 0 })
+    expect(body).not.toHaveProperty('warnings')
+    expect(lastMessage(h)).not.toMatch(/ratio-guard/)
+  })
+
+  it('R6: below the default floor (6 existing) stays silent even at 100% — small corpora are the count guard\'s call', async () => {
+    h = await buildIntentToolHarness({ fixtureOpts: { withDim: false } })
+    await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: Array.from({ length: 5 }, (_, i) => ({ kind: 'table' as const, definition: table(`dws_floor_${i}`) })),
+      ...provenance('seed the corpus'),
+    })
+    const res = await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: Array.from({ length: 5 }, (_, i) => ({ kind: 'table' as const, definition: table(`dws_floor_${i}`, 'drifted comment') })),
+      ...provenance('re-sync after drift'),
+    })
+    const body = toolJson(res) as unknown as ImportBody
+    // 5/6 = 83% > 50%, but existing 6 < floor 10: ratio over a tiny corpus is
+    // noise, only the absolute count guard (ADR-0018, #104) applies.
+    expect(body.summary).toEqual({ created: 0, updated: 5, skipped: 0, errors: 0 })
+    expect(body).not.toHaveProperty('warnings')
+  })
+
+  it('R6: both knobs are configurable — threshold 1 never trips, floor 5 lets the small corpus trip', async () => {
+    // threshold 1: 8/12 = 67% no longer exceeds it.
+    h = await buildIntentToolHarness({ fixtureOpts: { withDim: false }, massUpdateRatio: { threshold: 1 } })
+    await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: Array.from({ length: 11 }, (_, i) => ({ kind: 'table' as const, definition: table(`dws_cfg_${i}`) })),
+      ...provenance('seed the corpus'),
+    })
+    const quiet = toolJson(await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: Array.from({ length: 8 }, (_, i) => ({ kind: 'table' as const, definition: table(`dws_cfg_${i}`, 'drifted comment') })),
+      ...provenance('re-sync after drift'),
+    })) as unknown as ImportBody
+    expect(quiet.summary).toEqual({ created: 0, updated: 8, skipped: 0, errors: 0 })
+    expect(quiet).not.toHaveProperty('warnings')
+  })
+
+  it('R6: a lower floor lets the small corpus evaluate and trip (floor is a real knob)', async () => {
+    // floor 5: the 5/6 corpus from the floor test now evaluates and trips.
+    h = await buildIntentToolHarness({ fixtureOpts: { withDim: false }, massUpdateRatio: { floor: 5 } })
+    await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: Array.from({ length: 5 }, (_, i) => ({ kind: 'table' as const, definition: table(`dws_cfg2_${i}`) })),
+      ...provenance('seed the corpus'),
+    })
+    const loud = toolJson(await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: Array.from({ length: 5 }, (_, i) => ({ kind: 'table' as const, definition: table(`dws_cfg2_${i}`, 'drifted comment') })),
+      ...provenance('re-sync after drift'),
+    })) as unknown as ImportBody
+    expect(loud.warnings?.[0]).toMatch(/table 5\/6 \(83% > 50%\)/)
   })
 })

@@ -36,10 +36,15 @@
  * bootstrap door for a new corpus is the `register_scope` **tool**, full stop; posture
  * checks moved to the three binding moments (register / switch / `--scope`).
  *
- * ADR-0018 R5 (#104) later added the one deliberate exception,
- * `--mass-update-warn-threshold`: an operator tuning how loudly `import_definitions`
- * overwrites are flagged wants to do it at startup, not by rebuilding a
- * `ServerConfig` — the same reasoning that keeps `--lock-timeout-ms` a flag.
+ * ## The guard flags ADR-0018/0019 reopened
+ *
+ * The batch-overwrite guards are the one surface added past those four flags:
+ * ADR-0018 R5's absolute-count threshold (#104, `--mass-update-warn-threshold`)
+ * and ADR-0019 R6's ratio guard (#111, `--mass-update-ratio-threshold` /
+ * `--mass-update-ratio-floor`). Both are soft signals a corpus operator may
+ * legitimately want to tune per fleet — the same reachability argument the
+ * flag/env pair always makes — and both land in `ServerConfig` next to the
+ * other knobs, not in any new config file.
  *
  * ## What is deliberately not configurable
  *
@@ -76,7 +81,25 @@ export const ENV_VARS = {
   scope: 'SG_SCOPE',
   lockTimeoutMs: 'SG_LOCK_TIMEOUT_MS',
   massUpdateWarnThreshold: 'SG_MASS_UPDATE_WARN_THRESHOLD',
+  massUpdateRatioThreshold: 'SG_MASS_UPDATE_RATIO_THRESHOLD',
+  massUpdateRatioFloor: 'SG_MASS_UPDATE_RATIO_FLOOR',
 } as const
+
+/**
+ * The batch-overwrite ratio guard's two knobs (ADR-0019 R6): the per-kind
+ * `updated(kind)/existing(kind)` threshold that trips the soft WARN, and the
+ * small-corpus floor below which the ratio stays silent (only the absolute
+ * count guard, ADR-0018 / #104, applies — a ratio over a two-definition corpus
+ * is noise). Each side defaults independently when absent; the defaults live
+ * beside the guard (`tools/import.ts`) the same way the guidance thresholds
+ * default beside `tools/guidance.ts`.
+ */
+export interface MassUpdateRatioThresholds {
+  /** Trip threshold as a fraction of the kind's existing corpus, 0–1 exclusive of 0 (default 0.5). */
+  readonly threshold?: number
+  /** Minimum existing definitions of a kind before its ratio is evaluated (default 10). */
+  readonly floor?: number
+}
 
 /** The validated startup configuration. */
 export interface ServerConfig {
@@ -100,6 +123,16 @@ export interface ServerConfig {
   readonly scopeId?: string
   /** Corpus-lock acquisition timeout; absent means `lock.ts`'s 10s default. */
   readonly lockTimeoutMs?: number
+  /**
+   * The batch-overwrite ratio guard's threshold + small-corpus floor
+   * (ADR-0019 R6), reached via `--mass-update-ratio-threshold` /
+   * `--mass-update-ratio-floor` or their env vars — the same flag/env
+   * reopening ADR-0018 R5 made for its count-guard sibling (`#104`). Absent
+   * sides default to `tools/import.ts`'s `DEFAULT_RATIO_GUARD_THRESHOLD` (0.5)
+   * / `DEFAULT_RATIO_GUARD_FLOOR` (10). Soft signal only: a trip WARNs and
+   * annotates the commit trailer, never rejects the write.
+   */
+  readonly massUpdateRatio?: MassUpdateRatioThresholds
   /**
    * Per-layer `_guidance` maturity thresholds (`tools/guidance.ts`): DW (tables +
    * events) and KG (concepts) track independently (#55 R4/R12), each reaching
@@ -176,6 +209,8 @@ const OPTIONS = {
   scope: { type: 'string' },
   'lock-timeout-ms': { type: 'string' },
   'mass-update-warn-threshold': { type: 'string' },
+  'mass-update-ratio-threshold': { type: 'string' },
+  'mass-update-ratio-floor': { type: 'string' },
   help: { type: 'boolean', short: 'h' },
 } as const
 
@@ -222,6 +257,18 @@ export function usage(): string {
     `                           default 50). The warning also annotates the`,
     `                           commit subject for post-hoc git log review.`,
     `                           env: ${ENV_VARS.massUpdateWarnThreshold}`,
+    `  --mass-update-ratio-threshold <f>`,
+    `                           The import ratio guard's trip point: a kind's`,
+    `                           updated/existing share above this fraction WARNs`,
+    `                           and annotates the commit trailer (ADR-0019 R6;`,
+    `                           fraction in (0,1], default 0.5, soft signal).`,
+    `                           env: ${ENV_VARS.massUpdateRatioThreshold}`,
+    `  --mass-update-ratio-floor <n>`,
+    `                           Below this many existing definitions of a kind the`,
+    `                           ratio guard stays silent (whole number >= 0,`,
+    `                           default 10 — tiny corpora get the count guard,`,
+    `                           not the ratio).`,
+    `                           env: ${ENV_VARS.massUpdateRatioFloor}`,
     `  -h, --help               Print this text.`,
     '',
     'A flag always wins over its environment variable.',
@@ -283,6 +330,9 @@ export function parseServerConfig(
   const scopeId = pick(values.scope, env[ENV_VARS.scope])
   const lockTimeoutMs = parseLockTimeout(pick(values['lock-timeout-ms'], env[ENV_VARS.lockTimeoutMs]))
   const massUpdateWarnThreshold = parseMassUpdateWarnThreshold(pick(values['mass-update-warn-threshold'], env[ENV_VARS.massUpdateWarnThreshold]))
+  const massUpdateRatioThreshold = parseRatioThreshold(pick(values['mass-update-ratio-threshold'], env[ENV_VARS.massUpdateRatioThreshold]))
+  const massUpdateRatioFloor = parseRatioFloor(pick(values['mass-update-ratio-floor'], env[ENV_VARS.massUpdateRatioFloor]))
+  const hasRatio = massUpdateRatioThreshold !== undefined || massUpdateRatioFloor !== undefined
 
   return {
     // Resolved here, once, so every downstream message names the file actually used
@@ -292,6 +342,12 @@ export function parseServerConfig(
     ...scopeId !== undefined ? { scopeId } : {},
     ...lockTimeoutMs !== undefined ? { lockTimeoutMs } : {},
     ...massUpdateWarnThreshold !== undefined ? { massUpdateWarnThreshold } : {},
+    ...hasRatio ? {
+      massUpdateRatio: {
+        ...massUpdateRatioThreshold !== undefined ? { threshold: massUpdateRatioThreshold } : {},
+        ...massUpdateRatioFloor !== undefined ? { floor: massUpdateRatioFloor } : {},
+      },
+    } : {},
   }
 }
 
@@ -347,6 +403,48 @@ function parseMassUpdateWarnThreshold(raw: string | undefined): number | undefin
     throw new ConfigError(
       `mass-update warn threshold ${JSON.stringify(raw)} is not a whole number >= 0`,
       `pass a value like \`--mass-update-warn-threshold 50\` (warn when a batch would update more than that many definitions), or omit it for the default`,
+    )
+  }
+  return n
+}
+
+/**
+ * Validate the ratio guard's trip threshold.
+ * @param raw - the value from either carrier, or undefined.
+ * @returns the fraction, or undefined to take the guard's default (0.5).
+ * @throws ConfigError when the value is not a number in (0, 1]. Refused rather
+ *   than clamped for the same reason the lock timeout is: a threshold silently
+ *   reinterpreted is a guard that fires (or stays silent) for reasons nobody
+ *   chose, and the operator who typed `50` meaning 50% deserves to be told the
+ *   surface wants `0.5`.
+ */
+function parseRatioThreshold(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0 || n > 1) {
+    throw new ConfigError(
+      `mass-update ratio threshold ${JSON.stringify(raw)} is not a fraction in (0, 1]`,
+      `pass a fraction like \`--mass-update-ratio-threshold 0.5\` (50%), or omit it for the default`,
+    )
+  }
+  return n
+}
+
+/**
+ * Validate the ratio guard's small-corpus floor.
+ * @param raw - the value from either carrier, or undefined.
+ * @returns the floor, or undefined to take the guard's default (10).
+ * @throws ConfigError when the value is not a non-negative whole number — 0 is
+ *   legal on purpose (an operator who wants the ratio evaluated everywhere,
+ *   tiny corpora included, may say so).
+ */
+function parseRatioFloor(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n < 0) {
+    throw new ConfigError(
+      `mass-update ratio floor ${JSON.stringify(raw)} is not a whole number >= 0`,
+      `pass a count like \`--mass-update-ratio-floor 10\`, or omit it for the default`,
     )
   }
   return n
