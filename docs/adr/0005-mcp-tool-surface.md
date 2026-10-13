@@ -239,3 +239,31 @@ substrate 新增两个原语（`writeConceptYaml`/`updateConceptMeta`，对齐 `
 跨落点文件批，整批拒绝（写前，可读错误指路拆批）。原「#37 §3 keeps `add_*`
 single: no measured pain」的立场，被 [#103](https://github.com/McKenzieIT/semantic-grounding/issues/103)
 的 measured pain（add_alias 31+ / add_relation 4 次串行写）推翻而重开。
+
+## Update 2026-10-14 — #105 裁决：读面清单五扩六（`list_definitions` 索引形），Consequences 的 list Followup 兑现
+
+[#105](https://github.com/McKenzieIT/semantic-grounding/issues/105)（map #89）兑现了 Consequences
+里挂着触发条件的那条 Followup——「`list_definitions` 全量（审计扫描类场景出现时）」。触发条件由
+map #89 的工作流前提踩中：接手无 manifest 的预存 scope（单宿主 MCP + 远程 agent 形态下语料在
+服务端，agent 没有 bash-ls 语料目录这条路）+ #93 裁定的事后 git 审计需要「这 scope 里现在有什么」
+的库存视线；实测规模（dogfood 182 / k11 786 定义）> search 的 `top_k ≤ 50` 硬顶。七项裁决
+（grilling 一轮全签）：
+
+1. **新增 `list_definitions(kinds?)`**——第 28 个工具；`kinds` 复用 search 的缩围语义，无其他
+   参数；`list_*` 命名对齐管理面先例（list_scopes / list_suggestions）。
+2. **索引行 `{id, kind, label, domains}`，不含 description**——ADR-0008 索引/题面分离判例（含
+   描述会把 k11 786 行从 ~2–3 万 token 撑到十几万）；描述走 `get_definition`。确定性排序
+   kind、id 字典序（审计对比要可复现；search 是排名序、list 是库存序，两序并存不混）。
+3. **cap 1000 行代码常量 + `total` + `truncated`**（非配置面）——ADR-0008 裁决 4 判例；k11 786
+   < 1000 旗舰语料不截断。
+4. **`top_k ≤ 50` 不动**——枚举是 list 的职责；search 的 top_k 是「排名截断」非库存通道，撑到
+   786 等于让 search 兼职 dump，ADR-0008 裁决 1 已拒绝「top_k 兼管清单」（两个变窄旋钮语义不同）。
+5. **分页不重开**——`tools/call` 协议层无分页通道（#29 SDK 源码实测），ADR-0008 已裁，免重探。
+6. **编译目标 = 既有 `projectGraphNodes`**（Core 公共方法，`read.ts` 的 `buildCandidates` 已走
+   同路，含 derived metrics）——**零 substrate 改动**，#79「勿反向加宽」无虞。
+7. **记录形态 = 本 Update，不开新 ADR**——单工具增量不够「真取舍 + 难逆转」的开新 ADR 门槛
+   （#108 / #109 的 Update 先例）；GLOSSARY「five read-only intent tools」句随执行落地改六。
+
+裁决 6 的读面清单由五扩六（工具总数 27→28）；当年拒绝的「**verbatim 全量倾倒**（321 表原文非
+agent 所需）」维持拒绝——索引行不是 verbatim definition，被拒形状与被采纳形状不同物。执行见
+[#112](https://github.com/McKenzieIT/semantic-grounding/issues/112)。
