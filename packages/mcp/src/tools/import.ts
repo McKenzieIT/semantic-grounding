@@ -58,8 +58,7 @@ import { dumpYaml, EventDefinitionSchema, TableDefinitionSchema, writeEventYaml,
 import { z } from 'zod'
 import { toToolErrorResult } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
-import { assertScopeMatch, auditedWrite, scopeStamp, toolSuccess } from './audited.ts'
-import { guidanceField } from './guidance.ts'
+import { assertScopeMatch, auditedWrite, toolSuccess, writeReceipt } from './audited.ts'
 import { ConceptCreatePayloadSchema, ConfidenceSchema, ScopeIdSchema, SummarySchema } from './shared.ts'
 
 /** The bulk-import tool's single name (#54 R6 — intent-level, an `import_` verb joins the surface). */
@@ -106,6 +105,12 @@ export interface ImportItemResult {
   /** Best-effort name: the parsed definition's identity field, or `?` when zod never got that far. */
   readonly name: string
   readonly verdict: 'created' | 'updated' | 'skipped' | 'error'
+  /** The item's backing-file sha256 fingerprint (#108's per-item write
+   * receipt): present on every row whose file this call left settled —
+   * `created`/`updated` from the write primitive, `skipped` resolved in-lock
+   * (nothing was written, so the file's current fingerprint is the receipt);
+   * `error` rows carry none (there is no settled file state to name). */
+  readonly version?: string
   /** Present on `error` rows: the zod issue or the duplicate-name conflict. */
   readonly detail?: string
 }
@@ -272,6 +277,19 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
           ctx,
           { tool: 'import_definitions', target: intentTarget, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
           async () => {
+            // Skipped rows' write receipts first, inside the lock: nothing is
+            // written for them, so the receipt is the file's CURRENT
+            // fingerprint — and the lock guarantees it cannot move between
+            // here and the response (#108 / #107 Q3).
+            for (const [i, row] of results.entries()) {
+              if (row.verdict !== 'skipped') continue
+              const current = row.kind === 'table'
+                ? snap.core.loadTableDefinitionWithVersion(row.name)
+                : row.kind === 'event'
+                  ? snap.core.loadEventDefinitionWithVersion(row.name)
+                  : snap.core.loadConceptDefinitionWithVersion(row.name)
+              results[i] = { ...row, ...current?.version !== undefined ? { version: current.version } : {} }
+            }
             const batch = snap.recorder.beginBatch()
             const tier2 = { recorder: snap.recorder, scope_id: snap.scopeId }
             try {
@@ -286,7 +304,7 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
                     ? await writeEventYaml(root, item.name, dumpYaml(item.event), tier2)
                     : await snap.core.writeConceptYaml(item.name, item.concept)
                 results.push(res.ok
-                  ? { index: item.index, kind: item.kind, name: item.name, verdict: item.verdict }
+                  ? { index: item.index, kind: item.kind, name: item.name, verdict: item.verdict, version: res.version }
                   : { index: item.index, kind: item.kind, name: item.name, verdict: 'error', detail: res.error })
                 if (res.ok) batch.record('import_definitions', { kind: item.kind, name: item.name })
               }
@@ -305,15 +323,14 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
         const summary: ImportSummary = { created: count('created'), updated: count('updated'), skipped: count('skipped'), errors: count('error') }
         results.sort((a, b) => a.index - b.index)
 
-        const guidance = await guidanceField(snap, deps.config.guidanceThreshold)
-        return toolSuccess({
-          scope: scopeStamp(snap),
-          commit: audited.commit,
-          changed: audited.changed,
-          results,
-          summary,
-          ...guidance,
-        })
+        // No top-level `version`: one batch spans many files, so the
+        // fingerprint rides each row — the envelope's `import` writePath
+        // leaves it (and `enrichment_health`) absent by construction.
+        return toolSuccess(await writeReceipt(snap, deps, audited, {
+          tool: 'import_definitions',
+          writePath: 'import',
+          domain: { results, summary },
+        }))
       } catch (e) {
         return toToolErrorResult(e)
       }

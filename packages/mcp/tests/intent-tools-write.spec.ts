@@ -267,3 +267,41 @@ describe('preserve-filter regression — an origin-omitted tool write survives e
     expect(survivingRef).not.toHaveProperty('origin')
   })
 })
+
+describe('write receipts — the version round-trip closes without a read-back (#108)', () => {
+  it('chains create → update → add_alias → idempotent add_alias on receipt versions alone', async () => {
+    h = await buildIntentToolHarness()
+    // Zero get_definition calls below: every baseline is the previous
+    // response's `version` — the measured pain this receipt retired.
+    const created = toolJson(await h.client.callTool('create_definition', { scope_id: 'fixture',
+      kind: 'table',
+      table: { table_name: 'dws_chain', partitions: [{ name: 'ds', type: 'string' }], columns: [] },
+      ...tier2('首次落地', 0.9),
+    })) as { version: string }
+    expect(created.version).toMatch(/^[0-9a-f]{64}$/)
+
+    const updated = toolJson(await h.client.callTool('update_definition', { scope_id: 'fixture',
+      kind: 'table', name: 'dws_chain', fields: { description: '链式回执' },
+      ...tier2('补充描述', 0.9), expected_version: created.version,
+    })) as { version: string; changed: boolean }
+    expect(updated.changed).toBe(true)
+    expect(updated.version).toMatch(/^[0-9a-f]{64}$/)
+    expect(updated.version).not.toBe(created.version)
+
+    const aliased = toolJson(await h.client.callTool('add_alias', { scope_id: 'fixture',
+      kind: 'table', name: 'dws_chain', alias: '链式表',
+      ...tier2('加别名', 0.9), expected_version: updated.version,
+    })) as { version: string; changed: boolean }
+    expect(aliased.changed).toBe(true)
+    expect(aliased.version).not.toBe(updated.version)
+
+    // The idempotent repeat: no commit, and the receipt still names the
+    // file's CURRENT fingerprint (#107 Q2/Q3's "no-op 恒返当前指纹").
+    const repeat = toolJson(await h.client.callTool('add_alias', { scope_id: 'fixture',
+      kind: 'table', name: 'dws_chain', alias: '链式表',
+      ...tier2('再加同名别名', 0.9), expected_version: aliased.version,
+    })) as { version: string; changed: boolean }
+    expect(repeat.changed).toBe(false)
+    expect(repeat.version).toBe(aliased.version)
+  })
+})

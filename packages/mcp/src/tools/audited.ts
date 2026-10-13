@@ -8,8 +8,8 @@
  *
  * ## Why a module, not a convention
  *
- * Eight call sites is eight chances to get the ceremony subtly wrong, and the
- * ceremony is where the load-bearing facts live: the **entry snapshot** is
+ * Eight call sites is eight chances to get the ceremony subtly wrong, and
+ * the ceremony is where the load-bearing facts live: the **entry snapshot** is
  * resolved synchronously before any `await` and threaded through everything
  * else (ADR-0011 ruling 1 — a handler that straddles a `switch_scope` serves
  * the scope it bound at entry: writes land in that repo with that identity's
@@ -26,16 +26,28 @@
  * at entry, hand it to {@link auditedWrite}, and stay oblivious to *which*
  * core instance served the call.
  *
- * ## `enrichment_health` has exactly one home
+ * ## The write envelope has exactly one home (#108 / map #106)
  *
- * {@link enrichmentHealthAfter} is the single place that knows which write
- * paths ran the on-write enrichment hook: table writes
+ * {@link writeReceipt} assembles the response every commit-class tool
+ * returns: the stamp (`scope`), the recorder's verdict (`commit`, `changed`),
+ * the write receipt's `version` fingerprint, and the two zero-tax keys whose
+ * presence is path-dependent — `enrichment_health` (which write paths ran the
+ * on-write hook) and `_guidance` (which tools carry it, an explicit 7-name
+ * list). Before #108 those decisions were inlined across eight assembly
+ * points (items' `itemResponseBase`, write's three create branches + update,
+ * enrichment's apply/run, import), each with its own paraphrase; the tool
+ * handlers now contribute only their domain keys (`opts.domain`) and the
+ * facts only they know (`tool`, `writePath`, `version`).
+ *
+ * `enrichmentHealthAfter` is the envelope's internal half — the one place
+ * that knows which write paths ran the on-write enrichment hook: table writes
  * (`updateTableMeta` calls `enrichOnWrite`) did, event writes
  * (`updateEventMeta`) did not — the event hook remains deferred, see the Core
- * class's own note on `discoverEventRelations` — and an enrichment round
- * (`apply_enrichment`/`run_enrichment`) always reports. Before this module
- * that knowledge was a `kind === 'table' ?` ternary copy-pasted across five
- * handlers, each with its own paraphrase of why.
+ * class's own note on `discoverEventRelations` — concept writes did not
+ * either (concepts have no enrichment rounds at all, ADR-0012 / #46), an
+ * enrichment round (`apply_enrichment`/`run_enrichment`) always reports, and
+ * the import path never runs a hook (it compiles to the raw create
+ * primitives, which have none).
  *
  * @module tools/audited
  */
@@ -44,7 +56,9 @@ import type { EnrichmentHealthEntry } from '@semantic-grounding/substrate'
 import type { ScopeBinding } from '../binding.ts'
 import type { Derivation } from '../git/message.ts'
 import type { AuditedResult } from '../git/recorder.ts'
+import type { ServerDeps } from '../server.ts'
 import { ScopeMismatchError } from '../errors.ts'
+import { maybeGuidance } from './guidance.ts'
 import { clientNameFromEnvelope } from './shared.ts'
 
 /**
@@ -138,25 +152,114 @@ export function scopeStamp(snap: ScopeBinding): Readonly<{ id: string; root: str
  * note on `discoverEventRelations`), `'concept'` did not either — concepts
  * have no enrichment rounds at all (ADR-0012 / #46 measured 'concept'
  * zero-hit in enrichment*.ts; reporting health for a concept write would be
- * the exact misattribution the event branch already refuses), and `'round'`
- * always did (`apply_enrichment`/`run_enrichment` enrich by definition).
+ * the exact misattribution the event branch already refuses), `'round'`
+ * always did (`apply_enrichment`/`run_enrichment` enrich by definition), and
+ * neither `'import'` nor `'create'` ever did — both compile to the raw
+ * create primitives, which have no hook (ADR-0005 ruling 5: create
+ * deliberately gets none; #108 folded both values in — a `'create'` distinct
+ * from `'table'` is what keeps create_definition(table) from reporting
+ * health an update-family table write left behind).
  *
  * This used to be a `kind === 'table' ?` ternary copy-pasted across five
  * handlers. Reporting health for an *event* write would misattribute whatever
  * an earlier table write left behind — the failure mode this function exists
  * to make impossible to re-introduce by accident.
  * @param snap - the entry snapshot.
- * @param writePath - which write path just ran: the kind for the meta-update
- *   tools, or `'round'` for the enrichment tools.
+ * @param writePath - which write path just ran: `'table'`/`'event'`/
+ *   `'concept'` for the meta-update family, `'create'` for the raw-create
+ *   family, `'round'` for the enrichment tools, `'import'` for the bulk path.
  * @returns the health snapshot to inline, or `undefined` when the write path
  *   has no hook — a response key that must stay absent, never an empty array.
  */
-export function enrichmentHealthAfter(
+function enrichmentHealthAfter(
   snap: ScopeBinding,
-  writePath: 'table' | 'event' | 'concept' | 'round',
+  writePath: 'table' | 'event' | 'concept' | 'create' | 'round' | 'import',
 ): readonly EnrichmentHealthEntry[] | undefined {
-  if (writePath === 'event' || writePath === 'concept') return undefined
+  if (writePath !== 'table' && writePath !== 'round') return undefined
   return snap.core.getEnrichmentHealth()
+}
+
+/**
+ * The tools whose write responses carry `_guidance` — #55/#56's model, an
+ * explicit list rather than a rule, so membership is a named fact a test can
+ * pin (the two enrichment verbs are deliberately absent: their callers are
+ * mid-round, not seeding a scope). Exported for that membership test alone.
+ */
+export const GUIDANCE_TOOL_NAMES = [
+  'create_definition',
+  'update_definition',
+  'add_alias',
+  'remove_alias',
+  'add_relation',
+  'remove_relation',
+  'import_definitions',
+] as const
+
+/** The `{commit, changed}` half of {@link writeReceipt}'s `res` — exactly
+ * `AuditedResult`'s record half; the value rides `opts` instead. */
+type ReceiptRecord = { readonly commit: string; readonly changed: boolean }
+
+/** What only the calling tool knows about its own response (#108 / #107 Q1). */
+export interface WriteReceiptOpts {
+  /** The intent tool driving this write — gates `_guidance` against the
+   * explicit 7-name list, and nothing else. */
+  readonly tool: string
+  /** Which write path just ran — gates `enrichment_health`: `'table'`
+   * (meta-update family) and `'round'` report; `'event'`/`'concept'` have no
+   * hook, and `'create'`/`'import'` compile to the raw create primitives,
+   * which have none — for all four the key stays absent rather than
+   * misattributing an earlier table write's residue. */
+  readonly writePath: 'table' | 'event' | 'concept' | 'create' | 'round' | 'import'
+  /** The write receipt's fingerprint (#107 Q2/Q3): the sha256 of the file
+   * this write touched, as the whole write left it (post-hook for tables).
+   * Absent for the non-definition write paths (`round`) and for the import
+   * top level (one batch spans many files — the fingerprint rides each row). */
+  readonly version?: string
+  /** The calling tool's own response keys, tail-spread after the envelope
+   * (`results`, `summary`, …). Envelope keys win: a domain key colliding
+   * with `scope`/`commit`/`changed`/`version`/`enrichment_health`/
+   * `_guidance` is a caller bug, not an override. */
+  readonly domain?: Readonly<Record<string, unknown>>
+}
+
+/**
+ * Assemble the write envelope — the ONE place every commit-class response's
+ * shape is decided (#108 / map #106's C4): `{scope, commit, changed,
+ * [version], [enrichment_health], [_guidance], …domain}`. Handlers converge
+ * to one call and keep only their domain keys.
+ *
+ * Zero-tax convention, one home: a key that does not apply is *absent* from
+ * the built object (conditional spread), never `null`/`[]` — the same rule
+ * `enrichment_health` and `_guidance` always followed, now applied by one
+ * function instead of eight paraphrases of it.
+ * @param snap - the entry snapshot the calling handler resolved.
+ * @param deps - the server deps (`config.guidanceThreshold` forwards to
+ *   `maybeGuidance`).
+ * @param res - the `auditedWrite` result (only its `{commit, changed}` half
+ *   is read).
+ * @param opts - what only the calling tool knows: `tool`, `writePath`,
+ *   `version`, and the domain keys.
+ * @returns the complete `toolSuccess` payload.
+ */
+export async function writeReceipt(
+  snap: ScopeBinding,
+  deps: ServerDeps,
+  res: ReceiptRecord,
+  opts: WriteReceiptOpts,
+): Promise<Record<string, unknown>> {
+  const health = enrichmentHealthAfter(snap, opts.writePath)
+  const guidance = (GUIDANCE_TOOL_NAMES as readonly string[]).includes(opts.tool)
+    ? await maybeGuidance(snap, deps.config.guidanceThreshold)
+    : undefined
+  return {
+    scope: scopeStamp(snap),
+    commit: res.commit,
+    changed: res.changed,
+    ...opts.version !== undefined ? { version: opts.version } : {},
+    ...health !== undefined ? { enrichment_health: health } : {},
+    ...guidance !== undefined ? { _guidance: guidance } : {},
+    ...opts.domain,
+  }
 }
 
 /**
@@ -173,8 +276,8 @@ export function toolSuccess(payload: unknown): CallToolResult {
 
 /** The shape every field-overlay write needs back — the success branch's field
  * name (`table_name`/`event_name`) is dropped, since no caller of this wrapper
- * reads it. */
-type ApplyResult = { readonly ok: true } | { readonly ok: false; readonly error: string }
+ * reads it; the write receipt's `version` fingerprint is kept (#108). */
+type ApplyResult = { readonly ok: true; readonly version: string } | { readonly ok: false; readonly error: string }
 
 /**
  * Apply one field overlay via `updateTableMeta` / `updateEventMeta` /
@@ -194,8 +297,9 @@ type ApplyResult = { readonly ok: true } | { readonly ok: false; readonly error:
  * @param updates - the field overlay to shallow-merge over the existing YAML.
  * @param expectedVersion - the caller's baseline fingerprint
  *   (`expected_version`, checked inside the lock by the write path).
- * @returns `{ok:true}` on success, or `{ok:false, error}` — never throws for a
- *   normal validation/not-found outcome.
+ * @returns `{ok:true, version}` on success (`version` = the written file's
+ *   fingerprint as the whole write left it), or `{ok:false, error}` — never
+ *   throws for a normal validation/not-found outcome.
  */
 export async function applyFieldUpdate(
   snap: ScopeBinding,
@@ -206,12 +310,12 @@ export async function applyFieldUpdate(
 ): Promise<ApplyResult> {
   if (kind === 'table') {
     const res = await snap.core.updateTableMeta(name, updates, { expected_version: expectedVersion })
-    return res.ok ? { ok: true } : res
+    return res.ok ? { ok: true, version: res.version } : res
   }
   if (kind === 'event') {
     const res = await snap.core.updateEventMeta(name, updates, { expected_version: expectedVersion })
-    return res.ok ? { ok: true } : res
+    return res.ok ? { ok: true, version: res.version } : res
   }
   const res = await snap.core.updateConceptMeta(name, updates, { expected_version: expectedVersion })
-  return res.ok ? { ok: true } : res
+  return res.ok ? { ok: true, version: res.version } : res
 }

@@ -23,8 +23,7 @@ import { EventDefinitionSchema, TableDefinitionSchema, dumpYaml, writeEventYaml,
 import { z } from 'zod'
 import { DefinitionAlreadyExistsError, toToolErrorResult } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
-import { applyFieldUpdate, assertScopeMatch, auditedWrite, enrichmentHealthAfter, scopeStamp, toolSuccess } from './audited.ts'
-import { guidanceField } from './guidance.ts'
+import { applyFieldUpdate, assertScopeMatch, auditedWrite, toolSuccess, writeReceipt } from './audited.ts'
 import {
   CREATE_COMMON_FIELDS,
   CONCEPT_ARRAY_REF_REDIRECT,
@@ -98,8 +97,15 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
               return written
             },
           )
-          const guidance = await guidanceField(snap, deps.config.guidanceThreshold)
-          return toolSuccess({ scope: scopeStamp(snap), commit: res.commit, changed: res.changed, ...guidance })
+          return toolSuccess(await writeReceipt(snap, deps, res, {
+            tool: 'create_definition',
+            // 'create', not 'table': the create family compiles to the raw
+            // primitives and never runs the on-write hook, so its receipt
+            // carries no `enrichment_health` — ADR-0005 ruling 5's deliberate
+            // asymmetry, preserved by the envelope's writePath gate.
+            writePath: 'create',
+            version: res.value.version,
+          }))
         }
 
         if (input.kind === 'concept') {
@@ -123,8 +129,11 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
               return written
             },
           )
-          const guidance = await guidanceField(snap, deps.config.guidanceThreshold)
-          return toolSuccess({ scope: scopeStamp(snap), commit: res.commit, changed: res.changed, ...guidance })
+          return toolSuccess(await writeReceipt(snap, deps, res, {
+            tool: 'create_definition',
+            writePath: 'create',
+            version: res.value.version,
+          }))
         }
 
         const name = input.event.name
@@ -146,8 +155,11 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
             return written
           },
         )
-        const guidance = await guidanceField(snap, deps.config.guidanceThreshold)
-        return toolSuccess({ scope: scopeStamp(snap), commit: res.commit, changed: res.changed, ...guidance })
+        return toolSuccess(await writeReceipt(snap, deps, res, {
+          tool: 'create_definition',
+          writePath: 'create',
+          version: res.value.version,
+        }))
       } catch (e) {
         return toToolErrorResult(e)
       }
@@ -187,20 +199,16 @@ function registerUpdateDefinition(server: McpServer, deps: ServerDeps): void {
           () => applyFieldUpdate(snap, input.kind, input.name, input.fields, input.expected_version),
         )
         assertUpdateOk(res.value, input.kind, input.name)
-        // `enrichment_health` rides the kind asymmetry `enrichmentHealthAfter` owns:
-        // a table update ran the on-write hook and reports; an event update has no
-        // hook, and a concept update has no rounds at all — for either, inlining
-        // `getEnrichmentHealth()` here would only report whatever an earlier table
-        // write left behind — misattributed — so the key stays absent for both
-        // (`undefined` is dropped by JSON serialization).
-        const guidance = await guidanceField(snap, deps.config.guidanceThreshold)
-        return toolSuccess({
-          scope: scopeStamp(snap),
-          commit: res.commit,
-          changed: res.changed,
-          enrichment_health: enrichmentHealthAfter(snap, input.kind),
-          ...guidance,
-        })
+        return toolSuccess(await writeReceipt(snap, deps, res, {
+          tool: 'update_definition',
+          // `enrichment_health` rides the writePath asymmetry `writeReceipt`
+          // owns: a table update ran the on-write hook and reports; an event
+          // update has no hook, and a concept update has no rounds at all —
+          // for either, the key stays absent (reporting health there would
+          // only mirror whatever an earlier table write left behind).
+          writePath: input.kind,
+          ...res.value.ok ? { version: res.value.version } : {},
+        }))
       } catch (e) {
         return toToolErrorResult(e)
       }

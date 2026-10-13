@@ -87,7 +87,7 @@ import { assertKnownFilterNames, UnknownFilterNamesError } from '@semantic-groun
 import { toToolErrorResult, UnknownFilterNameError } from '../errors.ts'
 import { ScopeIdSchema } from './shared.ts'
 import type { ToolRegistrar } from '../server.ts'
-import { assertScopeMatch, auditedWrite, enrichmentHealthAfter, scopeStamp, toolSuccess } from './audited.ts'
+import { assertScopeMatch, auditedWrite, scopeStamp, toolSuccess, writeReceipt } from './audited.ts'
 
 /** The enrichment family's four tool names (ADR-0006's three + ADR-0008's fourth). */
 export const ENRICHMENT_TOOL_NAMES = [
@@ -261,13 +261,11 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
           },
           () => snap.core.applyEnrichmentResults(args.results, snap.recorder),
         )
-        return toolSuccess({
-          scope: scopeStamp(snap),
-          results: audited.value.results,
-          commit: audited.commit,
-          changed: audited.changed,
-          enrichment_health: enrichmentHealthAfter(snap, 'round'),
-        })
+        return toolSuccess(await writeReceipt(snap, deps, audited, {
+          tool: 'apply_enrichment',
+          writePath: 'round',
+          domain: { results: audited.value.results },
+        }))
       } catch (e) {
         return toToolErrorResult(e)
       }
@@ -345,13 +343,11 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
             }
           },
         )
-        return toolSuccess({
-          scope: scopeStamp(snap),
-          commit: audited.commit,
-          changed: audited.changed,
-          enrichment_health: enrichmentHealthAfter(snap, 'round'),
-          summary: audited.value,
-        })
+        return toolSuccess(await writeReceipt(snap, deps, audited, {
+          tool: 'run_enrichment',
+          writePath: 'round',
+          domain: { summary: audited.value },
+        }))
       } catch (e) {
         return toScopeAwareToolError(e)
       }

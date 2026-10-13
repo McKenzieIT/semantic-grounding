@@ -157,9 +157,23 @@ export function _getReadYamlCount(): number { return _readYamlCount }
 
 // ── Atomic write (mirrors writer._atomic_write via @deepseek-ai/dsh-atomic-write) ──
 const YAML_MODE = 0o644
-async function atomicWrite(path: string, obj: unknown): Promise<void> {
+/**
+ * Serialize, atomically write, and return the write receipt's fingerprint
+ * (#108 / ADR-0004 ruling 8's extension): the sha256 of the exact bytes just
+ * written — the same value `definitionVersion` would read back and
+ * `checkExpectedVersion` will compare on the caller's NEXT `expected_version`
+ * write, because the write is utf-8 text end-to-end. Hashing the content
+ * already in hand (never a post-write re-read) is what keeps the receipt
+ * free: a no-op write re-serializes the same object to the same bytes, so its
+ * `version` IS the file's current fingerprint without any extra I/O.
+ * @param path - the file to write.
+ * @param obj - the value to serialize (a string is written verbatim).
+ * @returns the written file's sha256 hex fingerprint.
+ */
+async function atomicWrite(path: string, obj: unknown): Promise<string> {
   const text = typeof obj === 'string' ? obj : dumpYaml(obj)
   await writeFileAtomic(path, text, { mode: YAML_MODE })
+  return sha256Hex(text)
 }
 
 // D2f: per-path corpus-version counter bumped on every invalidateCaches call.
@@ -751,13 +765,15 @@ async function auditedFileWrite<T>(
   return outcome
 }
 /**
- * Result of writing table YAML: `{ ok: true, path }` on success, or
- * `{ ok: false, error }` when the payload fails `TableDefinitionSchema`
- * validation (#61: the write paths' unified domain-failure face — the caller
- * fixes the payload and retries. `StaleBaselineError` and recorder failures
- * still throw; those are not payload problems).
+ * Result of writing table YAML: `{ ok: true, path, version }` on success
+ * (`version` — the written file's sha256 fingerprint, #108's write-receipt
+ * extension of ADR-0004 ruling 8), or `{ ok: false, error }` when the payload
+ * fails `TableDefinitionSchema` validation (#61: the write paths' unified
+ * domain-failure face — the caller fixes the payload and retries.
+ * `StaleBaselineError` and recorder failures still throw; those are not
+ * payload problems).
  */
-export type WriteTableResult = { ok: true; path: string } | { ok: false; error: string }
+export type WriteTableResult = { ok: true; path: string; version: string } | { ok: false; error: string }
 /**
  * Validate-then-atomically-write a table YAML (mirrors writer.write_table),
  * invalidating caches on success. The write primitive (the MCP
@@ -774,8 +790,10 @@ export type WriteTableResult = { ok: true; path: string } | { ok: false; error: 
  * @param tier2 - optional Tier-2 options; passed, this write takes the
  *   audited write-and-record path (optional `expected_version` checked
  *   first; a recorder failure restores the pre-write bytes and rethrows).
- * @returns `{ ok: true, path }` on success, or `{ ok: false, error }` when
- *   schema validation rejects the payload.
+ * @returns `{ ok: true, path, version }` on success (`version` = the written
+ *   file's sha256 fingerprint — feed it straight back as the next write's
+ *   `expected_version`), or `{ ok: false, error }` when schema validation
+ *   rejects the payload.
  */
 export async function writeTable(
   semanticLayer: string,
@@ -791,21 +809,22 @@ export async function writeTable(
   const tablesPath = join(semanticLayer, 'tables')
   const target = join(tablesPath, `${name}.yaml`)
   if (tier2 === undefined) {
-    await atomicWrite(target, data)
+    const version = await atomicWrite(target, data)
     invalidateCaches(semanticLayer)
-    return { ok: true, path: target }
+    return { ok: true, path: target, version }
   }
   const outcome = await auditedFileWrite(semanticLayer, target, tier2,
-    async () => { await atomicWrite(target, data); return { committed: true, value: target } },
+    async () => ({ committed: true as const, value: { path: target, version: await atomicWrite(target, data) } }),
     { verb: 'write_table', subject: { table_name: name } })
-  return outcome.committed ? { ok: true, path: outcome.value } : { ok: false, error: outcome.error }
+  return outcome.committed ? { ok: true, ...outcome.value } : { ok: false, error: outcome.error }
 }
 /**
- * Result of writing event YAML: either `{ ok: true, path }` on success or
+ * Result of writing event YAML: either `{ ok: true, path, version }` on
+ * success (`version` = the written file's sha256 fingerprint, #108) or
  * `{ ok: false, error }` when the YAML is unparseable/not-an-object or its
  * `name` does not match `name`.
  */
-export type WriteEventYamlResult = { ok: true; path: string } | { ok: false; error: string }
+export type WriteEventYamlResult = { ok: true; path: string; version: string } | { ok: false; error: string }
 // writeEventYaml = raw-edit surface (mirrors writer.write_event_yaml used by approve_event_yaml):
 // no model_validate (the write IS the repair surface; load validates on read). Name-match check.
 /**
@@ -823,7 +842,9 @@ export type WriteEventYamlResult = { ok: true; path: string } | { ok: false; err
  * @param tier2 - optional Tier-2 options; passed, this write takes the
  *   audited write-and-record path (optional `expected_version` checked
  *   first; a recorder failure restores the pre-write bytes and rethrows).
- * @returns `{ ok: true, path }` on success, or `{ ok: false, error }` describing the parse/name-mismatch failure.
+ * @returns `{ ok: true, path, version }` on success (`version` = the written
+ *   file's sha256 fingerprint), or `{ ok: false, error }` describing the
+ *   parse/name-mismatch failure.
  */
 export async function writeEventYaml(
   semanticLayer: string,
@@ -845,24 +866,26 @@ export async function writeEventYaml(
   }
   const target = findEventPath(semanticLayer, name) ?? join(semanticLayer, 'events', '_suggested', `${name}.yaml`)
   if (tier2 === undefined) {
-    await atomicWrite(target, content)
+    const version = await atomicWrite(target, content)
     invalidateCaches(semanticLayer)
-    return { ok: true, path: target }
+    return { ok: true, path: target, version }
   }
   const outcome = await auditedFileWrite(semanticLayer, target, tier2,
-    async () => { await atomicWrite(target, content); return { committed: true, value: target } },
+    async () => ({ committed: true as const, value: { path: target, version: await atomicWrite(target, content) } }),
     { verb: 'write_event_yaml', subject: { event_name: name } })
-  return outcome.committed ? { ok: true, path: outcome.value } : { ok: false, error: outcome.error }
+  return outcome.committed ? { ok: true, ...outcome.value } : { ok: false, error: outcome.error }
 }
 // Tier-2 per-scope persistent write: read-merge-validate-write + audit (mirrors writer.update_table_meta).
 // D5 contract: "Tier-2 不可关" — audit is NON-OPTIONAL. The `recorder` (ctx.audit)
 // records the Tier-2 audit (hash, not body); omitting it is a fail-loud programmer error.
 /**
- * Result of a Tier-2 table-meta update: `{ ok: true, table_name }` on success,
- * or `{ ok: false, error }` when the table is missing/malformed or post-merge
- * validation fails.
+ * Result of a Tier-2 table-meta update: `{ ok: true, table_name, version }` on
+ * success (`version` = the written file's sha256 fingerprint, #108 — a
+ * byte-stable no-op write re-serializes to the same bytes, so the fingerprint
+ * returned IS the file's current one), or `{ ok: false, error }` when the
+ * table is missing/malformed or post-merge validation fails.
  */
-export type UpdateTableMetaResult = { ok: true; table_name: string } | { ok: false; error: string }
+export type UpdateTableMetaResult = { ok: true; table_name: string; version: string } | { ok: false; error: string }
 /**
  * Tier-2 per-scope write: read-merge-validate-write a single table's meta
  * updates and record the write via `opts.recorder` (D5 non-disableable
@@ -876,7 +899,7 @@ export type UpdateTableMetaResult = { ok: true; table_name: string } | { ok: fal
  * @param name - the table `table_name` to update (must already exist on disk).
  * @param updates - the field overrides merged over the existing table YAML.
  * @param opts - the recorder + optional scope id + optional `expected_version` used for the Tier-2 audit record.
- * @returns `{ ok: true, table_name }` on success, or `{ ok: false, error }` when the table is missing/malformed or validation fails.
+ * @returns `{ ok: true, table_name, version }` on success, or `{ ok: false, error }` when the table is missing/malformed or validation fails.
  */
 export async function updateTableMeta(
   semanticLayer: string,
@@ -892,10 +915,10 @@ export async function updateTableMeta(
     const merged: Record<string, unknown> = { ...(data as Record<string, unknown>), ...updates }
     const r = TableDefinitionSchema.safeParse(merged)
     if (!r.success) return { committed: false, error: `Validation failed after update: ${r.error.message}` }
-    await atomicWrite(tf, merged)
-    return { committed: true, value: name }
+    const version = await atomicWrite(tf, merged)
+    return { committed: true, value: { name, version } }
   }, { verb: 'update_table_meta', subject: { table_name: name, updates } })
-  return outcome.committed ? { ok: true, table_name: outcome.value } : { ok: false, error: outcome.error }
+  return outcome.committed ? { ok: true, table_name: outcome.value.name, version: outcome.value.version } : { ok: false, error: outcome.error }
 }
 
 // A13 (TOCTOU lost-update): Tier-2 per-scope event-meta update — read-merge-
@@ -910,11 +933,12 @@ export async function updateTableMeta(
 // missing file is an error (this is an UPDATE, not a create — a concurrently
 // deleted event must not be silently re-created here).
 /**
- * Result of a Tier-2 event-meta update: `{ ok: true, event_name }` on success,
- * or `{ ok: false, error }` when the event is missing/malformed or post-merge
+ * Result of a Tier-2 event-meta update: `{ ok: true, event_name, version }` on
+ * success (`version` = the written file's sha256 fingerprint, #108), or
+ * `{ ok: false, error }` when the event is missing/malformed or post-merge
  * validation fails.
  */
-export type UpdateEventMetaResult = { ok: true; event_name: string } | { ok: false; error: string }
+export type UpdateEventMetaResult = { ok: true; event_name: string; version: string } | { ok: false; error: string }
 /**
  * Tier-2 per-scope write: read-merge-validate-write a single event's meta
  * updates and record the write via `opts.recorder` (D5 non-disableable audit).
@@ -925,7 +949,7 @@ export type UpdateEventMetaResult = { ok: true; event_name: string } | { ok: fal
  * @param name - the event `name` to update (must already exist on disk).
  * @param updates - the field overrides merged over the existing event YAML.
  * @param opts - the recorder + optional scope id + optional `expected_version` used for the Tier-2 audit record.
- * @returns `{ ok: true, event_name }` on success, or `{ ok: false, error }` when the event is missing/malformed or validation fails.
+ * @returns `{ ok: true, event_name, version }` on success, or `{ ok: false, error }` when the event is missing/malformed or validation fails.
  */
 export async function updateEventMeta(
   semanticLayer: string,
@@ -941,10 +965,10 @@ export async function updateEventMeta(
     const merged: Record<string, unknown> = { ...(data as Record<string, unknown>), ...updates }
     const r = EventDefinitionSchema.safeParse(merged)
     if (!r.success) return { committed: false, error: `Validation failed after update: ${r.error.message}` }
-    await atomicWrite(ef, merged)
-    return { committed: true, value: name }
+    const version = await atomicWrite(ef, merged)
+    return { committed: true, value: { name, version } }
   }, { verb: 'update_event_meta', subject: { event_name: name, updates } })
-  return outcome.committed ? { ok: true, event_name: outcome.value } : { ok: false, error: outcome.error }
+  return outcome.committed ? { ok: true, event_name: outcome.value.name, version: outcome.value.version } : { ok: false, error: outcome.error }
 }
 
 // ── Concept write primitives (#52 / ADR-0012: the concept write path opened) ──
@@ -957,17 +981,19 @@ export async function updateEventMeta(
 // the target file is the fixed `concepts/<name>.yaml` (same convention
 // `definitionVersion` already resolves for the read side).
 /**
- * Result of a Tier-2 concept-meta update: `{ ok: true, concept_name }` on
- * success, or `{ ok: false, error }` when the concept is missing/malformed or
- * post-merge validation fails.
+ * Result of a Tier-2 concept-meta update: `{ ok: true, concept_name, version }`
+ * on success (`version` = the written file's sha256 fingerprint, #108), or
+ * `{ ok: false, error }` when the concept is missing/malformed or post-merge
+ * validation fails.
  */
-export type UpdateConceptMetaResult = { ok: true; concept_name: string } | { ok: false; error: string }
+export type UpdateConceptMetaResult = { ok: true; concept_name: string; version: string } | { ok: false; error: string }
 /**
- * Result of writing concept YAML: `{ ok: true, path }` on success, or
+ * Result of writing concept YAML: `{ ok: true, path, version }` on success
+ * (`version` = the written file's sha256 fingerprint, #108), or
  * `{ ok: false, error }` when the payload fails `ConceptDefinitionSchema`
  * validation (#61: same unified domain-failure face as `WriteTableResult`).
  */
-export type WriteConceptYamlResult = { ok: true; path: string } | { ok: false; error: string }
+export type WriteConceptYamlResult = { ok: true; path: string; version: string } | { ok: false; error: string }
 /**
  * Validate-then-atomically-write a concept YAML (`concepts/<name>.yaml`),
  * invalidating caches on success — `writeTable`'s exact shape applied to the
@@ -984,8 +1010,9 @@ export type WriteConceptYamlResult = { ok: true; path: string } | { ok: false; e
  *   supplied, but no caller ever supplies one here — create is the only
  *   concept verb that calls this primitive, and create is baseline-free by
  *   construction (ADR-0005 ruling 7), so the check stays dormant on this path.
- * @returns `{ ok: true, path }` on success, or `{ ok: false, error }` when
- *   schema validation rejects the payload.
+ * @returns `{ ok: true, path, version }` on success (`version` = the written
+ *   file's sha256 fingerprint), or `{ ok: false, error }` when schema
+ *   validation rejects the payload.
  */
 export async function writeConceptYaml(
   semanticLayer: string,
@@ -1000,14 +1027,14 @@ export async function writeConceptYaml(
   }
   const target = join(semanticLayer, 'concepts', `${name}.yaml`)
   if (tier2 === undefined) {
-    await atomicWrite(target, data)
+    const version = await atomicWrite(target, data)
     invalidateCaches(semanticLayer)
-    return { ok: true, path: target }
+    return { ok: true, path: target, version }
   }
   const outcome = await auditedFileWrite(semanticLayer, target, tier2,
-    async () => { await atomicWrite(target, data); return { committed: true, value: target } },
+    async () => ({ committed: true as const, value: { path: target, version: await atomicWrite(target, data) } }),
     { verb: 'write_concept_yaml', subject: { concept_name: name } })
-  return outcome.committed ? { ok: true, path: outcome.value } : { ok: false, error: outcome.error }
+  return outcome.committed ? { ok: true, ...outcome.value } : { ok: false, error: outcome.error }
 }
 /**
  * Tier-2 per-scope write: read-merge-validate-write a single concept's meta
@@ -1023,7 +1050,7 @@ export async function writeConceptYaml(
  * @param name - the concept `name` to update (must already exist on disk).
  * @param updates - the field overrides merged over the existing concept YAML.
  * @param opts - the recorder + optional scope id + optional `expected_version` used for the Tier-2 audit record.
- * @returns `{ ok: true, concept_name }` on success, or `{ ok: false, error }` when the concept is missing/malformed or validation fails.
+ * @returns `{ ok: true, concept_name, version }` on success, or `{ ok: false, error }` when the concept is missing/malformed or validation fails.
  */
 export async function updateConceptMeta(
   semanticLayer: string,
@@ -1039,10 +1066,10 @@ export async function updateConceptMeta(
     const merged: Record<string, unknown> = { ...(data as Record<string, unknown>), ...updates }
     const r = ConceptDefinitionSchema.safeParse(merged)
     if (!r.success) return { committed: false, error: `Validation failed after update: ${r.error.message}` }
-    await atomicWrite(cf, merged)
-    return { committed: true, value: name }
+    const version = await atomicWrite(cf, merged)
+    return { committed: true, value: { name, version } }
   }, { verb: 'update_concept_meta', subject: { concept_name: name, updates } })
-  return outcome.committed ? { ok: true, concept_name: outcome.value } : { ok: false, error: outcome.error }
+  return outcome.committed ? { ok: true, concept_name: outcome.value.name, version: outcome.value.version } : { ok: false, error: outcome.error }
 }
 
 // ── CL-18 Phase 2: partition-column exclude set (calling-layer metadata) ───

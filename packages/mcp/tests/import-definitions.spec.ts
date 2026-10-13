@@ -9,7 +9,7 @@
  * @see docs/adr/0013-batch-definition-import.md
  */
 import { afterEach, describe, expect, it } from 'vitest'
-import { buildIntentToolHarness, type IntentToolHarness } from './helpers/intent-tools-harness.ts'
+import { buildIntentToolHarness, versionOf, type IntentToolHarness } from './helpers/intent-tools-harness.ts'
 import { fixtureGit } from './helpers/fixture-corpus.ts'
 import { toolJson } from './helpers/inprocess-client.ts'
 
@@ -20,9 +20,10 @@ afterEach(() => h?.close())
 interface ImportBody {
   readonly commit: string
   readonly changed: boolean
-  readonly results: Array<{ index: number; kind: string; name: string; verdict: string; detail?: string }>
+  readonly results: Array<{ index: number; kind: string; name: string; verdict: string; version?: string; detail?: string }>
   readonly summary: { created: number; updated: number; skipped: number; errors: number }
   readonly _guidance?: unknown
+  readonly version?: string
 }
 
 /** One fresh table payload — the minimal shape `TableDefinitionSchema` accepts. */
@@ -84,6 +85,14 @@ describe('import_definitions — ADR-0013 (#54 seven rulings)', () => {
     ])
     // One commit for three logical writes — R4's whole point.
     expect(commitCount(h)).toBe(before + 1)
+    // #108's per-item write receipts: every landed row carries the sha of the
+    // file it wrote, while the batch top level carries none (one commit spans
+    // many files — there is no single fingerprint to name).
+    for (const r of body.results) {
+      expect(r.version).toMatch(/^[0-9a-f]{64}$/)
+      expect(r.version).toBe(await versionOf(h, r.name, r.kind as 'table' | 'event' | 'concept'))
+    }
+    expect(body).not.toHaveProperty('version')
     const msg = lastMessage(h)
     expect(msg).toMatch(/^import_definitions\(3\/3 items \(3 created, 0 updated\)\): imported from DDL dump$/m)
     expect(msg).toMatch(/X-SG-Tool: import_definitions/)
@@ -116,6 +125,11 @@ describe('import_definitions — ADR-0013 (#54 seven rulings)', () => {
     expect(body.changed).toBe(false)
     expect(body.summary).toEqual({ created: 0, updated: 0, skipped: 2, errors: 0 })
     expect(body.results.every(r => r.verdict === 'skipped')).toBe(true)
+    // #108: a skipped row's receipt is the file's CURRENT fingerprint —
+    // nothing was written, so that fingerprint is the row's whole truth,
+    // and it round-trips straight into a later write's expected_version.
+    expect(row(body, 0).version).toBe(await versionOf(h, 'dws_seed_c'))
+    expect(row(body, 1).version).toBe(await versionOf(h, 'seed_weapon', 'concept'))
     // Zero commits — `end()`'s idempotent branch — and the returned sha is the
     // unchanged HEAD (the timeout-receipt convention run_enrichment documents).
     expect(commitCount(h)).toBe(before)

@@ -1294,20 +1294,34 @@ export class SemanticGroundingCore {
    * @param opts - optional `expected_version` (#18, ADR-0004 ruling 8: sha256
    *   baseline checked against the on-disk fingerprint before the write
    *   lands; a mismatch throws `StaleBaselineError`).
-   * @returns `{ ok: true, table_name }` on success, or `{ ok: false, error }` when the table is missing/malformed or validation fails.
+   * @returns `{ ok: true, table_name, version }` on success (`version` = the
+   *   file's sha256 fingerprint **as the whole write left it** — the on-write
+   *   hook may rewrite the same file after the primitive's own write, so when
+   *   the hook ran, the fingerprint is re-resolved after it; #108), or
+   *   `{ ok: false, error }` when the table is missing/malformed or
+   *   validation fails.
    */
   async updateTableMeta(
     name: string,
     updates: Record<string, unknown>,
     opts: { readonly expected_version?: string } = {},
-  ): Promise<{ ok: true; table_name: string } | { ok: false; error: string }> {
+  ): Promise<{ ok: true; table_name: string; version: string } | { ok: false; error: string }> {
     const res = await updateTableMetaFromLayer(this.semanticRoot, name, updates, {
       recorder: this.recorder(),
       scope_id: this.scopeId,
       ...opts.expected_version !== undefined ? { expected_version: opts.expected_version } : {},
     })
-    if (res.ok && this.resolved.autoEnrich) {
+    if (!res.ok) return res
+    if (this.resolved.autoEnrich) {
       await this.enrichOnWrite([name])
+      // The hook's discovery may have rewritten this very file after the
+      // primitive computed its fingerprint; the receipt must name the file as
+      // the WHOLE write left it, or the caller's next expected_version write
+      // would be rejected against a fingerprint that no longer exists. A
+      // post-write null is unreachable (the file exists and the lock is held);
+      // the primitive's value is the defensive floor.
+      const after = definitionVersion(this.semanticRoot, 'table', name)
+      return { ok: true, table_name: res.table_name, version: after ?? res.version }
     }
     return res
   }
@@ -1330,13 +1344,17 @@ export class SemanticGroundingCore {
    * @param opts - optional `expected_version` (#18, ADR-0004 ruling 8: sha256
    *   baseline checked against the on-disk fingerprint before the write
    *   lands; a mismatch throws `StaleBaselineError`).
-   * @returns `{ ok: true, event_name }` on success, or `{ ok: false, error }` when the event is missing/malformed or validation fails.
+   * @returns `{ ok: true, event_name, version }` on success (`version` = the
+   *   written file's sha256 fingerprint, #108 — no on-write hook exists on
+   *   this path, so the primitive's fingerprint is final), or
+   *   `{ ok: false, error }` when the event is missing/malformed or
+   *   validation fails.
    */
   async updateEventMeta(
     name: string,
     updates: Record<string, unknown>,
     opts: { readonly expected_version?: string } = {},
-  ): Promise<{ ok: true; event_name: string } | { ok: false; error: string }> {
+  ): Promise<{ ok: true; event_name: string; version: string } | { ok: false; error: string }> {
     return updateEventMetaFromLayer(this.semanticRoot, name, updates, {
       recorder: this.recorder(),
       scope_id: this.scopeId,
@@ -1392,13 +1410,17 @@ export class SemanticGroundingCore {
    * @param opts - optional `expected_version` (sha256 baseline checked against
    *   the on-disk fingerprint before the write lands; a mismatch throws
    *   `StaleBaselineError`).
-   * @returns `{ ok: true, concept_name }` on success, or `{ ok: false, error }` when the concept is missing/malformed or validation fails.
+   * @returns `{ ok: true, concept_name, version }` on success (`version` = the
+   *   written file's sha256 fingerprint, #108 — no on-write hook exists on
+   *   this path, so the primitive's fingerprint is final), or
+   *   `{ ok: false, error }` when the concept is missing/malformed or
+   *   validation fails.
    */
   async updateConceptMeta(
     name: string,
     updates: Record<string, unknown>,
     opts: { readonly expected_version?: string } = {},
-  ): Promise<{ ok: true; concept_name: string } | { ok: false; error: string }> {
+  ): Promise<{ ok: true; concept_name: string; version: string } | { ok: false; error: string }> {
     return updateConceptMetaFromLayer(this.semanticRoot, name, updates, {
       recorder: this.recorder(),
       scope_id: this.scopeId,
@@ -1428,13 +1450,16 @@ export class SemanticGroundingCore {
 
   // Item-write ritual lives in ./item-write.ts (off-barrel internal module,
   // the same split as enrichment-work.ts); these forwards keep the
-  // ADR-0002/0003 public method names. JSDoc: see the module.
+  // ADR-0002/0003 public method names. JSDoc: see the module. Each return
+  // carries the written file's fingerprint (`version`, #108) — the receipt
+  // key the item tools inline so a caller can chain its next write without a
+  // read-back.
   async addAlias(
     kind: ItemKind,
     name: string,
     alias: string,
     expectedVersion: string,
-  ): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string] }> {
+  ): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string]; readonly version: string }> {
     return addItemAlias(this.semanticRoot, (k, n, u, v) => this.applyItemUpdate(k, n, u, v), kind, name, alias, expectedVersion)
   }
 
@@ -1443,7 +1468,7 @@ export class SemanticGroundingCore {
     name: string,
     labels: readonly string[],
     expectedVersion: string,
-  ): Promise<{ readonly results: readonly ItemVerdict[] }> {
+  ): Promise<{ readonly results: readonly ItemVerdict[]; readonly version: string }> {
     return removeItemAliases(this.semanticRoot, (k, n, u, v) => this.applyItemUpdate(k, n, u, v), kind, name, labels, expectedVersion)
   }
 
@@ -1452,7 +1477,7 @@ export class SemanticGroundingCore {
     name: string,
     relation: RelationInput,
     expectedVersion: string,
-  ): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string] }> {
+  ): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string]; readonly version: string }> {
     return addItemRelation(this.semanticRoot, (k, n, u, v) => this.applyItemUpdate(k, n, u, v), kind, name, relation, expectedVersion)
   }
 
@@ -1461,7 +1486,7 @@ export class SemanticGroundingCore {
     name: string,
     relations: readonly RelationInput[],
     expectedVersion: string,
-  ): Promise<{ readonly results: readonly ItemVerdict[] }> {
+  ): Promise<{ readonly results: readonly ItemVerdict[]; readonly version: string }> {
     return removeItemRelations(this.semanticRoot, (k, n, u, v) => this.applyItemUpdate(k, n, u, v), kind, name, relations, expectedVersion)
   }
 
@@ -1469,24 +1494,30 @@ export class SemanticGroundingCore {
    * Internal: dispatch `updateTableMeta` / `updateEventMeta` /
    * `updateConceptMeta` by kind and throw on failure. The item methods use
    * this instead of the non-throwing result shape — the handler's try/catch
-   * maps thrown errors to MCP error responses.
+   * maps thrown errors to MCP error responses. Resolves to the written
+   * file's fingerprint (#108's write receipt): for a table this is the
+   * post-hook value `updateTableMeta` re-resolved; for the hookless kinds it
+   * is the primitive's own.
    */
   private async applyItemUpdate(
     kind: ItemKind,
     name: string,
     updates: Readonly<Record<string, unknown>>,
     expectedVersion: string,
-  ): Promise<void> {
+  ): Promise<string> {
     if (kind === 'table') {
       const res = await this.updateTableMeta(name, updates, { expected_version: expectedVersion })
       if (!res.ok) throw new Error(res.error)
-    } else if (kind === 'event') {
+      return res.version
+    }
+    if (kind === 'event') {
       const res = await this.updateEventMeta(name, updates, { expected_version: expectedVersion })
       if (!res.ok) throw new Error(res.error)
-    } else {
-      const res = await this.updateConceptMeta(name, updates, { expected_version: expectedVersion })
-      if (!res.ok) throw new Error(res.error)
+      return res.version
     }
+    const res = await this.updateConceptMeta(name, updates, { expected_version: expectedVersion })
+    if (!res.ok) throw new Error(res.error)
+    return res.version
   }
 }
 

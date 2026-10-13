@@ -13,6 +13,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ScopeBinding } from '../src/binding.ts'
+import { GUIDANCE_TOOL_NAMES } from '../src/tools/audited.ts'
 import { DEFAULT_DW_THRESHOLD, DEFAULT_KG_THRESHOLD, maybeGuidance, type Guidance } from '../src/tools/guidance.ts'
 import { buildIntentToolHarness, tier2, versionOf, type IntentToolHarness } from './helpers/intent-tools-harness.ts'
 import { toolJson } from './helpers/inprocess-client.ts'
@@ -83,8 +84,14 @@ describe('maybeGuidance', () => {
 let h: IntentToolHarness | undefined
 afterEach(() => h?.close())
 
-describe('_guidance wired into the 7 write tools (default thresholds)', () => {
-  it('create_definition carries _guidance — KG\'s empty concept layer is the laggard', async () => {
+// #108's convergence: wiring used to be pinned per tool — seven hand-rolled
+// assertions, one per write tool, each re-describing the same injection. The
+// envelope (`writeReceipt`, tools/audited.ts) made the injection ONE piece of
+// code, so the wiring is now pinned twice: once through the real surface (any
+// guidance-carrying tool responds with `_guidance`), and once at the
+// membership list itself — the explicit 7-name roster the envelope gates on.
+describe('_guidance wiring — the write envelope, pinned once', () => {
+  it('a write tool\'s response carries _guidance through the envelope (KG\'s empty concept layer is the laggard)', async () => {
     h = await buildIntentToolHarness()
     const res = await h.client.callTool('create_definition', { scope_id: 'fixture',
       kind: 'table',
@@ -95,58 +102,12 @@ describe('_guidance wired into the 7 write tools (default thresholds)', () => {
     expect(body._guidance).toMatchObject({ phase: 'seeding', metrics: { dw: { count: 3 }, kg: { count: 0, phase: 'seeding' } } })
   })
 
-  it('update_definition carries _guidance', async () => {
-    h = await buildIntentToolHarness()
-    const res = await h.client.callTool('update_definition', { scope_id: 'fixture',
-      kind: 'table', name: 'dws_order', fields: { description: '订单宽表' },
-      ...tier2('补充描述', 0.9), expected_version: await versionOf(h, 'dws_order'),
-    })
-    const body = toolJson(res) as { _guidance?: Guidance }
-    expect(body._guidance).toMatchObject({ phase: 'seeding', metrics: { dw: { count: 2 }, kg: { count: 0, phase: 'seeding' } } })
-  })
-
-  it('add_alias, remove_alias, add_relation, and remove_relation all carry _guidance', async () => {
-    h = await buildIntentToolHarness()
-
-    const added = toolJson(await h.client.callTool('add_alias', { scope_id: 'fixture',
-      kind: 'table', name: 'dws_order', alias: '订单宽表',
-      ...tier2('添加别名', 0.9), expected_version: await versionOf(h, 'dws_order'),
-    })) as { _guidance?: Guidance }
-    expect(added._guidance).toMatchObject({ phase: 'seeding', metrics: { kg: { count: 0, phase: 'seeding' } } })
-
-    const unaliased = toolJson(await h.client.callTool('remove_alias', { scope_id: 'fixture',
-      kind: 'table', name: 'dws_order', labels: ['订单宽表'],
-      ...tier2('移除别名', 0.9), expected_version: await versionOf(h, 'dws_order'),
-    })) as { _guidance?: Guidance }
-    expect(unaliased._guidance).toMatchObject({ phase: 'seeding', metrics: { kg: { count: 0, phase: 'seeding' } } })
-
-    const relation = { dim_table: 'dim_shop', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] }
-    const related = toolJson(await h.client.callTool('add_relation', { scope_id: 'fixture',
-      kind: 'table', name: 'dws_order', relation,
-      ...tier2('人工关联', 0.9), expected_version: await versionOf(h, 'dws_order'),
-    })) as { _guidance?: Guidance }
-    expect(related._guidance).toMatchObject({ phase: 'seeding', metrics: { kg: { count: 0, phase: 'seeding' } } })
-
-    const unrelated = toolJson(await h.client.callTool('remove_relation', { scope_id: 'fixture',
-      kind: 'table', name: 'dws_order', relations: [relation],
-      ...tier2('撤回关联', 0.9), expected_version: await versionOf(h, 'dws_order'),
-    })) as { _guidance?: Guidance }
-    expect(unrelated._guidance).toMatchObject({ phase: 'seeding', metrics: { kg: { count: 0, phase: 'seeding' } } })
-  })
-
-  it('import_definitions carries _guidance too — the 7th write tool (#68)', async () => {
-    h = await buildIntentToolHarness()
-    const body = toolJson(await h.client.callTool('import_definitions', {
-      scope_id: 'fixture',
-      items: [
-        { kind: 'table', definition: { table_name: 'dws_seeded', partitions: [{ name: 'ds', type: 'string' }], columns: [] } },
-        { kind: 'concept', definition: { name: 'seeded_term', description: 'a seeded term' } },
-      ],
-      summary: 'imported from DDL dump', derivation: 'agent', confidence: 0.9,
-    })) as { _guidance?: Guidance }
-    // After the import: DW has 3 tables but deterministic gaps remain (backfill),
-    // KG has its first concept (1 < 5, past seeding) — DW is the more-behind layer.
-    expect(body._guidance).toMatchObject({ phase: 'backfill', metrics: { dw: { count: 3 }, kg: { count: 1 } } })
+  it('membership is the explicit 7-name roster — the enrichment verbs and read tools are not on it', () => {
+    expect(GUIDANCE_TOOL_NAMES).toEqual([
+      'create_definition', 'update_definition',
+      'add_alias', 'remove_alias', 'add_relation', 'remove_relation',
+      'import_definitions',
+    ])
   })
 
   it('read tools never carry _guidance', async () => {

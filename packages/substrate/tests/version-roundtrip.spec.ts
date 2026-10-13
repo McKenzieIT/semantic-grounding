@@ -8,6 +8,11 @@
  * retired MCP-side fork: a hand-renamed event file (filename ≠ its `name:`
  * field) fingerprints correctly via `findEventPath`'s fallback scan, where the
  * tool layer's former filename-convention copy threw ENOENT.
+ *
+ * #108 extended the same fingerprint to the WRITE side: every write primitive
+ * resolves to the sha256 of the file as the whole write left it, so the
+ * read → write → receipt → next-write loop closes with zero intermediate
+ * reads (`get_definition` read-backs were the measured pain this retired).
  */
 import { afterEach, describe, expect, test } from 'vitest'
 import { createHash } from 'node:crypto'
@@ -24,7 +29,7 @@ import {
 // class's same-named methods are the public route; this spec drives the io
 // free functions directly because it pins the version round trip underneath
 // the class's wrappers.
-import { updateTableMeta, updateEventMeta } from '../src/io.ts'
+import { definitionVersion, updateTableMeta, updateEventMeta, writeTable } from '../src/io.ts'
 import type { EventDefinition, TableDefinition } from '../src/types.ts'
 
 // Mirrors tests/enrichment-work.spec.ts's builders (the minimal schema-valid shapes).
@@ -36,6 +41,17 @@ const dwsDoc = (name: string): TableDefinition => ({
   coverage: null, supersedes: [], disambiguation: null, kind: 'dws', primary_key: [], primary_key_unique: null,
   duplicate_sample: [], label_columns: [], freshness: '', dimension_refs: [],
   suppressed_alt_labels: [], suppressed_dimension_refs: [],
+})
+
+/** The DIM half of the on-write hook fixture (mirrors discover-relations.spec). */
+const dimDoc = (name: string, pk: string): TableDefinition => ({
+  ...dwsDoc(name),
+  description: `${name} 维度表`,
+  columns: [
+    { name: pk, type: 'string', comment: 'pk', role: 'dimension' },
+    { name: `${pk}_name`, type: 'string', comment: 'name', role: 'dimension' },
+  ],
+  kind: 'dim', primary_key: [pk], label_columns: [`${pk}_name`], freshness: 'static_reference',
 })
 
 const eventDoc = (name: string): EventDefinition => ({
@@ -74,7 +90,15 @@ describe('loadTableDefinitionWithVersion round trip', () => {
     expect(res?.version).toMatch(HEX64)
 
     const updated = await updateTableMeta(layer, 'dws_order', { description: '改一版' }, { recorder, expected_version: res!.version })
-    expect(updated).toEqual({ ok: true, table_name: 'dws_order' })
+    expect(updated.ok).toBe(true)
+    if (updated.ok) {
+      // #108: the write receipt's fingerprint is exactly what the read side
+      // reports next — hand it straight back as the following write's baseline.
+      expect(updated.version).toMatch(HEX64)
+      expect(updated.version).toBe(core.loadTableDefinitionWithVersion('dws_order')?.version)
+      const chained = await updateTableMeta(layer, 'dws_order', { description: '改两版' }, { recorder, expected_version: updated.version })
+      expect(chained.ok).toBe(true)
+    }
   })
 
   test('bytes change between read and write → StaleBaselineError', async () => {
@@ -109,7 +133,11 @@ describe('loadEventDefinitionWithVersion round trip', () => {
     expect(res?.version).toMatch(HEX64)
 
     const updated = await updateEventMeta(layer, 'evt_click', { description: '改一版' }, { recorder, expected_version: res!.version })
-    expect(updated).toEqual({ ok: true, event_name: 'evt_click' })
+    expect(updated.ok).toBe(true)
+    if (updated.ok) {
+      expect(updated.version).toMatch(HEX64)
+      expect(updated.version).toBe(core.loadEventDefinitionWithVersion('evt_click')?.version)
+    }
   })
 
   test('bytes change between read and write → StaleBaselineError', async () => {
@@ -154,5 +182,58 @@ describe('loadConceptDefinitionWithVersion', () => {
     expect(res).not.toBeNull()
     expect(res?.version).toMatch(HEX64)
     expect(core.loadConceptDefinitionWithVersion('nope')).toBeNull()
+  })
+})
+
+describe('write receipts (#108 — version as the write side\'s answer)', () => {
+  test('writeTable resolves to the written file\'s fingerprint', async () => {
+    const layer = newLayer()
+    const written = await writeTable(layer, 'dws_new', dwsDoc('dws_new'), {}, { recorder })
+    expect(written.ok).toBe(true)
+    if (written.ok) {
+      expect(written.version).toMatch(HEX64)
+      expect(written.version).toBe(definitionVersion(layer, 'table', 'dws_new'))
+    }
+  })
+
+  test('a byte-stable no-op updateTableMeta returns the CURRENT fingerprint', async () => {
+    const layer = newLayer()
+    writeFileSync(join(layer, 'tables', 'dws_order.yaml'), dumpYaml(dwsDoc('dws_order')))
+    const before = definitionVersion(layer, 'table', 'dws_order')
+    expect(before).not.toBeNull()
+
+    // An empty overlay re-serializes the same object to the same bytes: no
+    // semantic change, no commit — and the receipt still names the file's
+    // current fingerprint (#107 Q2's "no-op 恒返当前指纹", zero extra I/O).
+    const updated = await updateTableMeta(layer, 'dws_order', {}, { recorder, expected_version: before! })
+    expect(updated.ok).toBe(true)
+    if (updated.ok) expect(updated.version).toBe(before)
+  })
+
+  test('Core.updateTableMeta\'s receipt names the POST-hook fingerprint — the on-write hook may rewrite the same file', async () => {
+    const layer = newLayer()
+    // dws_pay carries server_id; dim_server keys on it — the autoEnrich hook's
+    // DIM-join discovery writes dimension_refs into dws_pay AFTER the meta
+    // write lands, moving the very file the primitive just fingerprinted.
+    writeFileSync(join(layer, 'tables', 'dim_server.yaml'), dumpYaml(dimDoc('dim_server', 'server_id')))
+    writeFileSync(join(layer, 'tables', 'dws_pay.yaml'), dumpYaml(dwsDoc('dws_pay')))
+    const core = new SemanticGroundingCore({ semanticRoot: layer })
+    core.setTier2Recorder(recorder)
+
+    const before = definitionVersion(layer, 'table', 'dws_pay')
+    expect(before).not.toBeNull()
+    const res = await core.updateTableMeta('dws_pay', { description: '改一版' }, { expected_version: before! })
+    expect(res.ok).toBe(true)
+    if (res.ok) {
+      const after = definitionVersion(layer, 'table', 'dws_pay')
+      expect(after).not.toBe(before)
+      // The receipt names the file as the WHOLE write left it (primitive +
+      // hook), not as the primitive alone left it — otherwise the caller's
+      // next baseline write would be rejected against a dead fingerprint.
+      expect(res.version).toBe(after)
+      // And that receipt round-trips as the next write's baseline.
+      const chained = await core.updateTableMeta('dws_pay', { description: '再改一版' }, { expected_version: res.version })
+      expect(chained.ok).toBe(true)
+    }
   })
 })

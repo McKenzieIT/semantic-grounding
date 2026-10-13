@@ -95,7 +95,11 @@ describe('one auditable write = one commit', () => {
     const rec = recorder()
     const res = await rec.runAudited(CTX, () => core(rec).updateTableMeta('dws_order', { description: '订单宽表' }))
 
-    expect(res.value).toEqual({ ok: true, table_name: 'dws_order' })
+    // #108: the write receipt's `version` names the file bytes this commit
+    // persisted — this spec's own `fingerprint` helper, computed from the
+    // working tree, is the independent witness.
+    expect(res.value).toMatchObject({ ok: true, table_name: 'dws_order' })
+    if (res.value.ok) expect(res.value.version).toBe(fingerprint('dws_order'))
     expect(res.changed).toBe(true)
     expect(res.files).toBe(1)
     expect(res.commit).toMatch(/^[0-9a-f]{40}$/)

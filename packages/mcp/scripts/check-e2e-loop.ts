@@ -265,7 +265,7 @@ async function main(): Promise<void> {
       assert.equal(hits[0]?.id, 'dws_order', 'the exact-substring bonus ranks dws_order first')
 
       const got = await call(client, 'get_definition', { kind: 'table', name: 'dws_order' })
-      assert.match(fieldString(got, 'version'), SHA256, 'get_definition is the only tool returning the fingerprint')
+      assert.match(fieldString(got, 'version'), SHA256, 'get_definition returns the fingerprint (since #108, every definition write receipt does too)')
       const def = got['definition'] as Record<string, unknown>
       assert.deepEqual(def['dimension_refs'], [], 'no join derived yet')
 

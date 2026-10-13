@@ -199,8 +199,9 @@ function removalVerdict(key: string, present: boolean, recordsVeto: boolean, rea
 
 /** The Core's audited kind dispatch (`applyItemUpdate`) as a callable seam:
  * routes `updateTableMeta` / `updateEventMeta` / `updateConceptMeta` by kind
- * and throws on failure, so this module stays free of the class. */
-export type ApplyItemUpdate = (kind: ItemKind, name: string, updates: Readonly<Record<string, unknown>>, expectedVersion: string) => Promise<void>
+ * and throws on failure, resolving to the written file's fingerprint
+ * (#108's write receipt) so this module stays free of the class. */
+export type ApplyItemUpdate = (kind: ItemKind, name: string, updates: Readonly<Record<string, unknown>>, expectedVersion: string) => Promise<string>
 
 /**
  * Add one alias to a table or event, lifting its veto if suppressed.
@@ -220,7 +221,9 @@ export type ApplyItemUpdate = (kind: ItemKind, name: string, updates: Readonly<R
  * @param name - the table_name / event name.
  * @param alias - the alias to add (verbatim form; normalized for comparison).
  * @param expectedVersion - the sha256 fingerprint from `get_definition`.
- * @returns `{added, unsuppressed?}`.
+ * @returns `{added, unsuppressed?, version}` — `version` is the written
+ *   file's fingerprint as the whole write left it (post-hook for tables,
+ *   #108); a byte-stable no-op returns the file's current fingerprint.
  * @throws Error when the target definition does not exist.
  * @throws StaleBaselineError when the fingerprint mismatches.
  */
@@ -231,7 +234,7 @@ export async function addItemAlias(
   name: string,
   alias: string,
   expectedVersion: string,
-): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string] }> {
+): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string]; readonly version: string }> {
   const raw = itemReadRawDef(root, kind, name)
   const existing = itemStringArray(raw, 'alt_labels')
   const key = normalizeLabel(alias)
@@ -246,8 +249,8 @@ export async function addItemAlias(
   if (suppressionJoinsUpdate(raw, supField, existingSup, nextSup)) {
     updates[supField] = nextSup
   }
-  await applyUpdate(kind, name, updates, expectedVersion)
-  return { added: !present, ...(wasVetoed ? { unsuppressed: [key] as const } : {}) }
+  const version = await applyUpdate(kind, name, updates, expectedVersion)
+  return { added: !present, ...(wasVetoed ? { unsuppressed: [key] as const } : {}), version }
 }
 
 /**
@@ -273,7 +276,8 @@ export async function addItemAlias(
  * @param name - the table_name / event name.
  * @param labels - the labels to remove (verbatim; normalized for comparison).
  * @param expectedVersion - the sha256 fingerprint from `get_definition`.
- * @returns per-item verdicts.
+ * @returns per-item verdicts, plus the written file's `version` fingerprint
+ *   (post-hook for tables, #108).
  * @throws Error when the target definition does not exist.
  * @throws StaleBaselineError when the fingerprint mismatches.
  */
@@ -284,7 +288,7 @@ export async function removeItemAliases(
   name: string,
   labels: readonly string[],
   expectedVersion: string,
-): Promise<{ readonly results: readonly ItemVerdict[] }> {
+): Promise<{ readonly results: readonly ItemVerdict[]; readonly version: string }> {
   const raw = itemReadRawDef(root, kind, name)
   const existing = itemStringArray(raw, 'alt_labels')
   const removalKeys = labels.map(normalizeLabel)
@@ -305,7 +309,7 @@ export async function removeItemAliases(
   if (suppressionJoinsUpdate(raw, supField, existingSup, nextSup)) {
     updates[supField] = nextSup
   }
-  await applyUpdate(kind, name, updates, expectedVersion)
+  const version = await applyUpdate(kind, name, updates, expectedVersion)
   // In-lock reassertion check: the on-write hook has run.
   const afterRaw = itemReadRawDef(root, kind, name)
   const after = itemStringArray(afterRaw, 'alt_labels')
@@ -318,7 +322,7 @@ export async function removeItemAliases(
     // (true), absent+vetoed → idempotent (false).
     return removalVerdict(key, wasPresent, wasPresent || !wasAlreadyVetoed, after.some(a => normalizeLabel(a) === key))
   })
-  return { results }
+  return { results, version }
 }
 
 /**
@@ -341,7 +345,9 @@ export async function removeItemAliases(
  * @param name - the table_name / event / concept name.
  * @param relation - a join `{dim_table, join_keys}` for table/event subjects, or `{target_kind, name}` for a concept-side edge (Q4(b)).
  * @param expectedVersion - the sha256 fingerprint from `get_definition`.
- * @returns `{added, unsuppressed?}`.
+ * @returns `{added, unsuppressed?, version}` — `version` is the fingerprint
+ *   of the file this write touched (the HOME concept for a concept-side
+ *   edge, the subject for a join), as the whole write left it (#108).
  * @throws Error when the target definition does not exist, or when
  *   `kind === 'table'` and `relation.dim_table` has no table definition.
  * @throws StaleBaselineError when the fingerprint mismatches.
@@ -353,7 +359,7 @@ export async function addItemRelation(
   name: string,
   relation: RelationInput,
   expectedVersion: string,
-): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string] }> {
+): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string]; readonly version: string }> {
   // Concept-side edge (Q4(b) Update): 概念→概念 / 概念→表 / 表→概念.
   if (isConceptEdge(relation)) {
     return addItemConceptEdge(root, applyUpdate, kind, name, relation, expectedVersion)
@@ -385,8 +391,8 @@ export async function addItemRelation(
   if (suppressionJoinsUpdate(raw, supField, existingSup, nextSup)) {
     updates[supField] = nextSup
   }
-  await applyUpdate(kind, name, updates, expectedVersion)
-  return { added: !alreadyPresent, ...(wasVetoed ? { unsuppressed: [key] as const } : {}) }
+  const version = await applyUpdate(kind, name, updates, expectedVersion)
+  return { added: !alreadyPresent, ...(wasVetoed ? { unsuppressed: [key] as const } : {}), version }
 }
 
 /**
@@ -413,7 +419,8 @@ export async function addItemRelation(
  * @param name - the table_name / event / concept name.
  * @param relations - the relations to remove — joins (structural identity match) or same-shape concept edges; the two shapes cannot mix in one call.
  * @param expectedVersion - the sha256 fingerprint from `get_definition`.
- * @returns per-item verdicts.
+ * @returns per-item verdicts, plus the written file's `version` fingerprint
+ *   (the HOME concept for a concept-edge batch, the subject for joins; #108).
  * @throws Error when the target definition does not exist.
  * @throws StaleBaselineError when the fingerprint mismatches.
  */
@@ -424,7 +431,7 @@ export async function removeItemRelations(
   name: string,
   relations: readonly RelationInput[],
   expectedVersion: string,
-): Promise<{ readonly results: readonly ItemVerdict[] }> {
+): Promise<{ readonly results: readonly ItemVerdict[]; readonly version: string }> {
   // Partition first (Q4(b)): concept edges and join-shaped relations write
   // different files with different baselines — one call carries one shape.
   const edges: Array<{ readonly target_kind: 'table' | 'concept'; readonly name: string }> = []
@@ -470,14 +477,14 @@ export async function removeItemRelations(
   if (suppressionJoinsUpdate(raw, supField, existingSup, nextSup)) {
     updates[supField] = nextSup
   }
-  await applyUpdate(kind, name, updates, expectedVersion)
+  const version = await applyUpdate(kind, name, updates, expectedVersion)
   // In-lock reassertion check: any ref with this dim_table that survived the
   // write (i.e. the on-write hook re-derived it) marks the dance.
   const afterRefs = itemObjectArray(itemReadRawDef(root, kind, name), field)
   const results: ItemVerdict[] = items.map(item =>
     removalVerdict(item.key, item.present, vetoed.has(item), afterRefs.some(e => (e as { readonly dim_table?: unknown }).dim_table === item.key)),
   )
-  return { results }
+  return { results, version }
 }
 
 // ── Concept-side declared edges (Q4(b) Update / #52) ───────────────────────────
@@ -513,7 +520,9 @@ export async function removeItemRelations(
  * bare name (concept name or table name; the plugin resolves graph ids).
  * @param expectedVersion - the sha256 fingerprint of the CONCEPT file this
  *   write modifies (the home concept — see the section note above).
- * @returns `{added, unsuppressed?}`.
+ * @returns `{added, unsuppressed?, version}` — `version` is the home
+ *   concept file's fingerprint after this write (#108), the same file the
+ *   caller's `expected_version` named.
  * @throws Error when the subject or a declared target does not exist, or
  *   when `kind === 'event'`.
  * @throws StaleBaselineError when the fingerprint mismatches.
@@ -525,7 +534,7 @@ async function addItemConceptEdge(
   name: string,
   edge: { readonly target_kind: 'table' | 'concept'; readonly name: string },
   expectedVersion: string,
-): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string] }> {
+): Promise<{ readonly added: boolean; readonly unsuppressed?: readonly [string]; readonly version: string }> {
   if (kind === 'event') {
     throw new Error('concept-target relations are not supported for events — the legal concept-side edges are concept→concept, concept→table, and table→concept (Q4(b))')
   }
@@ -561,8 +570,8 @@ async function addItemConceptEdge(
   if (suppressionJoinsUpdate(raw, supField, existingSup, nextSup)) {
     updates[supField] = nextSup
   }
-  await applyUpdate('concept', home, updates, expectedVersion)
-  return { added: !alreadyPresent, ...(wasVetoed ? { unsuppressed: [key] as const } : {}) }
+  const version = await applyUpdate('concept', home, updates, expectedVersion)
+  return { added: !alreadyPresent, ...(wasVetoed ? { unsuppressed: [key] as const } : {}), version }
 }
 
 /**
@@ -584,7 +593,8 @@ async function addItemConceptEdge(
  * @param name - the subject concept/table name.
  * @param edges - the edges to remove (structural identity: target_kind + target).
  * @param expectedVersion - the sha256 fingerprint of the home CONCEPT file.
- * @returns per-item verdicts.
+ * @returns per-item verdicts, plus the home concept file's `version`
+ *   fingerprint after this write (#108).
  * @throws Error when the subject does not exist, when `kind === 'event'`,
  *   or when a table subject's edges name more than one target concept.
  * @throws StaleBaselineError when the fingerprint mismatches.
@@ -596,7 +606,7 @@ async function removeItemConceptEdges(
   name: string,
   edges: readonly { readonly target_kind: 'table' | 'concept'; readonly name: string }[],
   expectedVersion: string,
-): Promise<{ readonly results: readonly ItemVerdict[] }> {
+): Promise<{ readonly results: readonly ItemVerdict[]; readonly version: string }> {
   if (kind === 'event') {
     throw new Error('concept-target relations are not supported for events — the legal concept-side edges are concept→concept, concept→table, and table→concept (Q4(b))')
   }
@@ -642,10 +652,10 @@ async function removeItemConceptEdges(
   if (suppressionJoinsUpdate(raw, supField, existingSup, nextSup)) {
     updates[supField] = nextSup
   }
-  await applyUpdate('concept', home, updates, expectedVersion)
+  const version = await applyUpdate('concept', home, updates, expectedVersion)
   const results: ItemVerdict[] = items.map(item =>
     // reasserted is always false: concepts have no enrichment rounds — nothing can re-derive a vetoed edge.
     removalVerdict(item.key, item.present, vetoed.has(item), false),
   )
-  return { results }
+  return { results, version }
 }

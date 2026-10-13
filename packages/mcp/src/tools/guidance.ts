@@ -6,8 +6,9 @@
  *
  * Mechanism: an optional `_guidance` field on exactly the 7 write-tool responses
  * (create_definition, update_definition, add_alias, remove_alias, add_relation,
- * remove_relation, import_definitions), injected after `auditedWrite`'s response
- * assembly. Read tools never get this field.
+ * remove_relation, import_definitions — the explicit list `tools/audited.ts`'s
+ * `GUIDANCE_TOOL_NAMES` owns), injected by `writeReceipt`, the write envelope's
+ * single assembly point (#108). Read tools never get this field.
  *
  * Two layers track independently (#55 R4): DW (tables + events — the text-to-SQL
  * grounding assets) and KG (concepts — the knowledge-graph entity layer). Each
@@ -147,6 +148,9 @@ function hintFor(layer: 'dw' | 'kg', phase: GuidancePhase): string {
 
 /**
  * Compute `_guidance`, or `undefined` once both layers have reached `mature`.
+ * Called by `tools/audited.ts`'s `writeReceipt` — the write envelope's single
+ * injection point for the 7 guidance-carrying tools (#55/#56's model; #108
+ * folded the per-handler `guidanceField` spread into the envelope).
  * @param snap - the entry snapshot (ADR-0011 ruling 1 — resolved at handler entry).
  * @param thresholds - per-layer overrides; each side defaults independently
  *   ({@link DEFAULT_DW_THRESHOLD}, {@link DEFAULT_KG_THRESHOLD}) when absent.
@@ -163,16 +167,4 @@ export async function maybeGuidance(snap: ScopeBinding, thresholds?: GuidanceThr
   const phase = dwIsLaggard ? dw.phase : kg.phase
   const hint = dwIsLaggard ? hintFor('dw', dw.phase) : hintFor('kg', kg.phase)
   return { phase, hint, metrics: { dw, kg } }
-}
-
-/**
- * Spread-ready `_guidance` field for a `toolSuccess` payload — the write tools'
- * single injection call, mirroring `enrichment_health`'s conditional-spread
- * zero-tax convention.
- * @param snap - the entry snapshot.
- * @param thresholds - forwarded to {@link maybeGuidance}.
- */
-export async function guidanceField(snap: ScopeBinding, thresholds?: GuidanceThresholds): Promise<{ readonly _guidance: Guidance } | Record<string, never>> {
-  const g = await maybeGuidance(snap, thresholds)
-  return g !== undefined ? { _guidance: g } : {}
 }
