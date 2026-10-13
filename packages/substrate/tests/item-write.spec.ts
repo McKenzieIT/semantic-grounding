@@ -18,9 +18,10 @@
  * @see docs/adr/0005-mcp-tool-surface.md + docs/adr/0010-suppression.md
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import yaml from 'js-yaml'
 import {
   SemanticGroundingCore,
   dumpYaml,
@@ -28,6 +29,7 @@ import {
   type Tier2Recorder,
 } from '../src/index.ts'
 import { definitionVersion } from '../src/io.ts'
+import { suppressionJoinsUpdate } from '../src/item-write.ts'
 
 const noopRecorder: Tier2Recorder = { recordTier2Write: async () => 'noop-log-id' }
 
@@ -116,6 +118,15 @@ function ver(kind: 'table' | 'event', name: string): string {
   const v = definitionVersion(root, kind, name)
   if (v === null) throw new Error(`no version for ${kind}/${name}`)
   return v
+}
+
+/** Read a table's raw YAML dict off disk — the byte-level lens. The zod-parsed
+ * definitions cannot pin this: `.default([])` on the suppression fields makes
+ * an absent field and an empty one parse identically, so "the file never had
+ * a `suppressed_*`" is only observable here. (Same shape as
+ * enrichment-work.spec.ts's readTableRaw — io.ts does not export one.) */
+function readTableRaw(dir: string, name: string): Record<string, unknown> {
+  return yaml.load(readFileSync(join(dir, 'tables', `${name}.yaml`), 'utf-8')) as Record<string, unknown>
 }
 
 const ORDER_COLS = [{ name: 'order_id', type: 'string' }]
@@ -431,7 +442,10 @@ describe('dual-field overlay hygiene', () => {
     const core = newCore()
     const res = await core.addAlias('table', 'dws_pay', '已有', ver('table', 'dws_pay'))
     expect(res.added).toBe(false)
-    expect(core.loadTableDefinition('dws_pay')?.suppressed_alt_labels).toEqual([])
+    // Raw lens: the parsed `.suppressed_alt_labels` is `.default([])`-masked
+    // (absent parses to `[]`), which cannot pin the byte layer — the on-disk
+    // dict must NOT carry the field at all.
+    expect('suppressed_alt_labels' in readTableRaw(root, 'dws_pay')).toBe(false)
   })
 
   it('removeAliases introduces suppressed_alt_labels when the veto set changes', async () => {
@@ -441,5 +455,28 @@ describe('dual-field overlay hygiene', () => {
     const def = core.loadTableDefinition('dws_pay')
     expect(def?.suppressed_alt_labels).toContain('活词')
     expect(def?.alt_labels).not.toContain('活词')
+    // Raw-lens mirror: the veto field is really on disk, not a parsed default.
+    expect('suppressed_alt_labels' in readTableRaw(root, 'dws_pay')).toBe(true)
+  })
+})
+
+// ── Byte-stability gate quadrants (suppressionJoinsUpdate) ──────────────
+
+describe('suppressionJoinsUpdate (byte-stability gate quadrants)', () => {
+  // {list changed, unchanged} × {field on disk, absent} → join / join / join / skip.
+  it('joins when the list changed and the field is absent from disk', () => {
+    expect(suppressionJoinsUpdate({}, 'suppressed_alt_labels', [], ['新词'])).toBe(true)
+  })
+
+  it('joins when the list changed and the field exists on disk', () => {
+    expect(suppressionJoinsUpdate({ suppressed_alt_labels: ['旧词'] }, 'suppressed_alt_labels', ['旧词'], ['旧词', '新词'])).toBe(true)
+  })
+
+  it('joins when unchanged but the field exists on disk (veto-lift to empty must persist)', () => {
+    expect(suppressionJoinsUpdate({ suppressed_alt_labels: ['x'] }, 'suppressed_alt_labels', ['x'], ['x'])).toBe(true)
+  })
+
+  it('does not join when unchanged and absent from disk (no-op must not introduce)', () => {
+    expect(suppressionJoinsUpdate({}, 'suppressed_alt_labels', [], [])).toBe(false)
   })
 })
