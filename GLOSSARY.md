@@ -658,3 +658,34 @@ schema-valid and the batch has no duplicate names" — cross-corpus reference ga
 [enrichment](#enrichment) territory. This is the seeding-stage companion to
 [cold start](#cold-start): cold start is the strategy, batch import is the mechanism
 that makes 100-table registrations one judgement instead of 100 round trips.
+
+### dry-run preview (预检)
+
+A read-only rehearsal of a [batch import](#batch-import): calling `import_definitions`
+with `dry_run: true` runs the Phase-1 adjudication — the per-item
+`created` / `updated` / `skipped` / `error` verdicts plus the batch summary — and returns
+them **without opening the audit window or writing a commit** (decided in ADR-0018;
+implementation tracked in [#104](https://github.com/McKenzieIT/semantic-grounding/issues/104)).
+The preview runs the *same* adjudication the real write performs, so what it reports is a
+faithful rehearsal of what the write would do; it is how a definition set is inspected
+*before* it becomes source-of-truth. Because no online second party exists at tool-call
+time (author=agent / committer=server, humans audit post-hoc via `git log` — ADR-0004),
+the preview is the agent's own pre-commit review channel. Advisory, not enforced — the
+[mass-update guard](#mass-update-guard) is what gives large overwrites teeth.
+
+### mass-update guard (批量覆盖守卫)
+
+A deterministic, server-side signal that makes a large *overwrite* of existing
+source-of-truth definitions deliberate and auditable (decided in ADR-0018; implementation
+tracked in [#104](https://github.com/McKenzieIT/semantic-grounding/issues/104)). It keys
+on the [batch import](#batch-import) `updated` verdict count — not the total and not
+`created` — because the danger is how many existing definitions a batch overwrites, not
+how many it adds: a [cold start](#cold-start) into an empty corpus is almost all `created`
+and must not trip it, while a drifted re-import is almost all `updated`. When `updated`
+exceeds a configured threshold the guard is a **soft signal**: it warns in the response
+and annotates the batch commit's [provenance](#provenance) trailer so a post-hoc
+`git log` reader lands on exactly the risky commits — it does **not** reject the write
+(the 500-item cap already bounds runaway size, and a hard refusal is trivially evaded by
+splitting the batch). The corpus-relative *ratio* form of this guard (what fraction of
+the whole corpus a change touches) belongs to ODPS drift re-sync, not batch intake — see
+[#94](https://github.com/McKenzieIT/semantic-grounding/issues/94).
