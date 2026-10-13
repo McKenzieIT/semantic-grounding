@@ -607,3 +607,98 @@ describe('work index cap (ADR-0008)', () => {
     expect(small.work).toHaveLength(1)
   })
 })
+
+// ── resolveEnrichmentWork: both ends run one shared staleness premise (map #95 C2 / 01-Q4) ──
+
+describe('fetch/apply stale parity via the shared resolve step', () => {
+  test('every staleness scenario verdicts stale_baseline on BOTH ends with the identical detail string', async () => {
+    const scenarios: Array<{
+      readonly name: string
+      readonly workId: (item: { work_id: string }) => string
+      readonly mutate: () => void
+      readonly expectTarget: string
+      readonly wroteNothing: () => void
+    }> = [
+      {
+        // target-changed: someone edits the definition between issuance and the calls.
+        name: 'target-changed',
+        workId: item => item.work_id,
+        mutate: () => writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }], { description: 'edited after issuance' })),
+        expectTarget: 'dws_order',
+        wroteNothing: () => expect(readTableRaw(dir, 'dws_order').alt_labels).toEqual([]),
+      },
+      {
+        // target-gone: the table file is deleted after issuance.
+        name: 'target-gone',
+        workId: item => item.work_id,
+        mutate: () => rmSync(join(dir, 'tables', 'dws_order.yaml')),
+        expectTarget: 'dws_order',
+        wroteNothing: () => expect(() => readTableRaw(dir, 'dws_order')).toThrow(),
+      },
+      {
+        // schema-broken: alt_labels is fingerprint-managed, so rewriting it to an
+        // invalid type leaves the baseline matching and ONLY the safeParse leg fires —
+        // the sole reachable path to that branch. Raw YAML (dumpYaml of the mutated
+        // plain dict), not the typed builder: [42] is not a legal fixture value.
+        name: 'schema-broken',
+        workId: item => item.work_id,
+        mutate: () => {
+          const raw = readTableRaw(dir, 'dws_order')
+          writeFileSync(join(dir, 'tables', 'dws_order.yaml'), dumpYaml({ ...raw, alt_labels: [42] }))
+        },
+        expectTarget: 'dws_order',
+        wroteNothing: () => expect(readTableRaw(dir, 'dws_order').alt_labels).toEqual([42]),
+      },
+      {
+        // garbage id: never decodes, so neither end knows a target or a round.
+        name: 'garbage id',
+        workId: () => 'not-a-real-work-id',
+        mutate: () => {},
+        expectTarget: '(unknown)',
+        wroteNothing: () => expect(readTableRaw(dir, 'dws_order').alt_labels).toEqual([]),
+      },
+    ]
+    for (const s of scenarios) {
+      dir = newLayer()
+      writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }]))
+      const core = new SemanticGroundingCore({ semanticRoot: dir })
+      const { work } = await core.listEnrichmentWork()
+      const item = work.find(w => w.target === 'dws_order' && w.gap.includes('alt_labels'))
+      expect(item, s.name).toBeDefined()
+      const workId = s.workId(item!)
+      s.mutate()
+
+      const [fetchOut] = await core.getEnrichmentPrompts([workId])
+      const { recorder } = fakeRecorder()
+      const applyRes = await core.applyEnrichmentResults([{ work_id: workId, text: '["never-lands"]' }], recorder)
+
+      // The pin: both ends stale, on the same state, with byte-identical details.
+      expect(fetchOut?.verdict, s.name).toBe('stale_baseline')
+      expect(applyRes.results[0]?.verdict, s.name).toBe('stale_baseline')
+      expect(fetchOut?.detail, s.name).toBe(applyRes.results[0]?.detail)
+      expect(fetchOut?.target, s.name).toBe(s.expectTarget)
+      expect(applyRes.results[0]?.target, s.name).toBe(s.expectTarget)
+      expect(fetchOut?.prompt, s.name).toBeUndefined()
+      s.wroteNothing()
+    }
+  })
+
+  test('fetch fresh ⇒ apply does not stale-reject on the baseline (one-directional guarantee)', async () => {
+    dir = newLayer()
+    writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }]))
+    const core = new SemanticGroundingCore({ semanticRoot: dir })
+    const { work } = await core.listEnrichmentWork()
+    const item = work.find(w => w.target === 'dws_order' && w.gap.includes('alt_labels'))!
+
+    const [fetchOut] = await core.getEnrichmentPrompts([item.work_id])
+    expect(fetchOut?.verdict).toBe('fresh')
+    expect(fetchOut?.prompt).toContain('dws_order')
+
+    // Same state, no mutation in between: fetch's resolve passed, so apply's own
+    // resolve cannot stale-reject on the baseline — the guarantee only runs one way.
+    const { recorder } = fakeRecorder()
+    const res = await core.applyEnrichmentResults([{ work_id: item.work_id, text: '["some-new-alias"]' }], recorder)
+    expect(res.results[0]?.verdict).toBe('applied')
+    expect(readTableRaw(dir, 'dws_order').alt_labels).toEqual(['some-new-alias'])
+  })
+})

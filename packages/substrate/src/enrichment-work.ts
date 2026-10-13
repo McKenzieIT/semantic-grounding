@@ -10,6 +10,13 @@
  * functions — the same split as `enrichAllDwsTables` (`enrichment.ts`) and
  * `core.discoverRelations`.
  *
+ * Both ends of that loop share one staleness premise: {@link resolveEnrichmentWork}
+ * decodes the `work_id`, re-finds its target on disk, recomputes the fingerprint, and
+ * re-validates the raw definition — `fetchEnrichmentPrompts` and
+ * `applyOneEnrichmentResult` each run exactly that function, so a work_id that verdicts
+ * `stale_baseline` at fetch is stale at apply by mechanism, not by two hand-copied
+ * condition lists happening to agree.
+ *
  * ## Why a work_id has to be self-contained
  *
  * ADR-0006 ruling 1 chose an agent-driven tool loop over the two MRTR shapes
@@ -68,6 +75,8 @@ import {
   TableDefinitionSchema,
   EventDefinitionSchema,
   type DimensionRef,
+  type TableDefinition,
+  type EventDefinition,
 } from './types.ts'
 import { loadTables, loadEvents, writeTable, writeEventYaml, dumpYaml, loadSuppressions, normalizeLabel } from './io.ts'
 import type { Tier2Recorder } from './io.ts'
@@ -205,6 +214,75 @@ function decodeWorkId(workId: string): WorkIdPayload | undefined {
  */
 export function peekWorkIdTarget(workId: string): string | undefined {
   return decodeWorkId(workId)?.t
+}
+
+// ── resolve: the one staleness premise fetch and apply share ────────────
+
+/** @param target - the target name. @returns the shared "changed since issuance" detail string. */
+function staleSinceIssuanceDetail(target: string): string {
+  return `${target} changed since this work item was issued — call get_enrichment_work again and retry with a fresh work_id`
+}
+
+/** Fresh: the target's current raw dict, its schema-validated form, and the identity
+ * fields both ends echo back. Stale: the `target` (and `round`, when the token at least
+ * decoded) plus the one-line detail — `round` is genuinely *absent*, not `undefined`,
+ * on the decode-failure arm, so both ends' outcome objects keep their exact key shapes. */
+type ResolvedEnrichmentWork =
+  | { readonly fresh: true; readonly kind: 'table'; readonly target: string; readonly round: WorkRound; readonly raw: Record<string, unknown>; readonly parsed: TableDefinition }
+  | { readonly fresh: true; readonly kind: 'event'; readonly target: string; readonly round: WorkRound; readonly raw: Record<string, unknown>; readonly parsed: EventDefinition }
+  | { readonly fresh: false; readonly target: string; readonly round?: WorkRound; readonly detail: string }
+
+/**
+ * THE single staleness premise of the ask-answer loop: `decodeWorkId` → find the
+ * target's current row (`loadTables` / `loadEvents`) → {@link fingerprint} →
+ * `safeParse`, in exactly that order, with each failure collapsing to the one stale
+ * detail string single-sourced here (the substrate tests and the MCP wire pin the
+ * exact bytes).
+ *
+ * `fetchEnrichmentPrompts` and `applyOneEnrichmentResult` call exactly this function
+ * — and nothing else — to establish freshness, so "a work_id that fetched stale will
+ * also apply stale" holds by mechanism: the same code ran, not two hand-copied
+ * restatements of one condition list that could drift apart.
+ *
+ * The fresh arms carry `raw` because apply's write-back spreads it
+ * (`{ ...raw, [field]: value }`) — writing back only the validated `parsed` form
+ * would drop every key the loader tolerates but the schema does not re-emit. Fetch
+ * ignores `raw` entirely; carrying it costs one reference.
+ *
+ * Contrast {@link peekWorkIdTarget}, which deliberately does NOT route through here:
+ * a cosmetic commit-subject peek wants the target name with no fingerprint
+ * verification — that contract stays in peek's own docstring.
+ * @param semanticLayer - the semantic-layer directory path.
+ * @param workId - the token to resolve.
+ * @returns fresh (kind + target + round + raw + parsed) or stale (target + round? +
+ *   detail).
+ */
+function resolveEnrichmentWork(semanticLayer: string, workId: string): ResolvedEnrichmentWork {
+  const payload = decodeWorkId(workId)
+  if (payload === undefined) {
+    return {
+      fresh: false,
+      target: '(unknown)',
+      detail: 'work_id could not be decoded (malformed, a schema version this server does not know, or not issued by this server) — call get_enrichment_work again and retry with a fresh work_id',
+    }
+  }
+  const { k: kind, r: round, t: target, h: baseline } = payload
+
+  if (kind === 'table') {
+    const row = loadTables(semanticLayer).find(x => x.table_name === target)
+    if (row === undefined) return { fresh: false, target, round, detail: `table ${target} no longer exists in the corpus` }
+    if (fingerprint(row.raw) !== baseline) return { fresh: false, target, round, detail: staleSinceIssuanceDetail(target) }
+    const parsed = TableDefinitionSchema.safeParse(row.raw)
+    if (!parsed.success) return { fresh: false, target, round, detail: `${target} no longer validates against the table schema` }
+    return { fresh: true, kind, target, round, raw: row.raw, parsed: parsed.data }
+  }
+
+  const row = loadEvents(semanticLayer).find(x => x.name === target)
+  if (row === undefined) return { fresh: false, target, round, detail: `event ${target} no longer exists in the corpus` }
+  if (fingerprint(row.raw) !== baseline) return { fresh: false, target, round, detail: staleSinceIssuanceDetail(target) }
+  const parsed = EventDefinitionSchema.safeParse(row.raw)
+  if (!parsed.success) return { fresh: false, target, round, detail: `${target} no longer validates against the event schema` }
+  return { fresh: true, kind, target, round, raw: row.raw, parsed: parsed.data }
 }
 
 // ── get_enrichment_work: list outstanding gaps ──────────────────────────
@@ -363,11 +441,12 @@ export interface EnrichmentPromptItem {
  * (ADR-0008's prompt half of the index/prompt split — the listing stores only the
  * fingerprint, so the question is always re-derived, never cached).
  *
- * Staleness is reported here, at fetch time, under the same conditions apply will
- * later check (undecodable work_id, target gone, fingerprint mismatch, definition no
- * longer schema-valid): a work_id failing any of them is guaranteed to verdict
- * `stale_baseline` at apply, so answering its prompt is wasted work — reporting early
- * lets the agent skip straight to re-fetching the work. A gap that was *filled* since
+ * Staleness is reported here, at fetch time, by literally the same code path apply
+ * will later run — both ends call {@link resolveEnrichmentWork} (undecodable work_id,
+ * target gone, fingerprint mismatch, definition no longer schema-valid), so a work_id
+ * failing any of them is guaranteed to verdict `stale_baseline` at apply *by
+ * construction*, and answering its prompt is wasted work — reporting early lets the
+ * agent skip straight to re-fetching the work. A gap that was *filled* since
  * listing (filling `dimension_refs`/`external_refs`/`alt_labels` does not move the
  * fingerprint — they are stripped from it, see {@link fingerprint}) stays `fresh` on
  * purpose: the question "what joins does this table have?" is not invalidated by
@@ -393,39 +472,21 @@ export function fetchEnrichmentPrompts(
     return inventory
   }
   return workIds.map(workId => {
-    const payload = decodeWorkId(workId)
-    if (payload === undefined) {
-      return {
-        work_id: workId,
-        target: '(unknown)',
-        verdict: 'stale_baseline',
-        detail: 'work_id could not be decoded (malformed, a schema version this server does not know, or not issued by this server) — call get_enrichment_work again and retry with a fresh work_id',
-      } as const
+    const r = resolveEnrichmentWork(semanticLayer, workId)
+    // Key-shape parity with the apply family: a decode-failure outcome carries no
+    // `round` key at all (none is knowable); a decodable one carries it.
+    const base = { work_id: workId, target: r.target, ...(r.round !== undefined ? { round: r.round } : {}) }
+    if (!r.fresh) return { ...base, verdict: 'stale_baseline', detail: r.detail }
+    if (r.kind === 'table') {
+      const prompt = r.round === 'relation'
+        ? buildLlmPrompt(r.parsed, dimInventory())
+        : buildAltLabelsPrompt(tableToAltLabelsTarget(r.parsed))
+      return { ...base, verdict: 'fresh', prompt, detail: `prompt rebuilt from the current corpus for the ${r.round} round` }
     }
-    const { k: kind, r: round, t: target, h: baseline } = payload
-    const base = { work_id: workId, target, round } as const
-
-    if (kind === 'table') {
-      const row = loadTables(semanticLayer).find(x => x.table_name === target)
-      if (row === undefined) return { ...base, verdict: 'stale_baseline', detail: `table ${target} no longer exists in the corpus` }
-      if (fingerprint(row.raw) !== baseline) return { ...base, verdict: 'stale_baseline', detail: staleSinceIssuanceDetail(target) }
-      const parsed = TableDefinitionSchema.safeParse(row.raw)
-      if (!parsed.success) return { ...base, verdict: 'stale_baseline', detail: `${target} no longer validates against the table schema` }
-      const prompt = round === 'relation'
-        ? buildLlmPrompt(parsed.data, dimInventory())
-        : buildAltLabelsPrompt(tableToAltLabelsTarget(parsed.data))
-      return { ...base, verdict: 'fresh', prompt, detail: `prompt rebuilt from the current corpus for the ${round} round` }
-    }
-
-    const row = loadEvents(semanticLayer).find(x => x.name === target)
-    if (row === undefined) return { ...base, verdict: 'stale_baseline', detail: `event ${target} no longer exists in the corpus` }
-    if (fingerprint(row.raw) !== baseline) return { ...base, verdict: 'stale_baseline', detail: staleSinceIssuanceDetail(target) }
-    const parsed = EventDefinitionSchema.safeParse(row.raw)
-    if (!parsed.success) return { ...base, verdict: 'stale_baseline', detail: `${target} no longer validates against the event schema` }
-    const prompt = round === 'relation'
-      ? buildEventLlmPrompt(parsed.data, dimInventory())
-      : buildAltLabelsPrompt(eventToAltLabelsTarget(parsed.data))
-    return { ...base, verdict: 'fresh', prompt, detail: `prompt rebuilt from the current corpus for the ${round} round` }
+    const prompt = r.round === 'relation'
+      ? buildEventLlmPrompt(r.parsed, dimInventory())
+      : buildAltLabelsPrompt(eventToAltLabelsTarget(r.parsed))
+    return { ...base, verdict: 'fresh', prompt, detail: `prompt rebuilt from the current corpus for the ${r.round} round` }
   })
 }
 
@@ -546,21 +607,17 @@ function mergeAltLabelsText(
   return { kind: 'applied', detail: `added ${uniqueAdded.length} new alt_label(s)`, value: merged }
 }
 
-/** @param target - the target name. @returns the shared "changed since issuance" detail string. */
-function staleSinceIssuanceDetail(target: string): string {
-  return `${target} changed since this work item was issued — call get_enrichment_work again and retry with a fresh work_id`
-}
-
 /**
  * Apply one agent-supplied completion against the current corpus state.
  *
  * In-lock re-verification (when called, per the module this ships in, from inside
- * `GitTier2Recorder.runAudited`'s `fn`): re-reads the target fresh, recomputes its
- * fingerprint, and compares it to the baseline embedded in `work_id` *before* parsing or
- * merging anything, so a target that changed between issuance and apply is caught before
- * its stale content could be merged into. Never throws for a bad or stale `work_id` —
- * every failure mode is a verdict (see this module's header), so one bad item in a batch
- * cannot abort the others (`applyEnrichmentResultsBatch` relies on that).
+ * `GitTier2Recorder.runAudited`'s `fn`): {@link resolveEnrichmentWork} re-reads the
+ * target fresh, recomputes its fingerprint, and compares it to the baseline embedded
+ * in `work_id` *before* parsing or merging anything, so a target that changed between
+ * issuance and apply is caught before its stale content could be merged into. Never
+ * throws for a bad or stale `work_id` — every failure mode is a verdict (see this
+ * module's header), so one bad item in a batch cannot abort the others
+ * (`applyEnrichmentResultsBatch` relies on that).
  *
  * A successful merge writes immediately via `writeTable` / `writeEventYaml` **without**
  * `Tier2Opts` — a deliberately raw, unaudited write at this call. The audit commit is
@@ -578,59 +635,44 @@ export async function applyOneEnrichmentResult(
   work_id: string,
   text: string,
 ): Promise<AppliedEnrichmentOutcome> {
-  const payload = decodeWorkId(work_id)
-  if (payload === undefined) {
-    return {
-      work_id,
-      target: '(unknown)',
-      verdict: 'stale_baseline',
-      detail: 'work_id could not be decoded (malformed, a schema version this server does not know, or not issued by this server) — call get_enrichment_work again and retry with a fresh work_id',
-    }
-  }
-  const { k: kind, r: round, t: target, h: baseline } = payload
-  const base = { work_id, target, round } as const
+  const r = resolveEnrichmentWork(semanticLayer, work_id)
+  // Key-shape parity with fetchEnrichmentPrompts: a decode-failure outcome carries
+  // no `round` key at all; a decodable one carries it.
+  const base = { work_id, target: r.target, ...(r.round !== undefined ? { round: r.round } : {}) }
+  if (!r.fresh) return { ...base, verdict: 'stale_baseline', detail: r.detail }
 
-  if (kind === 'table') {
-    const row = loadTables(semanticLayer).find(x => x.table_name === target)
-    if (row === undefined) return { ...base, verdict: 'stale_baseline', detail: `table ${target} no longer exists in the corpus` }
-    if (fingerprint(row.raw) !== baseline) return { ...base, verdict: 'stale_baseline', detail: staleSinceIssuanceDetail(target) }
-    const parsed = TableDefinitionSchema.safeParse(row.raw)
-    if (!parsed.success) return { ...base, verdict: 'stale_baseline', detail: `${target} no longer validates against the table schema` }
-    const def = parsed.data
+  if (r.kind === 'table') {
+    const def = r.parsed
     // Suppression sets (ADR-0010) — the apply path is the LLM round's write
     // surface, gated exactly like the deterministic rounds.
     const corpusVetoes = loadSuppressions(semanticLayer)
-    const outcome = round === 'relation'
+    const outcome = r.round === 'relation'
       ? mergeRelationText(text, def.dimension_refs, relationVetoSet(def.suppressed_dimension_refs))
       : mergeAltLabelsText(text, def.alt_labels, def.table_name, def.pref_label, aliasVetoSet(def.suppressed_alt_labels, corpusVetoes))
     if (outcome.kind !== 'applied') return { ...base, verdict: outcome.kind, detail: outcome.detail }
-    const field = round === 'relation' ? 'dimension_refs' : 'alt_labels'
+    const field = r.round === 'relation' ? 'dimension_refs' : 'alt_labels'
     // #61: writeTable's domain validation is {ok:false}, not a throw. Mapping it
     // to a verdict (not propagating) is this module's documented contract —
     // "every failure mode is a verdict … one bad item cannot abort the others" —
     // and mirrors the event branch's own {ok:false} mapping right below. In
-    // practice unreachable: row.raw was safeParse'd moments above and the merged
-    // field is merge-validated, so the old throw path this replaces was equally
-    // unreachable (and contradicted the never-throw contract when it fired).
-    const w = await writeTable(semanticLayer, target, { ...row.raw, [field]: outcome.value })
+    // practice unreachable: resolveEnrichmentWork safeParse'd r.raw moments above
+    // and the merged field is merge-validated, so the old throw path this replaces
+    // was equally unreachable (and contradicted the never-throw contract when it
+    // fired).
+    const w = await writeTable(semanticLayer, r.target, { ...r.raw, [field]: outcome.value })
     if (!w.ok) return { ...base, verdict: 'stale_baseline', detail: w.error }
     return { ...base, verdict: 'applied', detail: outcome.detail }
   }
 
-  const row = loadEvents(semanticLayer).find(x => x.name === target)
-  if (row === undefined) return { ...base, verdict: 'stale_baseline', detail: `event ${target} no longer exists in the corpus` }
-  if (fingerprint(row.raw) !== baseline) return { ...base, verdict: 'stale_baseline', detail: staleSinceIssuanceDetail(target) }
-  const parsed = EventDefinitionSchema.safeParse(row.raw)
-  if (!parsed.success) return { ...base, verdict: 'stale_baseline', detail: `${target} no longer validates against the event schema` }
-  const def = parsed.data
+  const def = r.parsed
   const corpusVetoes = loadSuppressions(semanticLayer)
-  const outcome = round === 'relation'
+  const outcome = r.round === 'relation'
     ? mergeRelationText(text, def.external_refs, relationVetoSet(def.suppressed_external_refs))
     : mergeAltLabelsText(text, def.alt_labels, def.name, def.pref_label, aliasVetoSet(def.suppressed_alt_labels, corpusVetoes))
   if (outcome.kind !== 'applied') return { ...base, verdict: outcome.kind, detail: outcome.detail }
-  const field = round === 'relation' ? 'external_refs' : 'alt_labels'
-  const content = dumpYaml({ ...row.raw, [field]: outcome.value })
-  const res = await writeEventYaml(semanticLayer, target, content)
+  const field = r.round === 'relation' ? 'external_refs' : 'alt_labels'
+  const content = dumpYaml({ ...r.raw, [field]: outcome.value })
+  const res = await writeEventYaml(semanticLayer, r.target, content)
   if (!res.ok) return { ...base, verdict: 'stale_baseline', detail: res.error }
   return { ...base, verdict: 'applied', detail: outcome.detail }
 }
