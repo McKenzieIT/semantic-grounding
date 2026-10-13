@@ -105,7 +105,9 @@ describe('get_scope_scaffold', () => {
     const out = await callOk(tools, 'get_scope_scaffold', { scope_id: 'probe', path: `${fixtureA.root}///` })
     const serialized = JSON.stringify(out['steps'])
     expect(serialized).not.toContain('///')
-    expect(serialized).toContain(fixtureA.root)
+    // JSON.stringify escapes the path's backslashes on Windows, so the raw root string
+    // never appears in the serialized text there — assert its escaped form (#81).
+    expect(serialized).toContain(JSON.stringify(fixtureA.root).slice(1, -1))
   })
 })
 

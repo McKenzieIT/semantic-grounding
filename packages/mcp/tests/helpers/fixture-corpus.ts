@@ -217,6 +217,12 @@ export function createFixtureCorpus(opts: FixtureCorpusOptions = {}): FixtureCor
     fixtureGit(['config', 'user.name', 'Fixture Human'], root)
     fixtureGit(['config', 'user.email', 'human@fixture.local'], root)
     fixtureGit(['config', 'commit.gpgsign', 'false'], root)
+    // Hermetic line endings alongside the hermetic identity: Git-for-Windows defaults
+    // `core.autocrlf=true` globally, and its smudge/clean filters make byte-exact
+    // rollback and recovery-content assertions machine-dependent. A repo-local `false`
+    // pins LF pass-through for every git call in this repo — the recorder's and
+    // posture's own invocations included, since they read .git/config too (#81).
+    fixtureGit(['config', 'core.autocrlf', 'false'], root)
     if (wantBaseline) {
       fixtureGit(['add', '-A'], root)
       fixtureGit(['commit', '--quiet', '-m', 'corpus baseline'], root)

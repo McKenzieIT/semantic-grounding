@@ -13,7 +13,7 @@
  * @module tests/build-shape.spec
  */
 import { execFileSync } from 'node:child_process'
-import { readFileSync, statSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { beforeAll, describe, expect, it } from 'vitest'
@@ -25,8 +25,11 @@ const LIB = join(PKG_ROOT, 'lib')
 let emitted = ''
 
 beforeAll(() => {
-  execFileSync('pnpm', ['run', 'build'], { cwd: PKG_ROOT, stdio: 'pipe' })
-  const names = execFileSync('ls', [LIB], { encoding: 'utf8' }).split('\n').filter(n => n.endsWith('.js'))
+  // pnpm is `pnpm.cmd` on Windows, and child_process cannot exec a `.cmd` without a
+  // shell — spawn through one there (#81). The simple, space-free argv makes the
+  // shell-joined form safe.
+  execFileSync('pnpm', ['run', 'build'], { cwd: PKG_ROOT, stdio: 'pipe', shell: process.platform === 'win32' })
+  const names = readdirSync(LIB).filter(n => n.endsWith('.js'))
   emitted = names.map(n => readFileSync(join(LIB, n), 'utf8')).join('\n')
 }, 120_000)
 
@@ -35,7 +38,9 @@ describe('the sg-mcp executable', () => {
     expect(readFileSync(join(LIB, 'bin.js'), 'utf8').startsWith('#!/usr/bin/env node')).toBe(true)
   })
 
-  it('is executable', () => {
+  // Windows has no execute bit — statSync reports 0o666 there — so this POSIX-only
+  // gate cannot run there (#81); the shebang assertion above still does.
+  it.skipIf(process.platform === 'win32')('is executable', () => {
     // tsdown chmods entries that carry a shebang. Without the bit, a client's `command`
     // fails with EACCES before any of this server's own diagnostics can run.
     expect(statSync(join(LIB, 'bin.js')).mode & 0o111).toBeGreaterThan(0)

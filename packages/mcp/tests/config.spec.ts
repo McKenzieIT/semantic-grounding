@@ -12,6 +12,7 @@
  * @module tests/config.spec
  */
 import { describe, expect, it } from 'vitest'
+import { basename, isAbsolute, resolve } from 'node:path'
 import { ConfigError, ENV_VARS, HelpRequested, parseServerConfig, usage } from '../src/config.ts'
 import { defaultRegistryPath } from '../src/scope-registry.ts'
 
@@ -54,10 +55,12 @@ describe('parseServerConfig — legal branches', () => {
   it('resolves a relative registry path to an absolute one', () => {
     // Under stdio the MCP client picks the working directory, so a relative path names a
     // directory the operator did not choose. Resolving here, once, is what makes every
-    // downstream message name the file actually used.
+    // downstream message name the file actually used. Platform-portable assertions
+    // (#81): `path.resolve` yields `D:\...` on Windows, so assert the semantics
+    // (absolute, right basename) rather than a POSIX-shaped string.
     const cfg = parseServerConfig(['--registry', 'scopes.yaml', '--agent-id', 'a'], NO_ENV)
-    expect(cfg.registryPath.startsWith('/')).toBe(true)
-    expect(cfg.registryPath.endsWith('/scopes.yaml')).toBe(true)
+    expect(isAbsolute(cfg.registryPath)).toBe(true)
+    expect(basename(cfg.registryPath)).toBe('scopes.yaml')
   })
 
   it('falls back to the environment for every setting', () => {
@@ -68,7 +71,9 @@ describe('parseServerConfig — legal branches', () => {
       [ENV_VARS.lockTimeoutMs]: '7000',
     })
     expect(cfg).toMatchObject({
-      registryPath: '/srv/from-env.yaml',
+      // The expected absolute form via the same path API the parser uses — a rooted
+      // POSIX path resolves to `D:\srv\...` on Windows (#81).
+      registryPath: resolve('/srv/from-env.yaml'),
       agentId: 'env-bot',
       scopeId: 'env-scope',
       lockTimeoutMs: 7000,
@@ -81,7 +86,7 @@ describe('parseServerConfig — legal branches', () => {
       [ENV_VARS.registry]: '/env-registry.yaml',
     })
     expect(cfg.agentId).toBe('flag-bot')
-    expect(cfg.registryPath).toBe('/flag-registry.yaml')
+    expect(cfg.registryPath).toBe(resolve('/flag-registry.yaml'))
   })
 
   it('treats a blank value in either carrier as absent', () => {
@@ -96,7 +101,7 @@ describe('parseServerConfig — legal branches', () => {
   it('trims surrounding whitespace off values', () => {
     const cfg = parseServerConfig([], { [ENV_VARS.registry]: '/srv/reg.yaml ', [ENV_VARS.agentId]: ' bot ' })
     expect(cfg.agentId).toBe('bot')
-    expect(cfg.registryPath).toBe('/srv/reg.yaml')
+    expect(cfg.registryPath).toBe(resolve('/srv/reg.yaml'))
   })
 })
 
