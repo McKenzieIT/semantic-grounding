@@ -909,7 +909,7 @@ async function main(): Promise<void> {
     // A fully independent fixture, registry and boot (no --scope, no shared `active`)
     // — switching scopes on the MAIN flow's live server would silently redirect its
     // later reads/writes to the wrong corpus, so this never touches `client`/`root`.
-    step('scope tools: scaffold → register → list → switch → get, each a real tools/call')
+    step('scope tools: scaffold → register → list → switch → get → deregister, each a real tools/call')
     {
       const scopeFixture = createFixtureCorpus({ withEvents: false })
       const scopeRegistryDir = mkdtempSync(join(tmpdir(), 'sg-e2e-registry-'))
@@ -941,6 +941,16 @@ async function main(): Promise<void> {
         assert.equal((described['scope'] as Record<string, unknown>)['id'], 'probe', 'no scope_id defaults to the now-active scope')
         assert.equal(described['is_active'], true)
         assert.ok(described['serving'] !== undefined, 'the response-layer stamp for the scope actually being served')
+
+        // #72: deregister while serving — both cascade halves observable at once
+        // (switch persisted `active: probe` and this process's binding is live).
+        const deregistered = await call(probeClient, 'deregister_scope', { scope_id: 'probe' })
+        assert.equal((deregistered['removed'] as Record<string, unknown>)['id'], 'probe')
+        assert.equal(deregistered['active_cleared'], true, 'the next-process default named it and was cleared')
+        assert.equal(deregistered['binding_cleared'], true, 'this process was serving it and the live binding dropped')
+        const afterDeregister = await call(probeClient, 'list_scopes', {})
+        assert.equal(afterDeregister['total'], 0)
+        assert.equal(afterDeregister['active'], null)
       } finally {
         await probeBoot.shutdown()
         scopeFixture.cleanup()

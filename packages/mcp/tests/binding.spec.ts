@@ -1,11 +1,12 @@
 /**
  * `BindingStore` — ADR-0011 ruling 1's concurrency model (#51): the entry-snapshot
  * resolution every write-tool handler relies on, the atomic pointer swap
- * `switchTo` performs, and the two startup paths (`bindStartup` for `--scope`,
+ * `switchTo` performs, `clearIfActive`'s guarded drop (#72's live-state half of
+ * deregistration), and the two startup paths (`bindStartup` for `--scope`,
  * `restoreActive` for the registry's default) degrading differently when their
  * target cannot be served.
  *
- * The five scope-management *tools* that wrap this store are tested at the
+ * The six scope-management *tools* that wrap this store are tested at the
  * handler level in `scope-tools.spec.ts`; this file is the store's own contract,
  * built directly against a real `ScopeRegistryFile` and real fixture corpora (no
  * fake server, no transport — the thing under test has neither).
@@ -150,6 +151,48 @@ describe('switchTo', () => {
     await store.switchTo('a') // first bind caches the posture-passing binding
     fixtureGit(['rm', '--quiet', '-r', 'tables'], fixtureA.root) // dirties the worktree, uncommitted
     await expect(store.switchTo('a')).rejects.toThrow(/uncommitted/i)
+  })
+})
+
+describe('clearIfActive (#72)', () => {
+  it('drops the live binding when this process is serving the named scope — later calls answer no_active_scope', async () => {
+    await registry.register({ id: 'a', semanticRoot: fixtureA.root, name: 'a', registeredBy: 'bot' })
+    const store = newStore()
+    await store.switchTo('a')
+    expect(store.clearIfActive('a')).toBe(true)
+    expect(store.snapshot()).toBeUndefined()
+    expect(() => store.requireSnapshot()).toThrow(NoActiveScopeError)
+  })
+
+  it('returns false and keeps serving when the named scope is not the active binding', async () => {
+    await registry.register({ id: 'a', semanticRoot: fixtureA.root, name: 'a', registeredBy: 'bot' })
+    await registry.register({ id: 'b', semanticRoot: fixtureB.root, name: 'b', registeredBy: 'bot' })
+    const store = newStore()
+    expect(store.clearIfActive('a')).toBe(false) // nothing bound yet
+    await store.switchTo('a')
+    expect(store.clearIfActive('b')).toBe(false) // bound to a different id
+    expect(store.requireSnapshot().scopeId).toBe('a')
+  })
+
+  it('leaves the construction cache intact — switching back to a re-registered id reuses the cached instances', async () => {
+    await registry.register({ id: 'a', semanticRoot: fixtureA.root, name: 'a', registeredBy: 'bot' })
+    const store = newStore()
+    const first = await store.switchTo('a')
+    await registry.deregister('a')
+    store.clearIfActive('a')
+    await registry.register({ id: 'a', semanticRoot: fixtureA.root, name: 'a', registeredBy: 'bot' })
+    const back = await store.switchTo('a')
+    expect(back.binding.core).toBe(first.binding.core)
+    expect(back.binding.recorder).toBe(first.binding.recorder)
+  })
+
+  it('keeps a previously-resolved snapshot usable through the clear (in-flight requests keep their truth)', async () => {
+    await registry.register({ id: 'a', semanticRoot: fixtureA.root, name: 'a', registeredBy: 'bot' })
+    const store = newStore()
+    await store.switchTo('a')
+    const held = store.requireSnapshot() // models an in-flight request's entry-time snapshot
+    store.clearIfActive('a')
+    expect(held.scopeId).toBe('a')
   })
 })
 

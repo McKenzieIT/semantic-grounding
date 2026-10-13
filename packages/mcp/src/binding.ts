@@ -89,9 +89,11 @@ export interface BindingStoreOptions {
 /**
  * The process-wide store of per-scope bindings plus the active pointer.
  *
- * The pointer swap in {@link switchTo} is the *only* mutation of live state, and it
- * is a single assignment — everything else is construction (cache-fill) or registry
- * persistence. That is the whole of the "atomic pointer replacement" ruling.
+ * Live state has exactly two mutation points, both a single synchronous
+ * assignment (atomic on a single-threaded runtime): the pointer swap in
+ * {@link switchTo}, and the guarded clear in {@link clearIfActive}. Everything
+ * else is construction (cache-fill) or registry persistence. That is the whole
+ * of the "atomic pointer replacement" ruling.
  */
 export class BindingStore {
   private readonly registry: ScopeRegistryFile
@@ -217,6 +219,26 @@ export class BindingStore {
   disposeAll(): void {
     for (const binding of this.cache.values()) binding.core.dispose()
     this.cache.clear()
+  }
+
+  /**
+   * Deregistration's live-state half (#72 ruling 4): when this process is serving
+   * the named scope, drop the active binding so later calls answer
+   * `no_active_scope` instead of writing into a corpus the registry just
+   * delisted. A guarded single assignment — the same shape and atomicity as
+   * `switchTo`'s pointer swap, synchronous, no awaits. The per-scope instance
+   * cache is untouched: eviction stays ADR-0011's own Followup (驻留成本), and a
+   * re-registered id switched back to reuses the cached instances. Another
+   * process serving the scope is unreachable by design — "where I am" is
+   * per-process (ruling 9); cross-process coordination is map #50's ruled-out
+   * territory.
+   * @param scopeId - the scope `deregister_scope` just removed from the registry.
+   * @returns whether this process's binding named the scope.
+   */
+  clearIfActive(scopeId: string): boolean {
+    if (this.activeBinding?.scopeId !== scopeId) return false
+    this.activeBinding = undefined
+    return true
   }
 
   /** The registry lookup shared by every entry point. */

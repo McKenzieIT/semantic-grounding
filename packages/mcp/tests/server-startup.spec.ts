@@ -256,14 +256,15 @@ describe('deployment refusals exit 78 and say nothing on stdout', () => {
 
 // SCOPE_TOOL_NAMES is ADR-0011's addition (#51): the five scope-management tools, on
 // top of the pre-existing nineteen (ADR-0005's fifteen + ADR-0006's three + ADR-0008's
-// one), PLAYBOOK_TOOL_NAMES is #63's initialization dashboard, and
-// IMPORT_TOOL_NAMES is ADR-0013's bulk import (#68) — twenty-six
+// one) — #72 added the family's sixth, `deregister_scope` — PLAYBOOK_TOOL_NAMES is
+// #63's initialization dashboard, and
+// IMPORT_TOOL_NAMES is ADR-0013's bulk import (#68) — twenty-seven
 // default-registrar tools in total. None of the tools/list-only
 // tests below need an active scope bound: every tool registers unconditionally, and
 // only a definition-tool *call* without one would answer no_active_scope.
 
 describe('serving', () => {
-  it('answers a 2026-07-28 tools/list with all twenty-six default-registrar tools, in the revision\'s result shape', () => {
+  it('answers a 2026-07-28 tools/list with all twenty-seven default-registrar tools, in the revision\'s result shape', () => {
     const r = run(['--agent-id', 'analyst-bot', '--registry', freshRegistryPath()], { input: modernToolsList() })
     expect(r.code).toBe(EXIT.ok)
 

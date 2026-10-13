@@ -1,7 +1,8 @@
 /**
- * ADR-0011's five scope-management tools: `get_scope_scaffold`,
- * `register_scope`, `list_scopes`, `switch_scope`, `get_scope`
- * ([#51](https://github.com/McKenzieIT/semantic-grounding/issues/51)).
+ * ADR-0011's five scope-management tools plus #72's `deregister_scope`:
+ * `get_scope_scaffold`, `register_scope`, `deregister_scope`, `list_scopes`,
+ * `switch_scope`, `get_scope` ([#51](https://github.com/McKenzieIT/semantic-grounding/issues/51),
+ * [#72](https://github.com/McKenzieIT/semantic-grounding/issues/72)).
  *
  * The initialization path these carry (ADR-0011 Decision): an agent asks
  * {@link getScopeScaffold} for the shell's layout, **runs the infrastructure
@@ -12,7 +13,12 @@
  * and the 1:1 id↔path pairing is enforced both directions before the table is
  * written. Registering does **not** switch (constant 1) — an explicit
  * `switch_scope` is an agent's own act, and it is also what updates the
- * registry's next-process default (ruling 9).
+ * registry's next-process default (ruling 9). The door has an exit:
+ * `deregister_scope` is its deliberate mirror — pure bookkeeping where the
+ * door was guarded, because a dead entry's defining property is that its
+ * directory is gone (posture's own failure shape), and a mis-registered id
+ * (#69's scenario) exits by deregister + re-register under the new name,
+ * old trailers staying fact in the corpus history.
  *
  * `get_scope_scaffold`'s `next_steps` is the one-line bootstrap for the
  * **content** half — ADR-0012 R4's self-contained line (五要素两禁止), canonical
@@ -48,10 +54,11 @@ import { toolSuccess } from './audited.ts'
 import { ScopeIdSchema } from './shared.ts'
 import { assertScopeIdShape, scopeEntryReachable } from '../scope-registry.ts'
 
-/** The five scope-management tool names, in ADR-0011's listing order. */
+/** The scope-management tool names, in ADR-0011's listing order plus `deregister_scope` beside its verb pair (#72). */
 export const SCOPE_TOOL_NAMES = [
   'get_scope_scaffold',
   'register_scope',
+  'deregister_scope',
   'list_scopes',
   'switch_scope',
   'get_scope',
@@ -167,6 +174,42 @@ function registerRegisterScope(server: McpServer, deps: ServerDeps): void {
   )
 }
 
+// ── deregister_scope ──────────────────────────────────────────────────────────────────
+
+const DeregisterScopeInputSchema = z.object({
+  scope_id: ScopeIdSchema,
+})
+
+/**
+ * Registers `deregister_scope` — pure bookkeeping, the register door's mirror
+ * (#72): removes the table entry, clears the next-process default when it names
+ * the entry, and drops this process's live binding when it is serving it. The
+ * corpus directory and its git history are untouched — old trailers stay fact.
+ */
+function registerDeregisterScope(server: McpServer, deps: ServerDeps): void {
+  server.registerTool(
+    'deregister_scope',
+    {
+      title: 'Deregister a scope',
+      description: 'Remove a scope from the registry: pure bookkeeping — no posture check, no corpus load, no git state, the corpus directory and its git history (old trailers naming the id) untouched. A dead entry (directory gone or moved) is removable exactly then — registration guards the door, deregistration is cleanup, the asymmetry is deliberate. When the registry\'s next-process default names this scope it is cleared along with the entry, and when this process is serving it the live binding is dropped too (later write tools answer no_active_scope; another process serving it keeps its own binding until its next switch). Naming an unregistered id is scope_not_found, not a silent ok — a typo\'d id should surface, not masquerade as a cleanup already done.',
+      inputSchema: DeregisterScopeInputSchema,
+    },
+    async (input) => {
+      try {
+        const { entry, activeCleared } = await deps.registry.deregister(input.scope_id)
+        const bindingCleared = deps.bindings.clearIfActive(input.scope_id)
+        return toolSuccess({
+          removed: { id: entry.id, semantic_root: entry.semanticRoot, name: entry.name },
+          active_cleared: activeCleared,
+          binding_cleared: bindingCleared,
+        })
+      } catch (e) {
+        return toToolErrorResult(e)
+      }
+    },
+  )
+}
+
 // ── list_scopes ───────────────────────────────────────────────────────────────────────
 
 /** Registers `list_scopes`. */
@@ -274,10 +317,11 @@ function registerGetScope(server: McpServer, deps: ServerDeps): void {
   )
 }
 
-/** Registers all five scope-management tools. */
+/** Registers all six scope-management tools (ADR-0011's five + #72's deregister). */
 export const registerScopeTools: ToolRegistrar = (server, deps) => {
   registerGetScopeScaffold(server, deps)
   registerRegisterScope(server, deps)
+  registerDeregisterScope(server, deps)
   registerListScopes(server, deps)
   registerSwitchScope(server, deps)
   registerGetScope(server, deps)

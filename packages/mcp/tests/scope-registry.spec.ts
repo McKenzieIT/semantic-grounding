@@ -1,7 +1,8 @@
 /**
  * `ScopeRegistryFile` — ADR-0011 ruling 2's persistent artifact (#51), unit-tested
  * directly against a temp-file registry: register's 1:1 idempotency and both
- * conflict halves, `setActive`'s persistence and `ScopeNotFoundError`, two
+ * conflict halves, deregister's pure-bookkeeping removal and default cascade
+ * (#72), `setActive`'s persistence and `ScopeNotFoundError`, two
  * interleaved in-process registrations serializing through the promise-chain
  * mutex rather than losing one, and the malformed-file refusal.
  *
@@ -106,6 +107,72 @@ describe('setActive', () => {
     await registry.setActive(null)
     expect(registry.activeId()).toBeUndefined()
     expect(registry.active()).toBeUndefined()
+  })
+})
+
+describe('deregister (#72)', () => {
+  it('removes the entry and the lookup paths stop finding it', async () => {
+    const registry = new ScopeRegistryFile(path)
+    await registry.register({ id: 'a', semanticRoot: '/corpora/a', name: 'Alpha', registeredBy: 'bot' })
+    const { entry, activeCleared } = await registry.deregister('a')
+    expect(entry).toMatchObject({ id: 'a', semanticRoot: '/corpora/a' })
+    expect(activeCleared).toBe(false)
+    expect(registry.getEntry('a')).toBeUndefined()
+    expect(registry.get('a')).toBeUndefined()
+  })
+
+  it('frees both 1:1 halves — the same path re-registers under a new id, the same id under a new path (the #69 rename exit)', async () => {
+    const registry = new ScopeRegistryFile(path)
+    await registry.register({ id: 'a', semanticRoot: '/corpora/a', name: 'Alpha', registeredBy: 'bot' })
+    await registry.deregister('a')
+    await expect(registry.register({ id: 'b', semanticRoot: '/corpora/a', name: 'Alpha', registeredBy: 'bot' })).resolves.toMatchObject({ alreadyRegistered: false })
+    await registry.deregister('b')
+    await expect(registry.register({ id: 'a', semanticRoot: '/corpora/a-elsewhere', name: 'Alpha', registeredBy: 'bot' })).resolves.toMatchObject({ alreadyRegistered: false })
+  })
+
+  it('clears the next-process default when it names the removed entry — no deliberately dangling default', async () => {
+    const registry = new ScopeRegistryFile(path)
+    await registry.register({ id: 'a', semanticRoot: '/corpora/a', name: 'Alpha', registeredBy: 'bot' })
+    await registry.setActive('a')
+    const { activeCleared } = await registry.deregister('a')
+    expect(activeCleared).toBe(true)
+    expect(registry.activeId()).toBeUndefined()
+    expect(registry.active()).toBeUndefined()
+  })
+
+  it('leaves a default naming another scope alone', async () => {
+    const registry = new ScopeRegistryFile(path)
+    await registry.register({ id: 'a', semanticRoot: '/corpora/a', name: 'Alpha', registeredBy: 'bot' })
+    await registry.register({ id: 'b', semanticRoot: '/corpora/b', name: 'Beta', registeredBy: 'bot' })
+    await registry.setActive('b')
+    const { activeCleared } = await registry.deregister('a')
+    expect(activeCleared).toBe(false)
+    expect(registry.activeId()).toBe('b')
+  })
+
+  it('refuses an id that was never registered — the −31061 condition, not a silent ok', async () => {
+    const registry = new ScopeRegistryFile(path)
+    await expect(registry.deregister('ghost')).rejects.toThrow(ScopeNotFoundError)
+    expect(registry.read().scopes.size).toBe(0)
+  })
+
+  it('persists across a fresh ScopeRegistryFile instance pointed at the same path', async () => {
+    const first = new ScopeRegistryFile(path)
+    await first.register({ id: 'a', semanticRoot: '/corpora/a', name: 'Alpha', registeredBy: 'bot' })
+    await first.register({ id: 'b', semanticRoot: '/corpora/b', name: 'Beta', registeredBy: 'bot' })
+    await first.deregister('a')
+    const second = new ScopeRegistryFile(path)
+    expect(second.getEntry('a')).toBeUndefined()
+    expect(second.getEntry('b')).toMatchObject({ semanticRoot: '/corpora/b' })
+  })
+
+  it('serializes an interleaved register/deregister through the promise-chain mutex rather than resurrecting an entry', async () => {
+    const registry = new ScopeRegistryFile(path)
+    await Promise.all([
+      registry.register({ id: 'a', semanticRoot: '/corpora/a', name: 'Alpha', registeredBy: 'bot' }),
+      registry.deregister('a'),
+    ])
+    expect(registry.read().scopes.size).toBe(0)
   })
 })
 

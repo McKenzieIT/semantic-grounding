@@ -1,10 +1,13 @@
 /**
- * ADR-0011's five scope-management tools (`src/tools/scope.ts`, #51) — the edge
+ * ADR-0011's five scope-management tools plus #72's `deregister_scope`
+ * (`src/tools/scope.ts`) — the edge
  * and error paths the e2e gate's golden-path walk (`scripts/check-e2e-loop.ts`'s
  * "scope tools" step) does not exercise: the 1:1 conflict halves, idempotent
  * re-registration, the id-shape and posture/unloadable refusals, `reachable:false`
  * for a vanished directory, and `get_scope`/`switch_scope` naming an id the
- * registry has never seen.
+ * registry has never seen. `deregister_scope`'s own door rules (#72): pure
+ * bookkeeping for dead entries, the two cascade clears, and −31061 for unknown
+ * ids.
  *
  * Handlers are invoked directly against a minimal fake `McpServer` that only
  * implements `registerTool` — the same harness shape `enrichment-tools.spec.ts`
@@ -171,6 +174,51 @@ describe('register_scope', () => {
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
+  })
+})
+
+describe('deregister_scope (#72)', () => {
+  it('removes the entry and echoes it — pure bookkeeping, nothing switched anywhere', async () => {
+    await callOk(tools, 'register_scope', { id: 'a', path: fixtureA.root })
+    const out = await callOk(tools, 'deregister_scope', { scope_id: 'a' })
+    expect(out['removed']).toMatchObject({ id: 'a', semantic_root: realpathSync(fixtureA.root) })
+    expect(out['active_cleared']).toBe(false)
+    expect(out['binding_cleared']).toBe(false)
+    expect((await callOk(tools, 'list_scopes', {}))['total']).toBe(0)
+  })
+
+  it('is pure bookkeeping — a dead entry whose directory is gone is removable (no posture door)', async () => {
+    await callOk(tools, 'register_scope', { id: 'dead', path: fixtureA.root })
+    fixtureA.cleanup()
+    const out = await callOk(tools, 'deregister_scope', { scope_id: 'dead' })
+    expect((out['removed'] as Record<string, unknown>)['id']).toBe('dead')
+  })
+
+  it('clears the next-process default and this process\'s live binding when it was serving the scope', async () => {
+    await callOk(tools, 'register_scope', { id: 'a', path: fixtureA.root })
+    await callOk(tools, 'switch_scope', { scope_id: 'a' })
+    const out = await callOk(tools, 'deregister_scope', { scope_id: 'a' })
+    expect(out['active_cleared']).toBe(true)
+    expect(out['binding_cleared']).toBe(true)
+    expect(bindings.snapshot()).toBeUndefined()
+    const listed = await callOk(tools, 'list_scopes', {})
+    expect(listed['total']).toBe(0)
+    expect(listed['active']).toBeNull()
+  })
+
+  it('refuses an id the registry has never seen — −31061, not a silent ok', async () => {
+    const err = await callErr(tools, 'deregister_scope', { scope_id: 'ghost' })
+    expect(err.code).toBe(-31061)
+    expect(err.name).toBe('ScopeNotFoundError')
+    expect(err.data['scope_id']).toBe('ghost')
+  })
+
+  it('frees both 1:1 halves — the #69 mis-named-id exit is deregister + re-register', async () => {
+    await callOk(tools, 'register_scope', { id: 'wrong-name', path: fixtureA.root })
+    await callOk(tools, 'deregister_scope', { scope_id: 'wrong-name' })
+    const out = await callOk(tools, 'register_scope', { id: 'right-name', path: fixtureA.root })
+    expect(out['already_registered']).toBe(false)
+    expect((out['scope'] as Record<string, unknown>)['id']).toBe('right-name')
   })
 })
 

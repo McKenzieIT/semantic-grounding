@@ -154,6 +154,52 @@ get_scope(scope_id?) → 读
 - 门禁：typecheck（0 错）、test（320/320）、acceptance（substrate 五段全绿，substrate
   零改动故本就不受影响）、e2e（18/18）全部确认绿。
 
+## Update — #72：`deregister_scope` 落地（2026-10-13）
+
+Consequences 把 `remove_scope` 列为带触发条件的 Followup（「退役故事出现」）；
+[#69](https://github.com/McKenzieIT/semantic-grounding/issues/69) 的真实使用反馈
+（agent 自造 id 注册后发现想改名，无干净退出路径——死表项只能手编
+`~/.semantic-grounding/scopes.yaml`，恰好绕开本 ADR 的三层并发防线）就是那个触发
+条件。[#72](https://github.com/McKenzieIT/semantic-grounding/issues/72) 经 grilling
+五裁决落地 scope 家族第六工具 `deregister_scope`（tools/list 26→27，排在
+`register_scope` 之后的动词对位）：
+
+1. **工具面开**：注册/注销是同一生命周期的两半，补全不是「收敛」哲学的反例——
+   本 ADR 收敛裁的是引导门与 flag 面（同一功能两个入口的风险）。
+2. **纯注册表操作**：不跑 posture、不加载 corpus、不看 git 状态、零 corpus 写。
+   注册门守卫（坏 corpus 不许进表）的**故意镜像不对称**：死表项的定义特征就是
+   目录已没了（posture 自身的失败形状），注销必须恰好在此情形可用。corpus git
+   历史里旧 trailer 命名旧 id 是事实，不改写；错名退出 = deregister +
+   重新 register 新 id，1:1 的 id 半与 path 半都释放。
+3. **`active:` 缺省连带清**：缺省指向被注销项时一并置 null——悬空缺省正是本票
+   要清的死状态本身，一个便利指针（裁决 9：只是下一进程的缺省）不能挡住清理。
+   响应报 `active_cleared`。
+4. **本进程活绑定连带清**：`BindingStore.clearIfActive`——守卫单赋值，与裁决 1
+   的原子指针置换同形状同原子性；清除后写工具答 `no_active_scope`（拒绝选项有
+   单 scope 死锁：唯一注册项无处 switch；不碰选项则本进程继续写已除名 corpus）。
+   裁决 1 的「活状态唯一变更点是 `switchTo`」注记相应改为两个变更点。实例缓存
+   **不**淘汰（Consequences 的实例淘汰 Followup 维持，触发条件未到）；跨进程另一
+   server 的活绑定按裁决 9 的分层触达不到（多进程协调是 map #50 的 out of
+   scope）。
+5. **幂等=报错**：注销不存在的 id 答 `scope_not_found`（−31061 复用，段位
+   −31060..-31065 **不扩**、零新码）——与 `switch_scope`/`get_scope` 点名未注册
+   id 同条件同码；`register_scope` 的 `already_registered` 是「同一 id+路径对」的
+   收编语义，注销侧没有可比对的同一对，打错 id 必须浮出来而非静默 ok。成功响应
+   回显 `removed:{id, semantic_root, name}`。
+
+落点：`scope-registry.ts` 的 `deregister()`（promise-chain mutex + 跨进程锁内
+读-改-写 + 原子替换，active 连带判定锁内完成）、`binding.ts` 的 `clearIfActive()`、
+`tools/scope.ts` 的 `deregister_scope`（`SCOPE_TOOL_NAMES` 六名单一来源）。substrate
+零改动；GLOSSARY 不动（五工具本无词条，工具面文档归本 ADR）。测试：
+`scope-registry.spec.ts` +7（1:1 两半释放、缺省连带/保留、−31061、跨实例持久化、
+mutex 交错不复活条目）、`binding.spec.ts` +4（清除后 `no_active_scope`、非匹配
+不碰、缓存保留同实例、在途快照穿清可用）、`scope-tools.spec.ts` +5（含死条目
+可清=裁决 2 的可观测、两连带清 serving 态同现、错名退出全流程）；e2e Phase 6.5
+步内扩展为 scaffold→register→list→switch→get→deregister（21 步数不变），两连带清
+在真 wire 一次观测。门禁：typecheck 双包 0 错；mcp 361 pass（7 存量失败逐一对上
+#61 留档名单，零新增）；substrate 零改动（478/479，`read-count-probe` 超时 1 例经
+干净 HEAD 复现同败，判环境性留痕）；e2e 21/21。
+
 ## References
 
 - 设计来源：[#45](https://github.com/McKenzieIT/semantic-grounding/issues/45) 的

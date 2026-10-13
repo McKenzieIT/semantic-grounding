@@ -1,7 +1,8 @@
 /**
  * The tool catalog: names, and the schema shapes the ADRs' rulings bake in —
  * ADR-0005's fifteen intent tools plus ADR-0006/0008's four enrichment tools
- * plus #63's playbook tool plus ADR-0013's import tool, twenty-six total
+ * plus #63's playbook tool plus ADR-0013's import tool plus #72's deregister
+ * tool, twenty-seven total
  * today. ADR-0005's own Verification
  * section asks for exactly this ("门禁脚本断言：十五个工具名与 input/output schema
  * 快照"); ADR-0006/0008 inherited the same ask, and the e2e gate's header defers
@@ -18,7 +19,7 @@
  * the default registrars (production's `TOOL_REGISTRARS`), and this file asserts the
  * live `tools/list` equals `TOOL_NAMES` — a tool registered without its name constant
  * (or vice versa) fails here rather than shipping two different surfaces. The
- * `toHaveLength(25)` line is a deliberate speed bump: growing the surface must change
+ * `toHaveLength(26)` line is a deliberate speed bump: growing the surface must change
  * this line and show up in the diff.
  *
  * @see docs/adr/0005-mcp-tool-surface.md
@@ -62,13 +63,13 @@ function byName(tools: readonly ListedTool[], name: string): ListedTool {
   return found
 }
 
-describe('the twenty-six names', () => {
-  it('registers exactly ADR-0005\'s fifteen + ADR-0006/0008\'s four + ADR-0011\'s five + #63\'s playbook + ADR-0013\'s import, reconciled against TOOL_NAMES', async () => {
+describe('the twenty-seven names', () => {
+  it('registers exactly ADR-0005\'s fifteen + ADR-0006/0008\'s four + ADR-0011\'s five + #63\'s playbook + ADR-0013\'s import + #72\'s deregister, reconciled against TOOL_NAMES', async () => {
     const tools = await listTools()
     expect(tools.map(t => t.name).sort()).toEqual([...TOOL_NAMES].sort())
     // Deliberate hard count, not TOOL_NAMES.length: growing the surface must
     // edit this line, so the change is visible in the diff for review.
-    expect(tools).toHaveLength(26)
+    expect(tools).toHaveLength(27)
   })
 
   it('names every read tool ADR-0005 ruling 6 lists', async () => {

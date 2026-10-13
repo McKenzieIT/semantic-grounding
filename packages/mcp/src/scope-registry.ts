@@ -81,6 +81,13 @@ export interface RegisterResult {
   readonly alreadyRegistered: boolean
 }
 
+/** What {@link ScopeRegistryFile.deregister} decided. */
+export interface DeregisterResult {
+  readonly entry: ScopeEntry
+  /** True when the next-process default named the removed entry and was cleared with it (#72 ruling 3). */
+  readonly activeCleared: boolean
+}
+
 /** Options for {@link ScopeRegistryFile}'s constructor. */
 export interface ScopeRegistryFileOptions {
   /** How long a writer waits for the cross-process lockfile before failing (default 10s). */
@@ -218,6 +225,35 @@ export class ScopeRegistryFile {
       }
       if (existing.active === id) return
       await this.writeLocked({ active: id, scopes: existing.scopes })
+    })
+  }
+
+  /**
+   * Deregister a scope: pure bookkeeping — the register door's deliberate mirror
+   * asymmetry (#72 rulings 2/3/5). No posture, no corpus load, no git state, zero
+   * corpus writes: a dead entry (directory gone or moved — posture's own failure
+   * shapes) must be removable exactly when the directory is gone, and the corpus's
+   * git history (old trailers naming the id) is fact, not something cleanup rewrites.
+   * When the next-process default names the entry it is cleared along with it, so
+   * deregistration never leaves a deliberately dangling default behind.
+   * @param id - the scope to remove from the table.
+   * @returns the removed entry and whether the default was cleared with it.
+   * @throws ScopeNotFoundError when the id was never registered — the same
+   *   condition `switch_scope`/`get_scope` already answer with −31061; a typo'd id
+   *   must surface, not masquerade as a cleanup already done.
+   */
+  async deregister(id: string): Promise<DeregisterResult> {
+    return this.enqueue(async () => {
+      const existing = this.parse(this.readFileOrEmpty())
+      const entry = existing.scopes.get(id)
+      if (entry === undefined) {
+        throw new ScopeNotFoundError(`scope "${id}" is not in the registry — nothing to deregister`, { scope_id: id, remedy: 'list_scopes shows what is registered' })
+      }
+      const scopes = new Map(existing.scopes)
+      scopes.delete(id)
+      const activeCleared = existing.active === id
+      await this.writeLocked({ active: activeCleared ? null : existing.active, scopes })
+      return { entry, activeCleared }
     })
   }
 
