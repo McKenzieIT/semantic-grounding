@@ -288,20 +288,22 @@ assert.equal(mod.registerInvalidationHook, undefined, 'registerInvalidationHook 
 // fan-out caller (the MCP host's run_enrichment, three discovery methods)
 // calls the guard once up front so the rejection lists BOTH dimensions'
 // unknown names, not just the first leg's.
+// S1.5 (#85): the surveyed nine narrowed to eight removals — the five metric
+// projections, isValidId, and updateTableMeta/updateEventMeta left this list;
+// loadRetrievalCorpus was already off (see the absent list below), so the
+// survey's ninth name needed no change.
 const EXPECTED_RUNTIME_NAMES = [
   'ConceptDefinitionSchema', 'DataSourceRegistry', 'DefinitionSnapshot', 'EventDefinitionSchema',
   'RelationGraph', 'SemanticGroundingCore', 'StaleBaselineError', 'TableDefinitionSchema',
   'UnknownFilterNamesError', 'assertKnownFilterNames', 'captureSnapshot',
-  'conceptKindPlugin', 'deriveMetricRelations', 'discard',
-  'dumpYaml', 'eventKindPlugin', 'extractMetricsFromEvent', 'extractMetricsFromTable',
-  'invalidateCaches', 'isValidId', 'listing', 'loadConcepts', 'loadConfig', 'loadEvents',
-  'loadMetricDefinitions', 'loadPending', 'loadTables', 'projectMetricCorpusItem',
-  'resolveSemanticLayer', 'submit', 'tableKindPlugin', 'updateEventMeta', 'updateTableMeta',
-  'writeEventYaml', 'writeTable',
+  'conceptKindPlugin', 'discard', 'dumpYaml', 'eventKindPlugin',
+  'invalidateCaches', 'listing', 'loadConcepts', 'loadConfig', 'loadEvents',
+  'loadPending', 'loadTables', 'resolveSemanticLayer', 'submit',
+  'tableKindPlugin', 'writeEventYaml', 'writeTable',
 ].sort()
 const names = Object.keys(mod).sort()
 assert.deepEqual(names, [...EXPECTED_RUNTIME_NAMES, 'default'].sort(),
-  'barrel runtime surface must equal the ADR-0003 allow-list (35 names + default), got: ' + names.join(', '))
+  'barrel runtime surface must equal the ADR-0003 allow-list (27 names + default), got: ' + names.join(', '))
 // Headline names that must STAY off the barrel (ADR-0002/0003: convention-
 // coupled, test utilities, internals). getCorpusVersion / registerInvalidationHook
 // / SemanticLayerService are asserted separately above and not repeated here.
@@ -310,6 +312,12 @@ assert.deepEqual(names, [...EXPECTED_RUNTIME_NAMES, 'default'].sort(),
 // inferRole/generateTableYaml/generateDimYaml/mergeColumns/mergeChangedYaml/
 // syncWriteDefinitions: the sync-write chain was removed wholesale (S1.4, #84)
 // — same rule, they must not creep back onto the barrel.
+// extractMetricsFromTable/extractMetricsFromEvent/deriveMetricRelations/
+// projectMetricCorpusItem/loadMetricDefinitions + isValidId +
+// updateTableMeta/updateEventMeta: the S1.5 barrel narrowing (#85, 收名留码) —
+// names off the barrel while the source module exports stay (the kind plugins'
+// derivedNodes + the Core class's same-named methods are the public routes);
+// they must not creep back onto the barrel.
 for (const absent of [
   'wireEnrichmentLlm', 'TextLlm',
   'enrichAllDwsTables', 'discoverRelationsDeterministic', 'discoverEventRelationsDeterministic',
@@ -328,6 +336,9 @@ for (const absent of [
   'BasicIndex', 'buildRetrievalCorpus', 'isPlainObject',
   'loadDomains', 'loadRawDir', 'loadEventDefinition', 'loadTableDefinition', 'loadConceptDefinition',
   'loadRetrievalCorpus', 'mergeColumns', 'mergeChangedYaml', 'syncWriteDefinitions',
+  'extractMetricsFromTable', 'extractMetricsFromEvent', 'deriveMetricRelations',
+  'projectMetricCorpusItem', 'loadMetricDefinitions', 'isValidId',
+  'updateTableMeta', 'updateEventMeta',
 ]) {
   assert.equal(mod[absent], undefined, absent + ' must stay off the barrel (ADR-0003)')
 }

@@ -17,11 +17,14 @@ import { tmpdir } from 'node:os'
 import {
   SemanticGroundingCore,
   dumpYaml,
-  updateTableMeta,
-  updateEventMeta,
   StaleBaselineError,
   type Tier2Recorder,
 } from '../src/index.ts'
+// S1.5 (#85): the Tier-2-audited meta writers are off the barrel — the Core
+// class's same-named methods are the public route; this spec drives the io
+// free functions directly because it pins the version round trip underneath
+// the class's wrappers.
+import { updateTableMeta, updateEventMeta } from '../src/io.ts'
 import type { EventDefinition, TableDefinition } from '../src/types.ts'
 
 // Mirrors tests/enrichment-work.spec.ts's builders (the minimal schema-valid shapes).

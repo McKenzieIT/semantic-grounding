@@ -149,8 +149,6 @@ export {
   loadConcepts,
   writeTable,
   writeEventYaml,
-  updateTableMeta,
-  updateEventMeta,
   StaleBaselineError,
   type RawEvent,
   type RawTable,
@@ -169,8 +167,14 @@ export {
 // loadDomains (legacy domains.yaml, superseded by the concept kind),
 // loadEventDefinition/loadTableDefinition/loadConceptDefinition (the core
 // class exposes the same reads as methods), loadRawDir, loadRetrievalCorpus
-// (core.loadRetrievalCorpus is the public route).
-export { submit, load as loadPending, listing, discard, isValidId, type PendingSuggestion, type SubmitArgs } from './pending.ts'
+// (core.loadRetrievalCorpus is the public route), and — off since S1.5 (#85) —
+// updateTableMeta/updateEventMeta: Tier-2-audited writes whose public route
+// is the Core class's same-named methods; the io functions stay for in-repo
+// tests and the class's own wrappers.
+export { submit, load as loadPending, listing, discard, type PendingSuggestion, type SubmitArgs } from './pending.ts'
+// isValidId stays in pending.ts (internal, off since S1.5 #85): the pending
+// store's own id rule has no host consumer — the MCP suggestion tools check
+// existence through listing/lookup, not by validating id shape.
 export {
   type CorpusVariant,
   type EventCorpusItem,
@@ -194,16 +198,13 @@ export {
 // a confirmed host requirement (the MCP management surface). Error class and guard
 // only; the Core methods remain the public door for in-process hosts.
 export { UnknownFilterNamesError, assertKnownFilterNames } from './enrichment.ts'
-export {
-  extractMetricsFromTable,
-  extractMetricsFromEvent,
-  deriveMetricRelations,
-  projectMetricCorpusItem,
-  loadMetricDefinitions,
-} from './metrics.ts'
-// metricName/splitMetricName/inferAggregation/toMetricDefinition/
-// metricGraphNode/extractMetricsFromTables stay in metrics.ts (internal):
-// k11-fixture-sized naming + derivation internals (ADR-0003).
+// The whole metrics projection family stays in metrics.ts (internal): the
+// five formerly public projections (extractMetricsFromTable/extractMetricsFromEvent,
+// deriveMetricRelations, projectMetricCorpusItem, loadMetricDefinitions) joined
+// metricName/splitMetricName/inferAggregation/toMetricDefinition/metricGraphNode/
+// extractMetricsFromTables off the barrel in S1.5 (#85) — the table/event kind
+// plugins' derivedNodes + the Core class's registry-driven projections are the
+// public route; no host ever imported the free functions (ADR-0003).
 // W27: data-source kind registry contract (kinds, relations, graph projection).
 export {
   DataSourceRegistry,
@@ -492,7 +493,7 @@ export class SemanticGroundingCore {
    * the scope-management tools), so it is module-level state that must not
    * pretend to belong to one instance. This is the MCP host's route to the
    * epoch; the substrate function itself (`src/read-epoch.ts`) stays off the
-   * public barrel, whose 36-name allow-list (ADR-0003) is untouched.
+   * public barrel, whose name-level allow-list (ADR-0003) it does not touch.
    * @param fn - the call to wrap (sync or async; a Promise return passes
    *   through with the epoch attached to its continuations).
    * @returns whatever `fn` returns, unchanged.
