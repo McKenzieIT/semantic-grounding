@@ -11,6 +11,8 @@
 
 > **同日合并（2026-10-13）**：简化巡检（dsh-find-simplifications 方法改查本仓，**删除/收窄轴**）结果并入本报告为 **S 系列**（§S1-S4）。两轴正交——C 系列 = 深化/合并（同样的行为用更少的摊派），S 系列 = 删除/收窄（不再维护没有客户的负担）。S 系列基线 `main 27554fc`（代码与 e6607fa 同树），三域并行子代理巡检（substrate / mcp / 测试+文档）+ 主会话 rg 亲验消费者证据；重叠候选一律交叉标注（§两轴重叠对照），两侧内容均保留未丢弃。C 系列原文未动。
 
+> **落地进度（2026-10-13 晚更新，基线 `main 7f42251`）**：**S1 已全图落地**——[map #88](https://github.com/McKenzieIT/semantic-grounding/issues/88) 五张线性票同日全解（01 LLM seam `abef1d2` / 02 sync-write `3561278` / 03 barrel `ba66229` / 04 scope-epoch `294a1aa` / 05 ADR-0017 + 十张 ADR 体检 + GLOSSARY `c6a1b47`），净删 ~2300 行。连带三处：**C8.2** 搬移半边随 S1.4 整链删除消解，剩 raw-edit「写-失效」三份手抄（现 io.ts:795/849/1004）；**C8.3** 的 `toPromptContext`/`toCriticContext` 已随 S1.6 删（`getId` 仍在 registry.ts:132、`toExecutableRule` 仍在 :172 归 S2、`loadBuiltinDefinitions` 身份分派未动 index.ts:705）；**S3** 的 GLOSSARY:560 矛盾句已随 #87 修。基线刷新：substrate **432** / mcp 373+1skip / e2e 21 / catalog 27 / **barrel 27**。C 系列行号随之漂移（S1 删码所致，**以符号为准**）：C1 六方法现 `index.ts:1556-1909`（文件 2317→2021 行，抽出目标随之改口 ~1700→~1400 级）；C2 四份指纹镜像现 `enrichment-work.ts:411/422/596/622`（文件现 702 行）。**C1+C2 已 charting 为 [map #95](https://github.com/McKenzieIT/semantic-grounding/issues/95)**（带执行图：00 证据复核 → 01 设计裁决 → 02/03 并行落地 → 04 关图；与 map #89 正交）。C3 热身位仍未消费，另起 effort。C4-C8 与 S2/S4 其余项均未动。
+
 ## 候选总览
 
 | # | 候选 | 区域 | 强度 |
@@ -23,7 +25,7 @@
 | C6 | guidance/playbook 阶段编排分叉 → 一个评估函数 | mcp | Worth exploring |
 | C7 | 测试拓扑三处「合并做了一半」的尾巴 | 测试拓扑 | Strong |
 | C8 | 六个小收口（seam 已挣得口粮但没盖满） | 混合 | Worth exploring |
-| S1 | dsh 姿态面集群：snapshot / LLM seam / SchemaProvider / sync-write 链 / barrel 收窄 / scope-epoch | substrate+mcp | Strong 证据 · **已拍板**（[#82](https://github.com/McKenzieIT/semantic-grounding/issues/82) 六项裁决，2026-10-13）→ 落地 charting 为 [map #88](https://github.com/McKenzieIT/semantic-grounding/issues/88) |
+| S1 | dsh 姿态面集群：snapshot / LLM seam / SchemaProvider / sync-write 链 / barrel 收窄 / scope-epoch | substrate+mcp | Strong 证据 · **已落地**（[#82](https://github.com/McKenzieIT/semantic-grounding/issues/82) 六项裁决 → [map #88](https://github.com/McKenzieIT/semantic-grounding/issues/88) 五票 2026-10-13 同日全解关图，ADR-0017 accepted；S1.1/S1.3 暂缓进 ADR-0017） |
 | S2 | A 类死码 ~650 行（vendor 三件套 / loadDomains / recorder 预留字段 / 死导出） | 混合 | 免费（直删，零行为损失） |
 | S3 | 文档/注释漂移（README 工具数 26→27 契约行等） | docs | 修字（部分与 C3 重叠） |
 | S4 | 小粒度整合 + 段位挪用（−31024） | mcp | 顺手批（部分与 C5/C6/C8 重叠） |
@@ -166,8 +168,8 @@ flowchart TD
 六处「seam 或单一来源已存在但没盖满」的缺口：
 
 1. **epoch 盖 concepts**：`io.ts:394` 的 kind 联合只含 `tables | events`；`loadConcepts`（:445-463）与 `loadRawDir`（:488-503）直读盘——注册 kind 静默落 epoch 外，concept 侧热路径（`itemReadRawDef` concept 分支、`buildGraph`、`get_definition`）保留着逐调用重复解析。k11 实测收益小（10 concepts），结构收益随 concept 写路径增长。需 ADR-0015 addendum；**不得**顺带提 mtime 校验或跨进程缓存（R6/R7 明确否决）。
-2. **raw-edit 进 seam**：「写-失效」（无记录半边，`tier2 === undefined` 时的 `atomicWrite + invalidateCaches + return ok`）在 `writeTable`（:794-798）/ `writeEventYaml`（:847-852）/ `writeConceptYaml`（:1002-1007）三份手抄，落在 `auditedFileWrite` 之外；sync 生成约定族（`inferRole`/`generateTableYaml` 等，:1052-1161，唯一 caller 是 `syncWriteDefinitions`）搬出 I/O module。
-3. **registry 读半边**：plugin 有 `storageDir` + `schema` 却没有 `load`——events 的 domain 子目录布局逼出 `loadBuiltinDefinitions` 的身份分派（index.ts:866-890，「后注册 kind 不改这里就能上图」的宣称只对扁平布局成立），kind 存储知识一半漏进 Core；`toExecutableRule`（registry.ts:184-187）死成员零引用，窗口内免费删（不在 ADR-0003 保留名单内）；`toPromptContext`/`toCriticContext`/`getId` 只有测试消费，成员收窄在 #79 独立发展定调下重估 dsh 消费证据后再动。
+2. **raw-edit 进 seam**〔**状态 2026-10-13：后半已随 S1.4 整链删除消解（#84），剩前半**〕：「写-失效」（无记录半边，`tier2 === undefined` 时的 `atomicWrite + invalidateCaches + return ok`）在 `writeTable`（现 :795）/ `writeEventYaml`（现 :849）/ `writeConceptYaml`（现 :1004）三份手抄，落在 `auditedFileWrite` 之外；sync 生成约定族（`inferRole`/`generateTableYaml` 等，原 :1052-1161）已随 S1.4 全删，不再需要搬移。
+3. **registry 读半边**〔**状态 2026-10-13：`toPromptContext`/`toCriticContext` 已随 S1.6 删（#86）；`toExecutableRule`（现 registry.ts:172）归 S2 直删未动；`getId`（现 :132）与 `loadBuiltinDefinitions`（现 index.ts:705）未动**〕：plugin 有 `storageDir` + `schema` 却没有 `load`——events 的 domain 子目录布局逼出 `loadBuiltinDefinitions` 的身份分派（「后注册 kind 不改这里就能上图」的宣称只对扁平布局成立），kind 存储知识一半漏进 Core；`toExecutableRule` 死成员零引用，窗口内免费删（不在 ADR-0003 保留名单内）；`getId` 只有测试消费，成员收窄待重估消费证据后再动。
 4. **auditedBatch**：`beginBatch → 逐项 record() → end / catch → abort` 手脚架在 `enrichment.ts:316-346` 与 `import.ts:274-299` 各一份（ADR-0013 自认「与 run_enrichment 同构」——同构却各写一份）；只有 2 调用点，回报小于当年 auditedWrite（8 个）。
 5. **探针精确钉 → 带宽**：read-count-probe 的 `toBe(321)/toBe(446)/toBe(0)` 是 internal 代价特征；保留 ≤2 / 20× 带宽不变量（真不变量），计数器（`io.ts:156-158` 生产文件里的 test-only 导出）挪 test-only 模块。
 6. **known-red 规约化**：#81（`5ae83da`）已清零存量 7+1，mcp 全绿基线 373 pass + 1 skip——剩规约：今后环境性红只能 `it.skipIf(env)` + 行内理由存在，禁止台账 prose（双向腐烂：已修好但台账说红，或新失败被当成「存量之一」跳过追查）。范式已由 #81 给出：env 依赖在 fixture 根上消除（仓库级 git config）+ 语义断言替代拼写断言。
@@ -176,7 +178,7 @@ flowchart TD
 
 ## S1 · dsh 姿态面集群：客户已断、维护照旧（Strong 证据 · 已拍板）
 
-> **状态更新（2026-10-13）**：六项裁决已拍板（S1.1 暂缓 / S1.2 删 / S1.3 暂缓 / S1.4 删 / S1.5 九名全收 / S1.6 删），[#82](https://github.com/McKenzieIT/semantic-grounding/issues/82) 同日三轮 grilling 用户确认，票面存前提总纲（第一方前端独占）；落地 effort 已 charting 为 [map #88](https://github.com/McKenzieIT/semantic-grounding/issues/88)（五张线性票），ADR supersession 归 ADR-0017（随关图票 accepted）。本节其余文字为巡检时点证据记录，防重查用，不再重开。
+> **状态更新（2026-10-13 晚）**：**已落地并关图**——[map #88](https://github.com/McKenzieIT/semantic-grounding/issues/88) 五张线性票同日全解（01 LLM seam `abef1d2` / 02 sync-write `3561278` / 03 barrel `ba66229` / 04 scope-epoch `294a1aa` / 05 ADR-0017 + 十张 ADR 体检 + GLOSSARY `c6a1b47`），净删 ~2300 行。六项裁决（S1.1 暂缓 / S1.2 删 / S1.3 暂缓 / S1.4 删 / S1.5 九名全收〔执行核正：第九名 `loadRetrievalCorpus` 本就 off barrel，实收八名，acceptance EXPECTED 35→27〕/ S1.6 删）来自 [#82](https://github.com/McKenzieIT/semantic-grounding/issues/82) 同日三轮 grilling 用户确认；S1.1/S1.3 暂缓区进 ADR-0017（重开按 ADR-0003 (b) 重新举证）。本节其余文字为巡检时点证据记录，防重查用，不再重开。
 
 **共同前提**：2026-10-13 #79 用户裁决「不再考虑 dsh、semantic-grounding 独立发展」。下列六项的 ADR 保留理由原文都是「为 dsh 保留」，而 mcp 生产面（src + scripts）经 rg 亲验**零消费**——客户已不存在，代码/测试/barrel 名单/GLOSSARY 词条仍在全额维护。全部属「收窄公共行为」：有显式损失，需 ADR supersession + 用户拍板，非自动删除。合计约 1200-1500 行 + 公共面收缩；**任何 barrel 收窄必须同步改 `check-tarball-acceptance.mjs` 的两个名单**（EXPECTED_RUNTIME_NAMES + must-absent；本仓无 CI，它是 ADR-0003 的手动执行器）。
 
@@ -234,7 +236,7 @@ flowchart TD
 
 - **README.md:100「应报 26 个工具」→ 27**（#72 加 deregister 时漏改的**契约行**）；连带 catalog spec:22 注释自称 `toHaveLength(26)` 与 :72 断言 27 自相矛盾；e2e loop:246 步骤标签加总漏 deregister（= C3 漂移实证，**重叠**）；server.ts:175/248 两处注释「26」→ 27。→ **归 C3 一票修**（家族描述符落地时散文对账一并）。
 - `docs/mcp-dogfood.md:8`「13 步」→ 实为 21 步（e2e 实数），另 :44/:58/:121 三处空「**记录：**」占位符可顺手清。
-- GLOSSARY.md:560「optional peer dependency, for the shell」——两包 peerDependencies 实为空，与同文件 :224 自相矛盾，一句改写为 devDependency 事实。
+- ~~GLOSSARY.md:560「optional peer dependency, for the shell」~~ **已修**（#87，2026-10-13——negation test 词条矛盾句修正，peerDeps 实空、`@deepseek-ai` 已随 #86 清零）。
 - 三处测试头注旧路径 `packages/data/semantic-layer` → `packages/substrate`（scenarios.spec:30 / k11-seed.spec:6 / k11-graph.spec:8）。
 
 ## S4 · 小粒度整合 + 段位挪用（mcp，顺手批）
