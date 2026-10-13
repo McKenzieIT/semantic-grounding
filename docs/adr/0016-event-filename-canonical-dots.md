@@ -1,6 +1,6 @@
 # ADR-0016: 事件文件名自有规范 —— 文件名 = 点名（迁移而非适配）
 
-- **Status**: proposed（落地随实现分票转 accepted）
+- **Status**: accepted
 - **Date**: 2026-10-13
 - **Deciders**: McKenzieIT
 - **Relates to**: ADR-0015（R10 写门不触碰；本 bug 由其 01-probe 发现并分票）、[源票 #79](https://github.com/McKenzieIT/semantic-grounding/issues/79)、[#74](https://github.com/McKenzieIT/semantic-grounding/issues/74)（01-probe 实测）、map [#73](https://github.com/McKenzieIT/semantic-grounding/issues/73)
@@ -34,9 +34,9 @@
 
 ### 路径断言（钉住验收）
 
-- 单次 `writeEventYaml` / `definitionVersion`(event) 解析次数 ≤2（fast path 命中：1 次候选 readYaml 核对 name，0 次扫描）
-- `run_enrichment` 探针重测，对比 262× 基线（具体值随实现分票落测）
-- `version-roundtrip` 手改名兜底用例不回归（R4）
+- 单次 `writeEventYaml` / `definitionVersion`(event) 解析次数 ≤2 —— 实测 **1 次**（fast path 命中：1 次候选 readYaml 核对 name，0 次扫描）
+- `run_enrichment` 探针重测，对比 262× 基线 —— 实测 **4.00×**（3066 次 / 767 为 1×，约 65.6× 改善；细节见下方 Update）
+- `version-roundtrip` 手改名兜底用例不回归（R4）—— 实测 8/8 pass
 
 ## Consequences
 
@@ -53,6 +53,25 @@
 - `pnpm e2e` 不红（基线 21 步）
 - typecheck 双包干净
 - 路径断言（上节）随实现分票落地
+
+## Update（2026-10-13，#80 落地）
+
+446 个 k11 event fixture 文件按 R1 一次性 `git mv` 到点名列（迁移脚本：`packages/substrate/scripts/migrate-k11-event-filenames.mjs`；R5 唯一性断言先行，446/446 无重名；`name` 字段用顶层锚定正则而非完整 YAML 解析提取，使唯一的一个既存畸形 fixture——`funcPoint_activity.yaml`，无关本迁移的重复 key 语法错——照常随规律迁移而不中断整批）。`io.ts` 零改动，R6 验证成立。
+
+实测结果：
+
+| 项目 | 基线 | 实测 |
+|---|---|---|
+| `writeEventYaml` 单次解析 | ≤2（断言） | **1 次** |
+| `definitionVersion`(event) 单次解析 | ≤2（断言） | **1 次** |
+| `run_enrichment`（全量四管线：discoverRelations+discoverEventRelations+discoverAltLabels）| 262.56×（discoverEventRelations/discoverAltLabels 各 ~100371 次，99% 为 findEventPath 扫描）| **4.00×**（3066 次 = discoverRelations 642 + discoverEventRelations 1212 + discoverAltLabels 1212）—— **约 65.6× 改善** |
+| substrate `pnpm test` | 479 pass | **481 pass**（+2：新增 path 7 探针断言，见下） |
+| mcp `pnpm test` | 345 pass（ADR 原记基线，已过期） | **358 pass, 0 fail**（与本迁移无关的既存增量；未改动 packages/mcp 任何文件） |
+| `pnpm e2e` | 21 步 | **21 步，PASSED** |
+| typecheck（substrate + mcp）| 干净 | 干净 |
+| `version-roundtrip`（R4 手改名兜底）| 不回归 | **8/8 pass**，不回归 |
+
+探针断言落地于 `packages/substrate/tests/read-count-probe.spec.ts`：新增「path 7: write-path fast-path hit」两条断言（`writeEventYaml` / `definitionVersion(event)` 各 ≤2 次），并将既有 `run_enrichment`（full）断言由松散的 `toBeGreaterThan(0)` 收紧为 `< 20 × ONE_FULL_CORPUS`——给非本 bug 相关的成本增长留足空间，同时对「fast path 不再命中」的回归早期失败。
 
 ## References
 
