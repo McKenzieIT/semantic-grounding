@@ -277,6 +277,9 @@ describe('get_scope', () => {
     const out = await callOk(tools, 'get_scope', { scope_id: 'a' })
     expect(out['is_active']).toBe(false)
     expect(out['serving']).toBeUndefined()
+    // No corpus load for a scope you are not serving — the counts promise is the
+    // active branch's alone (#102 6a).
+    expect(out['counts']).toBeUndefined()
   })
 
   it('defaults to the active scope and adds the serving stamp when scope_id is omitted', async () => {
@@ -286,5 +289,9 @@ describe('get_scope', () => {
     expect((out['scope'] as Record<string, unknown>)['id']).toBe('a')
     expect(out['is_active']).toBe(true)
     expect(out['serving']).toMatchObject({ id: 'a', root: realpathSync(fixtureA.root) })
+    // The description's counts promise (#102 6a): the serving snapshot's counts via
+    // layerCounts — fixtureA holds two tables (dws_order + dim_shop), no events,
+    // no concepts, so dw=2 (tables+events) and kg=0.
+    expect(out['counts']).toEqual({ dw: 2, kg: 0 })
   })
 })

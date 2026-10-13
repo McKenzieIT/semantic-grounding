@@ -51,6 +51,7 @@ import { ScopeNotFoundError, toToolErrorResult, DefinitionValidationError } from
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { ensureStartupPosture } from '../git/posture.ts'
 import { toolSuccess } from './audited.ts'
+import { layerCounts } from './guidance.ts'
 import { ScopeIdSchema } from './shared.ts'
 import { assertScopeIdShape, scopeEntryReachable } from '../scope-registry.ts'
 
@@ -70,7 +71,7 @@ export const SCOPE_TOOL_NAMES = [
  * pointer to drift, no pipeline object to become a content manual.
  */
 export const SCOPE_SCAFFOLD_NEXT_STEPS =
-  '语料为空是正常态：问数轨迹里词 miss（resolve_alias/search_definitions 空结果）时才注册——依据你读到的 DDL/文档 create_definition（资产词建表/事件并带 pref_label/alt_labels；无单一资产的域词建 concept；表经 update_definition 的 domains 挂概念）→ 积累后 run_enrichment 派生关系 → get_enrichment_work/apply_enrichment 补标签。不预铺种子，不手写 corpus YAML。'
+  '语料为空是正常态：问数轨迹里词 miss（resolve_alias/search_definitions 空结果）时才注册——依据你读到的 DDL/文档 create_definition（资产词建表/事件并带 pref_label/alt_labels；无单一资产的域词建 concept；表经 update_definition 的 domains 挂概念；候选指标随宿主表/事件的 metrics 块内联写入，metric 层无独立写路径）→ 积累后 run_enrichment 派生关系 → get_enrichment_work/apply_enrichment 补标签。不预铺种子，不手写 corpus YAML。'
 
 // ── get_scope_scaffold ───────────────────────────────────────────────────────────────
 
@@ -287,7 +288,7 @@ function registerGetScope(server: McpServer, deps: ServerDeps): void {
     'get_scope',
     {
       title: 'Describe one scope',
-      description: 'One registry entry with its registration facts. Omitting scope_id describes the active scope and adds definition counts; naming a non-active scope describes the registry entry only (no corpus load happens for a scope you are not serving).',
+      description: 'One registry entry with its registration facts. Omitting scope_id describes the active scope and adds definition counts by layer (counts.dw = tables+events, counts.kg = concepts — the serving snapshot\'s counts, the same derivation guidance/playbook read); naming a non-active scope describes the registry entry only (no corpus load happens for a scope you are not serving).',
       inputSchema: GetScopeInputSchema,
     },
     async (input) => {
@@ -308,7 +309,15 @@ function registerGetScope(server: McpServer, deps: ServerDeps): void {
           reachable: scopeEntryReachable(entry),
           // The snapshot's stamp for the active scope: what this process is actually
           // serving right now (ADR-0011's response layer), not just the table entry.
-          ...(isActive ? { serving: { id: scopeId, root: entry.semanticRoot } } : {}),
+          ...(isActive
+          ? {
+              serving: { id: scopeId, root: entry.semanticRoot },
+              // The description's counts promise (#102 6a): the serving snapshot's
+              // definition counts via `layerCounts` — the one count derivation,
+              // shared with guidance/playbook, never forked.
+              counts: layerCounts(deps.bindings.requireSnapshot()),
+            }
+          : {}),
         })
       } catch (e) {
         return toToolErrorResult(e)

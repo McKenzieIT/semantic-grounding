@@ -183,8 +183,9 @@ describe('get_initialization_playbook — R6 boundary walk (scope_registration �
       expect(pb.layers.dw).toMatchObject({ phase: 'seeding', coverage: { indicator: 'definitions', current: 0, target: 1 } })
       expect(pb.layers.kg).toMatchObject({ phase: 'seeding', coverage: { indicator: 'definitions', current: 0, target: 1 } })
       // R3's seeding row: import_definitions (DW, #54's not-yet-landed name, copied as
-      // ruled) vs create_definition (KG).
-      expect(pb.layers.dw.recommended_action).toEqual({ tool: 'import_definitions', hint: '批量导入表和事件定义建立数仓语义层' })
+      // ruled) vs create_definition (KG). The DW hint carries #102's metric-inline
+      // guidance (候选指标随宿主 metrics 块写入，无独立 metric 写路径).
+      expect(pb.layers.dw.recommended_action).toEqual({ tool: 'import_definitions', hint: '批量导入表和事件定义建立数仓语义层（候选指标随宿主表/事件的 metrics 块内联写入，metric 层无独立写路径）' })
       expect(pb.layers.kg.recommended_action).toEqual({ tool: 'create_definition', hint: '注册游戏实体概念建立知识图谱' })
 
       // R6's seeding exit: ≥1 definition registered. One table moves DW out — and,

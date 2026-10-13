@@ -185,7 +185,7 @@ function recommendedActionFor(layer: LayerId, phase: PlaybookPhase): Recommended
   }
   if (layer === 'dw') {
     switch (phase) {
-      case 'seeding': return { tool: 'import_definitions', hint: '批量导入表和事件定义建立数仓语义层' }
+      case 'seeding': return { tool: 'import_definitions', hint: '批量导入表和事件定义建立数仓语义层（候选指标随宿主表/事件的 metrics 块内联写入，metric 层无独立写路径）' }
       case 'backfill': return { tool: 'run_enrichment', hint: '运行确定性 enrichment 填充关联和别名' }
       case 'llm_supplement': return { tool: 'add_alias / add_relation / update_definition', hint: '补充 enrichment 无法确定性解决的语义 gap' }
     }

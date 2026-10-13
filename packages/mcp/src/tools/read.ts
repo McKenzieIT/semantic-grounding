@@ -266,7 +266,7 @@ function registerGetJoinPath(server: McpServer, deps: ServerDeps): void {
     'get_join_path',
     {
       title: 'Find a join path',
-      description: 'BFS shortest path over `joins`-type relations between two node ids. Returns `path: null` when unreachable — not an error.',
+      description: 'BFS shortest path over `joins`-type relations (undirected — every edge is walked both ways, so from/to may be swapped) between two node ids; `related_to` and other non-joins types never participate. Returns `path: null` when unreachable — not an error.',
       inputSchema: GetJoinPathInputSchema,
       annotations: { readOnlyHint: true },
     },

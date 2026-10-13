@@ -69,7 +69,7 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
     'create_definition',
     {
       title: 'Create a definition',
-      description: 'Create a new table, event, or concept from a complete, schema-valid definition. Concepts are the knowledge-graph ontology/entity layer: register a domain term that maps to no single asset as kind:"concept" (name + description + pref_label/alt_labels + free-form `properties`); an asset term lands as a table/event (and may mount concepts later via update_definition fields.domains). Refuses if the name already exists (use update_definition instead). The recorder is mandatory — every create_definition call is an audited commit.',
+      description: 'Create a new table, event, or concept from a complete, schema-valid definition. Concepts are the knowledge-graph ontology/entity layer: register a domain term that maps to no single asset as kind:"concept" (name + description + pref_label/alt_labels + free-form `properties`); an asset term lands as a table/event (and may mount concepts later via update_definition fields.domains). There is no kind:"metric" — metric candidates are written inline into their host table/event\'s `metrics` block (the metric layer is a derived read view over those blocks, never a separate file). Refuses if the name already exists (use update_definition instead). The recorder is mandatory — every create_definition call is an audited commit.',
       inputSchema: CreateDefinitionInputSchema,
     },
     async (input, ctx: ServerContext) => {
@@ -169,7 +169,7 @@ function registerUpdateDefinition(server: McpServer, deps: ServerDeps): void {
     'update_definition',
     {
       title: 'Update a definition',
-      description: 'Shallow-merge scalar/object fields onto an existing table, event, or concept. Rejects identity fields (table_name/name/kind) and array-reference fields — tables/events: alt_labels/dimension_refs/external_refs; concepts: alt_labels/related_refs — use add_alias/remove_alias/add_relation/remove_relation for those. Concept fields: description, pref_label, properties (free-form entity attributes); a table mounts a concept via fields.domains. Requires expected_version (from get_definition); a stale baseline is rejected for re-read-and-retry.',
+      description: 'Shallow-merge scalar/object fields onto an existing table, event, or concept. Rejects identity fields (table_name/name/kind) and array-reference fields — tables/events: alt_labels/dimension_refs/external_refs; concepts: alt_labels/related_refs — use add_alias/remove_alias/add_relation/remove_relation for those. Concept fields: description, pref_label, properties (free-form entity attributes); a table mounts a concept via fields.domains. Table/event `metrics` merges as one whole block: shallow-merge is per top-level field, so changing a single metric means re-sending the entire `metrics` map (metrics have no per-key merge). Requires expected_version (from get_definition); a stale baseline is rejected for re-read-and-retry.',
       inputSchema: UpdateDefinitionInputSchema,
     },
     async (input, ctx: ServerContext) => {
