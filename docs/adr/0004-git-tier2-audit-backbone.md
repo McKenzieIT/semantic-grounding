@@ -183,3 +183,32 @@ the substrate's public surface has exactly one in-repo consumer — the MCP fron
 ([ADR-0017](./0017-first-party-frontend-exclusivity.md)). The contract changes #1–#3
 stand as ruled; the in-repo obligation they create is mcp's, and #61's `auditedFileWrite`
 seam is where the rollback-on-recorder-failure invariant now lives single-point.
+
+## Update 2026-10-14 — ruling 8's fingerprint extends to the WRITE receipt（#108 / map #106）
+
+Ruling 8 shipped the fingerprint as a read-side contract: reads return `version`,
+writes accept `expected_version`. [#108](https://github.com/McKenzieIT/semantic-grounding/issues/108)
+opened the write side of the same sha256: every definition write primitive
+(`writeTable` / `writeEventYaml` / `writeConceptYaml` / the `update*Meta` family)
+resolves with the sha256 of the file as the whole write left it, so the
+add/remove/create/update receipts (top level) and the import receipts (per row)
+carry a `version` key — the read → write → receipt → next-write loop closes with
+zero `get_definition` read-backs in between (the measured pain it retired: 12+).
+Two semantics this pins:
+
+- **A no-op receipt still names the current fingerprint.** The fingerprint is
+  hashed off the content already in hand (the serialized bytes just written),
+  never a post-write re-read; a byte-stable no-op re-serializes the same object
+  to the same bytes, so its `version` IS the file's current fingerprint at zero
+  extra I/O.
+- **The receipt names the whole write, not the primitive's half.**
+  `updateTableMeta`'s on-write enrichment hook may rewrite the same file after
+  the primitive computed its fingerprint; when the hook ran, the Core
+  re-resolves the fingerprint after it, inside the same lock — a receipt naming
+  a dead baseline would fail the caller's very next `expected_version` write.
+
+The non-definition write receipts (`apply_enrichment` / `run_enrichment`) and the
+import batch's top level (one commit spans many files — no single fingerprint to
+name) carry no `version`; import's skipped rows resolve the file's current
+fingerprint inside the lock instead. GLOSSARY: the [write
+receipt](../GLOSSARY.md#write-receipt-写回执) entry.

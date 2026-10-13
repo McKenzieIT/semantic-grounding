@@ -218,3 +218,24 @@ substrate 新增两个原语（`writeConceptYaml`/`updateConceptMeta`，对齐 `
 3. **Decision 的「Tier-2 编译目标全部是既有公共面」**口径勘误为 core 方法：barrel 自由
    函数形态（`updateTableMeta`/`updateEventMeta`）已随 S1.5/#85 收名留码，工具编译目标
    （Core 同名方法）与行为未变。
+
+## Update 2026-10-14 — 裁决 6 的「version 只在 get_definition 返回」句扩为两处（#108 / map #106，核验新发现）
+
+裁决 6 括注「**version（sha256 指纹）只在 get_definition 返回**——搜索摘要不作写前提」钉的是指纹契约的读侧。
+[#108](https://github.com/McKenzieIT/semantic-grounding/issues/108) 开了第二处：每个 definition
+**写回执**同样携带该键（语义见 ADR-0004 的 2026-10-14 Update——no-op 恒返当前指纹、回执命名整个写的终态）。
+裁决 6 真正的拒绝项——搜索摘要不带 version、读面不作写前提——维持不变；被 supersede 的只有句中的「只在」。
+
+## Update 2026-10-14 — #109 落地：add_* 升级同 target 批量，与 remove_* 完全对称
+
+`add_alias` / `add_relation` 入参从单数 `alias` / `relation` reshape 为 `labels` /
+`relations`（`z.array(...).min(1)` 门口收死空数组；breaking 零兼容——旧单数调用收 zod
+校验错，map #27 / #37 §3 先例），Core 转发面同步 `addAlias→addAliases` /
+`addRelation→addRelations`（仍四方法，不加名）。回执 `results` 逐行
+`{key, outcome: added|idempotent, unsuppressed}`——两值一布尔：加一个被否决的键是
+`added` **且** `unsuppressed:true`，不是第三种 outcome；顶层 `unsuppressed` 键移除。
+同 target 批量 = 一次双字段 overlay 单 commit，不经 `beginBatch`——ADR-0010 裁决 5
+「一次定义一个 commit 是诚实的审计粒度」直接继承；join 与 concept 边混批、表主体
+跨落点文件批，整批拒绝（写前，可读错误指路拆批）。原「#37 §3 keeps `add_*`
+single: no measured pain」的立场，被 [#103](https://github.com/McKenzieIT/semantic-grounding/issues/103)
+的 measured pain（add_alias 31+ / add_relation 4 次串行写）推翻而重开。

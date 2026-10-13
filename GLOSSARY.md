@@ -178,6 +178,32 @@ time-independent policy. No compaction or expiry — every catalog surveyed keep
 vetoes for good, and this corpus's measured ceiling (~2.7 vetoes per definition) is
 far below any pressure that would justify one.
 
+### write receipt (写回执)
+
+What a commit-class tool answers with, beyond the verdict: the envelope
+`{scope, commit, changed, version?, enrichment_health?, _guidance?, …domain keys}`
+every definition write returns — one shape, assembled in one place (the MCP
+frontend's `writeReceipt`). `commit` + `changed` are the [git
+recorder](#git-recorder)'s answers; `scope` is the entry snapshot's stamp
+(ADR-0011's response layer); `enrichment_health` and `_guidance` are zero-tax
+keys — present only on the write paths and tools they apply to, absent (never
+`null`) otherwise; the domain keys (`results`, `unsuppressed` rows, `summary`)
+are whatever only the calling tool knows.
+
+The receipt's newest member is `version` — the sha256 fingerprint of the file
+this write touched, **as the whole write left it** (the on-write enrichment hook
+may rewrite the same file after the primitive's own write; the receipt names the
+end state, or the caller's next `expected_version` write would be rejected
+against a dead baseline). Feed it straight back as the next write's baseline and
+the write → write loop closes with zero `get_definition` read-backs — the
+measured pain (12+) the receipt exists to retire. A **no-op** receipt
+(`changed: false`) still names the file's *current* fingerprint: the hash is
+taken off the bytes just written, and a byte-stable no-op writes the same bytes —
+so "nothing changed" and "here is the fresh baseline" are one answer, at zero
+extra I/O. Non-definition write receipts ([enrichment](#enrichment) rounds) and
+the import batch's top level (one commit spans many files) carry no `version`;
+import answers per row instead.
+
 ## Runtime architecture
 
 ### registry

@@ -20,7 +20,7 @@
 | C1 | item 写 overlay 仪式 6 份手抄 → item-write 内部 module | substrate | **Strong（首推）· 已落地**（[map #95](https://github.com/McKenzieIT/semantic-grounding/issues/95) 五票 2026-10-13 同日全解关图：02 `8dad11b` `item-write.ts` 651 行新家〔gate/veto/verdict/字段配对各一个家〕，index.ts 2021→1517） |
 | C2 | enrichment work fetch/apply 共享前提 4 份镜像 → resolve 步骤 | substrate | **Strong · 已落地**（map #95 03 `713ee16` `resolveEnrichmentWork` 单点，「fetch 报 stale ⇒ apply 必然 stale」从注释升机制 + 表驱动钉两端） |
 | C3 | 工具家族描述符：names ↔ registrars 单一来源 | mcp | Strong |
-| C4 | 写响应信封 4 种拼法 9+ 组装点 → audited.ts 深模块 | mcp | Strong |
+| C4 | 写响应信封 4 种拼法 9+ 组装点 → audited.ts 深模块 | mcp | **Strong · 已落地**（[map #106](https://github.com/McKenzieIT/semantic-grounding/issues/106) 四票 2026-10-14 全解关图：`writeReceipt` 信封 11 调用点收编 + 写后 version 回执 + add_* 批量〔#108 `c0c14da` / #109 `ede7853`〕，rg 单点验证与公开面白名单对账落 #110 resolution） |
 | C5 | 27 个 try/catch + 两份前缀 grep → 收进 epoch Proxy chokepoint | mcp | Strong |
 | C6 | guidance/playbook 阶段编排分叉 → 一个评估函数 | mcp | Worth exploring |
 | C7 | 测试拓扑三处「合并做了一半」的尾巴 | 测试拓扑 | Strong |
@@ -116,9 +116,11 @@ flowchart TD
 
 **ADR**：无冲突——ADR-0013 落地形状明文「按 playbook 家族同款方式并入 TOOL_NAMES/TOOL_REGISTRARS 单一来源组合」，本候选是该裁决的自然延伸，names 内容不动。
 
-## C4 · 写响应信封：4 种拼法 9+ 组装点 → audited.ts 深模块（Strong）
+## C4 · 写响应信封：4 种拼法 9+ 组装点 → audited.ts 深模块（Strong）——已落地（map #106，2026-10-14 `c0c14da`）
 
-**文件**：`items.ts:51-59`（`itemResponseBase`，4 个工具共用——唯一做对的）· `write.ts:101/126/149`（create 三个 kind 分支各拼一遍，guidanceField 各调一次 :100/:125/:148）+ `:196-202`（update）· `enrichment.ts:264-270 / 348-354`（apply/run）· `import.ts:308-316`。`guidanceField` 共 6 个调用点。
+> **落地核验（2026-10-14，#110 终验）**：`writeReceipt(snap, deps, res, {tool, writePath, version?, domain?})` 落 audited.ts，收编全部组装点（items 4 / write 4 / enrichment 2 / import 1 = 11 调用）；`guidanceField`/`itemResponseBase` 死码清零，`enrichment_health` 组装与 `_guidance` 注入均单点（rg 实证）；guidance 接线测试 7 手工用例 → 信封 1 + 成员资格 1（`GUIDANCE_TOOL_NAMES` 显式名单导出）。两处已裁决不对称原样保留并参数化（import 恒缺 / apply·run 不在名单）；执行核正第三处——create 族无钩子，writePath 添 `'create'` 值保住 create_table 的 health 键缺席（ADR-0005 裁决 5）。信封顺带成为 #103 写后 version 回执的单点落位（io 六写原语带指纹、Core 钩子后重读、import 行级），#109 的 add_* 批量回执同走此信封。
+
+**文件**：`items.ts:51-59`（`itemResponseBase`，4 个工具共用——唯一做对的）· `write.ts:101/126/149`（create 三个 kind 分支各拼一遍，guidanceField 各调一次 :100/:125/:148）+ `:196-202`（update）· `enrichment.ts:264-270 / 348-354`（apply/run）· `import.ts:308-316`。`guidanceField` 共 6 个调用点。〔以上为巡检时点行号，落地后以 `writeReceipt` 符号为准。〕
 
 **Before** —— `{scope, commit, changed, [enrichment_health], [_guidance]}` 这个写响应信封有 4 种拼法、9+ 个组装点；`write.ts` 不用已存在的 `itemResponseBase`，证明该 helper 放错了家（在家族文件 items.ts 而非 audited.ts）且形状差一点。`_guidance` 注入（#53 选项 D）当年就是逐点穿透的——ADR-0013 执行细节 5 自认「每工具记得展开」；下一个跨工具响应字段（第 6 个）还要再穿 N 个点。
 
