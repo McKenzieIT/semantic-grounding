@@ -17,8 +17,8 @@
 
 | # | 候选 | 区域 | 强度 |
 |---|---|---|---|
-| C1 | item 写 overlay 仪式 6 份手抄 → item-write 内部 module | substrate | **Strong（首推）** |
-| C2 | enrichment work fetch/apply 共享前提 4 份镜像 → resolve 步骤 | substrate | Strong |
+| C1 | item 写 overlay 仪式 6 份手抄 → item-write 内部 module | substrate | **Strong（首推）· 已落地**（[map #95](https://github.com/McKenzieIT/semantic-grounding/issues/95) 五票 2026-10-13 同日全解关图：02 `8dad11b` `item-write.ts` 651 行新家〔gate/veto/verdict/字段配对各一个家〕，index.ts 2021→1517） |
+| C2 | enrichment work fetch/apply 共享前提 4 份镜像 → resolve 步骤 | substrate | **Strong · 已落地**（map #95 03 `713ee16` `resolveEnrichmentWork` 单点，「fetch 报 stale ⇒ apply 必然 stale」从注释升机制 + 表驱动钉两端） |
 | C3 | 工具家族描述符：names ↔ registrars 单一来源 | mcp | Strong |
 | C4 | 写响应信封 4 种拼法 9+ 组装点 → audited.ts 深模块 | mcp | Strong |
 | C5 | 27 个 try/catch + 两份前缀 grep → 收进 epoch Proxy chokepoint | mcp | Strong |
