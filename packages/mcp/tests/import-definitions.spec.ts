@@ -4,9 +4,12 @@
  * shape (Files/Rounds trailers), the four verdicts' triggers (created /
  * updated / skipped / error), cross-kind in-batch name dedup, the permissive
  * SDK envelope keeping one bad item from rejecting the whole call, the 500
- * cap, and the `derivation: 'agent'` narrowing.
+ * cap, and the `derivation: 'agent'` narrowing. #104 later pinned ADR-0018's
+ * review surface on the same tool: the `dry_run` read-only rehearsal and the
+ * `updated`-keyed mass-update guard.
  *
  * @see docs/adr/0013-batch-definition-import.md
+ * @see docs/adr/0018-batch-intake-review-surface.md
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { buildIntentToolHarness, versionOf, type IntentToolHarness } from './helpers/intent-tools-harness.ts'
@@ -24,6 +27,16 @@ interface ImportBody {
   readonly summary: { created: number; updated: number; skipped: number; errors: number }
   readonly _guidance?: unknown
   readonly version?: string
+  readonly warning?: string
+}
+
+/** The dry-run branch's response body (ADR-0018 R2) — a read-tool shape, not a write receipt. */
+interface DryRunBody {
+  readonly committed: boolean
+  readonly results: Array<{ index: number; kind: string; name: string; verdict: string; version?: string; detail?: string }>
+  readonly staged: Array<{ index: number; kind: string; name: string; verdict: string; version?: string }>
+  readonly summary: { created: number; updated: number; skipped: number; errors: number }
+  readonly warning?: string
 }
 
 /** One fresh table payload — the minimal shape `TableDefinitionSchema` accepts. */
@@ -245,5 +258,158 @@ describe('import_definitions — ADR-0013 (#54 seven rulings)', () => {
     const body = toolJson(res) as { code: number; name: string }
     expect(body.code).toBe(-31064)
     expect(body.name).toBe('ScopeMismatchError')
+  })
+})
+
+describe('import_definitions — ADR-0018 (#104 dry-run preview + mass-update guard)', () => {
+  it('R2: dry_run:true returns Phase 1\'s verdicts read-only — zero commits, HEAD still, no write-receipt keys, no _guidance, no version anywhere', async () => {
+    h = await buildIntentToolHarness()
+    // Seed two tables: one to overwrite (updated), one to re-import verbatim (skipped).
+    for (const [name, comment] of [['dws_dry_a', 'v1'], ['dws_dry_c', 'v1']] as const) {
+      await h.client.callTool('create_definition', {
+        scope_id: 'fixture', kind: 'table',
+        table: table(name, comment),
+        summary: 'seed', derivation: 'agent', confidence: 0.9,
+      })
+    }
+    const before = commitCount(h)
+    const head = fixtureGit(['rev-parse', 'HEAD'], h.fixture.root).trim()
+    const res = await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: [
+        { kind: 'table', definition: table('dws_dry_a', 'v2') }, // would update
+        { kind: 'table', definition: table('dws_dry_b') }, // would create
+        { kind: 'table', definition: table('dws_dry_c', 'v1') }, // would skip
+        { kind: 'table', definition: { table_name: 'dim_broken', kind: 'dim', columns: [] } }, // error
+      ],
+      ...provenance('preview only'),
+      dry_run: true,
+    })
+    const body = toolJson(res) as unknown as DryRunBody
+    expect(res.result?.['isError']).toBeFalsy()
+    // Read-only branch: the preview says committed:false and carries none of the
+    // audit envelope's facts (no commit sha, no changed flag, no _guidance —
+    // the audit window never opened, so those keys would be lies).
+    expect(body.committed).toBe(false)
+    expect(body).not.toHaveProperty('commit')
+    expect(body).not.toHaveProperty('changed')
+    expect(body).not.toHaveProperty('_guidance')
+    // The full four-verdict spectrum, in input order, from the same Phase-1
+    // adjudication a real call runs.
+    expect(body.results.map(r => [r.index, r.verdict])).toEqual([
+      [0, 'updated'], [1, 'created'], [2, 'skipped'], [3, 'error'],
+    ])
+    expect(body.summary).toEqual({ created: 1, updated: 1, skipped: 1, errors: 1 })
+    // Staged = exactly what a real write would land (its will-write list).
+    expect(body.staged.map(s => [s.index, s.name, s.verdict])).toEqual([
+      [0, 'dws_dry_a', 'updated'], [1, 'dws_dry_b', 'created'],
+    ])
+    // #108 semantics: version is a post-write receipt — nothing was written, so
+    // no row (staged or skipped) carries one.
+    for (const r of [...body.results, ...body.staged]) expect(r).not.toHaveProperty('version')
+    // Zero commits, HEAD untouched, disk untouched.
+    expect(commitCount(h)).toBe(before)
+    expect(fixtureGit(['rev-parse', 'HEAD'], h.fixture.root).trim()).toBe(head)
+    expect(h.core.loadTableDefinition('dws_dry_b')).toBeNull()
+    expect(h.core.loadTableDefinition('dws_dry_a')?.table_comment).toBe('v1')
+    // A preview of a non-tripping batch carries no warning key (zero-tax: absent, not empty).
+    expect(body).not.toHaveProperty('warning')
+  })
+
+  it('Verification: dry_run and the same call without it return item-for-item identical verdicts — the preview is a faithful rehearsal', async () => {
+    h = await buildIntentToolHarness()
+    await h.client.callTool('create_definition', {
+      scope_id: 'fixture', kind: 'table',
+      table: table('dws_parity_a', 'v1'),
+      summary: 'seed', derivation: 'agent', confidence: 0.9,
+    })
+    const batch = {
+      scope_id: 'fixture',
+      items: [
+        { kind: 'table', definition: table('dws_parity_a', 'v2') },
+        { kind: 'table', definition: table('dws_parity_b') },
+        { kind: 'event', definition: event('game.parity.b') },
+        { kind: 'concept', definition: concept('parity_item') },
+        { kind: 'concept', definition: concept('parity_item') }, // duplicate name
+        { kind: 'table', definition: { table_name: 'dim_broken', kind: 'dim', columns: [] } }, // zod error
+      ],
+      ...provenance('parity probe'),
+    }
+    const dry = toolJson(await h.client.callTool('import_definitions', { ...batch, dry_run: true })) as unknown as DryRunBody
+    const real = toolJson(await h.client.callTool('import_definitions', batch)) as unknown as ImportBody
+    // The four-tuple (index, kind, name, verdict) is identical row for row —
+    // version/detail-of-write are write-time facts, verdicts are Phase 1's.
+    expect(dry.results.map(r => [r.index, r.kind, r.name, r.verdict]))
+      .toEqual(real.results.map(r => [r.index, r.kind, r.name, r.verdict]))
+    expect(dry.summary).toEqual(real.summary)
+    // And the real rows now carry the receipts the preview correctly lacked.
+    expect(real.results.filter(r => r.verdict === 'created' || r.verdict === 'updated').every(r => r.version !== undefined)).toBe(true)
+  })
+
+  it('R3: a cold start (all created, 60 > default threshold 50) trips nothing — the guard keys on updated, not size', async () => {
+    h = await buildIntentToolHarness()
+    const items = Array.from({ length: 60 }, (_, i) => ({ kind: 'table' as const, definition: table(`dws_cold_${i}`) }))
+    const res = await h.client.callTool('import_definitions', { scope_id: 'fixture', items, ...provenance('cold start 60') })
+    const body = toolJson(res) as unknown as ImportBody
+    expect(body.summary).toEqual({ created: 60, updated: 0, skipped: 0, errors: 0 })
+    expect(body).not.toHaveProperty('warning')
+    expect(lastMessage(h)).not.toContain('mass-update')
+  })
+
+  it('R3/R4: 51 updated (default threshold 50) warns and annotates the commit subject — and still lands; exactly 50 stays silent', async () => {
+    h = await buildIntentToolHarness()
+    const names = Array.from({ length: 51 }, (_, i) => `dws_ovw_${i}`)
+    const seed = await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: names.map(n => ({ kind: 'table' as const, definition: table(n, 'v1') })),
+      ...provenance('seed v1'),
+    })
+    expect((toolJson(seed) as unknown as ImportBody)).not.toHaveProperty('warning')
+    const before = commitCount(h)
+
+    // 51 updated > 50: the response warns, the subject is annotated, the write lands.
+    const res = await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: names.map(n => ({ kind: 'table' as const, definition: table(n, 'v2') })),
+      ...provenance('re-import v2'),
+    })
+    const body = toolJson(res) as unknown as ImportBody
+    expect(res.result?.['isError']).toBeFalsy() // soft signal, never a refusal
+    expect(body.changed).toBe(true)
+    expect(body.summary).toEqual({ created: 0, updated: 51, skipped: 0, errors: 0 })
+    expect(body.warning).toMatch(/^mass-update guard: this batch overwrote 51 existing definitions \(threshold 50\)/)
+    expect(commitCount(h)).toBe(before + 1)
+    const msg = lastMessage(h)
+    expect(msg).toMatch(/^import_definitions\(51\/51 items \(0 created, 51 updated\); mass-update guard: 51 updated exceeds threshold 50\): re-import v2$/m)
+    // The annotation is the post-hoc reader's grep handle (ADR-0018 R4 role ③).
+    expect(msg).toMatch(/X-SG-Tool: import_definitions/)
+
+    // Exactly 50 is AT the threshold, not over it: silent.
+    const at = await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: names.slice(0, 50).map(n => ({ kind: 'table' as const, definition: table(n, 'v3') })),
+      ...provenance('re-import v3'),
+    })
+    const atBody = toolJson(at) as unknown as ImportBody
+    expect(atBody.summary).toEqual({ created: 0, updated: 50, skipped: 0, errors: 0 })
+    expect(atBody).not.toHaveProperty('warning')
+    expect(lastMessage(h)).not.toContain('mass-update')
+  })
+
+  it('R5: the threshold is configurable, and the dry-run preview carries the same warning the real write would get', async () => {
+    h = await buildIntentToolHarness({ massUpdateWarnThreshold: 2 })
+    const names = ['dws_thr_a', 'dws_thr_b', 'dws_thr_c']
+    await h.client.callTool('import_definitions', {
+      scope_id: 'fixture',
+      items: names.map(n => ({ kind: 'table' as const, definition: table(n, 'v1') })),
+      ...provenance('seed v1'),
+    })
+    const v2 = { scope_id: 'fixture', items: names.map(n => ({ kind: 'table' as const, definition: table(n, 'v2') })), ...provenance('re-import v2') }
+    const dry = toolJson(await h.client.callTool('import_definitions', { ...v2, dry_run: true })) as unknown as DryRunBody
+    expect(dry.committed).toBe(false)
+    expect(dry.warning).toMatch(/^mass-update guard: committing this batch would overwrite 3 existing definitions \(threshold 2\)/)
+    const real = toolJson(await h.client.callTool('import_definitions', v2)) as unknown as ImportBody
+    expect(real.warning).toMatch(/^mass-update guard: this batch overwrote 3 existing definitions \(threshold 2\)/)
+    expect(lastMessage(h)).toMatch(/mass-update guard: 3 updated exceeds threshold 2/)
   })
 })

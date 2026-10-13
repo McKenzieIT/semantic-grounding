@@ -67,11 +67,13 @@ export const SCOPE_TOOL_NAMES = [
 
 /**
  * The content bootstrap line (ADR-0012 R4, five elements + two prohibitions —
- * wording ruled, canonical home here). Self-contained on purpose: no doc
- * pointer to drift, no pipeline object to become a content manual.
+ * wording ruled, canonical home here; ADR-0018 later appended the batch-import
+ * clause so a remote agent discovers the dry-run preview). Self-contained on
+ * purpose: no doc pointer to drift, no pipeline object to become a content
+ * manual.
  */
 export const SCOPE_SCAFFOLD_NEXT_STEPS =
-  '语料为空是正常态：问数轨迹里词 miss（resolve_alias/search_definitions 空结果）时才注册——依据你读到的 DDL/文档 create_definition（资产词建表/事件并带 pref_label/alt_labels；无单一资产的域词建 concept；表经 update_definition 的 domains 挂概念；候选指标随宿主表/事件的 metrics 块内联写入，metric 层无独立写路径）→ 积累后 run_enrichment 派生关系 → get_enrichment_work/apply_enrichment 补标签。不预铺种子，不手写 corpus YAML。'
+  '语料为空是正常态：问数轨迹里词 miss（resolve_alias/search_definitions 空结果）时才注册——依据你读到的 DDL/文档 create_definition（资产词建表/事件并带 pref_label/alt_labels；无单一资产的域词建 concept；表经 update_definition 的 domains 挂概念；候选指标随宿主表/事件的 metrics 块内联写入，metric 层无独立写路径）→ 大批初始化走 import_definitions 单 commit 落盘、先 dry_run:true 预检覆盖面再真写（ADR-0018）→ 积累后 run_enrichment 派生关系 → get_enrichment_work/apply_enrichment 补标签。不预铺种子，不手写 corpus YAML。'
 
 // ── get_scope_scaffold ───────────────────────────────────────────────────────────────
 

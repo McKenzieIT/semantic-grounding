@@ -50,6 +50,24 @@
  * five-key payload projection, because a stored concept legitimately carries
  * fields (`related_refs`, `suppressed_*`) the create-shaped payload never had.
  *
+ * ## The review surface: dry-run preview + mass-update guard (ADR-0018)
+ *
+ * There is no online second party at tool-call time (ADR-0004 — author=agent /
+ * committer=server; humans audit post-hoc via `git log`), so the review face
+ * "before this batch becomes source-of-truth" is two server-side facts, not an
+ * approval queue:
+ *
+ * - **`dry_run:true`** runs Phase 1 and returns at the Phase-2 entrance — the
+ *   same adjudication, per-item verdicts and summary, with `committed:false`
+ *   and no audit window, no commit, no `_guidance`. A flag, not a second tool:
+ *   Phase 1 is the single source of adjudication, and a flag exposes it with
+ *   zero copying (and without growing `tools/list`).
+ * - **The guard** keys on the `updated` bucket alone (a cold start is almost
+ *   all `created` and must stay silent) and is a soft signal: a `warning` in
+ *   the response plus an annotation on the real write's commit subject, never
+ *   a refusal — a hard cap is evaded by splitting the batch, and `.max(500)`
+ *   already bounds runaway size.
+ *
  * @module tools/import
  */
 import { isDeepStrictEqual } from 'node:util'
@@ -58,11 +76,19 @@ import { dumpYaml, EventDefinitionSchema, TableDefinitionSchema, writeEventYaml,
 import { z } from 'zod'
 import { toToolErrorResult } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
-import { assertScopeMatch, auditedWrite, toolSuccess, writeReceipt } from './audited.ts'
+import { assertScopeMatch, auditedWrite, scopeStamp, toolSuccess, writeReceipt } from './audited.ts'
 import { ConceptCreatePayloadSchema, ConfidenceSchema, ScopeIdSchema, SummarySchema } from './shared.ts'
 
 /** The bulk-import tool's single name (#54 R6 — intent-level, an `import_` verb joins the surface). */
 export const IMPORT_TOOL_NAMES = ['import_definitions'] as const
+
+/**
+ * The mass-update guard's default count threshold (ADR-0018 R5: "default 建议
+ * 50"). Lives here, beside its only consumer, for the same reason the guidance
+ * thresholds live in `guidance.ts`: the `ServerConfig` field stays optional and
+ * a test pins the default where the behaviour is.
+ */
+export const DEFAULT_MASS_UPDATE_WARN_THRESHOLD = 50
 
 /** The kinds an import item may carry — `WritableKindSchema`'s three values, restated for this schema's own doc. */
 type ImportKind = 'table' | 'event' | 'concept'
@@ -95,6 +121,8 @@ const ImportDefinitionsInputSchema = z.object({
   derivation: z.literal('agent')
     .describe('Must be "agent": importing means you transcribed the source and stand behind each item\'s applicability (ADR-0012 R5 — that is a judgement, not a derived fact).'),
   confidence: ConfidenceSchema,
+  dry_run: z.boolean().optional()
+    .describe('Read-only rehearsal (ADR-0018): run the Phase-1 adjudication — the exact per-item created/updated/skipped/error verdicts and batch summary a real call would produce — and return them WITHOUT opening the audit window, writing, or committing (the response says committed:false and carries no version fingerprints). For a large batch, or one that may overwrite existing definitions: preview with dry_run:true first, review the updated verdicts, then re-issue without it.'),
 }).strict()
 
 /** One item's verdict row — #54 R4's response shape. */
@@ -140,6 +168,15 @@ function firstIssue(err: z.ZodError): string {
   if (issue === undefined) return err.message
   const path = issue.path.length > 0 ? issue.path.join('.') : '(root)'
   return `zod: ${path}: ${issue.message}`
+}
+
+/**
+ * Count one verdict across rows — shared by the dry-run preview's summary and
+ * the post-write summary, so both count from rows (never from Phase 1's sort
+ * alone: a row IS the verdict of record).
+ */
+function countVerdict(rows: readonly ImportItemResult[], v: ImportItemResult['verdict']): number {
+  return rows.filter(r => r.verdict === v).length
 }
 
 /** Best-effort identity from an unparseable payload — the row still needs a name to be readable. */
@@ -216,7 +253,7 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
     'import_definitions',
     {
       title: 'Import a batch of definitions',
-      description: 'Bulk-seed definitions for initialization: up to 500 items (table/event/concept mixed; there is no kind:"metric" item — metric candidates ride inline in their host table/event\'s `metrics` block) in one call, validated per item, landed as ONE commit (or zero when every item is idempotent). Each item gets a verdict — created / updated (payload differs from disk: full overwrite, the batch is your assertion the dump is truth) / skipped (byte-equivalent, no commit) / error (bad schema or duplicate name in batch; does NOT abort the batch). Provenance is batch-level: summary names the source, derivation must be "agent". No cross-corpus validation — dangling dimension_refs/domains are enrichment\'s to discover and report as work. Re-issuing the identical call is safe: all-skipped, no commit. For one definition, create_definition is the finer tool.',
+      description: 'Bulk-seed definitions for initialization: up to 500 items (table/event/concept mixed; there is no kind:"metric" item — metric candidates ride inline in their host table/event\'s `metrics` block) in one call, validated per item, landed as ONE commit (or zero when every item is idempotent). Each item gets a verdict — created / updated (payload differs from disk: full overwrite, the batch is your assertion the dump is truth) / skipped (byte-equivalent, no commit) / error (bad schema or duplicate name in batch; does NOT abort the batch). Provenance is batch-level: summary names the source, derivation must be "agent". No cross-corpus validation — dangling dimension_refs/domains are enrichment\'s to discover and report as work. Re-issuing the identical call is safe: all-skipped, no commit. For one definition, create_definition is the finer tool. Review surface (ADR-0018): pass dry_run:true to rehearse the batch read-only (same verdicts and summary, nothing written — do this first for large batches or any re-import that may overwrite), and a server-side guard warns — without refusing — when more than a configurable threshold of items would be updated (the commit subject is annotated for post-hoc git log review).',
       inputSchema: ImportDefinitionsInputSchema,
     },
     async (input, ctx) => {
@@ -269,7 +306,45 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
 
         const toWrite = staged.filter(s => s.verdict === 'created').length
         const toUpdate = staged.length - toWrite
-        const intentTarget = `${staged.length}/${input.items.length} items (${toWrite} created, ${toUpdate} updated)`
+
+        // ── Phase 2 entrance: the mass-update guard (ADR-0018 R3/R4) ─────────
+        // Keyed on the `updated` bucket alone — the danger a review surface
+        // exists for is "how much existing source-of-truth does this batch
+        // overwrite", not "how many items" (a cold start is almost all
+        // `created` and is this tool's raison d'être, ADR-0013). A soft
+        // signal, never a refusal: a hard cap is trivially evaded by splitting
+        // the batch, and `.max(500)` already bounds runaway size. When tripped
+        // it (a) puts a `warning` in the response — both this call's and the
+        // dry-run preview's — and (b) rides the intent target, so the
+        // annotation lands in the real write's commit subject where a
+        // post-hoc `git log` reader greps for it.
+        const warnThreshold = deps.config.massUpdateWarnThreshold ?? DEFAULT_MASS_UPDATE_WARN_THRESHOLD
+        const massUpdate = toUpdate > warnThreshold
+        const guardNote = `mass-update guard: ${toUpdate} updated exceeds threshold ${warnThreshold}`
+        const intentTarget = `${staged.length}/${input.items.length} items (${toWrite} created, ${toUpdate} updated)${massUpdate ? `; ${guardNote}` : ''}`
+
+        // ── ADR-0018 R2: the dry-run branch — Phase 1 has adjudicated, return ─
+        if (input.dry_run === true) {
+          // Read-only early return, BEFORE `auditedWrite`: no audit window, no
+          // commit, no `_guidance` (that injection is a write-receipt fact).
+          // The response is assembled read-tool style — scope stamp plus domain
+          // — never through `writeReceipt`, whose `commit`/`changed` keys are
+          // facts about a write that did not happen. No `version` anywhere:
+          // fingerprints are post-write receipts (#108), and a skipped row's
+          // in-lock resolution belongs to the window this branch never opens.
+          // Staged rows get their verdict here because there is no Phase 2 to
+          // own them — same adjudication, same rows a real call would land.
+          const stagedRow = (s: StagedItem): ImportItemResult => ({ index: s.index, kind: s.kind, name: s.name, verdict: s.verdict })
+          const preview = [...results, ...staged.map(stagedRow)].sort((a, b) => a.index - b.index)
+          return toolSuccess({
+            scope: scopeStamp(snap),
+            committed: false,
+            results: preview,
+            staged: staged.map(stagedRow),
+            summary: { created: countVerdict(preview, 'created'), updated: countVerdict(preview, 'updated'), skipped: countVerdict(preview, 'skipped'), errors: countVerdict(preview, 'error') },
+            ...massUpdate ? { warning: `mass-update guard: committing this batch would overwrite ${toUpdate} existing definitions (threshold ${warnThreshold}) — review the updated verdicts, then re-issue without dry_run` } : {},
+          })
+        }
 
         // ── Phase 2: one audited window, one batch, one commit ───────────────
         const audited = await auditedWrite(
@@ -319,17 +394,18 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
 
         // Counted from the final rows, not from Phase 1's sort: a Phase-2
         // domain failure must not let the counts claim a write that did not land.
-        const count = (v: ImportItemResult['verdict']): number => results.filter(r => r.verdict === v).length
-        const summary: ImportSummary = { created: count('created'), updated: count('updated'), skipped: count('skipped'), errors: count('error') }
+        const summary: ImportSummary = { created: countVerdict(results, 'created'), updated: countVerdict(results, 'updated'), skipped: countVerdict(results, 'skipped'), errors: countVerdict(results, 'error') }
         results.sort((a, b) => a.index - b.index)
 
         // No top-level `version`: one batch spans many files, so the
         // fingerprint rides each row — the envelope's `import` writePath
-        // leaves it (and `enrichment_health`) absent by construction.
+        // leaves it (and `enrichment_health`) absent by construction. A tripped
+        // guard rides `domain` (ADR-0018 R4): a top-level observable soft
+        // signal, alongside the subject annotation it already put there.
         return toolSuccess(await writeReceipt(snap, deps, audited, {
           tool: 'import_definitions',
           writePath: 'import',
-          domain: { results, summary },
+          domain: { results, summary, ...massUpdate ? { warning: `mass-update guard: this batch overwrote ${toUpdate} existing definitions (threshold ${warnThreshold}) — the commit subject is annotated for post-hoc git log review` } : {} },
         }))
       } catch (e) {
         return toToolErrorResult(e)

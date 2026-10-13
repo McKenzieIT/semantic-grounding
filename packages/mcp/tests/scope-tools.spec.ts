@@ -109,6 +109,15 @@ describe('get_scope_scaffold', () => {
     // never appears in the serialized text there — assert its escaped form (#81).
     expect(serialized).toContain(JSON.stringify(fixtureA.root).slice(1, -1))
   })
+
+  it('next_steps names the dry-run rehearsal before a bulk import lands (ADR-0018 discoverability)', async () => {
+    // The remote agent's one bootstrap line is where the preview must surface:
+    // nothing else in the surface tells it a batch can be rehearsed read-only
+    // before it becomes source-of-truth.
+    const out = await callOk(tools, 'get_scope_scaffold', { scope_id: 'probe', path: fixtureA.root })
+    expect(String(out['next_steps'])).toContain('import_definitions')
+    expect(String(out['next_steps'])).toContain('dry_run:true')
+  })
 })
 
 describe('register_scope', () => {

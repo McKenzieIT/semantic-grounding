@@ -25,16 +25,21 @@
  * through the one channel a host happens not to offer is unusable for a reason the
  * operator cannot see.
  *
- * ## ADR-0011's re-ruling: no `--corpus`, four flags total
+ * ## ADR-0011's re-ruling: no `--corpus`, four flags at the time
  *
  * `--corpus` named a corpus at the command line; `register_scope` names one as a tool
  * call. Two doors into one table is the exact shape ruling 4 refuses, and #45's ROI
- *盘点 found the compat matrix protecting nobody (e2e was going to be rewritten anyway,
- * dogfood re-registers once, CI does not exist). The surface is now:
+ * 盘点 found the compat matrix protecting nobody (e2e was going to be rewritten anyway,
+ * dogfood re-registers once, CI does not exist). The surface was then:
  * `--agent-id` (required) · `--scope <id>` (optional eager bind) · `--registry <path>`
  * (optional, default `~/.semantic-grounding/scopes.yaml`) · `--lock-timeout-ms`. The
  * bootstrap door for a new corpus is the `register_scope` **tool**, full stop; posture
  * checks moved to the three binding moments (register / switch / `--scope`).
+ *
+ * ADR-0018 R5 (#104) later added the one deliberate exception,
+ * `--mass-update-warn-threshold`: an operator tuning how loudly `import_definitions`
+ * overwrites are flagged wants to do it at startup, not by rebuilding a
+ * `ServerConfig` — the same reasoning that keeps `--lock-timeout-ms` a flag.
  *
  * ## What is deliberately not configurable
  *
@@ -70,6 +75,7 @@ export const ENV_VARS = {
   agentId: 'SG_AGENT_ID',
   scope: 'SG_SCOPE',
   lockTimeoutMs: 'SG_LOCK_TIMEOUT_MS',
+  massUpdateWarnThreshold: 'SG_MASS_UPDATE_WARN_THRESHOLD',
 } as const
 
 /** The validated startup configuration. */
@@ -100,10 +106,24 @@ export interface ServerConfig {
    * `mature` at its own count. An absent side defaults to that module's
    * `DEFAULT_DW_THRESHOLD` (50) / `DEFAULT_KG_THRESHOLD` (5). No flag/env var:
    * ADR-0011 ruling 3 closed the CLI surface at four flags, and neither #55 nor
-   * #56 asks for one — reachable today via `ServerConfig` construction (tests, a
-   * future embedding host), not via the `sg-mcp` binary's argv.
+   * #56 asks for one (ADR-0018 R5's `massUpdateWarnThreshold` below is the one
+   * later, deliberate exception) — reachable today via `ServerConfig`
+   * construction (tests, a future embedding host), not via the `sg-mcp`
+   * binary's argv.
    */
   readonly guidanceThreshold?: GuidanceThresholds
+  /**
+   * The mass-update guard's count threshold (ADR-0018 R5, #104): when an
+   * `import_definitions` batch would hand MORE items an `updated` verdict than
+   * this, the response carries a WARN and the commit's subject carries a
+   * mass-update annotation. Absent means the consuming module's
+   * `DEFAULT_MASS_UPDATE_WARN_THRESHOLD` (50). Unlike `guidanceThreshold` this
+   * one IS flag/env-reachable — ADR-0018 R5 deliberately re-opened ADR-0011
+   * ruling 3's four-flag surface for exactly this knob, because an operator
+   * tuning how loud overwrites are should not need a rebuilt `ServerConfig` to
+   * do it.
+   */
+  readonly massUpdateWarnThreshold?: number
 }
 
 /**
@@ -155,6 +175,7 @@ const OPTIONS = {
   'agent-id': { type: 'string' },
   scope: { type: 'string' },
   'lock-timeout-ms': { type: 'string' },
+  'mass-update-warn-threshold': { type: 'string' },
   help: { type: 'boolean', short: 'h' },
 } as const
 
@@ -194,6 +215,13 @@ export function usage(): string {
     `  --lock-timeout-ms <n>    How long a write waits for the corpus lock before failing`,
     `                           (positive integer, default 10000).`,
     `                           env: ${ENV_VARS.lockTimeoutMs}`,
+    `  --mass-update-warn-threshold <n>`,
+    `                           Warn when an import_definitions batch would give`,
+    `                           more than <n> items an updated verdict (soft`,
+    `                           signal, never a refusal; whole number >= 0,`,
+    `                           default 50). The warning also annotates the`,
+    `                           commit subject for post-hoc git log review.`,
+    `                           env: ${ENV_VARS.massUpdateWarnThreshold}`,
     `  -h, --help               Print this text.`,
     '',
     'A flag always wins over its environment variable.',
@@ -254,6 +282,7 @@ export function parseServerConfig(
   const registryPath = resolve(pick(values.registry, env[ENV_VARS.registry]) ?? defaultRegistryPath())
   const scopeId = pick(values.scope, env[ENV_VARS.scope])
   const lockTimeoutMs = parseLockTimeout(pick(values['lock-timeout-ms'], env[ENV_VARS.lockTimeoutMs]))
+  const massUpdateWarnThreshold = parseMassUpdateWarnThreshold(pick(values['mass-update-warn-threshold'], env[ENV_VARS.massUpdateWarnThreshold]))
 
   return {
     // Resolved here, once, so every downstream message names the file actually used
@@ -262,6 +291,7 @@ export function parseServerConfig(
     agentId,
     ...scopeId !== undefined ? { scopeId } : {},
     ...lockTimeoutMs !== undefined ? { lockTimeoutMs } : {},
+    ...massUpdateWarnThreshold !== undefined ? { massUpdateWarnThreshold } : {},
   }
 }
 
@@ -295,6 +325,28 @@ function parseLockTimeout(raw: string | undefined): number | undefined {
     throw new ConfigError(
       `lock timeout ${JSON.stringify(raw)} is not a positive whole number of milliseconds`,
       `pass a value like \`--lock-timeout-ms 10000\` (10 seconds), or omit it for the default`,
+    )
+  }
+  return n
+}
+
+/**
+ * Validate the mass-update guard's threshold (ADR-0018 R5).
+ * @param raw - the value from either carrier, or undefined.
+ * @returns the threshold as an item count, or undefined to take the consuming
+ *   module's default (50). Zero is legal — "warn on every overwrite" is a
+ *   posture, not a mistake, and the guard is a soft signal that never refuses.
+ * @throws ConfigError when the value is not a whole number >= 0. Refused rather
+ *   than clamped for the same reason as the lock timeout: a threshold silently
+ *   reinterpreted is a guard that stays quiet at a level nobody chose.
+ */
+function parseMassUpdateWarnThreshold(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n < 0) {
+    throw new ConfigError(
+      `mass-update warn threshold ${JSON.stringify(raw)} is not a whole number >= 0`,
+      `pass a value like \`--mass-update-warn-threshold 50\` (warn when a batch would update more than that many definitions), or omit it for the default`,
     )
   }
   return n

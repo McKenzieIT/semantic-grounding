@@ -103,6 +103,32 @@ describe('parseServerConfig — legal branches', () => {
     expect(cfg.agentId).toBe('bot')
     expect(cfg.registryPath).toBe(resolve('/srv/reg.yaml'))
   })
+
+  it('parses the mass-update warn threshold from a flag, env, or neither (ADR-0018 R5)', () => {
+    // The one flag ADR-0018 deliberately added past ADR-0011 ruling 3's four.
+    const fromFlag = parseServerConfig(['--agent-id', 'a', '--mass-update-warn-threshold', '25'], NO_ENV)
+    expect(fromFlag.massUpdateWarnThreshold).toBe(25)
+    const fromEnv = parseServerConfig([], {
+      [ENV_VARS.agentId]: 'a',
+      [ENV_VARS.massUpdateWarnThreshold]: '30',
+    })
+    expect(fromEnv.massUpdateWarnThreshold).toBe(30)
+    // A flag wins over its environment variable, like every other setting.
+    const both = parseServerConfig(['--agent-id', 'a', '--mass-update-warn-threshold', '10'], {
+      [ENV_VARS.massUpdateWarnThreshold]: '30',
+    })
+    expect(both.massUpdateWarnThreshold).toBe(10)
+    // Absent (or blank in both carriers) stays absent — the default (50) lives
+    // with the guard's consumer in `tools/import.ts`, not here: a default
+    // invented here would be a second, competing source.
+    const absent = parseServerConfig(['--agent-id', 'a'], { [ENV_VARS.massUpdateWarnThreshold]: '  ' })
+    expect(absent.massUpdateWarnThreshold).toBeUndefined()
+    expect('massUpdateWarnThreshold' in absent).toBe(false)
+    // Zero is legal — "warn on every overwrite" is a posture, not a mistake
+    // (the guard is a soft signal and never refuses).
+    const zero = parseServerConfig(['--agent-id', 'a', '--mass-update-warn-threshold', '0'], NO_ENV)
+    expect(zero.massUpdateWarnThreshold).toBe(0)
+  })
 })
 
 describe('parseServerConfig — illegal branches', () => {
@@ -165,6 +191,17 @@ describe('parseServerConfig — illegal branches', () => {
     })).toThrow(ConfigError)
   })
 
+  it.each([
+    ['negative', '-1'],
+    ['fractional', '2.5'],
+    ['not a number', 'many'],
+  ])('refuses a mass-update warn threshold that is %s', (_label, value) => {
+    // Refused rather than clamped, same as the lock timeout: a threshold
+    // silently reinterpreted is a guard that stays quiet at a level nobody chose.
+    expect(() => parseServerConfig(['--agent-id', 'a', '--mass-update-warn-threshold', value], NO_ENV))
+      .toThrow(ConfigError)
+  })
+
   it('carries a remedy on every ConfigError', () => {
     // Mirrors `PostureRefusedError`'s discipline: refusing without saying what to run is
     // how an operator concludes the tool is broken rather than the invocation.
@@ -214,7 +251,7 @@ describe('--help', () => {
 describe('usage text', () => {
   it('documents every flag and its environment variable', () => {
     const text = usage()
-    for (const flag of ['--agent-id', '--scope', '--registry', '--lock-timeout-ms', '--help']) {
+    for (const flag of ['--agent-id', '--scope', '--registry', '--lock-timeout-ms', '--mass-update-warn-threshold', '--help']) {
       expect(text, `usage should mention ${flag}`).toContain(flag)
     }
     for (const name of Object.values(ENV_VARS)) {

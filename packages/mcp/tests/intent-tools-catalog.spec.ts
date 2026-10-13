@@ -111,6 +111,17 @@ describe('import_definitions — ADR-0013 (#54)', () => {
     expect(envelope.properties).toHaveProperty('definition')
     expect(envelope.properties).toHaveProperty('kind')
   })
+
+  it('advertises the optional dry_run rehearsal flag (ADR-0018 R2) — a flag, not a new tool', async () => {
+    const tool = byName(await listTools(), 'import_definitions')
+    const dryRun = tool.inputSchema.properties?.['dry_run'] as { type?: string }
+    expect(dryRun.type).toBe('boolean')
+    // Optional by design: absent means the pre-#104 write-only behaviour, verbatim.
+    expect(tool.inputSchema.required).not.toContain('dry_run')
+    // Discoverability lives in the advertised description too — a remote agent
+    // that never reads the ADR must still find the preview.
+    expect(tool.description).toContain('dry_run:true')
+  })
 })
 
 describe('read tool schemas', () => {

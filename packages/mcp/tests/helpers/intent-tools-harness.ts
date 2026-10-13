@@ -66,6 +66,9 @@ export interface IntentToolHarnessOptions {
   /** `_guidance` per-layer threshold override (default: `guidance.ts`'s
    * `DEFAULT_DW_THRESHOLD`/`DEFAULT_KG_THRESHOLD`, 50/5). */
   readonly guidanceThreshold?: GuidanceThresholds
+  /** Mass-update guard threshold override (ADR-0018; default: `import.ts`'s
+   * `DEFAULT_MASS_UPDATE_WARN_THRESHOLD`, 50). */
+  readonly massUpdateWarnThreshold?: number
 }
 
 /** One built harness. */
@@ -110,6 +113,7 @@ export async function buildIntentToolHarness(opts: IntentToolHarnessOptions = {}
       agentId,
       scopeId: HARNESS_SCOPE_ID,
       ...opts.guidanceThreshold !== undefined ? { guidanceThreshold: opts.guidanceThreshold } : {},
+      ...opts.massUpdateWarnThreshold !== undefined ? { massUpdateWarnThreshold: opts.massUpdateWarnThreshold } : {},
     },
   }
   const server = await buildServer(createServerFactory(deps, opts.registrars ?? TOOL_REGISTRARS))
