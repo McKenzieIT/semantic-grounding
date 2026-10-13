@@ -1,7 +1,7 @@
 /**
  * discoverRelations Service method + on-write hook (B3) — `ctx.schema`
  * enrichment entry. G3: discoverRelations delegates to the substrate
- * `enrichAllDwsTables`; the on-write hook fires after syncWrite/updateTableMeta
+ * `enrichAllDwsTables`; the on-write hook fires after updateTableMeta
  * (gated by autoEnrich). No Tier-2 audit for the enrichment itself (auto-derived).
  */
 import { test, expect, describe, beforeEach, afterEach } from 'vitest'
@@ -13,7 +13,7 @@ import { SemanticGroundingCore, type Tier2Recorder } from '../src/index.ts'
 import { buildExcludeColumns } from '../src/io.ts'
 import { dumpYaml } from '../src/io.ts'
 import { discoverRelationsDeterministic, type DimInventoryEntry } from '../src/enrichment.ts'
-import type { TableDefinition, TableMeta } from '../src/types.ts'
+import type { TableDefinition } from '../src/types.ts'
 
 const dimDoc = (name: string, pk: string): TableDefinition => ({
   table_name: name, table_comment: '', description: `${name} 维度表`, alt_labels: [], domains: [],
@@ -115,27 +115,21 @@ describe('ctx.schema on-write hook (B3, G3 auto-trigger)', () => {
   beforeEach(() => {})
   afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }) })
 
-  test('syncWrite of a DWS triggers the on-write hook -> dimension_refs written', async () => {
-    dir = newLayer()
+  test('updateTableMeta of a DWS triggers the on-write hook -> dimension_refs written', async () => {
+    dir = newLayer({ name: 'dws_pay', cols: [{ name: 'server_id', comment: '区服ID' }, { name: 'pay_amt', comment: '金额' }] })
     const schema = new SemanticGroundingCore({ semanticRoot: dir })
     schema.setTier2Recorder(noopRecorder) // D5: setter-injected, no longer ctx.provide('audit')
-    const meta: TableMeta = {
-      table_name: 'dws_pay', comment: 'pay',
-      partitions: [{ name: 'ds', type: 'string' }],
-      columns: [{ name: 'server_id', type: 'string', comment: '区服ID' }, { name: 'pay_amt', type: 'double', comment: '金额' }],
-    }
-    const res = await schema.syncWrite([meta])
-    expect(res.written).toBe(1)
+    const res = await schema.updateTableMeta('dws_pay', { table_comment: 'pay' })
+    expect(res.ok).toBe(true)
     // hook fired: the just-written DWS now has dimension_refs (deterministic: server_id matches dim_server PK)
     expect(readRefs(dir, 'dws_pay')).toHaveLength(1)
   })
 
   test('autoEnrich=false suppresses the on-write hook', async () => {
-    dir = newLayer()
+    dir = newLayer({ name: 'dws_pay', cols: [{ name: 'server_id', comment: '区服ID' }] })
     const schema = new SemanticGroundingCore({ semanticRoot: dir, autoEnrich: false })
     schema.setTier2Recorder(noopRecorder) // D5: setter-injected, no longer ctx.provide('audit')
-    const meta: TableMeta = { table_name: 'dws_pay', comment: 'pay', partitions: [], columns: [{ name: 'server_id', type: 'string', comment: '区服ID' }] }
-    await schema.syncWrite([meta])
+    await schema.updateTableMeta('dws_pay', { table_comment: 'pay' })
     expect(readRefs(dir, 'dws_pay')).toHaveLength(0) // hook suppressed
   })
 })

@@ -18,7 +18,7 @@
 import { chmodSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { SemanticGroundingCore, type TableMeta } from '@semantic-grounding/substrate'
+import { SemanticGroundingCore } from '@semantic-grounding/substrate'
 import { createHash } from 'node:crypto'
 import {
   CommitFailedError,
@@ -331,15 +331,9 @@ describe('a commit that cannot be made rolls back', () => {
   // --source=HEAD` fails outright on a path HEAD does not contain.
   it('removes a file the failed write created, leaving nothing staged', async () => {
     const rec = recorder()
-    const meta: TableMeta = {
-      table_name: 'dws_brand_new',
-      comment: 'new',
-      partitions: [{ name: 'ds', type: 'string' }],
-      columns: [{ name: 'shop_id', type: 'string', comment: '' }],
-    }
     installFailingHook()
-    await expect(rec.runAudited({ ...CTX, tool: 'create_definition', target: 'dws_brand_new' }, () =>
-      core(rec).syncWrite([meta]))).rejects.toThrow(CommitFailedError)
+    await expect(rec.runAudited({ ...CTX, tool: 'create_definition', target: 'brand_new_concept' }, () =>
+      core(rec).writeConceptYaml('brand_new_concept', { name: 'brand_new_concept', description: 'new' }))).rejects.toThrow(CommitFailedError)
 
     expect(fixtureGit(['status', '--porcelain'], fixture.root).trim()).toBe('')
     expect(fixtureGit(['diff', '--cached', '--name-only'], fixture.root).trim()).toBe('')
@@ -456,21 +450,22 @@ describe('a write over an already-dirty worktree is refused', () => {
 // ── Batch accounting ────────────────────────────────────────────────────
 
 describe('batch write accounting', () => {
-  // `syncWrite` records per table today (ADR-0004 ruling 3's "302 表 = 302 commit",
-  // which `beginBatch` solves in #21). Until then the reported file count has to be the
-  // sum across the window, not the last record's.
+  // A window wraps whatever number of audited writes the tool performs — the
+  // removed batch sync-write path was the historic multi-commit case (ADR-0004
+  // ruling 3's "302 表 = 302 commit", which `beginBatch` solves in #21). Until
+  // then the reported file count has to be the sum across the window, not the
+  // last record's.
   it('counts every file written in one audited window', async () => {
     const rec = recorder()
-    const metas: TableMeta[] = ['dws_a', 'dws_b', 'dws_c'].map(name => ({
-      table_name: name,
-      comment: name,
-      partitions: [{ name: 'ds', type: 'string' }],
-      columns: [{ name: 'shop_id', type: 'string', comment: '' }],
-    }))
-    const res = await rec.runAudited({ ...CTX, tool: 'create_definition', target: '3 tables' }, () =>
-      core(rec).syncWrite(metas))
+    const res = await rec.runAudited({ ...CTX, tool: 'create_definition', target: '3 concepts' }, async () => {
+      const out = []
+      for (const n of ['concept_a', 'concept_b', 'concept_c']) {
+        out.push(await core(rec).writeConceptYaml(n, { name: n, description: n }))
+      }
+      return out
+    })
 
-    expect(res.value.written).toBe(3)
+    expect(res.value.every((r: { ok: boolean }) => r.ok)).toBe(true)
     expect(res.files).toBe(3)
     expect(res.changed).toBe(true)
     expect(subjects().filter(s => s.startsWith('create_definition'))).toHaveLength(3)

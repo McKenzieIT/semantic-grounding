@@ -30,7 +30,7 @@
  *
  * {@link enrichmentHealthAfter} is the single place that knows which write
  * paths ran the on-write enrichment hook: table writes
- * (`updateTableMeta`/`syncWrite` call `enrichOnWrite`) did, event writes
+ * (`updateTableMeta` calls `enrichOnWrite`) did, event writes
  * (`updateEventMeta`) did not — the event hook remains deferred, see the Core
  * class's own note on `discoverEventRelations` — and an enrichment round
  * (`apply_enrichment`/`run_enrichment`) always reports. Before this module
@@ -133,7 +133,7 @@ export function scopeStamp(snap: ScopeBinding): Readonly<{ id: string; root: str
 
 /**
  * The one home for "did this write path run the on-write enrichment hook":
- * `'table'` did (`updateTableMeta`/`syncWrite` call `enrichOnWrite`), `'event'`
+ * `'table'` did (`updateTableMeta` calls `enrichOnWrite`), `'event'`
  * did not (`updateEventMeta` has no hook — deferred, see the Core class's own
  * note on `discoverEventRelations`), `'concept'` did not either — concepts
  * have no enrichment rounds at all (ADR-0012 / #46 measured 'concept'

@@ -307,6 +307,9 @@ assert.deepEqual(names, [...EXPECTED_RUNTIME_NAMES, 'default'].sort(),
 // / SemanticLayerService are asserted separately above and not repeated here.
 // wireEnrichmentLlm + TextLlm: the in-process LLM callback seam was removed
 // wholesale (S1.2, #83) — they must not creep back onto the barrel.
+// inferRole/generateTableYaml/generateDimYaml/mergeColumns/mergeChangedYaml/
+// syncWriteDefinitions: the sync-write chain was removed wholesale (S1.4, #84)
+// — same rule, they must not creep back onto the barrel.
 for (const absent of [
   'wireEnrichmentLlm', 'TextLlm',
   'enrichAllDwsTables', 'discoverRelationsDeterministic', 'discoverEventRelationsDeterministic',

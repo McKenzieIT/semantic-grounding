@@ -21,7 +21,7 @@
  * @see docs/adr/0001-d5-tier2-audit-invariant.md
  */
 import { test, expect, describe, it, beforeEach, afterEach } from 'vitest'
-import { SemanticGroundingCore, writeTable, writeEventYaml, type TableMeta } from '../src/index.ts'
+import { SemanticGroundingCore, writeTable, writeEventYaml } from '../src/index.ts'
 import type { Tier2Recorder } from '../src/io.ts'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -35,21 +35,11 @@ function newService(root = ''): SemanticGroundingCore {
   return new SemanticGroundingCore({ semanticRoot: root, autoEnrich: false })
 }
 
-const SAMPLE_META: TableMeta = {
-  table_name: 'dws_d5_probe', comment: 'd5',
-  partitions: [{ name: 'ds', type: 'string' }],
-  columns: [{ name: 'server_id', type: 'string', comment: '区服ID' }],
-}
-
 // ── Every auditable mutation path throws with no recorder wired ──────────
-// The three Service-level Tier-2 write methods. Each resolves `this.recorder()`
+// The Service-level Tier-2 write methods. Each resolves `this.recorder()`
 // while building its write options, i.e. BEFORE touching disk — so an unwired
 // recorder cannot produce a partial, unrecorded write.
 describe('D5 — auditable mutation with no recorder wired throws', () => {
-  it('syncWrite throws', async () => {
-    await expect(newService().syncWrite([SAMPLE_META])).rejects.toThrow(/D5/)
-  })
-
   it('updateTableMeta throws', async () => {
     await expect(newService().updateTableMeta('any_table', { description: 'x' })).rejects.toThrow(/D5/)
   })
@@ -61,14 +51,7 @@ describe('D5 — auditable mutation with no recorder wired throws', () => {
   it('the throw names the invariant as non-disableable, not as a missing optional dep', async () => {
     // The message is the only thing telling an operator that this is a policy,
     // not a misconfiguration to be worked around.
-    await expect(newService().syncWrite([SAMPLE_META])).rejects.toThrow(/non-disableable/)
-  })
-
-  it('throws even with an empty batch — the guarantee is about the path, not the payload', async () => {
-    // A zero-row write still enters the auditable path. If this stopped
-    // throwing it would mean the recorder is resolved lazily per-row, which is
-    // exactly the shape that lets a partial write escape unrecorded.
-    await expect(newService().syncWrite([])).rejects.toThrow(/D5/)
+    await expect(newService().updateEventMeta('any.event', { description: 'x' })).rejects.toThrow(/non-disableable/)
   })
 })
 
@@ -98,8 +81,8 @@ describe('D5 — audit-off is reachable only by passing an explicit no-op record
   it('a wired no-op recorder lets the write through', async () => {
     const svc = newService(dir)
     svc.setTier2Recorder(noopRecorder)
-    const res = await svc.syncWrite([SAMPLE_META])
-    expect(res.written).toBe(1)
+    const res = await svc.writeConceptYaml('付费', { name: '付费', description: 'x' })
+    expect(res.ok).toBe(true)
   })
 
   it('the wired recorder actually receives the mutation', async () => {
@@ -108,54 +91,19 @@ describe('D5 — audit-off is reachable only by passing an explicit no-op record
     svc.setTier2Recorder({
       recordTier2Write: async (toolName: string) => { calls.push({ tool: toolName }); return 'log-id' },
     })
-    await svc.syncWrite([SAMPLE_META])
+    await svc.writeConceptYaml('付费', { name: '付费', description: 'x' })
     expect(calls.length).toBeGreaterThan(0)
   })
 
   it('clearing the recorder re-arms the throw', async () => {
     const svc = newService(dir)
     svc.setTier2Recorder(noopRecorder)
-    await expect(svc.syncWrite([SAMPLE_META])).resolves.toBeTruthy()
+    await expect(svc.writeConceptYaml('付费', { name: '付费', description: 'x' })).resolves.toBeTruthy()
     svc.setTier2Recorder(undefined)
-    await expect(svc.syncWrite([SAMPLE_META])).rejects.toThrow(/D5/)
+    await expect(svc.writeConceptYaml('暂缓', { name: '暂缓', description: 'x' })).rejects.toThrow(/D5/)
   })
 
-  // ── #6 closed by #18 (ADR-0004 ruling 1 / ADR-0001's 2026-10-08 update) ──
-  // ADR-0001 requires the core to throw "when a Tier-2 recording is required
-  // but no recorder is wired, OR **when a wired recorder raises**". The first
-  // half holds (the describe block above). This used to be where the second
-  // half failed, and the way it failed was worse than a missing throw:
-  //
-  // `syncWriteDefinitions` (io.ts) used to write the YAML to disk and record
-  // the audit *afterwards*, inside one try/catch whose handler pushed to
-  // `errors` — a recorder raise there left the write on disk, unaudited,
-  // while the return value reported `written: 0`.
-  //
-  // #18 closes it: `syncWriteDefinitions` now snapshots the pre-write raw
-  // bytes before writing, and a recorder failure for the current table
-  // restores them (deletes the file when this write created it) and
-  // re-throws instead of being swallowed into `errors` — so the promise
-  // itself rejects, and disk ends up back at its pre-write state. This test
-  // was `it.fails` (see git history); it is now a regression guard, with an
-  // added assertion for exactly the "disk == pre-write state" half of the
-  // guarantee that the old bug violated.
-  it('a recorder that throws propagates — a failed recording is not a silent drop', async () => {
-    const svc = newService(dir)
-    const probeFile = join(dir, 'tables', `${SAMPLE_META.table_name}.yaml`)
-    expect(existsSync(probeFile)).toBe(false) // pre-write state: no file yet
-    svc.setTier2Recorder({
-      recordTier2Write: async () => { throw new Error('audit backend down') },
-    })
-    await expect(svc.syncWrite([SAMPLE_META])).rejects.toThrow(/audit backend down/)
-    // #6's execution closure: disk after the throw == disk before the write.
-    // The old bug left `dws_d5_probe.yaml` on disk, unaudited, while the
-    // return value never even got produced (the promise now rejects
-    // instead). There is no third state any more.
-    expect(existsSync(probeFile)).toBe(false)
-  })
-
-  // A second, more exacting instance of the same closure: `updateTableMeta`
-  // (one of the three Tier-2 paths #18 names explicitly) UPDATING a file
+  // The exacting closure instance: `updateTableMeta` UPDATING a file
   // that already carries a hand-written comment. The rollback must restore
   // the literal pre-write bytes — not a `yaml.dump` of the pre-merge parsed
   // object, which would already have dropped the comment during the initial
@@ -192,19 +140,20 @@ test('D5 — each core instance carries its own recorder', async () => {
   const b = newService()
   a.setTier2Recorder(noopRecorder)
   // b was never wired: it must still throw even though a sibling instance is wired
-  await expect(b.syncWrite([SAMPLE_META])).rejects.toThrow(/D5/)
+  await expect(b.updateEventMeta('any.event', { description: 'x' })).rejects.toThrow(/D5/)
 })
 
-// ── #61: the remaining five audited write paths roll back on a recorder raise ──
-// The two guards above (syncWrite, updateTableMeta) pinned 2 of 7 paths; the
-// other five rolled back correctly only by courtesy of the ceremony being
-// re-copied faithfully. #61 folded all seven into io.ts's `auditedFileWrite`
-// seam; this block pins the remaining five wirings — the recorder raise
-// propagates and disk ends at its pre-write state, on both restore branches
-// (create ⇒ the file is gone; update ⇒ the bytes are byte-identical,
-// hand-written comment included) across the table/event/concept axis. Also
-// pins #61's unified domain-failure face: writeTable validation failures are
-// {ok:false}, never a throw.
+// ── #61: every audited write path rolls back on a recorder raise ──────────
+// The guards above pin the Service-level paths (throw shape + updateTableMeta's
+// byte-identical rollback); the io-level paths rolled back correctly only by
+// courtesy of the ceremony being re-copied faithfully. #61 folded them all
+// into io.ts's `auditedFileWrite` seam; this block pins every wiring the seam
+// has (six call sites since the sync-write chain's removal, S1.4) — the
+// recorder raise propagates and disk ends at its pre-write state, on both
+// restore branches (create ⇒ the file is gone; update ⇒ the bytes are
+// byte-identical, hand-written comment included) across the table/event/concept
+// axis. Also pins #61's unified domain-failure face: writeTable validation
+// failures are {ok:false}, never a throw.
 describe('D5 — #61: every remaining audited write path rolls back on a recorder raise', () => {
   let dir: string
   beforeEach(() => {

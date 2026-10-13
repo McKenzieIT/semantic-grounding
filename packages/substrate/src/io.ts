@@ -14,8 +14,8 @@
  * ADR-0004 / #18 (2026-10-09): `Tier2Recorder.recordTier2Write` is async
  * (`Promise<string>` — the git recorder's commit is a subprocess call) and a
  * recorder that raises is the statement "this write did not happen": the
- * three Tier-2 paths below (`updateTableMeta` / `updateEventMeta` /
- * `syncWriteDefinitions`) snapshot the pre-write raw bytes — never a
+ * two Tier-2 paths below (`updateTableMeta` / `updateEventMeta`)
+ * snapshot the pre-write raw bytes — never a
  * parse-then-re-dump, which would drop hand-written YAML comments — and
  * restore them verbatim on a recorder failure before re-throwing (a file this
  * write created is deleted instead of restored). `writeTable`/`writeEventYaml`
@@ -101,7 +101,7 @@ export interface Tier2Recorder {
  * one logical write (same arguments as `recordTier2Write`) without
  * committing; `end` commits everything staged so far as one commit; `abort`
  * discards the batch and restores every staged file to its pre-batch state —
- * the batch-level shape of the same guarantee `syncWriteDefinitions` gives a
+ * the batch-level shape of the same guarantee the audited write paths give a
  * single table (ADR-0004 ruling 1).
  */
 export interface Tier2Batch {
@@ -125,11 +125,9 @@ export interface Tier2Opts {
    * write commits; a mismatch throws `StaleBaselineError` instead of
    * writing, which is the single-process stand-in for "inside the lock"
    * until the git recorder's repo-wide lock (#19) wraps the whole call. Omit
-   * for a create-only write — there is no prior baseline to go stale (#15
-   * decides which MCP tools require it). Not read by `syncWriteDefinitions`'s
-   * batch path: one `Tier2Opts` value backs a whole batch of tables, and a
-   * single hash has no sound per-table meaning there.
-   */
+ * for a create-only write — there is no prior baseline to go stale (#15
+ * decides which MCP tools require it).
+ */
   readonly expected_version?: string
 }
 
@@ -170,7 +168,7 @@ async function atomicWrite(path: string, obj: unknown): Promise<void> {
 // mid-session event edit (writeEventYaml -> invalidateCaches) no longer leaves
 // the enriched linker stale until reboot (D2e-deferred cache-invalidation).
 // Path-scoped: a write to layer A bumps only A's counter. Table writes
-// (writeTable/updateTableMeta/syncWriteDefinitions) also bump it — the corpus
+// (writeTable/updateTableMeta) also bump it — the corpus
 // (events + terminology) is unaffected, so this over-invalidates (one rebuild
 // after a write burst); correct and rare vs distinguishing event vs table writes
 // at the chokepoint. No static dep: tool-search reads this structurally.
@@ -762,8 +760,9 @@ async function auditedFileWrite<T>(
 export type WriteTableResult = { ok: true; path: string } | { ok: false; error: string }
 /**
  * Validate-then-atomically-write a table YAML (mirrors writer.write_table),
- * invalidating caches on success. The write primitive: Tier-2 paths compose
- * it (`syncWriteDefinitions`), and a caller may demote this raw-edit surface
+ * invalidating caches on success. The write primitive (the MCP
+ * `create_definition` tool compiles onto it): a caller may demote this
+ * raw-edit surface
  * to an audited write by passing `tier2` (ADR-0004 ruling 2) — the same
  * atomic write-and-record path a Tier-2 call takes, snapshot-and-rollback
  * included. Omitting `tier2` leaves behavior byte-for-byte unchanged: an
@@ -1044,200 +1043,6 @@ export async function updateConceptMeta(
     return { committed: true, value: name }
   }, { verb: 'update_concept_meta', subject: { concept_name: name, updates } })
   return outcome.committed ? { ok: true, concept_name: outcome.value } : { ok: false, error: outcome.error }
-}
-
-// ── Sync-write (mirrors rbi_semantic/sync.py: YAML-write-only, receives pre-fetched schema dicts) ──
-// ODPS-DECOUPLED: receives TableMeta[] (from ctx.schema.discover/describe) and writes YAML.
-// Does NOT touch ODPS — that lives in the query-engine MaxCompute sidecar (P4 / ⑤a).
-const MEASURE_TYPES = new Set(['BIGINT', 'INT', 'DOUBLE', 'FLOAT', 'DECIMAL'])
-const MEASURE_SUFFIXES = ['_count', '_cnt', '_sum', '_amt', '_amount', '_avg', '_total', '_num']
-const LABEL_SUFFIXES = ['_name', '_desc', '_label', '_title']
-type MergeColumn = { name: string; type: string; role?: string; comment?: string }
-/**
- * Infer a column's semantic role (dimension/measure/attribute) from its name + type (mirrors RBI infer_role).
- * @param col - the column with optional `name`/`type` (defaults apply when absent).
- * @returns the inferred role: `dimension`, `measure`, or `attribute`.
- */
-export function inferRole(col: { name?: string; type?: string }): string {
-  const t = (col.type ?? '').toUpperCase()
-  const n = (col.name ?? '').toLowerCase()
-  if (n === 'ds' || n === 'dt' || n === 'date') return 'dimension'
-  if (n.endsWith('_id')) return 'dimension'
-  if (MEASURE_TYPES.has(t) && MEASURE_SUFFIXES.some(s => n.endsWith(s))) return 'measure'
-  if (t === 'STRING') return 'dimension'
-  if (MEASURE_TYPES.has(t)) return 'measure'
-  return 'attribute'
-}
-/**
- * Generate a DWS (fact) table YAML skeleton from a table meta (mirrors sync.generate_table_yaml).
- * @param meta - the table meta (name + columns + partitions + comment) to generate from.
- * @returns a draft `TableDefinition`-shaped dict (confirmation=draft, empty description/granularity).
- */
-export function generateTableYaml(meta: TableMeta): Record<string, unknown> {
-  const columns = meta.columns.map(c => ({ name: c.name, type: c.type, comment: c.comment ?? '', role: inferRole(c) }))
-  return {
-    table_name: meta.table_name,
-    table_comment: meta.comment ?? '',
-    description: '',
-    domains: [],
-    granularity: '',
-    columns,
-    metrics: {},
-    partitions: meta.partitions.map(p => ({ name: p.name, type: p.type })),
-    confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-  }
-}
-/**
- * Generate a DIM (dimension) table YAML skeleton from a table meta, deriving
- * `primary_key` (first `*_id` column) and `label_columns` (string columns
- * ending in label suffixes) for `.superRefine` validation (mirrors sync.generate_dim_yaml).
- * @param meta - the table meta to generate the dimension table from.
- * @returns a draft DIM `TableDefinition`-shaped dict (kind='dim', confirmation=draft).
- */
-export function generateDimYaml(meta: TableMeta): Record<string, unknown> {
-  const columns = meta.columns.map(c => ({ name: c.name, type: c.type, comment: c.comment ?? '', role: inferRole(c) }))
-  const pkCol = meta.columns.find(c => c.name.endsWith('_id'))
-  const primaryKey = pkCol !== undefined ? [pkCol.name] : []
-  const labelColumns = meta.columns
-    .filter(c => c.type.toUpperCase() === 'STRING' && LABEL_SUFFIXES.some(s => c.name.toLowerCase().endsWith(s)))
-    .map(c => c.name)
-  return {
-    table_name: meta.table_name,
-    table_comment: meta.comment ?? '',
-    description: '',
-    domains: [],
-    kind: 'dim',
-    primary_key: primaryKey,
-    primary_key_unique: null,
-    label_columns: labelColumns,
-    freshness: 'static_reference',
-    granularity: '维表(非分区,全量参考,无时间维度)',
-    columns,
-    metrics: {},
-    partitions: meta.partitions.map(p => ({ name: p.name, type: p.type })),
-    confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-  }
-}
-// merge_columns: preserve analyst role corrections (existing role overrides inferred).
-/**
- * Merge new table-meta columns over existing columns, preserving analyst role
- * corrections (an existing `role` overrides the inferred role; a missing
- * column is inferred fresh). Mirrors sync.merge_columns.
- * @param existingCols - the existing columns carrying analyst role overrides.
- * @param newMetaCols - the freshly-fetched columns to merge over.
- * @returns the merged columns (each with a non-empty `role` and `comment`).
- */
-export function mergeColumns(
-  existingCols: ReadonlyArray<MergeColumn>,
-  newMetaCols: ReadonlyArray<{ name: string; type: string; comment?: string | null | undefined }>,
-): Array<{ name: string; type: string; role: string; comment: string }> {
-  const existing = new Map(existingCols.map(c => [c.name, c]))
-  const out: Array<{ name: string; type: string; role: string; comment: string }> = []
-  for (const col of newMetaCols) {
-    const old = existing.get(col.name)
-    if (old !== undefined) {
-      out.push({ name: col.name, type: col.type, role: old.role || inferRole(col), comment: col.comment ?? old.comment ?? '' })
-    } else {
-      out.push({ name: col.name, type: col.type, role: inferRole(col), comment: col.comment ?? '' })
-    }
-  }
-  return out
-}
-/**
- * Merge a freshly-fetched table meta into an existing table YAML: overwrite
- * `columns` (via `mergeColumns`) when present and always refresh `partitions`.
- * @param existing - the existing table YAML dict.
- * @param newMeta - the freshly-fetched table meta to merge in.
- * @returns a new merged dict (shallow-copy of `existing` with refreshed `columns`/`partitions`).
- */
-export function mergeChangedYaml(existing: Record<string, unknown>, newMeta: TableMeta): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...existing }
-  const existingColsRaw = existing.columns
-  if (newMeta.columns.length > 0 && Array.isArray(existingColsRaw)) {
-    out.columns = mergeColumns(existingColsRaw, newMeta.columns)
-  }
-  out.partitions = newMeta.partitions.map(p => ({ name: p.name, type: p.type }))
-  return out
-}
-// sync_write_definitions: batch write a list of TableMeta (mirrors rbi_semantic.sync.sync_write_definitions).
-// D5: sync-write = ops/admin Tier-2, "不可关" — audit is NON-OPTIONAL (recorder required).
-/**
- * Tier-2 batch sync-write: for each table meta, generate (or merge when an
- * existing entry is supplied) the table YAML and write it via `writeTable`,
- * recording each write through `opts.recorder` (D5 non-disableable audit).
- * Generation/validation failures stay independently fail-tolerant (collected
- * into `errors`, batch continues) — unchanged. ADR-0004 ruling 1 / #18 changes
- * the audit-failure branch: a recorder failure for the CURRENT table restores
- * that table's pre-write raw bytes (deletes it when this write created it)
- * and throws, aborting the rest of the batch — tables already written AND
- * recorded earlier in this same call keep their commits (they are not rolled
- * back; only the table whose audit just failed is). `opts.expected_version`
- * is not read here — see the field's own doc on `Tier2Opts`.
- * @param semanticLayer - the semantic-layer directory path.
- * @param tableMetas - the table metas to write (metas with empty `table_name` are skipped).
- * @param opts - the recorder, optional dim-table-name set (generates DIM YAML), and optional existing-table map (merges).
- * @returns counts of `written`/`skipped` plus a per-table `errors` list.
- * @throws the recorder's error when it raises for a table that already wrote
- *   successfully — the batch aborts in place rather than collecting this into `errors` (ADR-0004 ruling 1).
- */
-export async function syncWriteDefinitions(
-  semanticLayer: string,
-  tableMetas: readonly TableMeta[],
-  opts: Tier2Opts & {
-    readonly dimTableNames?: Set<string>
-    readonly existingTables?: Map<string, Record<string, unknown>>
-  },
-): Promise<{ written: number; skipped: number; errors: string[] }> {
-  let written = 0
-  let skipped = 0
-  const errors: string[] = []
-  const dimTableNames = opts.dimTableNames ?? new Set<string>()
-  const existingTables = opts.existingTables ?? new Map<string, Record<string, unknown>>()
-  for (const meta of tableMetas) {
-    const tname = meta.table_name
-    if (!tname) {
-      skipped += 1
-      continue
-    }
-    const target = join(semanticLayer, 'tables', `${tname}.yaml`)
-    // ADR-0004 ruling 1 / #18: an audit failure rolls back ONLY this table
-    // (the seam restores its pre-write bytes, or deletes it if this write
-    // created it) and aborts the batch by propagating — tables 1..N-1
-    // already written AND recorded earlier in this loop keep their commits.
-    const outcome = await auditedFileWrite(semanticLayer, target, opts, async () => {
-      try {
-        let doc: Record<string, unknown>
-        let isDim = false
-        const existing = existingTables.get(tname)
-        if (existing !== undefined) {
-          doc = mergeChangedYaml(existing, meta)
-        } else if (dimTableNames.has(tname)) {
-          doc = generateDimYaml(meta)
-          isDim = true
-        } else {
-          doc = generateTableYaml(meta)
-        }
-        // DIM path validates against .superRefine (pk + label_columns) — do NOT silently
-        // emit primary_key:[] / label_columns:[] that fails .superRefine on read.
-        // DWS/merge keep skipValidation (generation pre-validates; DWS has no kind constraint).
-        const w = await writeTable(semanticLayer, tname, doc, { skipValidation: !isDim })
-        if (!w.ok) return { committed: false, error: `${tname}: ${w.error}` }
-        return { committed: true, value: undefined }
-      } catch (e) {
-        // Generation failure: nothing landed on disk (generation happens
-        // before any write, and atomicWrite never touches the target on a
-        // thrown rename), so there is nothing to roll back here — collect
-        // and move on to the next table (unchanged batch semantics).
-        return { committed: false, error: `${tname}: ${(e as Error).message}` }
-      }
-    }, { verb: 'sync_write_definitions', subject: { table_name: tname } })
-    if (!outcome.committed) {
-      errors.push(outcome.error)
-      continue
-    }
-    written += 1
-  }
-  return { written, skipped, errors }
 }
 
 // ── CL-18 Phase 2: partition-column exclude set (calling-layer metadata) ───

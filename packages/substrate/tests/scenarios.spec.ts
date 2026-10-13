@@ -1,8 +1,7 @@
 /**
  * P6b semantic-layer — the 3 P6 prototype scenarios ported to vitest + a
  * P13b-swap-reachability test. Proves: zod mirrors RBI pydantic (parse +
- * round-trip + canonicalize + DIM superRefine), ODPS-decoupled sync (stand-in
- * provider -> generate/merge YAML, analyst role preserved), and write-tiers
+ * round-trip + canonicalize + DIM superRefine) and write-tiers
  * (Tier-1 suggest->pending->approve; Tier-2 via a ctx.audit recorder). The
  * swap test shows the substrate provides the EventDefinition.params_fields /
  * TableDefinition.partitions contract P13b makeCriticCtx consumes (the
@@ -20,19 +19,15 @@ import {
   EventDefinitionSchema,
   TableDefinitionSchema,
   canonicalizeType,
-  type TableMeta,
 } from '../src/types.ts'
 import {
   loadEventDefinition,
   loadTableDefinition,
   writeEventYaml,
   updateTableMeta,
-  syncWriteDefinitions,
-  mergeChangedYaml,
   type Tier2Recorder,
 } from '../src/io.ts'
 import { submit, load as loadPending, listing, discard, isValidId } from '../src/pending.ts'
-import { StandInSchemaProvider } from '../src/schema-provider.ts'
 import { makeCriticCtx } from '../src/vendor/nl2sql-types.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -105,58 +100,6 @@ test('S1 data-model fidelity — zod parse + round-trip + canonicalize + DIM sup
     const bad = TableDefinitionSchema.safeParse(malformed)
     expect(bad.success).toBe(false)
   }
-})
-
-test('S2 ODPS-decoupled sync — stand-in provider -> TableMeta -> generate/merge YAML', async () => {
-  resetLayer()
-  const { recorder } = mockRecorder()
-  const dwsMeta: TableMeta = {
-    table_name: 'dws_new_pay_di',
-    comment: '新付费日表',
-    partitions: [{ name: 'ds', type: 'string' }],
-    columns: [
-      { name: 'order_id', type: 'string', comment: '订单号' },
-      { name: 'pay_amt', type: 'double', comment: '金额' },
-      { name: 'ds', type: 'string', comment: '分区' },
-    ],
-  }
-  const dimMeta: TableMeta = {
-    table_name: 'dim_new_item',
-    comment: '新道具维表',
-    partitions: [],
-    columns: [
-      { name: 'item_id', type: 'string', comment: '道具id' },
-      { name: 'item_name', type: 'string', comment: '道具名' },
-    ],
-  }
-  const provider = new StandInSchemaProvider({ dws_new_pay_di: dwsMeta, dim_new_item: dimMeta })
-  const discovered = await provider.discover('10000demo')
-  expect(discovered.length).toBe(2)
-  // sync-write new DWS + DIM (DIM via dimTableNames)
-  const r1 = await syncWriteDefinitions(LAYER, [dwsMeta], { recorder, scope_id: '10000demo' })
-  expect(r1.written).toBe(1)
-  const r2 = await syncWriteDefinitions(LAYER, [dimMeta], { recorder, scope_id: '10000demo', dimTableNames: new Set(['dim_new_item']) })
-  expect(r2.written).toBe(1)
-  // generate_dim_yaml inferred pk=[item_id] (first _id) + label_columns=[item_name]
-  const written = loadTableDefinition(LAYER, 'dim_new_item')
-  expect(written?.kind).toBe('dim')
-  expect(written?.primary_key).toEqual(['item_id'])
-  expect(written?.label_columns).toEqual(['item_name'])
-  // merge_changed_yaml preserves analyst role corrections (pay_amt -> attribute kept)
-  const existing = yaml.load(readLayerFile('tables/dws_new_pay_di.yaml')) as Record<string, unknown>
-  const cols = existing.columns as Array<{ name: string; role?: string }>
-  const payCol = cols.find(c => c.name === 'pay_amt')
-  if (payCol !== undefined) payCol.role = 'attribute'
-  const merged = mergeChangedYaml(existing, {
-    ...dwsMeta,
-    comment: '变更:新增列+类型改',
-    columns: [...dwsMeta.columns, { name: 'coupon_amt', type: 'double', comment: '优惠券' }],
-  })
-  const mergedCols = merged.columns as Array<{ name: string; role?: string }>
-  const mergedPay = mergedCols.find(c => c.name === 'pay_amt')
-  expect(mergedPay?.role).toBe('attribute')
-  const mergedCoupon = mergedCols.find(c => c.name === 'coupon_amt')
-  expect(mergedCoupon?.role).toBe('measure')
 })
 
 test('S3 write-tiers — Tier-1 suggest->pending->approve; Tier-2 via ctx.audit recorder', async () => {

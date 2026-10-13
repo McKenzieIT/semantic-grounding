@@ -35,7 +35,7 @@
  *
  * ## The derived-residue sweep, and why it exists
  *
- * Measured, not assumed: `SemanticGroundingCore.updateTableMeta` / `syncWrite` run the
+ * Measured, not assumed: `SemanticGroundingCore.updateTableMeta` runs the
  * on-write enrichment hook (`autoEnrich`, default **true**) *after* the Tier-2 record,
  * and that hook calls `enrichAll*` **without** `Tier2Opts`. On a corpus with a DIM table
  * whose primary key matches a DWS column, a probe showed `dimension_refs` landing on
@@ -166,10 +166,12 @@ interface StagedPath {
 /**
  * Accumulates what happened inside one `runAudited` window.
  *
- * A window can produce more than one commit: `syncWrite` calls `recordTier2Write` once
- * per table (ADR-0004 ruling 3's "302 表 = 302 commit" problem, which `beginBatch` will
- * solve in #21). Summing here rather than keeping the last outcome is what makes the
- * reported `files` count true for a batch instead of always 1.
+ * A window can produce more than one commit whenever it wraps several audited
+ * writes (the removed batch sync-write path was the historic case —
+ * `recordTier2Write` once per table, ADR-0004 ruling 3's "302 表 = 302 commit"
+ * problem, which `beginBatch` will solve in #21). Summing here rather than
+ * keeping the last outcome is what makes the reported `files` count true for a
+ * multi-write window instead of always 1.
  */
 interface AuditWindow {
   commits: string[]

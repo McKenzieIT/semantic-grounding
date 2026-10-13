@@ -22,7 +22,7 @@
  *    discovery, deterministic round only — the in-process LLM callback seam
  *    was removed in S1.2; the LLM half of enrichment is the agent-driven
  *    ask-answer loop below).
- *  - On-write hook: after `syncWrite`/`updateTableMeta` writes a DWS, discovery
+ *  - On-write hook: after `updateTableMeta` writes a DWS, discovery
  *    re-runs and persists `dimension_refs` (best-effort, unaudited because
  *    auto-derived; gated by `autoEnrich`, default true). It persists through the
  *    module-level `writeTable`, so the hook does **not** re-enter the class's
@@ -75,7 +75,6 @@
 // existed to type the cordis mount-time `static Config`. Both now live in the
 // dsh adapter, which wraps this core as a cordis Service.
 import {
-  syncWriteDefinitions as syncWriteDefinitionsFromLayer,
   updateTableMeta as updateTableMetaFromLayer,
   updateEventMeta as updateEventMetaFromLayer,
   loadEventDefinition as loadEventDefinitionFromLayer,
@@ -170,9 +169,7 @@ export {
 // loadDomains (legacy domains.yaml, superseded by the concept kind),
 // loadEventDefinition/loadTableDefinition/loadConceptDefinition (the core
 // class exposes the same reads as methods), loadRawDir, loadRetrievalCorpus
-// (core.loadRetrievalCorpus is the public route), inferRole/generateTableYaml/
-// generateDimYaml/mergeColumns/mergeChangedYaml (convention-coupled or merge
-// internals), syncWriteDefinitions (P6b sync flow, no consumer yet).
+// (core.loadRetrievalCorpus is the public route).
 export { submit, load as loadPending, listing, discard, isValidId, type PendingSuggestion, type SubmitArgs } from './pending.ts'
 export {
   type CorpusVariant,
@@ -299,7 +296,7 @@ export interface SemanticLayerConfig {
    * is NOT part of the D2f corpusVersion cache key. */
   readonly corpusVariant?: CorpusVariant
   /** G3: auto-run DWS→DIM relation discovery after a Service write
-   * (syncWrite/updateTableMeta). Default true (G3: core capability, not an
+   * (updateTableMeta). Default true (G3: core capability, not an
    * optional hook). Set false to suppress (e.g. during bulk sync). */
   readonly autoEnrich?: boolean
 }
@@ -1011,8 +1008,7 @@ export class SemanticGroundingCore {
    * NOTE: an on-write hook for events (parallel to `enrichOnWrite` for tables)
    * is deferred: there is no Service-level event-write path today (events are
    * written via the substrate `writeEventYaml` raw-edit surface, not a Service
-   * method). The hook lands with a future `syncWriteEvents`/`updateEventMeta`
-   * Service method.
+   * method). The hook lands with a future Service-level event-write method.
    *
    * GA-GT3-5b: `preserveCurated` (default `true`) toggles the replace strategy
    * (parallel to `discoverRelations`): `true` = origin-aware replace (curated
@@ -1212,7 +1208,7 @@ export class SemanticGroundingCore {
    * Uses the substrate `enrichAllDwsTables` (which writes via substrate
    * `writeTable`), so the hook does NOT re-enter the Service write path. DIM
    * tables are skipped by `enrichAllDwsTables`. Gated by `autoEnrich`.
-   * @param names - the table_names just written via syncWrite/updateTableMeta.
+   * @param names - the table_names just written via updateTableMeta.
    */
   private async enrichOnWrite(names: readonly string[]): Promise<void> {
     if (!this.resolved.autoEnrich || names.length === 0) return
@@ -1478,7 +1474,7 @@ export class SemanticGroundingCore {
   /**
    * D2f (2026-08-21): the corpus-version counter for this layer - a monotonic
    * signal bumped by every writer via `invalidateCaches` (writeEventYaml /
-   * writeTable / updateTableMeta / syncWriteDefinitions). Probed structurally
+   * writeTable / updateTableMeta). Probed structurally
    * by `tool-search-data-sources` (no static dep) so its cached enriched
    * Bm25Linker rebuilds after a mid-session event edit instead of staying stale
    * until reboot (D2e-deferred cache-invalidation). Reads the per-path counter
@@ -1610,37 +1606,6 @@ export class SemanticGroundingCore {
       throw new Error('semantic-grounding Tier-2 write requires a recorder (Tier-2 audit is non-disableable, D5; call setTier2Recorder — pass an explicit no-op recorder if you really mean audit-off)')
     }
     return this.tier2Recorder
-  }
-
-  /**
-   * Tier-2 persistent write: batch-generate/merge table YAML from pre-fetched
-   * schema metas and write them to the substrate, recording each write via
-   * `ctx.audit` (D5 non-disableable). Routes to `syncWriteDefinitions`. G3:
-   * after the batch, the on-write hook re-runs DWS→DIM discovery for the
-   * written tables (gated by `autoEnrich`).
-   * @param tableMetas - the table metas to write (from discover/describe).
-   * @param opts - optional dim-table-name set, existing-table map for merge, and scope id override.
-   * @returns counts of written/skipped tables plus per-table error messages.
-   */
-  async syncWrite(
-    tableMetas: readonly TableMeta[],
-    opts: {
-      readonly dimTableNames?: Set<string>
-      readonly existingTables?: Map<string, Record<string, unknown>>
-      readonly scopeId?: string
-    } = {},
-  ): Promise<{ written: number; skipped: number; errors: string[] }> {
-    const res = await syncWriteDefinitionsFromLayer(this.resolveRoot(opts.scopeId), tableMetas, {
-      recorder: this.recorder(),
-      scope_id: opts.scopeId ?? this.scopeId,
-      ...opts.dimTableNames !== undefined ? { dimTableNames: opts.dimTableNames } : {},
-      ...opts.existingTables !== undefined ? { existingTables: opts.existingTables } : {},
-    })
-    if (this.resolved.autoEnrich) {
-      const written = tableMetas.filter(m => m.table_name).map(m => m.table_name)
-      await this.enrichOnWrite(written)
-    }
-    return res
   }
 
   /**

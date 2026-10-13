@@ -55,9 +55,10 @@ const CreateDefinitionInputSchema = z.discriminatedUnion('kind', [
  *
  * No `enrichment_health` in the response, and no on-write enrichment hook runs at all:
  * this compiles to the raw-edit primitives directly (`writeTable` / `writeEventYaml`),
- * never through `core.syncWrite` / `core.updateTableMeta` — the only two methods that
- * invoke `enrichOnWrite`. Routing a hand-built `TableDefinition` through
- * `core.syncWrite` was the rejected alternative (ADR-0005 ruling 5's "`sync_tables`":
+ * never through `core.updateTableMeta` — the only method that
+ * invokes `enrichOnWrite`. Routing a hand-built `TableDefinition` through the
+ * core's batch sync-write entry (removed wholesale in S1.4) was the rejected
+ * alternative (ADR-0005 ruling 5's "`sync_tables`":
  * that path treats its input as `SchemaProvider`-observed fact, and an agent's hand-
  * written payload passed through it would be provenance forgery). An agent that wants
  * join discovery on a table it just created can ask for it once #21's enrichment tools
