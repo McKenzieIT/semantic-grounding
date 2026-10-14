@@ -2,7 +2,9 @@
 
 **基线** `main 2913c26`（首轮 C1–C8 收官后的门禁实测：typecheck 双包 0 / substrate 450 / mcp 446 pass + 1 skip〔**勘误：实为 447+1skip——#124 口径未计 #132 防回潮断言 +1**〕/ e2e 22〔banner 29〕/ catalog 29 / barrel 27，工具面 29）。**巡检进行中并发会话四笔落地**：`1b5c528`（#130 → ADR-0021 数据 memory 层与晋升规则 + GLOSSARY memory/promotion 词条）、`00674b8`/`8fc075a`（#130 关票与场景卡回填）、`5d9b653`（**#137 开票 + 首轮报告收束删除**——本文件即其继任，旧文全文 `git show 2913c26:docs/architecture-review-2026-10-13.md` 可回查）、`faf4962`（#137 六件清：S4 余三件 + S3 余三件全部落地）。本报告承前口径按「#137 已落地」收束；faf4962 后本会话复跑双包 typecheck 0 错（全套门禁未重跑，基线数字引用 2913c26 实测）。扫描按热点加权（近 30 commit churn：mcp `tools/import.ts`/`read.ts`/`shared.ts`/`scratch.ts`、substrate `index.ts`/`io.ts`、e2e 脚本），三路并行子代理走查（substrate / mcp / 测试+脚本+文档）+ 主会话 rg 亲验全部 Strong 级发现的消费者证据。
 
-**已排除**（不重提）：首轮 C1–C8 全部落地关图（map #95 / #106 / #113 / #118）；S1 单宿主收窄（map #88，ADR-0017）；S3/S4 余件已随 [#137](https://github.com/McKenzieIT/semantic-grounding/issues/137) 落地（faf4962）；ADR / map Out-of-scope 记录在案项——C8.1 concepts 进 epoch（no-go，重开触发器 = concept 写路径批量化或 concepts>100）、index.ts 进一步分块（硬顶 1550，**现 1548 临界，见事实注记**）、epoch 外自由函数治理、epoch 可观测性、注销缓存淘汰、多 session 协调、跨 scope 参考、域模板、run_enrichment 编排下沉、snapshot.ts / schema-provider.ts（ADR-0017 暂缓区，重开按 ADR-0003(b) 重新举证）；KG / memory 方向票线（map #125：#130 已关产出 ADR-0021，前沿 #131/#134，#135/#136 被挡——休眠槽 `confirmation`/`coverage`/`supersedes`、`confirmed_by`、domains 校验语义、ETL 运维落点等归该线，结构巡检不重提）。
+**收束（2026-10-15，`e641536` 树核验）**：编号候选至此全部落地——C9/C10 随 map #139 关图（2026-10-14），#144–#149 六票批 2026-10-15 落地（subagent worktree 六路并行、主会话串行合入，合入终态基线 typecheck 双 0 / substrate 450 / mcp **437+1skip**〔#149 删 10 直测〕/ e2e 22；`e641536` = #150 CLAUDE.md compact 终版，纯 docs 不动基线/代码面）。**SHA 勘误**：正文所引六票 SHA（fb4fa77/1d6ec4e/328acc1/a5dcde0/15fcb47/ad4d8b0）为 worktree 原始值，不在 main 正史、仅以 dangling 对象存在（gc 后不可解析）；main 落地为 rebase 后的 **91ecbd0/f4b2301/06aa57a/aa92d76/75f16ca/7c9df42**（补丁 stat 抽验 #144/#148/#149 三对逐字一致，纯换父；CLAUDE.md 紧凑版已用 main 值）。余量 = §S2（用户裁决另 effort，证据在档）+ Speculative 尾巴两件（见候选总览后注）。
+
+**已排除**（不重提）：首轮 C1–C8 全部落地关图（map #95 / #106 / #113 / #118）；S1 单宿主收窄（map #88，ADR-0017）；S3/S4 余件已随 [#137](https://github.com/McKenzieIT/semantic-grounding/issues/137) 落地（faf4962）；ADR / map Out-of-scope 记录在案项——C8.1 concepts 进 epoch（no-go，重开触发器 = concept 写路径批量化或 concepts>100）、index.ts 进一步分块（硬顶 1550，**现 1548 临界，见事实注记**）、epoch 外自由函数治理、epoch 可观测性、注销缓存淘汰、多 session 协调、跨 scope 参考、域模板、run_enrichment 编排下沉、snapshot.ts / schema-provider.ts（ADR-0017 暂缓区，重开按 ADR-0003(b) 重新举证）；KG / memory 方向票线（map #125：#130 已关产出 ADR-0021，前沿 #131/#134，#135/#136 被挡——休眠槽 `confirmation`/`coverage`/`supersedes`、`confirmed_by`、domains 校验语义、ETL 运维落点等归该线，结构巡检不重提；**2026-10-15 勘误**：该线此后又推进——#131/#134/#135/#138 相继关图产出 ADR-0022/0023/0024/0025，现前沿 = #151（图节点 id 统一）/ #153（锚点消失最低行为，决议 ADR-0026 已落 `996f540`），#136/#152/#154/#155 被挡，票态以 map 为准）。
 
 **术语**沿用 codebase-design 词表：module / interface / depth / seam / adapter / leverage / locality；deep = 小 interface 背后大行为，shallow = interface 复杂度接近 implementation。
 
@@ -21,7 +23,7 @@
 | S4 | ~~小粒度整合 + 段位挪用~~ | mcp | **收束：已随 #137 落地（faf4962）** |
 | S5 | 新增：#137 连带暴露——scope-id 字符集知识两处家 + `assertScopeIdShape` 退役 | mcp | **Strong**（deletion test 直接过）· **已落地**（[#149](https://github.com/McKenzieIT/semantic-grounding/issues/149)，2026-10-15 `ad4d8b0`：SCOPE_ID_PATTERN 单点；10 直测删——mcp 基线 447+1skip → **437+1skip**） |
 
-Speculative 尾巴（不占编号，随最近落地票顺手）：dry_run 响应 `staged` 键与 `results` 零信息增量（import.ts:509-515，#104 昨落契约、有钉，现在是改它最便宜的时刻）；scratch 的 `Math.max(1, keep)` 钳制双写（scratch.ts:108/:160）；`ratioTrailer` 命名沿用被勘误措辞（归 S3 同票）。
+Speculative 尾巴（不占编号，随最近落地票顺手）——**2026-10-15 收束核（`e641536` 树）**：`ratioTrailer` 改名已随 #148 落地（`ratioSubjectNote`，合入态 src 零残留）；**余两件未动**——dry_run 响应 `staged` 键与 `results` 零信息增量（合入态 import.ts:493-499，`preview` 已含 staged 行、`staged` 纯投影可派生；spec 契约有钉，动即响应契约变更、需票面声明——原「#104 刚落、现在改最便宜」的窗口表述已过时）；scratch 的 `Math.max(1, keep)` 钳制双写（scratch.ts:108/:160）。否决清单两顺手件同未动（六票批未触 substrate）：substrate enrichment.ts:26-27 过时自注（「#67 then deletes…」已兑现仍写将来时）、substrate tests/README.md:2-3「20 spec files, 269 tests」陈旧（现值 450）。
 
 ---
 
@@ -196,6 +198,8 @@ Speculative 尾巴（不占编号，随最近落地票顺手）：dry_run 响应
 
 ## 首推
 
+**收束注记（2026-10-15）**：本节处方全部执行完毕——C9+C10 并图随 map #139 落地（2026-10-14，#140 裁决 → #141∥#142 → #143 终验）；快赢热身序 S3（#148）/ S5（#149）与「下一档」C11–C14（#144–#147）全部落地（2026-10-15 六票批）；唯 S2 一档经用户裁决本轮不开票、另 effort 处置（grilling 议题单证据在 §S2，含 #131 已关后 `getDanglingDomainRefs` 依赖已清的联动更新）。
+
 **C9 + C10 并图**（substrate 双深化第二弹，照 map #95 体例）：两个都 Strong、都净减行数（index.ts 1548 临界直接减压）、公开面零变化（Core 签名 / barrel / 工具面不动）、仓内先例齐——C9 是 enrichment-work.ts 式「知识归插件」的延伸，C10 是 writeDefinitionFile 描述符 seam 的 update 家族对称半区，验收可全按 #97/#100 已立的模式（rg 单点 + 公开签名逐字 diff + 既有 spec 零改动全绿）。
 
 **快赢热身序**：S2 直删级七件一票（唯一注意点 DERIVATIONS 是 barrel 27→26，票面声明即可）；S3 新增七件照 #114 Q4「六处终版清单」体例一票修；S5 单独小票趁 #137 记忆新鲜。**拍板项一张 grilling**：vendor/nl2sql 601 行（concept 图扩展语义钉去向）+ getId（与 toExecutableRule 并票 registry 残留成员清理）+ getDanglingDomainRefs（与 #131 联动）——逐项「能力放弃」清单就是议题单。
@@ -218,4 +222,4 @@ Speculative 尾巴（不占编号，随最近落地票顺手）：dry_run 响应
 
 ---
 
-*证据均带 file:line：代码证据锚 `main 2913c26` 已提交树（substrate 侧 = faf4962 树，#137 未触 substrate src）；mcp 侧 `shared.ts`/`binding.ts`/`scope.ts`/`audited.ts` 的行号已按 faf4962 刷新，其余文件两树同址。门禁基线引用 2913c26 实测（faf4962 后本会话仅复跑 typecheck 双包 0）。*
+*证据均带 file:line：代码证据锚 `main 2913c26` 已提交树（substrate 侧 = faf4962 树，#137 未触 substrate src）；mcp 侧 `shared.ts`/`binding.ts`/`scope.ts`/`audited.ts` 的行号已按 faf4962 刷新，其余文件两树同址。门禁基线引用 2913c26 实测（faf4962 后本会话仅复跑 typecheck 双包 0）。收束核验 2026-10-15 于 `e641536` 树（六票合入后）：SHA 勘误与终态基线见文首收束段，Speculative 尾巴与顺手件现状见候选总览后注——本报告除 §S2 与该两件外无开放项。*
