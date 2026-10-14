@@ -73,6 +73,21 @@ describe('the twenty-nine names', () => {
     expect(tools).toHaveLength(29)
   })
 
+  // #132: a top-level `oneOf` input schema (what `z.discriminatedUnion` compiles
+  // to) carries no top-level `properties`, and at least one real host — Claude
+  // Code CLI 2.1.263 — silently DROPS such a tool from its list (it saw 27 while
+  // this server served 29). The user's own hosts (QoderWork, the pod) accept it,
+  // so the two existing offenders stay as they are; this assertion exists so the
+  // NEXT write tool cannot join them unnoticed. Grandfathered, never extended:
+  // adding a name here means shipping a tool some hosts cannot see.
+  const ONEOF_GRANDFATHERED: readonly string[] = ['create_definition', 'update_definition']
+
+  it('#132: every tool but the two grandfathered offenders exposes a top-level `properties` — hosts that drop `oneOf`-only schemas must still see the surface', async () => {
+    const tools = await listTools()
+    const offenders = tools.filter(t => t.inputSchema.properties === undefined).map(t => t.name).sort()
+    expect(offenders).toEqual([...ONEOF_GRANDFATHERED].sort())
+  })
+
   it('names every read tool ADR-0005 ruling 6 lists (five→six, 2026-10-14 Update)', async () => {
     const tools = await listTools()
     const names = tools.map(t => t.name)
