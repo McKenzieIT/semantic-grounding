@@ -115,7 +115,6 @@ import { conceptKindPlugin } from './kinds/concept-kind.ts'
 import { RelationGraph, type NodeAliasData } from './relation-graph.ts'
 import { toMetricDefinition, splitMetricName } from './metrics.ts'
 import { loadEvents, loadTables, loadConcepts, loadRawDir, loadConceptDefinition as loadConceptDefinitionFromLayer, writeConceptYaml as writeConceptYamlFromLayer, updateConceptMeta as updateConceptMetaFromLayer, type WriteConceptYamlResult } from './io.ts'
-import { EventDefinitionSchema, TableDefinitionSchema, ConceptDefinitionSchema } from './types.ts'
 import { DefinitionSnapshot, captureSnapshot } from './snapshot.ts'
 import { buildExcludeColumns } from './io.ts'
 import type { SchemaProvider } from './schema-provider.ts'
@@ -588,36 +587,19 @@ export class SemanticGroundingCore {
 
   /**
    * Read one built-in kind's bespoke storage layout: `events` domain subdirs,
-   * the flat `tables` dir, or the flat `concepts` dir, each validated by the
-   * schema that owns that layout. Keyed by the built-in plugin instance rather
-   * than by its `storageDir` string, because a kind registered later may
-   * declare the same directory name and must not be handed another kind's
+   * the flat `tables` dir, or the flat `concepts` dir, returning RAW entries
+   * (`.raw` objects) for the caller's one generic parse loop — validation is
+   * single-sourced through the plugin's own `schema` (the kind↔schema binding
+   * is declared once, in the plugin). Keyed by the built-in plugin instance
+   * rather than by its `storageDir` string, because a kind registered later
+   * may declare the same directory name and must not be handed another kind's
    * parsed shape (see {@link loadKindDefinitions}). `root` selects the scope
    * root to read.
    */
-  private loadBuiltinDefinitions(plugin: import('./registry.ts').DataSourceKindPlugin, root: string): readonly unknown[] | undefined {
-    const out: unknown[] = []
-    if (plugin === eventKindPlugin) {
-      for (const e of loadEvents(root)) {
-        const r = EventDefinitionSchema.safeParse(e.raw)
-        if (r.success) out.push(r.data)
-      }
-      return out
-    }
-    if (plugin === tableKindPlugin) {
-      for (const t of loadTables(root)) {
-        const r = TableDefinitionSchema.safeParse(t.raw)
-        if (r.success) out.push(r.data)
-      }
-      return out
-    }
-    if (plugin === conceptKindPlugin) {
-      for (const c of loadConcepts(root)) {
-        const r = ConceptDefinitionSchema.safeParse(c.raw)
-        if (r.success) out.push(r.data)
-      }
-      return out
-    }
+  private loadBuiltinDefinitions(plugin: import('./registry.ts').DataSourceKindPlugin, root: string): readonly Record<string, unknown>[] | undefined {
+    if (plugin === eventKindPlugin) return loadEvents(root).map((e) => e.raw)
+    if (plugin === tableKindPlugin) return loadTables(root).map((t) => t.raw)
+    if (plugin === conceptKindPlugin) return loadConcepts(root).map((c) => c.raw)
     return undefined
   }
 
@@ -658,20 +640,23 @@ export class SemanticGroundingCore {
   }
 
   /**
-   * Load one kind's definitions from a scope root. Bespoke storage layouts
-   * route through {@link loadBuiltinDefinitions}, selected by plugin identity.
-   * Every other kind's dir is read generically (`loadRawDir` + the plugin's
-   * OWN `schema.safeParse`), so a kind registered after build loads without a
-   * hardcoded loader and keeps its own definition shape even when it declares
-   * a directory name a built-in kind also uses. The `root` (W27) defaults to
-   * the active scope root for `projectGraphNodes`; the relation-graph build
-   * passes a per-scope root.
+   * Load one kind's definitions from a scope root through one parse loop:
+   * raw entries come from the kind's bespoke loader (see
+   * {@link loadBuiltinDefinitions}, selected by plugin identity) or, for every
+   * other kind, from a generic flat-dir read (`loadRawDir`) — either way
+   * validated by the plugin's OWN schema, so a kind registered
+   * after build loads without a hardcoded loader and keeps its own definition
+   * shape even when it declares a directory name a built-in kind also uses —
+   * flat layouts only, though: a kind with its own bespoke layout still has
+   * to report in `loadBuiltinDefinitions`, so fully delivering "a later kind
+   * needs no edit here" awaits the events layout refactor (out of this map).
+   * The `root` (W27) defaults to the active scope root for
+   * `projectGraphNodes`; the relation-graph build passes a per-scope root.
    */
   private loadKindDefinitions(plugin: import('./registry.ts').DataSourceKindPlugin, root: string = this.semanticRoot): readonly unknown[] {
-    const builtin = this.loadBuiltinDefinitions(plugin, root)
-    if (builtin !== undefined) return builtin
+    const raws = this.loadBuiltinDefinitions(plugin, root) ?? loadRawDir(root, plugin.storageDir)
     const out: unknown[] = []
-    for (const raw of loadRawDir(root, plugin.storageDir)) {
+    for (const raw of raws) {
       const r = plugin.schema.safeParse(raw)
       if (r.success && r.data !== undefined) out.push(r.data)
     }
