@@ -17,7 +17,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ScopeIdConflictError, ScopeNotFoundError, ScopePathConflictError } from '../src/errors.ts'
-import { assertScopeIdShape, scopeEntryReachable, ScopeRegistryFile, type ScopeEntry } from '../src/scope-registry.ts'
+import { scopeEntryReachable, ScopeRegistryFile, type ScopeEntry } from '../src/scope-registry.ts'
 
 let dir: string
 let path: string
@@ -201,16 +201,6 @@ describe('malformed registry file — refuses rather than silently rebuilding (i
   it('treats a missing file as an empty registry rather than throwing', () => {
     const registry = new ScopeRegistryFile(join(dir, 'does-not-exist.yaml'))
     expect(registry.read()).toEqual({ active: null, scopes: new Map() })
-  })
-})
-
-describe('assertScopeIdShape', () => {
-  it.each(['a', 'a1', 'a-b-c', 'x'.repeat(64)])('accepts %s', (id) => {
-    expect(() => assertScopeIdShape(id, m => new Error(m))).not.toThrow()
-  })
-
-  it.each(['', 'A', 'has space', '-leading-dash', 'under_score', 'x'.repeat(65)])('refuses %s', (id) => {
-    expect(() => assertScopeIdShape(id, m => new Error(m))).toThrow(/not shaped/)
   })
 })
 

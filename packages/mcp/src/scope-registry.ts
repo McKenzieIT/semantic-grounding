@@ -49,7 +49,12 @@ import yaml from 'js-yaml'
 import { dumpYaml } from '@semantic-grounding/substrate'
 import { ScopeIdConflictError, ScopeNotFoundError, ScopePathConflictError } from './errors.ts'
 
-/** The charset a scope id must carry (ADR-0011 constant 6): conservative, trailer- and path-safe. */
+/**
+ * The charset a scope id must carry (ADR-0011 constant 6): conservative, trailer- and
+ * path-safe. The rule's one home — `tools/shared.ts`'s `ScopeIdSchema` imports it
+ * rather than re-spelling the regex, so zod's gate and the registry speak one charset
+ * (the length half, 1–64, lives only in the zod schema's own `.min(1).max(64)`).
+ */
 export const SCOPE_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/
 
 /** One registered scope as the registry stores and hands it out (constant 3: five fields, no free-form metadata in v1). */
@@ -102,15 +107,6 @@ interface RegistryFileShape {
 /** The default registry location — see the module header for why it is not per-corpus. */
 export function defaultRegistryPath(): string {
   return join(homedir(), '.semantic-grounding', 'scopes.yaml')
-}
-
-/** Validate one id against the charset (constant 6); throws with the rule in the message. */
-export function assertScopeIdShape(id: string, errorFactory: (message: string) => Error): void {
-  if (id.length < 1 || id.length > 64 || !SCOPE_ID_PATTERN.test(id)) {
-    throw errorFactory(
-      `scope id ${JSON.stringify(id)} is not shaped /^[a-z0-9][a-z0-9-]*$/ (1-64 chars) — the id rides the X-SG-Scope trailer and paths, so the charset stays conservative (ADR-0011 constant 6)`,
-    )
-  }
 }
 
 /**

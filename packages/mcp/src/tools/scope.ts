@@ -147,9 +147,10 @@ function registerRegisterScope(server: McpServer, deps: ServerDeps): void {
       inputSchema: RegisterScopeInputSchema,
     },
     async (input, _ctx) => {
-      // The id's charset gate lives in zod (ScopeIdSchema, ADR-0011 constant 6) — a
-      // handler-side re-check would be unreachable and would surface a scope-surface
-      // condition under the intent segment's codes.
+      // The id's charset gate lives in zod alone (ScopeIdSchema, which carries the
+      // registry's own SCOPE_ID_PATTERN — ADR-0011 constant 6's one home, imported
+      // rather than re-spelled); a handler-side re-check would be unreachable and
+      // would surface a scope-surface condition under the intent segment's codes.
       const semanticRoot = realpathSync(input.path)
       // Constant 2: posture + full load at the door, before the table is touched.
       // Posture failures surface #19's own coded posture_refused (−31004) with its

@@ -162,8 +162,8 @@ describe('register_scope', () => {
   })
 
   it('the id charset gate is the input schema, not a handler-side re-check', () => {
-    // The register input's `id` is zod's ScopeIdSchema (ADR-0011 constant 6, the
-    // same rule `assertScopeIdShape` encodes for non-zod callers) — the handler
+    // The register input's `id` is zod's ScopeIdSchema, which carries the registry's
+    // own SCOPE_ID_PATTERN (ADR-0011 constant 6, the rule's one home) — the handler
     // carries no second gate, so an id like this never reaches posture or the table.
     expect(ScopeIdSchema.safeParse('Not_Valid!').success).toBe(false)
     expect(ScopeIdSchema.safeParse('1').success).toBe(true)

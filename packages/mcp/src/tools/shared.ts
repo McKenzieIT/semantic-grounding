@@ -24,6 +24,7 @@
 import { ConceptDefinitionSchema, EventDefinitionSchema, TableDefinitionSchema, type ConceptDefinition, type EventDefinition, type SemanticGroundingCore, type TableDefinition } from '@semantic-grounding/substrate'
 import { z } from 'zod'
 import { DefinitionNotFoundError, DefinitionValidationError, UnsupportedUpdateFieldError, isSubstrateNotFound } from '../errors.ts'
+import { SCOPE_ID_PATTERN } from '../scope-registry.ts'
 import type { ToolRegistrar } from '../server.ts'
 
 // ── Tool family descriptor (#115 / C3) ────────────────────────────────────────────
@@ -89,10 +90,11 @@ export const ExpectedVersionSchema = z.string().regex(
  * `scope_id`: the write assertion of ADR-0011's three-layer defense, required on the
  * 8 commit-class tools. Compared synchronously at handler entry against the snapshot
  * the handler bound — a mismatch is `scope_mismatch` (−31064), not a silent redirect.
- * The charset is the registry's (constant 6): conservative, trailer- and path-safe.
+ * The charset is the registry's own {@link SCOPE_ID_PATTERN} (constant 6), imported
+ * rather than re-spelled — the rule's one home — conservative, trailer- and path-safe.
  */
 export const ScopeIdSchema = z.string().regex(
-  /^[a-z0-9][a-z0-9-]*$/,
+  SCOPE_ID_PATTERN,
   'scope_id must match /^[a-z0-9][a-z0-9-]*$/ (1-64 chars) — it rides the X-SG-Scope trailer and paths',
 ).min(1).max(64)
   .describe('The scope this write asserts it is serving (from the tool response\'s scope.id, or list_scopes). Checked against the server\'s active scope at call entry: a mismatch means a switch happened after your read — switch_scope or re-read under the new scope.')
