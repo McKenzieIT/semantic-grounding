@@ -57,7 +57,6 @@ import type { ScopeBinding } from '../binding.ts'
 import type { Derivation } from '../git/message.ts'
 import type { AuditedResult } from '../git/recorder.ts'
 import type { ServerDeps } from '../server.ts'
-import type { ApplyResult } from './shared.ts'
 import { ScopeMismatchError } from '../errors.ts'
 import { maybeGuidance } from './guidance.ts'
 
@@ -345,45 +344,4 @@ export async function writeReceipt(
  */
 export function toolSuccess(payload: unknown): CallToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(payload) }] }
-}
-
-/**
- * Apply one field overlay via `updateTableMeta` / `updateEventMeta` /
- * `updateConceptMeta`, dispatched by `kind`, with an explicit return type.
- *
- * Not a bare `kind === 'table' ? core.updateTableMeta(...) : core.updateEventMeta(...)`
- * inline inside the audit seam's `fn`: measured — `UpdateTableMetaResult` and
- * `UpdateEventMetaResult` differ only in their success branch's field name
- * (`table_name` vs `event_name`), and TypeScript infers the seam callback's
- * `T` from whichever branch it resolves first, then rejects the other branch
- * against that fixed `T`. An explicitly-typed wrapper (dropping the field
- * neither branch's caller reads) sidesteps the inference order entirely,
- * rather than annotating every call site.
- * @param snap - the entry snapshot.
- * @param kind - which Tier-2 method to call.
- * @param name - the table_name / event / concept name.
- * @param updates - the field overlay to shallow-merge over the existing YAML.
- * @param expectedVersion - the caller's baseline fingerprint
- *   (`expected_version`, checked inside the lock by the write path).
- * @returns `{ok:true, version}` on success (`version` = the written file's
- *   fingerprint as the whole write left it), or `{ok:false, error}` — never
- *   throws for a normal validation/not-found outcome.
- */
-export async function applyFieldUpdate(
-  snap: ScopeBinding,
-  kind: 'table' | 'event' | 'concept',
-  name: string,
-  updates: Readonly<Record<string, unknown>>,
-  expectedVersion: string,
-): Promise<ApplyResult> {
-  if (kind === 'table') {
-    const res = await snap.core.updateTableMeta(name, updates, { expected_version: expectedVersion })
-    return res.ok ? { ok: true, version: res.version } : res
-  }
-  if (kind === 'event') {
-    const res = await snap.core.updateEventMeta(name, updates, { expected_version: expectedVersion })
-    return res.ok ? { ok: true, version: res.version } : res
-  }
-  const res = await snap.core.updateConceptMeta(name, updates, { expected_version: expectedVersion })
-  return res.ok ? { ok: true, version: res.version } : res
 }

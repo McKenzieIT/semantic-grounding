@@ -1,10 +1,14 @@
 /**
  * Shared pieces for ADR-0005's intent families: the common Tier-2 parameter
- * block and the `update_definition` bounded-fields schema builder. Every member
- * here is cross-family by contract — the two single-family members this module
- * briefly carried moved out to their consumers (#145): the per-call `clientInfo`
- * reader to `tools/audited.ts` (its one caller), the Tier-1 pending-queue path
- * to `tools/suggestions.ts` (its one family).
+ * block, the schema vocabulary (kinds, relation shapes, the bounded `fields`
+ * builders), and the cross-family seams (definition loading, the array-field
+ * redirect maps). Members whose one consumer is a single tool file belong in
+ * that file — the ones briefly mis-homed here moved out to their consumers
+ * (#145: the per-call `clientInfo` reader to `tools/audited.ts`, the Tier-1
+ * pending-queue path to `tools/suggestions.ts`; #161: the update path's
+ * apply/assert trio `applyFieldUpdate`/`ApplyResult`/`assertUpdateOk` to
+ * `tools/write.ts`, whose `update_definition` handler is the trio's one
+ * consumer).
  *
  * The `version` fingerprint helpers this module used to carry
  * (fingerprintTable/Concept/Event, findEventDomain) are retired: the read side of
@@ -23,7 +27,7 @@
  */
 import { ConceptDefinitionSchema, EventDefinitionSchema, TableDefinitionSchema, type ConceptDefinition, type EventDefinition, type SemanticGroundingCore, type TableDefinition } from '@semantic-grounding/substrate'
 import { z } from 'zod'
-import { DefinitionNotFoundError, DefinitionValidationError, UnsupportedUpdateFieldError, isSubstrateNotFound } from '../errors.ts'
+import { UnsupportedUpdateFieldError } from '../errors.ts'
 import { SCOPE_ID_PATTERN } from '../scope-registry.ts'
 import type { ToolRegistrar } from '../server.ts'
 
@@ -427,40 +431,4 @@ export function assertNoRedirectedFields(fields: Readonly<Record<string, unknown
       )
     }
   }
-}
-
-// ── Discriminating `updateTableMeta` / `updateEventMeta`'s non-throwing failure ─────
-
-/** The one non-throwing write-result shape. The `update*Meta` family resolves
- * `{ok:true}` bare; the item-overlay apply path (`applyFieldUpdate`) resolves the
- * same shape plus the written file's `version` fingerprint (#108) — hence the
- * optional key: present on every apply result, absent on every meta-update result. */
-export type ApplyResult = { readonly ok: true; readonly version?: string } | { readonly ok: false; readonly error: string }
-
-/**
- * Turn `updateTableMeta` / `updateEventMeta` / `updateConceptMeta`'s
- * non-throwing `{ok:false, error}` into the right coded error — the substrate
- * reports two genuinely different conditions through that one string field,
- * and ADR-0005 ruling 8 asks both to be discriminable.
- *
- * The not-found half of the discrimination is not spelled here: the three
- * message prefixes live in one place, `isSubstrateNotFound` (`errors.ts`'s
- * substrate→coded adapter family, #120/C5), shared with the thrown-error
- * adapter the item tools use — two hand-copied `startsWith` ladders used to
- * carry the same knowledge in parallel.
- * @param result - whatever `core.updateTableMeta` / `core.updateEventMeta` / `core.updateConceptMeta` resolved to.
- * @param kind - which kind was being updated (for the error's structured `data`).
- * @param name - the table_name / event / concept name being updated.
- * @throws DefinitionNotFoundError when the substrate's message is a not-found
- *   report (the target vanished between this tool's own checks and the
- *   lock-protected write — see `write.ts` / `items.ts`).
- * @throws DefinitionValidationError for every other failure message (the merged
- *   document failed the kind's full schema).
- */
-export function assertUpdateOk(result: ApplyResult, kind: 'table' | 'event' | 'concept', name: string): void {
-  if (result.ok) return
-  if (isSubstrateNotFound(result.error)) {
-    throw new DefinitionNotFoundError(result.error, { kind, name })
-  }
-  throw new DefinitionValidationError(result.error, { kind, name })
 }
