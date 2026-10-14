@@ -17,11 +17,12 @@
  * [#21](https://github.com/McKenzieIT/semantic-grounding/issues/21) (the three
  * enrichment tools and `beginBatch`, ADR-0006) appends the rest the same way.
  *
- * Every tool handler wraps its body in `try { ... } catch (e) { return
- * toToolErrorResult(e) }` — see that function's doc for why a *returned* `isError`
- * result is the only way `SgApplicationError`'s `code`/`retryable`/`data` survive
- * `registerTool`'s handler wrapper (measured against SDK v2.3.1: a *thrown* error is
- * reduced to its bare `.message`).
+ * Every tool handler's failures flow through the server's chokepoint wrap
+ * (`server.ts`'s `epochWrapped`, #120/C5), which pipes a rejected handler
+ * Promise through `toToolErrorResult` — see that function's doc for why a
+ * *returned* `isError` result is the only way `SgApplicationError`'s
+ * `code`/`retryable`/`data` survive `registerTool`'s handler wrapper (measured
+ * against SDK v2.3.1: a *thrown* error is reduced to its bare `.message`).
  *
  * ## Running it
  *

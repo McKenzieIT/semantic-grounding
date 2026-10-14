@@ -35,7 +35,6 @@ import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
 import type { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
-import { toToolErrorResult } from '../errors.ts'
 import type { GitTier2Recorder } from '../git/recorder.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { scopeStamp, toolSuccess } from './audited.ts'
@@ -151,19 +150,15 @@ function registerAcquireScratchDir(server: McpServer, deps: ServerDeps): void {
       inputSchema: z.object({}).strict(),
     },
     async () => {
-      try {
-        const snap = deps.bindings.requireSnapshot()
-        const keep = deps.config.scratchRunsToKeep ?? DEFAULT_SCRATCH_RUNS_TO_KEEP
-        const run = await acquireScratchRun(snap.recorder, keep)
-        return toolSuccess({
-          scope: scopeStamp(snap),
-          run_id: run.run_id,
-          path: run.path,
-          retention: { keeps_last: Math.max(1, keep), pruned_run_ids: run.pruned },
-        })
-      } catch (e) {
-        return toToolErrorResult(e)
-      }
+      const snap = deps.bindings.requireSnapshot()
+      const keep = deps.config.scratchRunsToKeep ?? DEFAULT_SCRATCH_RUNS_TO_KEEP
+      const run = await acquireScratchRun(snap.recorder, keep)
+      return toolSuccess({
+        scope: scopeStamp(snap),
+        run_id: run.run_id,
+        path: run.path,
+        retention: { keeps_last: Math.max(1, keep), pruned_run_ids: run.pruned },
+      })
     },
   )
 }

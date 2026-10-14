@@ -11,12 +11,14 @@
  * `McpServer.registerTool`'s handler exceptions are caught by the SDK and turned into
  * an `isError` **result** with any `code` discarded (measured on SDK v2.3.1 — see
  * `errors.ts`'s module header). This file keeps `registerTool` rather than dropping to
- * `server.server.setRequestHandler`, and every handler below ends
- * `catch (e) { return toScopeAwareToolError(e) }` / `catch (e) { return toToolErrorResult(e) }`
+ * `server.server.setRequestHandler`; since #120 the handlers below simply throw, and
+ * the server's chokepoint wrap pipes the rejected Promise through `toToolErrorResult`
  * — the coded failure travels inside the `isError` result's JSON text instead of on
- * the JSON-RPC envelope. Anything that is not an {@link SgApplicationError} is
- * rethrown, so an actual bug in this file still surfaces loudly rather than being
- * reported as an anticipated failure.
+ * the JSON-RPC envelope. The one substrate condition that needs translating first
+ * (`UnknownFilterNamesError` → the coded singular) goes through the errors.ts
+ * adapter family at the call sites that can raise it. Anything that is not an
+ * {@link SgApplicationError} is rethrown, so an actual bug in this file still
+ * surfaces loudly rather than being reported as an anticipated failure.
  *
  * ## `clientInfo` is per-request, not per-process (same addendum)
  *
@@ -82,9 +84,8 @@
  * @module tools/enrichment
  */
 import { z } from 'zod'
-import type { CallToolResult } from '@modelcontextprotocol/server'
-import { assertKnownFilterNames, UnknownFilterNamesError } from '@semantic-grounding/substrate'
-import { toToolErrorResult, UnknownFilterNameError } from '../errors.ts'
+import { assertKnownFilterNames } from '@semantic-grounding/substrate'
+import { unknownFilterNamesAsCoded } from '../errors.ts'
 import { ScopeIdSchema, type ToolFamily } from './shared.ts'
 import type { ToolRegistrar } from '../server.ts'
 import { assertScopeMatch, auditedWrite, scopeStamp, toolSuccess, writeReceipt } from './audited.ts'
@@ -133,23 +134,26 @@ function filterOpts(
 }
 
 /**
- * Map a handler error onto the error contract, translating the substrate's
- * dimension-filter door rejection (`UnknownFilterNamesError`, thrown by the Core
- * discovery/listing methods before any scan) into this surface's coded
- * {@link UnknownFilterNameError} so the `-31040` reaches the agent as a structured
- * `isError` result. Everything else flows to {@link toToolErrorResult} unchanged —
- * including the rethrow-this-is-a-bug behavior for non-`SgApplicationError` values.
- * @param e - whatever the handler body threw.
- * @returns the `isError` result to return.
+ * The whole-call dimension-filter door for `run_enrichment`: the substrate's own
+ * `assertKnownFilterNames` check, with its rejection translated onto this
+ * surface's coded shape by the errors.ts adapter family (#120/C5) — the
+ * substrate's plural `UnknownFilterNamesError` becomes the coded singular
+ * `UnknownFilterNameError` carrying both dimensions' unknown-name arrays,
+ * which the server's chokepoint then shapes into the `-31040` `isError`
+ * result. This is the surviving substance of the former `toScopeAwareToolError`;
+ * its `toToolErrorResult` half moved into the chokepoint.
+ * @param root - the scope's semantic root (where the corpus lives).
+ * @param scope - the adjudicated `{tables?, events?}` filter pair.
  */
-function toScopeAwareToolError(e: unknown): CallToolResult {
-  if (e instanceof UnknownFilterNamesError) {
-    return toToolErrorResult(new UnknownFilterNameError(e.message, {
-      unknown_tables: [...e.unknownTables],
-      unknown_events: [...e.unknownEvents],
-    }))
+function assertKnownFilterNamesCoded(
+  root: string,
+  scope: { readonly tables?: readonly string[]; readonly events?: readonly string[] },
+): void {
+  try {
+    assertKnownFilterNames(root, scope)
+  } catch (e) {
+    unknownFilterNamesAsCoded(e)
   }
-  return toToolErrorResult(e)
 }
 
 /**
@@ -187,14 +191,14 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
       inputSchema: scopeFilterSchema,
     },
     async (args, _extra) => {
-      try {
-        const snap = deps.bindings.requireSnapshot()
-        // Pure forwarding: the call-wide pair reading, name validation, and the cap
-        // all live in the Core method's contract (ADR-0007/0008).
-        return toolSuccess({ scope: scopeStamp(snap), ...(await snap.core.listEnrichmentWork(filterOpts(args))) })
-      } catch (e) {
-        return toScopeAwareToolError(e)
-      }
+      const snap = deps.bindings.requireSnapshot()
+      // Pure forwarding: the call-wide pair reading, name validation, and the cap
+      // all live in the Core method's contract (ADR-0007/0008). The Core's door
+      // rejection (substrate's plural UnknownFilterNamesError) is translated onto
+      // the coded singular by the errors.ts adapter family before the chokepoint
+      // shapes it (#120/C5).
+      const work = await snap.core.listEnrichmentWork(filterOpts(args)).catch(unknownFilterNamesAsCoded)
+      return toolSuccess({ scope: scopeStamp(snap), ...work })
     },
   )
 
@@ -209,12 +213,8 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
       }),
     },
     async (args, _extra) => {
-      try {
-        const snap = deps.bindings.requireSnapshot()
-        return toolSuccess({ scope: scopeStamp(snap), prompts: await snap.core.getEnrichmentPrompts(args.work_ids) })
-      } catch (e) {
-        return toToolErrorResult(e)
-      }
+      const snap = deps.bindings.requireSnapshot()
+      return toolSuccess({ scope: scopeStamp(snap), prompts: await snap.core.getEnrichmentPrompts(args.work_ids) })
     },
   )
 
@@ -239,36 +239,32 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
       }),
     },
     async (args, extra) => {
-      try {
-        const snap = deps.bindings.requireSnapshot()
-        assertScopeMatch(snap, args.scope_id)
-        const first = args.results[0]
-        const subject = args.results.length === 1 && first !== undefined
-          ? snap.core.peekEnrichmentWorkTarget(first.work_id) ?? first.work_id
-          : `${args.results.length} targets`
-        const audited = await auditedWrite(
-          snap,
-          extra,
-          {
-            tool: 'apply_enrichment',
-            target: subject,
-            summary: args.summary,
-            // Server-overridden, not client-supplied: this schema has no `derivation`
-            // field at all (ADR-0006 ruling 5 — "server 恒盖 Derivation: llm"), so there
-            // is nothing to override, only something to decide once, here.
-            derivation: 'llm',
-            confidence: args.confidence,
-          },
-          () => snap.core.applyEnrichmentResults(args.results, snap.recorder),
-        )
-        return toolSuccess(await writeReceipt(snap, deps, audited, {
+      const snap = deps.bindings.requireSnapshot()
+      assertScopeMatch(snap, args.scope_id)
+      const first = args.results[0]
+      const subject = args.results.length === 1 && first !== undefined
+        ? snap.core.peekEnrichmentWorkTarget(first.work_id) ?? first.work_id
+        : `${args.results.length} targets`
+      const audited = await auditedWrite(
+        snap,
+        extra,
+        {
           tool: 'apply_enrichment',
-          writePath: 'round',
-          domain: { results: audited.value.results },
-        }))
-      } catch (e) {
-        return toToolErrorResult(e)
-      }
+          target: subject,
+          summary: args.summary,
+          // Server-overridden, not client-supplied: this schema has no `derivation`
+          // field at all (ADR-0006 ruling 5 — "server 恒盖 Derivation: llm"), so there
+          // is nothing to override, only something to decide once, here.
+          derivation: 'llm',
+          confidence: args.confidence,
+        },
+        () => snap.core.applyEnrichmentResults(args.results, snap.recorder),
+      )
+      return toolSuccess(await writeReceipt(snap, deps, audited, {
+        tool: 'apply_enrichment',
+        writePath: 'round',
+        domain: { results: audited.value.results },
+      }))
     },
   )
 
@@ -281,76 +277,73 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
       inputSchema: runEnrichmentInputSchema,
     },
     async (args, extra) => {
-      try {
-        const snap = deps.bindings.requireSnapshot()
-        assertScopeMatch(snap, args.scope_id)
-        // ADR-0007: one adjudication feeds the whole-call door, the leg gating, the
-        // Core calls, AND the commit subject — the call and its audit trail cannot
-        // disagree (the #25 finding was a subject that said "1 table(s)" over a
-        // 446-file sweep).
-        const scope = filterOpts(args)
-        // The whole-call door, before the fan-out: this call spans three Core methods,
-        // each of which would only validate its own dimension — guarding the full pair
-        // up front is what makes the rejection list BOTH dimensions' unknown names in
-        // one round trip (#28's "错误列全未知名").
-        assertKnownFilterNames(snap.core.resolveScopeRoot(), scope)
-        const full = scope.tables === undefined && scope.events === undefined
-        const tablesOn = full || scope.tables !== undefined
-        const eventsOn = full || scope.events !== undefined
-        const audited = await auditedWrite(
-          snap,
-          extra,
-          {
-            tool: 'run_enrichment',
-            target: describeRunEnrichmentScope(scope),
-            summary: 'deterministic DIM-join + alt_labels discovery backfill',
-            // Server-asserted, not agent-claimed: a deterministic round's basis is
-            // fully known to the server (the round, and that it is this round) —
-            // mirrors `commitDerivedResidue`'s own `derivation`/`confidence` in
-            // recorder.ts, not an agent's self-report.
-            derivation: 'deterministic',
-            confidence: 1,
-          },
-          async () => {
-            const batch = snap.recorder.beginBatch()
-            const tier2 = {
-              recorder: snap.recorder,
-              scope_id: snap.scopeId,
-            }
-            try {
-              // Only the legs the adjudicated scope turned on run, and only those
-              // legs appear in the result — a leg that did not run has nothing to
-              // report (ADR-0007's leftover-detail ruling: report the legs that ran).
-              const relation: {
-                tables?: Awaited<ReturnType<typeof snap.core.discoverRelations>>
-                events?: Awaited<ReturnType<typeof snap.core.discoverEventRelations>>
-              } = {}
-              if (tablesOn) {
-                relation.tables = await snap.core.discoverRelations({ ...scope.tables !== undefined ? { tables: scope.tables } : {}, tier2 })
-                if (relation.tables.written > 0) batch.record('run_enrichment', { round: 'relation', kind: 'table' })
-              }
-              if (eventsOn) {
-                relation.events = await snap.core.discoverEventRelations({ ...scope.events !== undefined ? { events: scope.events } : {}, tier2 })
-                if (relation.events.written > 0) batch.record('run_enrichment', { round: 'relation', kind: 'event' })
-              }
-              const altLabels = await snap.core.discoverAltLabels({ ...scope, tier2 })
-              if (altLabels.written > 0) batch.record('run_enrichment', { round: 'alt_labels' })
-              await batch.end()
-              return { relation, alt_labels: altLabels }
-            } catch (e) {
-              await batch.abort()
-              throw e
-            }
-          },
-        )
-        return toolSuccess(await writeReceipt(snap, deps, audited, {
+      const snap = deps.bindings.requireSnapshot()
+      assertScopeMatch(snap, args.scope_id)
+      // ADR-0007: one adjudication feeds the whole-call door, the leg gating, the
+      // Core calls, AND the commit subject — the call and its audit trail cannot
+      // disagree (the #25 finding was a subject that said "1 table(s)" over a
+      // 446-file sweep).
+      const scope = filterOpts(args)
+      // The whole-call door, before the fan-out: this call spans three Core methods,
+      // each of which would only validate its own dimension — guarding the full pair
+      // up front is what makes the rejection list BOTH dimensions' unknown names in
+      // one round trip (#28's "错误列全未知名"). The coded translation is the
+      // errors.ts adapter family's (#120/C5).
+      assertKnownFilterNamesCoded(snap.core.resolveScopeRoot(), scope)
+      const full = scope.tables === undefined && scope.events === undefined
+      const tablesOn = full || scope.tables !== undefined
+      const eventsOn = full || scope.events !== undefined
+      const audited = await auditedWrite(
+        snap,
+        extra,
+        {
           tool: 'run_enrichment',
-          writePath: 'round',
-          domain: { summary: audited.value },
-        }))
-      } catch (e) {
-        return toScopeAwareToolError(e)
-      }
+          target: describeRunEnrichmentScope(scope),
+          summary: 'deterministic DIM-join + alt_labels discovery backfill',
+          // Server-asserted, not agent-claimed: a deterministic round's basis is
+          // fully known to the server (the round, and that it is this round) —
+          // mirrors `commitDerivedResidue`'s own `derivation`/`confidence` in
+          // recorder.ts, not an agent's self-report.
+          derivation: 'deterministic',
+          confidence: 1,
+        },
+        async () => {
+          const batch = snap.recorder.beginBatch()
+          const tier2 = {
+            recorder: snap.recorder,
+            scope_id: snap.scopeId,
+          }
+          try {
+            // Only the legs the adjudicated scope turned on run, and only those
+            // legs appear in the result — a leg that did not run has nothing to
+            // report (ADR-0007's leftover-detail ruling: report the legs that ran).
+            const relation: {
+              tables?: Awaited<ReturnType<typeof snap.core.discoverRelations>>
+              events?: Awaited<ReturnType<typeof snap.core.discoverEventRelations>>
+            } = {}
+            if (tablesOn) {
+              relation.tables = await snap.core.discoverRelations({ ...scope.tables !== undefined ? { tables: scope.tables } : {}, tier2 })
+              if (relation.tables.written > 0) batch.record('run_enrichment', { round: 'relation', kind: 'table' })
+            }
+            if (eventsOn) {
+              relation.events = await snap.core.discoverEventRelations({ ...scope.events !== undefined ? { events: scope.events } : {}, tier2 })
+              if (relation.events.written > 0) batch.record('run_enrichment', { round: 'relation', kind: 'event' })
+            }
+            const altLabels = await snap.core.discoverAltLabels({ ...scope, tier2 })
+            if (altLabels.written > 0) batch.record('run_enrichment', { round: 'alt_labels' })
+            await batch.end()
+            return { relation, alt_labels: altLabels }
+          } catch (e) {
+            await batch.abort()
+            throw e
+          }
+        },
+      )
+      return toolSuccess(await writeReceipt(snap, deps, audited, {
+        tool: 'run_enrichment',
+        writePath: 'round',
+        domain: { summary: audited.value },
+      }))
     },
   )
 }

@@ -79,6 +79,7 @@ import type { ScopeRegistryFile } from './scope-registry.ts'
 // runtime import cycle — only `tools/index.ts` and the family files → this
 // module's *types*, never the reverse at the value level.
 import { TOOL_REGISTRARS } from './tools/index.ts'
+import { toToolErrorResult } from './errors.ts'
 // ADR-0015's MCP-side entry: the epoch itself lives in the substrate
 // (`read-epoch.ts`, reached through the barrel's `SemanticGroundingCore`
 // static — the barrel's 36-name allow-list is untouched). Value import.
@@ -149,26 +150,47 @@ export type ToolRegistrar = (server: McpServer, deps: ServerDeps) => void
 export { TOOL_REGISTRARS }
 
 /**
- * Wrap one function so it runs inside a read epoch (ADR-0015): every
+ * Wrap one function so it runs inside a read epoch (ADR-0015) **and** its
+ * failures map onto the coded error contract (#120/C5): every
  * `loadTables` / `loadEvents` the call makes shares one per-layer memo, with
  * any write's `corpusVersion` bump forcing the next read back to disk (write
  * safety is the composite key's, not the wrapper's — a write tool gets the
  * same wrap as a read tool and stays correct by construction). Sync and
  * Promise returns both pass through: `withReadEpoch` is `() => T`, so a
  * handler's returned Promise carries the epoch into its continuations.
+ *
+ * On top of the epoch, a returned Promise's **rejections** are piped through
+ * `toToolErrorResult`: an `SgApplicationError` resolves to the structured
+ * `isError` result (the `-31xxx` code riding `content[0].text` as JSON, per
+ * ADR-0005's addendum — the mechanism is byte-identical to the per-handler
+ * `catch { return toToolErrorResult(e) }` shapes this wrapper replaced, only
+ * "who wraps" moved), and anything else rejects unchanged (an internal fault
+ * still surfaces through the SDK's own handler-exception path as a bare
+ * message, never masked as an anticipated failure). The mapping rides the
+ * Promise chain only: a sync return — and a sync throw, which no `async`
+ * handler can produce — passes through exactly as before. This is the one
+ * wrap every registered tool handler passes through, so a tool author cannot
+ * forget it — the bet ADR-0010 recorded losing when each handler wrapped
+ * itself.
  */
 function epochWrapped<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
-  return (...args: A) => SemanticGroundingCore.withReadEpoch(() => fn(...args))
+  return (...args: A) => {
+    const outcome = SemanticGroundingCore.withReadEpoch(() => fn(...args))
+    return outcome instanceof Promise ? outcome.catch(toToolErrorResult) as R : outcome
+  }
 }
 
 /**
- * ADR-0015's handler chokepoint: the server every registrar receives, with
- * `registerTool` intercepted so **every installed tool handler** — read tools
- * and write tools alike — runs inside one read epoch per call. One place of
+ * ADR-0015's handler chokepoint, and since #120 the error-contract one too:
+ * the server every registrar receives, with `registerTool` intercepted so
+ * **every installed tool handler** — read tools and write tools alike — runs
+ * inside one read epoch per call, with a rejected handler Promise mapped onto
+ * the coded `isError` result by the same wrap (`epochWrapped`). One place of
  * entry; every `server.registerTool(...)` call site across the tool files
  * stays untouched by design (the alternative, wrapping each handler at its
  * definition, would bet correctness on the next tool author remembering —
- * the bet ADR-0010 already recorded losing).
+ * the bet ADR-0010 already recorded losing; it is the same reason no handler
+ * carries its own `catch { return toToolErrorResult(e) }` anymore).
  *
  * A Proxy, not a subclass: the registrars hand the instance back to the SDK's
  * own `McpServer` machinery and only ever call `registerTool` on it, so

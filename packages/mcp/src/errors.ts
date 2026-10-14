@@ -66,10 +66,15 @@
  * (and the already-tested "`capabilities:{tools:{}}` coexists with a later `registerTool`"
  * assertion the whole #20/#21 integration step rests on, `tests/server-startup.spec.ts`).
  *
- * The decision kept here: **keep `registerTool`**, and have every tool handler *catch*
- * its own errors and *return* — never throw — a structured `isError` result via
- * {@link toToolErrorResult}. Returning (rather than throwing) is what matters: a result a
- * handler returns reaches the wire through `projectCallToolResult` untouched, so the full
+ * The decision kept here: **keep `registerTool`**, and map a failing handler onto a
+ * structured `isError` result via {@link toToolErrorResult} — at the one wrap every
+ * tool already passes through. Before #120 each handler caught its own errors and
+ * returned the result itself (31 hand-copied `catch { return toToolErrorResult(e) }`
+ * shapes across nine tool files); since #120 the epoch-entering Proxy's handler wrap
+ * (`server.ts`'s `epochWrapped`, ADR-0015's chokepoint) pipes a rejected handler
+ * Promise through `toToolErrorResult`, and handlers simply throw. ADR-0005's
+ * mechanism is unchanged — only "who wraps" moved. A result reaches the wire through
+ * `projectCallToolResult` untouched, so the full
  * `{code, name, message, retryable, data}` payload this function builds survives inside
  * `content[0].text` as JSON. The `-31xxx` value is still meaningful — it is just read out
  * of that JSON by the calling agent, never off `error.code`. Two facts the SDK still gives
@@ -122,6 +127,7 @@
  * @module errors
  */
 import type { CallToolResult } from '@modelcontextprotocol/server'
+import { UnknownFilterNamesError } from '@semantic-grounding/substrate'
 
 /** The reserved JSON-RPC range application codes must avoid (MCP 2026-07-28). */
 export const JSONRPC_RESERVED_RANGE = { min: -32768, max: -32000 } as const
@@ -549,8 +555,10 @@ export class ScopeUnloadableError extends SgApplicationError {
  * to branch on `stale_baseline` parses `JSON.parse(result.content[0].text).code === -31002`
  * rather than reading a JSON-RPC `error.code` that the SDK would have discarded anyway.
  *
- * Every tool handler in this package wraps its body `try { ... } catch (e) { return
- * toToolErrorResult(e) }`. An error that is NOT an {@link SgApplicationError} — a bug in
+ * Every tool handler's Promise is piped through this function by the server's
+ * chokepoint wrap (`epochWrapped`, `server.ts`, #120/C5): a rejection that is an
+ * {@link SgApplicationError} resolves to the structured result below, and everything
+ * else rethrows. An error that is NOT an `SgApplicationError` — a bug in
  * this server, not a condition the caller can act on — is rethrown rather than wrapped:
  * the SDK's own handler-exception path still turns it into an `isError` result for the
  * client (measurement 1 of ADR-0005's addendum applies regardless of what this function
@@ -585,4 +593,72 @@ export function toToolErrorResult(error: unknown): CallToolResult {
     }
   }
   throw error // internal fault — stays loud, not masked as an anticipated tool result
+}
+
+// ── The substrate→coded boundary adapters (#120 / C5) ───────────────────────────────
+
+/**
+ * The message prefixes the substrate uses for "the named definition does not
+ * exist" — the one home for that knowledge (#120/C5: two hand-copied
+ * `startsWith` ladders, `assertUpdateOk` and the item tools' since-deleted
+ * `mapCoreError`, used to carry it in parallel). The substrate reports the
+ * same condition two ways — a thrown plain `Error` (the Core's item-write
+ * methods) and a non-throwing `{ok:false, error}` result string
+ * (`updateTableMeta` & co) — so the adapters below and `assertUpdateOk`
+ * (`tools/shared.ts`) both route through this predicate rather than each
+ * spelling the prefixes out.
+ */
+const SUBSTRATE_NOT_FOUND_PREFIXES: readonly string[] = ['Table not found', 'Event not found', 'Concept not found']
+
+/**
+ * Is this substrate message a not-found report?
+ * @param message - a substrate failure message (thrown `.message` or `{ok:false}.error`).
+ */
+export function isSubstrateNotFound(message: string): boolean {
+  return SUBSTRATE_NOT_FOUND_PREFIXES.some(prefix => message.startsWith(prefix))
+}
+
+/**
+ * The substrate→coded adapter for a thrown not-found error: the Core's
+ * item-write methods (`addAliases` & co) signal a missing target by throwing a
+ * plain `Error("Table not found: …")` — the substrate knows no MCP codes — and
+ * this maps it onto {@link DefinitionNotFoundError}, whose code/payload the
+ * server's chokepoint then shapes into the `isError` result. Everything else
+ * rethrows unchanged: non-`Error` values, and plain `Error`s with other
+ * messages (a `StaleBaselineError` already remapped by `runAudited`, a lock
+ * timeout, an infrastructure fault — all already coded or genuinely loud).
+ * @param e - whatever the substrate call threw.
+ * @param kind - the kind being addressed (the error's structured `data`).
+ * @param name - the table/event/concept name being addressed.
+ * @throws `DefinitionNotFoundError` for a not-found message; the original error otherwise.
+ */
+export function notFoundAsCoded(e: unknown, kind: 'table' | 'event' | 'concept', name: string): never {
+  if (e instanceof Error && isSubstrateNotFound(e.message)) {
+    throw new DefinitionNotFoundError(e.message, { kind, name })
+  }
+  throw e
+}
+
+/**
+ * The substrate→coded adapter for the dimension-filter door rejection: the
+ * substrate throws its own plural {@link UnknownFilterNamesError} (thrown by
+ * the Core's discovery/listing methods before any scan), and this maps it onto
+ * this surface's coded singular {@link UnknownFilterNameError} carrying both
+ * dimensions' unknown-name arrays as payload — the `-31040` wire shape #31
+ * settled. Everything else rethrows unchanged (the same rule
+ * {@link notFoundAsCoded} follows: translate the substrate condition, never
+ * touch what is already coded or genuinely loud). This is the surviving
+ * substance of enrichment's former `toScopeAwareToolError`, whose
+ * `toToolErrorResult` half moved into the chokepoint with #120.
+ * @param e - whatever the substrate call threw.
+ * @throws `UnknownFilterNameError` for a filter-door rejection; the original error otherwise.
+ */
+export function unknownFilterNamesAsCoded(e: unknown): never {
+  if (e instanceof UnknownFilterNamesError) {
+    throw new UnknownFilterNameError(e.message, {
+      unknown_tables: [...e.unknownTables],
+      unknown_events: [...e.unknownEvents],
+    })
+  }
+  throw e
 }

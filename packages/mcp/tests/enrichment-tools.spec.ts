@@ -547,13 +547,18 @@ describe('dimension filter semantics (ADR-0007)', () => {
     try {
       // The retained direct-handler slice: the client path cannot carry `tables: []`
       // past the SDK's zod gate (`min(1)`, pinned against the schema below) — this
-      // pin is the door UNDER that gate, the Core method's own refusal.
+      // pin is the door UNDER that gate, the Core method's own refusal. Since
+      // #120/C5 the handler throws and the server's chokepoint maps — a direct
+      // call (no server wrap) surfaces the coded error itself, whose
+      // code/name/message are exactly what the chokepoint shapes into the
+      // -31040 isError result the real-client test above pins.
       const { deps } = await buildDeps(f)
       const tools = captureTools(deps)
-      const { result, body } = await callTool(tools, 'run_enrichment', { scope_id: HARNESS_SCOPE_ID, tables: [] })
-      expect(result.isError).toBe(true)
-      expect(body.code).toBe(-31040)
-      expect(body.message).toContain('empty dimension filter')
+      await expect(callTool(tools, 'run_enrichment', { scope_id: HARNESS_SCOPE_ID, tables: [] })).rejects.toMatchObject({
+        code: -31040,
+        name: 'UnknownFilterNameError',
+        message: expect.stringContaining('empty dimension filter'),
+      })
     } finally {
       f.cleanup()
     }

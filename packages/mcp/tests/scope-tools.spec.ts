@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { CallToolResult } from '@modelcontextprotocol/server'
 import { BindingStore } from '../src/binding.ts'
 import type { ServerConfig } from '../src/config.ts'
+import { SgApplicationError } from '../src/errors.ts'
 import { ScopeRegistryFile } from '../src/scope-registry.ts'
 import type { ServerDeps } from '../src/server.ts'
 import { registerScopeTools } from '../src/tools/scope.ts'
@@ -53,14 +54,27 @@ async function callOk(tools: Map<string, Handler>, name: string, args: unknown):
   return JSON.parse(text) as Record<string, unknown>
 }
 
-/** Call a captured handler, asserting it DID produce a coded error result, and return its body. */
+/**
+ * Call a captured handler, asserting it rejected with a coded error, and return
+ * the error's wire-payload fields. Since #120/C5 a handler no longer maps its
+ * own failures onto an `isError` result — it throws, and the server's
+ * chokepoint (`epochWrapped`) pipes the rejection through `toToolErrorResult`,
+ * whose JSON payload carries exactly these fields; the wire-level shape is
+ * pinned through the real client elsewhere (`tool-error-contract.spec.ts`). A
+ * direct call has no chokepoint, so the coded error surfaces here as the
+ * rejection itself.
+ */
 async function callErr(tools: Map<string, Handler>, name: string, args: unknown): Promise<{ code: number; name: string; message: string; data: Record<string, unknown> }> {
   const handler = tools.get(name)
   if (handler === undefined) throw new Error(`tool not registered: ${name}`)
-  const result = await handler(args, {}) as CallToolResult
-  const text = (result.content[0] as { text: string }).text
-  if (result.isError !== true) throw new Error(`expected an error result, got success: ${text}`)
-  return JSON.parse(text) as { code: number; name: string; message: string; data: Record<string, unknown> }
+  try {
+    const result = await handler(args, {}) as CallToolResult
+    const text = (result.content[0] as { text: string }).text
+    throw new Error(`expected a coded rejection, got a result: ${text}`)
+  } catch (e) {
+    if (!(e instanceof SgApplicationError)) throw e
+    return { code: e.code, name: e.name, message: e.message, data: e.data as Record<string, unknown> }
+  }
 }
 
 let registryDir: string

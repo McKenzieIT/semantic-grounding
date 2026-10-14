@@ -12,13 +12,18 @@
  * 2. `auditedWrite` wrapping (lock + audit context).
  * 3. Core method call (domain logic).
  * 4. Response formatting (`commit`, `changed`, `version`, `enrichment_health`, verdicts).
- * 5. Error mapping (Core `Error` → MCP `DefinitionNotFoundError`).
+ *
+ * Error mapping is not among the handler's jobs anymore: the substrate's
+ * thrown plain `Error("Table not found: …")` is translated by `notFoundAsCoded`
+ * (the errors.ts adapter family, #120/C5) at the one promise it can originate
+ * from, and the server's chokepoint wrap shapes the coded error into the
+ * `isError` result every handler used to hand-roll for itself.
  *
  * @see docs/adr/0005-mcp-tool-surface.md + docs/adr/0010-suppression.md
  */
 import type { McpServer, ServerContext } from '@modelcontextprotocol/server'
 import { z } from 'zod'
-import { DefinitionNotFoundError, toToolErrorResult } from '../errors.ts'
+import { notFoundAsCoded } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { assertScopeMatch, auditedWrite, toolSuccess, writeReceipt } from './audited.ts'
 import {
@@ -31,19 +36,6 @@ import {
 
 /** The four item-level tool names. */
 export const ITEM_TOOL_NAMES = ['add_alias', 'remove_alias', 'add_relation', 'remove_relation'] as const
-
-/** Map Core method's `Error("Table/Event/Concept not found: ...")` to
- * `DefinitionNotFoundError`. `StaleBaselineError` is already remapped to
- * `StaleBaselineRejection` by `runAudited`. */
-function mapCoreError(e: unknown, kind: 'table' | 'event' | 'concept', name: string): never {
-  if (e instanceof Error) {
-    const msg = e.message
-    if (msg.startsWith('Table not found') || msg.startsWith('Event not found') || msg.startsWith('Concept not found')) {
-      throw new DefinitionNotFoundError(msg, { kind, name })
-    }
-  }
-  throw e
-}
 
 /** `add_alias` input: same-target batch of labels — the add-side mirror of
  * `remove_alias`'s array (#37 §3 / #109 / #107 Q4: same thing, same name;
@@ -98,24 +90,20 @@ function registerAddAlias(server: McpServer, deps: ServerDeps): void {
       inputSchema: AddAliasInputSchema,
     },
     async (input, ctx: ServerContext) => {
-      try {
-        const snap = deps.bindings.requireSnapshot()
-        assertScopeMatch(snap, input.scope_id)
-        const res = await auditedWrite(
-          snap,
-          ctx,
-          { tool: 'add_alias', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-          () => snap.core.addAliases(input.kind, input.name, input.labels, input.expected_version),
-        )
-        return toolSuccess(await writeReceipt(snap, deps, res, {
-          tool: 'add_alias',
-          writePath: input.kind,
-          version: res.value.version,
-          domain: { results: res.value.results },
-        }))
-      } catch (e) {
-        try { mapCoreError(e, input.kind, input.name) } catch (mapped) { return toToolErrorResult(mapped) }
-      }
+      const snap = deps.bindings.requireSnapshot()
+      assertScopeMatch(snap, input.scope_id)
+      const res = await auditedWrite(
+        snap,
+        ctx,
+        { tool: 'add_alias', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
+        () => snap.core.addAliases(input.kind, input.name, input.labels, input.expected_version),
+      ).catch((e: unknown) => notFoundAsCoded(e, input.kind, input.name))
+      return toolSuccess(await writeReceipt(snap, deps, res, {
+        tool: 'add_alias',
+        writePath: input.kind,
+        version: res.value.version,
+        domain: { results: res.value.results },
+      }))
     },
   )
 }
@@ -130,24 +118,20 @@ function registerRemoveAlias(server: McpServer, deps: ServerDeps): void {
       inputSchema: RemoveAliasInputSchema,
     },
     async (input, ctx: ServerContext) => {
-      try {
-        const snap = deps.bindings.requireSnapshot()
-        assertScopeMatch(snap, input.scope_id)
-        const res = await auditedWrite(
-          snap,
-          ctx,
-          { tool: 'remove_alias', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-          () => snap.core.removeAliases(input.kind, input.name, input.labels, input.expected_version),
-        )
-        return toolSuccess(await writeReceipt(snap, deps, res, {
-          tool: 'remove_alias',
-          writePath: input.kind,
-          version: res.value.version,
-          domain: { results: res.value.results },
-        }))
-      } catch (e) {
-        try { mapCoreError(e, input.kind, input.name) } catch (mapped) { return toToolErrorResult(mapped) }
-      }
+      const snap = deps.bindings.requireSnapshot()
+      assertScopeMatch(snap, input.scope_id)
+      const res = await auditedWrite(
+        snap,
+        ctx,
+        { tool: 'remove_alias', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
+        () => snap.core.removeAliases(input.kind, input.name, input.labels, input.expected_version),
+      ).catch((e: unknown) => notFoundAsCoded(e, input.kind, input.name))
+      return toolSuccess(await writeReceipt(snap, deps, res, {
+        tool: 'remove_alias',
+        writePath: input.kind,
+        version: res.value.version,
+        domain: { results: res.value.results },
+      }))
     },
   )
 }
@@ -162,24 +146,20 @@ function registerAddRelation(server: McpServer, deps: ServerDeps): void {
       inputSchema: AddRelationInputSchema,
     },
     async (input, ctx: ServerContext) => {
-      try {
-        const snap = deps.bindings.requireSnapshot()
-        assertScopeMatch(snap, input.scope_id)
-        const res = await auditedWrite(
-          snap,
-          ctx,
-          { tool: 'add_relation', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-          () => snap.core.addRelations(input.kind, input.name, input.relations, input.expected_version),
-        )
-        return toolSuccess(await writeReceipt(snap, deps, res, {
-          tool: 'add_relation',
-          writePath: input.kind,
-          version: res.value.version,
-          domain: { results: res.value.results },
-        }))
-      } catch (e) {
-        try { mapCoreError(e, input.kind, input.name) } catch (mapped) { return toToolErrorResult(mapped) }
-      }
+      const snap = deps.bindings.requireSnapshot()
+      assertScopeMatch(snap, input.scope_id)
+      const res = await auditedWrite(
+        snap,
+        ctx,
+        { tool: 'add_relation', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
+        () => snap.core.addRelations(input.kind, input.name, input.relations, input.expected_version),
+      ).catch((e: unknown) => notFoundAsCoded(e, input.kind, input.name))
+      return toolSuccess(await writeReceipt(snap, deps, res, {
+        tool: 'add_relation',
+        writePath: input.kind,
+        version: res.value.version,
+        domain: { results: res.value.results },
+      }))
     },
   )
 }
@@ -194,24 +174,20 @@ function registerRemoveRelation(server: McpServer, deps: ServerDeps): void {
       inputSchema: RemoveRelationInputSchema,
     },
     async (input, ctx: ServerContext) => {
-      try {
-        const snap = deps.bindings.requireSnapshot()
-        assertScopeMatch(snap, input.scope_id)
-        const res = await auditedWrite(
-          snap,
-          ctx,
-          { tool: 'remove_relation', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-          () => snap.core.removeRelations(input.kind, input.name, input.relations, input.expected_version),
-        )
-        return toolSuccess(await writeReceipt(snap, deps, res, {
-          tool: 'remove_relation',
-          writePath: input.kind,
-          version: res.value.version,
-          domain: { results: res.value.results },
-        }))
-      } catch (e) {
-        try { mapCoreError(e, input.kind, input.name) } catch (mapped) { return toToolErrorResult(mapped) }
-      }
+      const snap = deps.bindings.requireSnapshot()
+      assertScopeMatch(snap, input.scope_id)
+      const res = await auditedWrite(
+        snap,
+        ctx,
+        { tool: 'remove_relation', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
+        () => snap.core.removeRelations(input.kind, input.name, input.relations, input.expected_version),
+      ).catch((e: unknown) => notFoundAsCoded(e, input.kind, input.name))
+      return toolSuccess(await writeReceipt(snap, deps, res, {
+        tool: 'remove_relation',
+        writePath: input.kind,
+        version: res.value.version,
+        domain: { results: res.value.results },
+      }))
     },
   )
 }

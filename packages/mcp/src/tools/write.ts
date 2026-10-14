@@ -21,7 +21,7 @@
 import type { McpServer, ServerContext } from '@modelcontextprotocol/server'
 import { EventDefinitionSchema, TableDefinitionSchema, dumpYaml, writeEventYaml, writeTable } from '@semantic-grounding/substrate'
 import { z } from 'zod'
-import { DefinitionAlreadyExistsError, toToolErrorResult } from '../errors.ts'
+import { DefinitionAlreadyExistsError } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { applyFieldUpdate, assertScopeMatch, auditedWrite, toolSuccess, writeReceipt } from './audited.ts'
 import {
@@ -73,85 +73,58 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
       inputSchema: CreateDefinitionInputSchema,
     },
     async (input, ctx: ServerContext) => {
-      try {
-        const snap = deps.bindings.requireSnapshot()
-        assertScopeMatch(snap, input.scope_id)
-        const root = snap.core.resolveScopeRoot()
+      const snap = deps.bindings.requireSnapshot()
+      assertScopeMatch(snap, input.scope_id)
+      const root = snap.core.resolveScopeRoot()
 
-        if (input.kind === 'table') {
-          const name = input.table.table_name
-          if (snap.core.loadTableDefinition(name) !== null) {
-            throw new DefinitionAlreadyExistsError(`table "${name}" already exists — use update_definition to change it`, { kind: 'table', name })
-          }
-          const res = await auditedWrite(
-            snap,
-            ctx,
-            { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-            async () => {
-              const written = await writeTable(root, name, input.table, {}, { recorder: snap.recorder })
-              // `writeTable` re-validates the payload; it was already validated
-              // by this tool's zod schema, so reaching the `{ok:false}` branch
-              // is this server's own bug, not a caller mistake.
-              if (!written.ok) {
-                throw new Error(`writeTable rejected a payload create_definition already validated: ${written.error}`)
-              }
-              return written
-            },
-          )
-          return toolSuccess(await writeReceipt(snap, deps, res, {
-            tool: 'create_definition',
-            // 'create', not 'table': the create family compiles to the raw
-            // primitives and never runs the on-write hook, so its receipt
-            // carries no `enrichment_health` — ADR-0005 ruling 5's deliberate
-            // asymmetry, preserved by the envelope's writePath gate.
-            writePath: 'create',
-            version: res.value.version,
-          }))
-        }
-
-        if (input.kind === 'concept') {
-          // The concept write path (ADR-0012): same refusal, same audit seam,
-          // one deliberate difference from the table branch — no existence
-          // race to note, because concepts have no on-write enrichment hook
-          // anywhere downstream (no rounds exist to ask for one).
-          const name = input.concept.name
-          if (snap.core.loadConceptDefinition(name) !== null) {
-            throw new DefinitionAlreadyExistsError(`concept "${name}" already exists — use update_definition to change it`, { kind: 'concept', name })
-          }
-          const res = await auditedWrite(
-            snap,
-            ctx,
-            { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-            async () => {
-              const written = await snap.core.writeConceptYaml(name, input.concept)
-              if (!written.ok) {
-                throw new Error(`writeConceptYaml rejected a payload create_definition already validated: ${written.error}`)
-              }
-              return written
-            },
-          )
-          return toolSuccess(await writeReceipt(snap, deps, res, {
-            tool: 'create_definition',
-            writePath: 'create',
-            version: res.value.version,
-          }))
-        }
-
-        const name = input.event.name
-        if (snap.core.loadEventDefinition(name) !== null) {
-          throw new DefinitionAlreadyExistsError(`event "${name}" already exists — use update_definition to change it`, { kind: 'event', name })
+      if (input.kind === 'table') {
+        const name = input.table.table_name
+        if (snap.core.loadTableDefinition(name) !== null) {
+          throw new DefinitionAlreadyExistsError(`table "${name}" already exists — use update_definition to change it`, { kind: 'table', name })
         }
         const res = await auditedWrite(
           snap,
           ctx,
           { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
           async () => {
-            const written = await writeEventYaml(root, name, dumpYaml(input.event), { recorder: snap.recorder })
+            const written = await writeTable(root, name, input.table, {}, { recorder: snap.recorder })
+            // `writeTable` re-validates the payload; it was already validated
+            // by this tool's zod schema, so reaching the `{ok:false}` branch
+            // is this server's own bug, not a caller mistake.
             if (!written.ok) {
-              // `writeEventYaml` re-parses its own `content` and re-checks the name
-              // match; both are already guaranteed by this schema and `dumpYaml`, so
-              // reaching here is this server's own bug, not a caller mistake.
-              throw new Error(`writeEventYaml rejected a payload create_definition already validated: ${written.error}`)
+              throw new Error(`writeTable rejected a payload create_definition already validated: ${written.error}`)
+            }
+            return written
+          },
+        )
+        return toolSuccess(await writeReceipt(snap, deps, res, {
+          tool: 'create_definition',
+          // 'create', not 'table': the create family compiles to the raw
+          // primitives and never runs the on-write hook, so its receipt
+          // carries no `enrichment_health` — ADR-0005 ruling 5's deliberate
+          // asymmetry, preserved by the envelope's writePath gate.
+          writePath: 'create',
+          version: res.value.version,
+        }))
+      }
+
+      if (input.kind === 'concept') {
+        // The concept write path (ADR-0012): same refusal, same audit seam,
+        // one deliberate difference from the table branch — no existence
+        // race to note, because concepts have no on-write enrichment hook
+        // anywhere downstream (no rounds exist to ask for one).
+        const name = input.concept.name
+        if (snap.core.loadConceptDefinition(name) !== null) {
+          throw new DefinitionAlreadyExistsError(`concept "${name}" already exists — use update_definition to change it`, { kind: 'concept', name })
+        }
+        const res = await auditedWrite(
+          snap,
+          ctx,
+          { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
+          async () => {
+            const written = await snap.core.writeConceptYaml(name, input.concept)
+            if (!written.ok) {
+              throw new Error(`writeConceptYaml rejected a payload create_definition already validated: ${written.error}`)
             }
             return written
           },
@@ -161,9 +134,32 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
           writePath: 'create',
           version: res.value.version,
         }))
-      } catch (e) {
-        return toToolErrorResult(e)
       }
+
+      const name = input.event.name
+      if (snap.core.loadEventDefinition(name) !== null) {
+        throw new DefinitionAlreadyExistsError(`event "${name}" already exists — use update_definition to change it`, { kind: 'event', name })
+      }
+      const res = await auditedWrite(
+        snap,
+        ctx,
+        { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
+        async () => {
+          const written = await writeEventYaml(root, name, dumpYaml(input.event), { recorder: snap.recorder })
+          if (!written.ok) {
+            // `writeEventYaml` re-parses its own `content` and re-checks the name
+            // match; both are already guaranteed by this schema and `dumpYaml`, so
+            // reaching here is this server's own bug, not a caller mistake.
+            throw new Error(`writeEventYaml rejected a payload create_definition already validated: ${written.error}`)
+          }
+          return written
+        },
+      )
+      return toolSuccess(await writeReceipt(snap, deps, res, {
+        tool: 'create_definition',
+        writePath: 'create',
+        version: res.value.version,
+      }))
     },
   )
 }
@@ -186,33 +182,29 @@ function registerUpdateDefinition(server: McpServer, deps: ServerDeps): void {
       inputSchema: UpdateDefinitionInputSchema,
     },
     async (input, ctx: ServerContext) => {
-      try {
-        const snap = deps.bindings.requireSnapshot()
-        assertScopeMatch(snap, input.scope_id)
-        assertNoRedirectedFields(
-          input.fields,
-          input.kind === 'table' ? TABLE_ARRAY_REF_REDIRECT : input.kind === 'event' ? EVENT_ARRAY_REF_REDIRECT : CONCEPT_ARRAY_REF_REDIRECT,
-        )
-        const res = await auditedWrite(
-          snap,
-          ctx,
-          { tool: 'update_definition', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-          () => applyFieldUpdate(snap, input.kind, input.name, input.fields, input.expected_version),
-        )
-        assertUpdateOk(res.value, input.kind, input.name)
-        return toolSuccess(await writeReceipt(snap, deps, res, {
-          tool: 'update_definition',
-          // `enrichment_health` rides the writePath asymmetry `writeReceipt`
-          // owns: a table update ran the on-write hook and reports; an event
-          // update has no hook, and a concept update has no rounds at all —
-          // for either, the key stays absent (reporting health there would
-          // only mirror whatever an earlier table write left behind).
-          writePath: input.kind,
-          ...res.value.ok ? { version: res.value.version } : {},
-        }))
-      } catch (e) {
-        return toToolErrorResult(e)
-      }
+      const snap = deps.bindings.requireSnapshot()
+      assertScopeMatch(snap, input.scope_id)
+      assertNoRedirectedFields(
+        input.fields,
+        input.kind === 'table' ? TABLE_ARRAY_REF_REDIRECT : input.kind === 'event' ? EVENT_ARRAY_REF_REDIRECT : CONCEPT_ARRAY_REF_REDIRECT,
+      )
+      const res = await auditedWrite(
+        snap,
+        ctx,
+        { tool: 'update_definition', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
+        () => applyFieldUpdate(snap, input.kind, input.name, input.fields, input.expected_version),
+      )
+      assertUpdateOk(res.value, input.kind, input.name)
+      return toolSuccess(await writeReceipt(snap, deps, res, {
+        tool: 'update_definition',
+        // `enrichment_health` rides the writePath asymmetry `writeReceipt`
+        // owns: a table update ran the on-write hook and reports; an event
+        // update has no hook, and a concept update has no rounds at all —
+        // for either, the key stays absent (reporting health there would
+        // only mirror whatever an earlier table write left behind).
+        writePath: input.kind,
+        ...res.value.ok ? { version: res.value.version } : {},
+      }))
     },
   )
 }

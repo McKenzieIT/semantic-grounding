@@ -89,7 +89,6 @@ import type { McpServer } from '@modelcontextprotocol/server'
 import { dumpYaml, EventDefinitionSchema, TableDefinitionSchema, writeEventYaml, writeTable } from '@semantic-grounding/substrate'
 import { z } from 'zod'
 import type { ScopeBinding } from '../binding.ts'
-import { toToolErrorResult } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { assertScopeMatch, auditedWrite, scopeStamp, toolSuccess, writeReceipt } from './audited.ts'
 import { ConceptCreatePayloadSchema, ConfidenceSchema, CONCEPT_ITEM_VERB_KEYS, ScopeIdSchema, SummarySchema, type ToolFamily } from './shared.ts'
@@ -386,220 +385,216 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
       inputSchema: ImportDefinitionsInputSchema,
     },
     async (input, ctx) => {
-      try {
-        const snap = deps.bindings.requireSnapshot()
-        assertScopeMatch(snap, input.scope_id)
-        const root = snap.core.resolveScopeRoot()
+      const snap = deps.bindings.requireSnapshot()
+      assertScopeMatch(snap, input.scope_id)
+      const root = snap.core.resolveScopeRoot()
 
-        // ── Phase 1: pure adjudication, zero writes ──────────────────────────
-        // Staged items do not get their row yet — Phase 2 owns created/updated
-        // rows so a mid-batch domain failure can flip one to `error` without
-        // leaving two rows for one index. Rows sort back to input order at the
-        // end (staged writes interleave with Phase-1 skips in `results`).
-        const results: ImportItemResult[] = []
-        const staged: StagedItem[] = []
-        const seen = new Map<string, number>()
+      // ── Phase 1: pure adjudication, zero writes ──────────────────────────
+      // Staged items do not get their row yet — Phase 2 owns created/updated
+      // rows so a mid-batch domain failure can flip one to `error` without
+      // leaving two rows for one index. Rows sort back to input order at the
+      // end (staged writes interleave with Phase-1 skips in `results`).
+      const results: ImportItemResult[] = []
+      const staged: StagedItem[] = []
+      const seen = new Map<string, number>()
 
-        for (const [i, item] of input.items.entries()) {
-          const parsed = parseItem(item.kind, item.definition)
-          if (!parsed.ok) {
-            results.push({ index: i, kind: item.kind, name: rawName(item.kind, item.definition), verdict: 'error', detail: parsed.error })
-            continue
-          }
-          const name = parsed.name
-          const firstIndex = seen.get(name)
-          if (firstIndex !== undefined) {
-            results.push({ index: i, kind: parsed.kind, name, verdict: 'error', detail: `duplicate name in batch: "${name}" already appeared at index ${firstIndex} (names dedupe across kinds)` })
-            continue
-          }
-          seen.set(name, i)
+      for (const [i, item] of input.items.entries()) {
+        const parsed = parseItem(item.kind, item.definition)
+        if (!parsed.ok) {
+          results.push({ index: i, kind: item.kind, name: rawName(item.kind, item.definition), verdict: 'error', detail: parsed.error })
+          continue
+        }
+        const name = parsed.name
+        const firstIndex = seen.get(name)
+        if (firstIndex !== undefined) {
+          results.push({ index: i, kind: parsed.kind, name, verdict: 'error', detail: `duplicate name in batch: "${name}" already appeared at index ${firstIndex} (names dedupe across kinds)` })
+          continue
+        }
+        seen.set(name, i)
 
-          const existing = parsed.kind === 'table'
-            ? snap.core.loadTableDefinition(name)
-            : parsed.kind === 'event'
-              ? snap.core.loadEventDefinition(name)
-              : snap.core.loadConceptDefinition(name)
-          const payload = parsed.kind === 'table' ? parsed.table : parsed.kind === 'event' ? parsed.event : parsed.concept
-          // Concepts only: how many item-verb keys the schema stripped (R3's
-          // receipt — the row tells the caller the keys were seen and ignored).
-          const ignored = parsed.kind === 'concept' ? ignoredItemVerbKeyCount(item.definition) : 0
-          if (existing !== null && wouldBeNoOp(parsed.kind, payload, existing)) {
-            results.push({
-              index: i, kind: parsed.kind, name, verdict: 'skipped',
-              ...ignored > 0 ? { detail: `ignored ${ignored} item-verb keys (related_refs/suppressed_* are add_relation/add_alias territory)` } : {},
-            })
-            continue
-          }
-          staged.push({
-            index: i,
-            kind: parsed.kind,
-            name,
-            verdict: existing === null ? 'created' : 'updated',
-            ...parsed.kind === 'table' ? { table: parsed.table } : parsed.kind === 'event' ? { event: parsed.event } : { concept: parsed.concept },
-            ...ignored > 0 ? { ignoredItemVerbKeys: ignored } : {},
+        const existing = parsed.kind === 'table'
+          ? snap.core.loadTableDefinition(name)
+          : parsed.kind === 'event'
+            ? snap.core.loadEventDefinition(name)
+            : snap.core.loadConceptDefinition(name)
+        const payload = parsed.kind === 'table' ? parsed.table : parsed.kind === 'event' ? parsed.event : parsed.concept
+        // Concepts only: how many item-verb keys the schema stripped (R3's
+        // receipt — the row tells the caller the keys were seen and ignored).
+        const ignored = parsed.kind === 'concept' ? ignoredItemVerbKeyCount(item.definition) : 0
+        if (existing !== null && wouldBeNoOp(parsed.kind, payload, existing)) {
+          results.push({
+            index: i, kind: parsed.kind, name, verdict: 'skipped',
+            ...ignored > 0 ? { detail: `ignored ${ignored} item-verb keys (related_refs/suppressed_* are add_relation/add_alias territory)` } : {},
           })
+          continue
         }
-
-        const toWrite = staged.filter(s => s.verdict === 'created').length
-        const toUpdate = staged.length - toWrite
-
-        // ── Phase 2 entrance: the two batch-overwrite guards ────────────────
-        // Both are soft signals, never refusals: a hard cap is trivially
-        // evaded by splitting the batch, and `.max(500)` already bounds
-        // runaway size. When tripped, each (a) puts a line in the response's
-        // `warnings` — both this call's and the dry-run preview's, zero-tax
-        // absent rather than an empty array — and (b) rides the intent
-        // target, so the annotation lands in the real write's commit subject
-        // where a post-hoc `git log` reader greps for it.
-        let intentTarget = `${staged.length}/${input.items.length} items (${toWrite} created, ${toUpdate} updated)`
-        const warnings: string[] = []
-
-        // The mass-update guard (ADR-0018 R3/R4) keys on the `updated` bucket
-        // alone — the danger a review surface exists for is "how much existing
-        // source-of-truth does this batch overwrite", not "how many items" (a
-        // cold start is almost all `created` and is this tool's raison d'être,
-        // ADR-0013).
-        const warnThreshold = deps.config.massUpdateWarnThreshold ?? DEFAULT_MASS_UPDATE_WARN_THRESHOLD
-        if (toUpdate > warnThreshold) {
-          const guardNote = `mass-update guard: ${toUpdate} updated exceeds threshold ${warnThreshold}`
-          warnings.push(guardNote)
-          intentTarget += `; ${guardNote}`
-        }
-
-        // The ratio guard (ADR-0019 R6): the corpus-relative soft trigger,
-        // deliberately self-contained — own config field, own message, own
-        // trailer segment — so the two fire independently. Cold start (all
-        // `created`) never reaches the scan; below the floor the ratio is
-        // noise on a tiny denominator and stays the count guard's call.
-        if (toUpdate > 0) {
-          const updatedByKind: Record<ImportKind, number> = { table: 0, event: 0, concept: 0 }
-          for (const s of staged) {
-            if (s.verdict === 'updated') updatedByKind[s.kind] += 1
-          }
-          const ratio = deps.config.massUpdateRatio
-          const findings = ratioGuardFindings(
-            updatedByKind,
-            existingKindCounts(snap),
-            ratio?.threshold ?? DEFAULT_RATIO_GUARD_THRESHOLD,
-            ratio?.floor ?? DEFAULT_RATIO_GUARD_FLOOR,
-          )
-          if (findings.length > 0) {
-            warnings.push(...findings.map(ratioWarnLine))
-            intentTarget += ratioTrailer(findings)
-          }
-        }
-
-        // ── ADR-0018 R2: the dry-run branch — Phase 1 has adjudicated, return ─
-        if (input.dry_run === true) {
-          // Read-only early return, BEFORE `auditedWrite`: no audit window, no
-          // commit, no `_guidance` (that injection is a write-receipt fact).
-          // The response is assembled read-tool style — scope stamp plus domain
-          // — never through `writeReceipt`, whose `commit`/`changed` keys are
-          // facts about a write that did not happen. No `version` anywhere:
-          // fingerprints are post-write receipts (#108), and a skipped row's
-          // in-lock resolution belongs to the window this branch never opens.
-          // Staged rows get their verdict here because there is no Phase 2 to
-          // own them — same adjudication, same rows a real call would land.
-          // A tripped guard previews too: the rehearsal must predict the real
-          // write's `warnings` exactly, or the preview is not a preview.
-          const stagedRow = (s: StagedItem): ImportItemResult => ({
-            index: s.index, kind: s.kind, name: s.name, verdict: s.verdict,
-            // Same Phase-1 receipt the real write's rows carry: the item-verb
-            // strip count is adjudication, not a write-time fact.
-            ...s.ignoredItemVerbKeys !== undefined ? { detail: `ignored ${s.ignoredItemVerbKeys} item-verb keys (related_refs/suppressed_* are add_relation/add_alias territory)` } : {},
-          })
-          const preview = [...results, ...staged.map(stagedRow)].sort((a, b) => a.index - b.index)
-          return toolSuccess({
-            scope: scopeStamp(snap),
-            committed: false,
-            results: preview,
-            staged: staged.map(stagedRow),
-            summary: { created: countVerdict(preview, 'created'), updated: countVerdict(preview, 'updated'), skipped: countVerdict(preview, 'skipped'), errors: countVerdict(preview, 'error') },
-            ...warnings.length > 0 ? { warnings } : {},
-          })
-        }
-
-        // ── Phase 2: one audited window, one batch, one commit ───────────────
-        const audited = await auditedWrite(
-          snap,
-          ctx,
-          { tool: 'import_definitions', target: intentTarget, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-          async () => {
-            // Skipped rows' write receipts first, inside the lock: nothing is
-            // written for them, so the receipt is the file's CURRENT
-            // fingerprint — and the lock guarantees it cannot move between
-            // here and the response (#108 / #107 Q3).
-            for (const [i, row] of results.entries()) {
-              if (row.verdict !== 'skipped') continue
-              const current = row.kind === 'table'
-                ? snap.core.loadTableDefinitionWithVersion(row.name)
-                : row.kind === 'event'
-                  ? snap.core.loadEventDefinitionWithVersion(row.name)
-                  : snap.core.loadConceptDefinitionWithVersion(row.name)
-              results[i] = { ...row, ...current?.version !== undefined ? { version: current.version } : {} }
-            }
-            const batch = snap.recorder.beginBatch()
-            const tier2 = { recorder: snap.recorder, scope_id: snap.scopeId }
-            try {
-              for (const item of staged) {
-                // #61's seam rule: each item rides `auditedFileWrite` via the raw
-                // primitive with `tier2` — never a hand-copied ceremony. Inside
-                // the open batch each primitive's `recordTier2Write` is absorbed;
-                // `end()` stages the whole tree as the one commit.
-                //
-                // A concept `updated` does NOT compile to `writeConceptYaml`'s
-                // wholesale overwrite: it takes `updateConceptMeta`'s Tier-2
-                // read-merge-write (ADR-0019 R2) — same `auditedFileWrite` seam,
-                // same batch absorption, same `version` receipt (#108) — so the
-                // three item-verb keys on disk survive the re-import (concepts
-                // have no enrichment round to re-derive a dropped edge). The
-                // `created` branch keeps `writeConceptYaml`: there is no disk
-                // state to merge over, and `updateConceptMeta` refuses a missing
-                // file by design.
-                const res = item.kind === 'table'
-                  ? await writeTable(root, item.name, item.table, {}, tier2)
-                  : item.kind === 'event'
-                    ? await writeEventYaml(root, item.name, dumpYaml(item.event), tier2)
-                    : item.verdict === 'updated'
-                      ? await snap.core.updateConceptMeta(item.name, { ...item.concept })
-                      : await snap.core.writeConceptYaml(item.name, item.concept)
-                results.push(res.ok
-                  ? {
-                      index: item.index, kind: item.kind, name: item.name, verdict: item.verdict, version: res.version,
-                      ...item.ignoredItemVerbKeys !== undefined ? { detail: `ignored ${item.ignoredItemVerbKeys} item-verb keys (related_refs/suppressed_* are add_relation/add_alias territory)` } : {},
-                    }
-                  : { index: item.index, kind: item.kind, name: item.name, verdict: 'error', detail: res.error })
-                if (res.ok) batch.record('import_definitions', { kind: item.kind, name: item.name })
-              }
-              await batch.end()
-              return undefined
-            } catch (e) {
-              await batch.abort()
-              throw e
-            }
-          },
-        )
-
-        // Counted from the final rows, not from Phase 1's sort: a Phase-2
-        // domain failure must not let the counts claim a write that did not land.
-        const summary: ImportSummary = { created: countVerdict(results, 'created'), updated: countVerdict(results, 'updated'), skipped: countVerdict(results, 'skipped'), errors: countVerdict(results, 'error') }
-        results.sort((a, b) => a.index - b.index)
-
-        // No top-level `version`: one batch spans many files, so the
-        // fingerprint rides each row — the envelope's `import` writePath
-        // leaves it (and `enrichment_health`) absent by construction. A
-        // tripped guard rides `domain` (ADR-0018 R4 / ADR-0019 R6): a
-        // top-level observable soft signal, alongside the subject annotation
-        // it already put there. `warnings` is zero-tax the same way — absent
-        // unless a guard actually fired, never an empty array.
-        return toolSuccess(await writeReceipt(snap, deps, audited, {
-          tool: 'import_definitions',
-          writePath: 'import',
-          domain: { results, summary, ...warnings.length > 0 ? { warnings } : {} },
-        }))
-      } catch (e) {
-        return toToolErrorResult(e)
+        staged.push({
+          index: i,
+          kind: parsed.kind,
+          name,
+          verdict: existing === null ? 'created' : 'updated',
+          ...parsed.kind === 'table' ? { table: parsed.table } : parsed.kind === 'event' ? { event: parsed.event } : { concept: parsed.concept },
+          ...ignored > 0 ? { ignoredItemVerbKeys: ignored } : {},
+        })
       }
+
+      const toWrite = staged.filter(s => s.verdict === 'created').length
+      const toUpdate = staged.length - toWrite
+
+      // ── Phase 2 entrance: the two batch-overwrite guards ────────────────
+      // Both are soft signals, never refusals: a hard cap is trivially
+      // evaded by splitting the batch, and `.max(500)` already bounds
+      // runaway size. When tripped, each (a) puts a line in the response's
+      // `warnings` — both this call's and the dry-run preview's, zero-tax
+      // absent rather than an empty array — and (b) rides the intent
+      // target, so the annotation lands in the real write's commit subject
+      // where a post-hoc `git log` reader greps for it.
+      let intentTarget = `${staged.length}/${input.items.length} items (${toWrite} created, ${toUpdate} updated)`
+      const warnings: string[] = []
+
+      // The mass-update guard (ADR-0018 R3/R4) keys on the `updated` bucket
+      // alone — the danger a review surface exists for is "how much existing
+      // source-of-truth does this batch overwrite", not "how many items" (a
+      // cold start is almost all `created` and is this tool's raison d'être,
+      // ADR-0013).
+      const warnThreshold = deps.config.massUpdateWarnThreshold ?? DEFAULT_MASS_UPDATE_WARN_THRESHOLD
+      if (toUpdate > warnThreshold) {
+        const guardNote = `mass-update guard: ${toUpdate} updated exceeds threshold ${warnThreshold}`
+        warnings.push(guardNote)
+        intentTarget += `; ${guardNote}`
+      }
+
+      // The ratio guard (ADR-0019 R6): the corpus-relative soft trigger,
+      // deliberately self-contained — own config field, own message, own
+      // trailer segment — so the two fire independently. Cold start (all
+      // `created`) never reaches the scan; below the floor the ratio is
+      // noise on a tiny denominator and stays the count guard's call.
+      if (toUpdate > 0) {
+        const updatedByKind: Record<ImportKind, number> = { table: 0, event: 0, concept: 0 }
+        for (const s of staged) {
+          if (s.verdict === 'updated') updatedByKind[s.kind] += 1
+        }
+        const ratio = deps.config.massUpdateRatio
+        const findings = ratioGuardFindings(
+          updatedByKind,
+          existingKindCounts(snap),
+          ratio?.threshold ?? DEFAULT_RATIO_GUARD_THRESHOLD,
+          ratio?.floor ?? DEFAULT_RATIO_GUARD_FLOOR,
+        )
+        if (findings.length > 0) {
+          warnings.push(...findings.map(ratioWarnLine))
+          intentTarget += ratioTrailer(findings)
+        }
+      }
+
+      // ── ADR-0018 R2: the dry-run branch — Phase 1 has adjudicated, return ─
+      if (input.dry_run === true) {
+        // Read-only early return, BEFORE `auditedWrite`: no audit window, no
+        // commit, no `_guidance` (that injection is a write-receipt fact).
+        // The response is assembled read-tool style — scope stamp plus domain
+        // — never through `writeReceipt`, whose `commit`/`changed` keys are
+        // facts about a write that did not happen. No `version` anywhere:
+        // fingerprints are post-write receipts (#108), and a skipped row's
+        // in-lock resolution belongs to the window this branch never opens.
+        // Staged rows get their verdict here because there is no Phase 2 to
+        // own them — same adjudication, same rows a real call would land.
+        // A tripped guard previews too: the rehearsal must predict the real
+        // write's `warnings` exactly, or the preview is not a preview.
+        const stagedRow = (s: StagedItem): ImportItemResult => ({
+          index: s.index, kind: s.kind, name: s.name, verdict: s.verdict,
+          // Same Phase-1 receipt the real write's rows carry: the item-verb
+          // strip count is adjudication, not a write-time fact.
+          ...s.ignoredItemVerbKeys !== undefined ? { detail: `ignored ${s.ignoredItemVerbKeys} item-verb keys (related_refs/suppressed_* are add_relation/add_alias territory)` } : {},
+        })
+        const preview = [...results, ...staged.map(stagedRow)].sort((a, b) => a.index - b.index)
+        return toolSuccess({
+          scope: scopeStamp(snap),
+          committed: false,
+          results: preview,
+          staged: staged.map(stagedRow),
+          summary: { created: countVerdict(preview, 'created'), updated: countVerdict(preview, 'updated'), skipped: countVerdict(preview, 'skipped'), errors: countVerdict(preview, 'error') },
+          ...warnings.length > 0 ? { warnings } : {},
+        })
+      }
+
+      // ── Phase 2: one audited window, one batch, one commit ───────────────
+      const audited = await auditedWrite(
+        snap,
+        ctx,
+        { tool: 'import_definitions', target: intentTarget, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
+        async () => {
+          // Skipped rows' write receipts first, inside the lock: nothing is
+          // written for them, so the receipt is the file's CURRENT
+          // fingerprint — and the lock guarantees it cannot move between
+          // here and the response (#108 / #107 Q3).
+          for (const [i, row] of results.entries()) {
+            if (row.verdict !== 'skipped') continue
+            const current = row.kind === 'table'
+              ? snap.core.loadTableDefinitionWithVersion(row.name)
+              : row.kind === 'event'
+                ? snap.core.loadEventDefinitionWithVersion(row.name)
+                : snap.core.loadConceptDefinitionWithVersion(row.name)
+            results[i] = { ...row, ...current?.version !== undefined ? { version: current.version } : {} }
+          }
+          const batch = snap.recorder.beginBatch()
+          const tier2 = { recorder: snap.recorder, scope_id: snap.scopeId }
+          try {
+            for (const item of staged) {
+              // #61's seam rule: each item rides `auditedFileWrite` via the raw
+              // primitive with `tier2` — never a hand-copied ceremony. Inside
+              // the open batch each primitive's `recordTier2Write` is absorbed;
+              // `end()` stages the whole tree as the one commit.
+              //
+              // A concept `updated` does NOT compile to `writeConceptYaml`'s
+              // wholesale overwrite: it takes `updateConceptMeta`'s Tier-2
+              // read-merge-write (ADR-0019 R2) — same `auditedFileWrite` seam,
+              // same batch absorption, same `version` receipt (#108) — so the
+              // three item-verb keys on disk survive the re-import (concepts
+              // have no enrichment round to re-derive a dropped edge). The
+              // `created` branch keeps `writeConceptYaml`: there is no disk
+              // state to merge over, and `updateConceptMeta` refuses a missing
+              // file by design.
+              const res = item.kind === 'table'
+                ? await writeTable(root, item.name, item.table, {}, tier2)
+                : item.kind === 'event'
+                  ? await writeEventYaml(root, item.name, dumpYaml(item.event), tier2)
+                  : item.verdict === 'updated'
+                    ? await snap.core.updateConceptMeta(item.name, { ...item.concept })
+                    : await snap.core.writeConceptYaml(item.name, item.concept)
+              results.push(res.ok
+                ? {
+                    index: item.index, kind: item.kind, name: item.name, verdict: item.verdict, version: res.version,
+                    ...item.ignoredItemVerbKeys !== undefined ? { detail: `ignored ${item.ignoredItemVerbKeys} item-verb keys (related_refs/suppressed_* are add_relation/add_alias territory)` } : {},
+                  }
+                : { index: item.index, kind: item.kind, name: item.name, verdict: 'error', detail: res.error })
+              if (res.ok) batch.record('import_definitions', { kind: item.kind, name: item.name })
+            }
+            await batch.end()
+            return undefined
+          } catch (e) {
+            await batch.abort()
+            throw e
+          }
+        },
+      )
+
+      // Counted from the final rows, not from Phase 1's sort: a Phase-2
+      // domain failure must not let the counts claim a write that did not land.
+      const summary: ImportSummary = { created: countVerdict(results, 'created'), updated: countVerdict(results, 'updated'), skipped: countVerdict(results, 'skipped'), errors: countVerdict(results, 'error') }
+      results.sort((a, b) => a.index - b.index)
+
+      // No top-level `version`: one batch spans many files, so the
+      // fingerprint rides each row — the envelope's `import` writePath
+      // leaves it (and `enrichment_health`) absent by construction. A
+      // tripped guard rides `domain` (ADR-0018 R4 / ADR-0019 R6): a
+      // top-level observable soft signal, alongside the subject annotation
+      // it already put there. `warnings` is zero-tax the same way — absent
+      // unless a guard actually fired, never an empty array.
+      return toolSuccess(await writeReceipt(snap, deps, audited, {
+        tool: 'import_definitions',
+        writePath: 'import',
+        domain: { results, summary, ...warnings.length > 0 ? { warnings } : {} },
+      }))
     },
   )
 }

@@ -47,7 +47,7 @@ import type { McpServer } from '@modelcontextprotocol/server'
 import { loadConfig, resolveSemanticLayer } from '@semantic-grounding/substrate'
 import { z } from 'zod'
 import { assertScopeLoadable } from '../binding.ts'
-import { ScopeNotFoundError, toToolErrorResult, DefinitionValidationError } from '../errors.ts'
+import { ScopeNotFoundError, DefinitionValidationError } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { ensureStartupPosture } from '../git/posture.ts'
 import { toolSuccess } from './audited.ts'
@@ -93,30 +93,26 @@ function registerGetScopeScaffold(server: McpServer, _deps: ServerDeps): void {
       annotations: { readOnlyHint: true },
     },
     async (input) => {
-      try {
-        const dir = input.path.replace(/\/+$/, '') || '/'
-        const configTemplate = `scope_id: ${input.scope_id}\nproject:\n  name: ${input.scope_id}\n`
-        const steps = [
-          { order: 1, action: 'create the corpus skeleton', command: `mkdir -p ${dir}/tables ${dir}/events ${dir}/concepts` },
-          { order: 2, action: `write ${dir}/config.yaml`, content: configTemplate },
-          { order: 3, action: 'initialize the git repository (the corpus root must BE the repo root — every Tier-2 write is a commit)', command: `cd ${dir} && git init` },
-          { order: 4, action: 'first commit (git user must be configured — the recorder authors every later commit)', command: `cd ${dir} && git add -A && git commit -m "scope shell: ${input.scope_id}"` },
-          { order: 5, action: 'register the scope in this server\'s registry (the bootstrap door — there is no --corpus flag)', tool: 'register_scope', args: { id: input.scope_id, path: dir } },
-        ]
-        return toolSuccess({
-          scope_id: input.scope_id,
-          steps,
-          config_template: configTemplate,
-          validation: { checks: [
-            'git rev-parse --show-toplevel from inside the corpus must name the corpus root itself',
-            'the worktree must be clean at registration (posture refuses a dirty tree, recoverable lock residue excepted)',
-            `config.yaml must carry scope_id: ${input.scope_id}`,
-          ] },
-          next_steps: SCOPE_SCAFFOLD_NEXT_STEPS,
-        })
-      } catch (e) {
-        return toToolErrorResult(e)
-      }
+      const dir = input.path.replace(/\/+$/, '') || '/'
+      const configTemplate = `scope_id: ${input.scope_id}\nproject:\n  name: ${input.scope_id}\n`
+      const steps = [
+        { order: 1, action: 'create the corpus skeleton', command: `mkdir -p ${dir}/tables ${dir}/events ${dir}/concepts` },
+        { order: 2, action: `write ${dir}/config.yaml`, content: configTemplate },
+        { order: 3, action: 'initialize the git repository (the corpus root must BE the repo root — every Tier-2 write is a commit)', command: `cd ${dir} && git init` },
+        { order: 4, action: 'first commit (git user must be configured — the recorder authors every later commit)', command: `cd ${dir} && git add -A && git commit -m "scope shell: ${input.scope_id}"` },
+        { order: 5, action: 'register the scope in this server\'s registry (the bootstrap door — there is no --corpus flag)', tool: 'register_scope', args: { id: input.scope_id, path: dir } },
+      ]
+      return toolSuccess({
+        scope_id: input.scope_id,
+        steps,
+        config_template: configTemplate,
+        validation: { checks: [
+          'git rev-parse --show-toplevel from inside the corpus must name the corpus root itself',
+          'the worktree must be clean at registration (posture refuses a dirty tree, recoverable lock residue excepted)',
+          `config.yaml must carry scope_id: ${input.scope_id}`,
+        ] },
+        next_steps: SCOPE_SCAFFOLD_NEXT_STEPS,
+      })
     },
   )
 }
@@ -151,28 +147,24 @@ function registerRegisterScope(server: McpServer, deps: ServerDeps): void {
       inputSchema: RegisterScopeInputSchema,
     },
     async (input, _ctx) => {
-      try {
-        assertScopeIdShape(input.id, m => new DefinitionValidationError(m))
-        const semanticRoot = realpathSync(input.path)
-        // Constant 2: posture + full load at the door, before the table is touched.
-        // Posture failures surface #19's own coded posture_refused (−31004) with its
-        // remedy — the segment rule is one condition, one number.
-        await ensureStartupPosture({ corpusRoot: semanticRoot, agentId: deps.config.agentId, logger: () => {} })
-        assertScopeLoadable(semanticRoot)
-        const { entry, alreadyRegistered } = await deps.registry.register({
-          id: input.id,
-          semanticRoot,
-          name: corpusNameFor(semanticRoot, input.id),
-          registeredBy: deps.config.agentId,
-        })
-        return toolSuccess({
-          scope: { id: entry.id, semantic_root: entry.semanticRoot, name: entry.name },
-          already_registered: alreadyRegistered,
-          active_unchanged: true,
-        })
-      } catch (e) {
-        return toToolErrorResult(e)
-      }
+      assertScopeIdShape(input.id, m => new DefinitionValidationError(m))
+      const semanticRoot = realpathSync(input.path)
+      // Constant 2: posture + full load at the door, before the table is touched.
+      // Posture failures surface #19's own coded posture_refused (−31004) with its
+      // remedy — the segment rule is one condition, one number.
+      await ensureStartupPosture({ corpusRoot: semanticRoot, agentId: deps.config.agentId, logger: () => {} })
+      assertScopeLoadable(semanticRoot)
+      const { entry, alreadyRegistered } = await deps.registry.register({
+        id: input.id,
+        semanticRoot,
+        name: corpusNameFor(semanticRoot, input.id),
+        registeredBy: deps.config.agentId,
+      })
+      return toolSuccess({
+        scope: { id: entry.id, semantic_root: entry.semanticRoot, name: entry.name },
+        already_registered: alreadyRegistered,
+        active_unchanged: true,
+      })
     },
   )
 }
@@ -198,17 +190,13 @@ function registerDeregisterScope(server: McpServer, deps: ServerDeps): void {
       inputSchema: DeregisterScopeInputSchema,
     },
     async (input) => {
-      try {
-        const { entry, activeCleared } = await deps.registry.deregister(input.scope_id)
-        const bindingCleared = deps.bindings.clearIfActive(input.scope_id)
-        return toolSuccess({
-          removed: { id: entry.id, semantic_root: entry.semanticRoot, name: entry.name },
-          active_cleared: activeCleared,
-          binding_cleared: bindingCleared,
-        })
-      } catch (e) {
-        return toToolErrorResult(e)
-      }
+      const { entry, activeCleared } = await deps.registry.deregister(input.scope_id)
+      const bindingCleared = deps.bindings.clearIfActive(input.scope_id)
+      return toolSuccess({
+        removed: { id: entry.id, semantic_root: entry.semanticRoot, name: entry.name },
+        active_cleared: activeCleared,
+        binding_cleared: bindingCleared,
+      })
     },
   )
 }
@@ -226,26 +214,22 @@ function registerListScopes(server: McpServer, deps: ServerDeps): void {
       annotations: { readOnlyHint: true },
     },
     async () => {
-      try {
-        const state = deps.registry.read()
-        const activeId = deps.bindings.activeScopeId() ?? state.active
-        const scopes = [...state.scopes.values()].map(entry => ({
-          id: entry.id,
-          semantic_root: entry.semanticRoot,
-          name: entry.name,
-          is_active: entry.id === activeId,
-          reachable: scopeEntryReachable(entry),
-        }))
-        return toolSuccess({
-          scopes,
-          active: activeId != null && state.scopes.has(activeId)
-            ? { id: activeId, root: state.scopes.get(activeId)!.semanticRoot }
-            : null,
-          total: scopes.length,
-        })
-      } catch (e) {
-        return toToolErrorResult(e)
-      }
+      const state = deps.registry.read()
+      const activeId = deps.bindings.activeScopeId() ?? state.active
+      const scopes = [...state.scopes.values()].map(entry => ({
+        id: entry.id,
+        semantic_root: entry.semanticRoot,
+        name: entry.name,
+        is_active: entry.id === activeId,
+        reachable: scopeEntryReachable(entry),
+      }))
+      return toolSuccess({
+        scopes,
+        active: activeId != null && state.scopes.has(activeId)
+          ? { id: activeId, root: state.scopes.get(activeId)!.semanticRoot }
+          : null,
+        total: scopes.length,
+      })
     },
   )
 }
@@ -264,16 +248,12 @@ function registerSwitchScope(server: McpServer, deps: ServerDeps): void {
       inputSchema: SwitchScopeInputSchema,
     },
     async (input) => {
-      try {
-        const result = await deps.bindings.switchTo(input.scope_id)
-        return toolSuccess({
-          scope: { id: result.binding.scopeId, name: deps.registry.getEntry(result.binding.scopeId)?.name ?? result.binding.scopeId, semantic_root: result.binding.semanticRoot },
-          switched_from: result.switchedFrom,
-          counts: result.counts,
-        })
-      } catch (e) {
-        return toToolErrorResult(e)
-      }
+      const result = await deps.bindings.switchTo(input.scope_id)
+      return toolSuccess({
+        scope: { id: result.binding.scopeId, name: deps.registry.getEntry(result.binding.scopeId)?.name ?? result.binding.scopeId, semantic_root: result.binding.semanticRoot },
+        switched_from: result.switchedFrom,
+        counts: result.counts,
+      })
     },
   )
 }
@@ -294,36 +274,32 @@ function registerGetScope(server: McpServer, deps: ServerDeps): void {
       inputSchema: GetScopeInputSchema,
     },
     async (input) => {
-      try {
-        const activeId = deps.bindings.activeScopeId()
-        const scopeId = input.scope_id ?? activeId
-        if (scopeId === undefined) {
-          throw new ScopeNotFoundError('no scope named and no active scope to default to — list_scopes shows what is registered', { remedy: 'pass scope_id, or switch_scope first' })
-        }
-        const entry = deps.registry.getEntry(scopeId)
-        if (entry === undefined) {
-          throw new ScopeNotFoundError(`scope "${scopeId}" is not in the registry`, { scope_id: scopeId, remedy: 'register_scope it first' })
-        }
-        const isActive = scopeId === activeId
-        return toolSuccess({
-          scope: { id: entry.id, name: entry.name, semantic_root: entry.semanticRoot, registered_at: entry.registeredAt, registered_by: entry.registeredBy },
-          is_active: isActive,
-          reachable: scopeEntryReachable(entry),
-          // The snapshot's stamp for the active scope: what this process is actually
-          // serving right now (ADR-0011's response layer), not just the table entry.
-          ...(isActive
-          ? {
-              serving: { id: scopeId, root: entry.semanticRoot },
-              // The description's counts promise (#102 6a): the serving snapshot's
-              // definition counts via `layerCounts` — the one count derivation,
-              // shared with guidance/playbook, never forked.
-              counts: layerCounts(deps.bindings.requireSnapshot()),
-            }
-          : {}),
-        })
-      } catch (e) {
-        return toToolErrorResult(e)
+      const activeId = deps.bindings.activeScopeId()
+      const scopeId = input.scope_id ?? activeId
+      if (scopeId === undefined) {
+        throw new ScopeNotFoundError('no scope named and no active scope to default to — list_scopes shows what is registered', { remedy: 'pass scope_id, or switch_scope first' })
       }
+      const entry = deps.registry.getEntry(scopeId)
+      if (entry === undefined) {
+        throw new ScopeNotFoundError(`scope "${scopeId}" is not in the registry`, { scope_id: scopeId, remedy: 'register_scope it first' })
+      }
+      const isActive = scopeId === activeId
+      return toolSuccess({
+        scope: { id: entry.id, name: entry.name, semantic_root: entry.semanticRoot, registered_at: entry.registeredAt, registered_by: entry.registeredBy },
+        is_active: isActive,
+        reachable: scopeEntryReachable(entry),
+        // The snapshot's stamp for the active scope: what this process is actually
+        // serving right now (ADR-0011's response layer), not just the table entry.
+        ...(isActive
+        ? {
+            serving: { id: scopeId, root: entry.semanticRoot },
+            // The description's counts promise (#102 6a): the serving snapshot's
+            // definition counts via `layerCounts` — the one count derivation,
+            // shared with guidance/playbook, never forked.
+            counts: layerCounts(deps.bindings.requireSnapshot()),
+          }
+        : {}),
+      })
     },
   )
 }

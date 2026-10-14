@@ -20,7 +20,7 @@
 import type { McpServer } from '@modelcontextprotocol/server'
 import { discard, listing, loadPending, submit } from '@semantic-grounding/substrate'
 import { z } from 'zod'
-import { SuggestionNotFoundError, toToolErrorResult } from '../errors.ts'
+import { SuggestionNotFoundError } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { scopeStamp } from './audited.ts'
 import { pendingQueueRoot, type ToolFamily } from './shared.ts'
@@ -47,25 +47,21 @@ function registerSubmitSuggestion(server: McpServer, deps: ServerDeps): void {
       inputSchema: SubmitSuggestionInputSchema,
     },
     async (input) => {
-      try {
-        const snap = deps.bindings.requireSnapshot()
-        const root = await pendingQueueRoot(snap.recorder)
-        // Built explicitly, not `submit(root, input)`: zod leaves an omitted optional
-        // key genuinely absent, but under this package's `exactOptionalPropertyTypes`
-        // that is a different type from `SubmitArgs`'s `string | null` optionals — the
-        // key must be omitted from the object literal entirely, not set to `undefined`.
-        const suggestion = submit(root, {
-          kind: input.kind,
-          subject: input.subject,
-          content: input.content,
-          ...input.scope_id !== undefined ? { scope_id: input.scope_id } : {},
-          ...input.tenant_id !== undefined ? { tenant_id: input.tenant_id } : {},
-          ...input.meta !== undefined ? { meta: input.meta } : {},
-        })
-        return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), suggestion }) }] }
-      } catch (e) {
-        return toToolErrorResult(e)
-      }
+      const snap = deps.bindings.requireSnapshot()
+      const root = await pendingQueueRoot(snap.recorder)
+      // Built explicitly, not `submit(root, input)`: zod leaves an omitted optional
+      // key genuinely absent, but under this package's `exactOptionalPropertyTypes`
+      // that is a different type from `SubmitArgs`'s `string | null` optionals — the
+      // key must be omitted from the object literal entirely, not set to `undefined`.
+      const suggestion = submit(root, {
+        kind: input.kind,
+        subject: input.subject,
+        content: input.content,
+        ...input.scope_id !== undefined ? { scope_id: input.scope_id } : {},
+        ...input.tenant_id !== undefined ? { tenant_id: input.tenant_id } : {},
+        ...input.meta !== undefined ? { meta: input.meta } : {},
+      })
+      return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), suggestion }) }] }
     },
   )
 }
@@ -81,14 +77,10 @@ function registerListSuggestions(server: McpServer, deps: ServerDeps): void {
       annotations: { readOnlyHint: true },
     },
     async () => {
-      try {
-        const snap = deps.bindings.requireSnapshot()
-        const root = await pendingQueueRoot(snap.recorder)
-        const suggestions = listing(root)
-        return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), suggestions }) }] }
-      } catch (e) {
-        return toToolErrorResult(e)
-      }
+      const snap = deps.bindings.requireSnapshot()
+      const root = await pendingQueueRoot(snap.recorder)
+      const suggestions = listing(root)
+      return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), suggestions }) }] }
     },
   )
 }
@@ -108,17 +100,13 @@ function registerGetSuggestion(server: McpServer, deps: ServerDeps): void {
       annotations: { readOnlyHint: true },
     },
     async (input) => {
-      try {
-        const snap = deps.bindings.requireSnapshot()
-        const root = await pendingQueueRoot(snap.recorder)
-        const suggestion = loadPending(root, input.suggestion_id)
-        if (suggestion === null) {
-          throw new SuggestionNotFoundError(`no pending suggestion "${input.suggestion_id}"`, { suggestion_id: input.suggestion_id })
-        }
-        return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), suggestion }) }] }
-      } catch (e) {
-        return toToolErrorResult(e)
+      const snap = deps.bindings.requireSnapshot()
+      const root = await pendingQueueRoot(snap.recorder)
+      const suggestion = loadPending(root, input.suggestion_id)
+      if (suggestion === null) {
+        throw new SuggestionNotFoundError(`no pending suggestion "${input.suggestion_id}"`, { suggestion_id: input.suggestion_id })
       }
+      return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), suggestion }) }] }
     },
   )
 }
@@ -133,17 +121,13 @@ function registerDiscardSuggestion(server: McpServer, deps: ServerDeps): void {
       inputSchema: SuggestionIdInputSchema,
     },
     async (input) => {
-      try {
-        const snap = deps.bindings.requireSnapshot()
-        const root = await pendingQueueRoot(snap.recorder)
-        const ok = discard(root, input.suggestion_id)
-        if (!ok) {
-          throw new SuggestionNotFoundError(`no pending suggestion "${input.suggestion_id}"`, { suggestion_id: input.suggestion_id })
-        }
-        return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), discarded: true, suggestion_id: input.suggestion_id }) }] }
-      } catch (e) {
-        return toToolErrorResult(e)
+      const snap = deps.bindings.requireSnapshot()
+      const root = await pendingQueueRoot(snap.recorder)
+      const ok = discard(root, input.suggestion_id)
+      if (!ok) {
+        throw new SuggestionNotFoundError(`no pending suggestion "${input.suggestion_id}"`, { suggestion_id: input.suggestion_id })
       }
+      return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), discarded: true, suggestion_id: input.suggestion_id }) }] }
     },
   )
 }

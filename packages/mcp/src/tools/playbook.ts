@@ -65,7 +65,7 @@
 import type { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 import type { ScopeBinding } from '../binding.ts'
-import { ScopeMismatchError, toToolErrorResult } from '../errors.ts'
+import { ScopeMismatchError } from '../errors.ts'
 import { scopeEntryReachable } from '../scope-registry.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { toolSuccess } from './audited.ts'
@@ -317,33 +317,29 @@ function registerGetInitializationPlaybook(server: McpServer, deps: ServerDeps):
       annotations: { readOnlyHint: true },
     },
     async (input) => {
-      try {
-        const snap = deps.bindings.snapshot()
-        if (snap !== undefined && snap.scopeId === input.scope_id) {
-          return toolSuccess(await playbookFromSnapshot(snap, deps.config.guidanceThreshold, snap.semanticRoot))
-        }
-        // Not the scope this process is serving. The registry alone decides which
-        // of R6's two phase-1 entry conditions this is — "not in the registry" /
-        // "registered but unreachable" answer with a scope_registration playbook,
-        // "registered and reachable but not bound" is the −31064 refusal.
-        const entry = deps.registry.getEntry(input.scope_id)
-        if (entry === undefined) {
-          return toolSuccess(unregisteredPlaybook(input.scope_id, null, false))
-        }
-        if (!scopeEntryReachable(entry)) {
-          return toolSuccess(unregisteredPlaybook(input.scope_id, entry.semanticRoot, true))
-        }
-        throw new ScopeMismatchError(
-          `playbook asked for scope "${input.scope_id}", which is registered but not the scope this process is serving${snap === undefined ? ' (no scope is active)' : ` ("${snap.scopeId}" is)`} — its corpus cannot be read without binding it, and binding is switch_scope's move, never a read's side effect`,
-          {
-            asserted_scope_id: input.scope_id,
-            active_scope_id: snap?.scopeId ?? null,
-            remedy: 'switch_scope to the scope you meant, then re-ask',
-          },
-        )
-      } catch (e) {
-        return toToolErrorResult(e)
+      const snap = deps.bindings.snapshot()
+      if (snap !== undefined && snap.scopeId === input.scope_id) {
+        return toolSuccess(await playbookFromSnapshot(snap, deps.config.guidanceThreshold, snap.semanticRoot))
       }
+      // Not the scope this process is serving. The registry alone decides which
+      // of R6's two phase-1 entry conditions this is — "not in the registry" /
+      // "registered but unreachable" answer with a scope_registration playbook,
+      // "registered and reachable but not bound" is the −31064 refusal.
+      const entry = deps.registry.getEntry(input.scope_id)
+      if (entry === undefined) {
+        return toolSuccess(unregisteredPlaybook(input.scope_id, null, false))
+      }
+      if (!scopeEntryReachable(entry)) {
+        return toolSuccess(unregisteredPlaybook(input.scope_id, entry.semanticRoot, true))
+      }
+      throw new ScopeMismatchError(
+        `playbook asked for scope "${input.scope_id}", which is registered but not the scope this process is serving${snap === undefined ? ' (no scope is active)' : ` ("${snap.scopeId}" is)`} — its corpus cannot be read without binding it, and binding is switch_scope's move, never a read's side effect`,
+        {
+          asserted_scope_id: input.scope_id,
+          active_scope_id: snap?.scopeId ?? null,
+          remedy: 'switch_scope to the scope you meant, then re-ask',
+        },
+      )
     },
   )
 }

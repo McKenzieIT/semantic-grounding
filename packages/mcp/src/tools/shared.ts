@@ -22,7 +22,7 @@ import { join } from 'node:path'
 import { CLIENT_INFO_META_KEY, type ServerContext } from '@modelcontextprotocol/server'
 import { ConceptDefinitionSchema, EventDefinitionSchema, TableDefinitionSchema } from '@semantic-grounding/substrate'
 import { z } from 'zod'
-import { DefinitionNotFoundError, DefinitionValidationError, UnsupportedUpdateFieldError } from '../errors.ts'
+import { DefinitionNotFoundError, DefinitionValidationError, UnsupportedUpdateFieldError, isSubstrateNotFound } from '../errors.ts'
 import type { GitTier2Recorder } from '../git/recorder.ts'
 import type { ToolRegistrar } from '../server.ts'
 
@@ -384,19 +384,24 @@ type UpdateResult = { readonly ok: true } | { readonly ok: false; readonly error
  * non-throwing `{ok:false, error}` into the right coded error — the substrate
  * reports two genuinely different conditions through that one string field,
  * and ADR-0005 ruling 8 asks both to be discriminable.
+ *
+ * The not-found half of the discrimination is not spelled here: the three
+ * message prefixes live in one place, `isSubstrateNotFound` (`errors.ts`'s
+ * substrate→coded adapter family, #120/C5), shared with the thrown-error
+ * adapter the item tools use — two hand-copied `startsWith` ladders used to
+ * carry the same knowledge in parallel.
  * @param result - whatever `core.updateTableMeta` / `core.updateEventMeta` / `core.updateConceptMeta` resolved to.
  * @param kind - which kind was being updated (for the error's structured `data`).
  * @param name - the table_name / event / concept name being updated.
- * @throws DefinitionNotFoundError when the substrate's message starts with
- *   `"Table not found"` / `"Event not found"` / `"Concept not found"` (the
- *   target vanished between this tool's own checks and the lock-protected
- *   write — see `write.ts` / `items.ts`).
+ * @throws DefinitionNotFoundError when the substrate's message is a not-found
+ *   report (the target vanished between this tool's own checks and the
+ *   lock-protected write — see `write.ts` / `items.ts`).
  * @throws DefinitionValidationError for every other failure message (the merged
  *   document failed the kind's full schema).
  */
 export function assertUpdateOk(result: UpdateResult, kind: 'table' | 'event' | 'concept', name: string): void {
   if (result.ok) return
-  if (result.error.startsWith('Table not found') || result.error.startsWith('Event not found') || result.error.startsWith('Concept not found')) {
+  if (isSubstrateNotFound(result.error)) {
     throw new DefinitionNotFoundError(result.error, { kind, name })
   }
   throw new DefinitionValidationError(result.error, { kind, name })
