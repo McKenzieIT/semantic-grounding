@@ -7,17 +7,16 @@
  * varies by kind or pipeline lives in the {@link EnrichmentKindAdapter}
  * (types.ts) the caller passes in.
  *
- * The free functions over the adapters are the public contract and stay
- * byte-identical through the migration (on-write hooks and dsh depend on
- * them); this module never appears on the public barrel (ADR-0002, ADR-0006
+ * The free functions with outside dependents are the `enrichAll*` entry
+ * points in the adapter files — on-write hooks call them in-process, and dsh
+ * (the package exports only `"."`) reaches them through the barrel. The
+ * engine here has no such dependents: the adapter files consume it directly,
+ * and this module never appears on the public barrel (ADR-0002, ADR-0006
  * ruling 3).
  *
  * @module enrichment/sweep (internal; only `"."` is importable — see ADR-0002)
  */
-import type { Tier2Opts } from '../io.ts'
 import type { EnrichmentKindAdapter, SweepOpts } from './types.ts'
-import { enrichAllTablesAltLabels } from './table-adapter.ts'
-import { enrichAllEventsAltLabels } from './event-adapter.ts'
 
 /** What one sweep run reports — the shape all four pipeline wrappers always
  * returned (`note` only ever set by a prepare-skip, GA-GT3-6b). */
@@ -98,30 +97,4 @@ export async function sweepEnrichment<TDef, TItem, TCtx>(
     }
   }
   return { enriched, written, errors }
-}
-
-/**
- * Enrich ALL definitions (tables + events) in a semantic layer with alt_labels.
- * Convenience wrapper: runs `enrichAllTablesAltLabels` + `enrichAllEventsAltLabels`.
- *
- * @param semanticLayer - the semantic-layer directory path.
- * @param tables - optional table_name filter (omit to enrich all tables).
- * @param events - optional event-name filter (omit to enrich all events).
- * @param tier2 - optional Tier-2 options (#18); forwarded verbatim to both
- *   `enrichAllTablesAltLabels` and `enrichAllEventsAltLabels`.
- * @returns combined `enriched` + `written` + `errors`.
- */
-export async function discoverAltLabels(
-  semanticLayer: string,
-  tables?: readonly string[],
-  events?: readonly string[],
-  tier2?: Tier2Opts,
-): Promise<{ enriched: number; written: number; errors: string[] }> {
-  const tRes = await enrichAllTablesAltLabels(semanticLayer, tables, tier2)
-  const eRes = await enrichAllEventsAltLabels(semanticLayer, events, tier2)
-  return {
-    enriched: tRes.enriched + eRes.enriched,
-    written: tRes.written + eRes.written,
-    errors: [...tRes.errors, ...eRes.errors],
-  }
 }

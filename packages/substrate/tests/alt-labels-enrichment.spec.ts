@@ -1,25 +1,21 @@
 /**
  * CL-1 Phase 3 — alt_labels pure-machinery tests: discoverAltLabelsDeterministic,
  * buildAltLabelsPrompt, parseAltLabelsResponse, mergeAltLabels,
- * discoverAltLabelsFor, plus the combined discoverAltLabels wrapper. The
- * sweep orchestration (enrichAllTablesAltLabels / enrichAllEventsAltLabels on
- * the sweep engine) lives in sweep.spec.ts, parameterized per kind
- * (map #64 / #67).
+ * discoverAltLabelsFor. The sweep orchestration (enrichAllTablesAltLabels /
+ * enrichAllEventsAltLabels on the sweep engine) lives in sweep.spec.ts,
+ * parameterized per kind (map #64 / #67); the combined discoverAltLabels
+ * wrapper is retired (#160 — the Core method assembles the per-leg calls
+ * itself, ADR-0007).
  */
-import { test, expect, describe, beforeEach, afterEach } from 'vitest'
-import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from 'node:fs'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
+import { test, expect, describe } from 'vitest'
 import {
   discoverAltLabelsDeterministic,
   buildAltLabelsPrompt,
   parseAltLabelsResponse,
   mergeAltLabels,
   discoverAltLabelsFor,
-  discoverAltLabels,
   type AltLabelsTarget,
 } from '../src/enrichment.ts'
-import { dumpYaml } from '../src/io.ts'
 
 // ── Deterministic round ──────────────────────────────────────────────────
 
@@ -248,42 +244,5 @@ describe('discoverAltLabelsFor', () => {
     const labels = await discoverAltLabelsFor(target)
     expect(labels).toContain('DAU')
     expect(labels).toContain('活跃')
-  })
-})
-
-// ── discoverAltLabels (combined) ─────────────────────────────────────────
-
-describe('discoverAltLabels', () => {
-  let root: string
-
-  beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), 'alt-labels-all-'))
-    mkdirSync(join(root, 'tables'), { recursive: true })
-    mkdirSync(join(root, 'events', 'social'), { recursive: true })
-  })
-  afterEach(() =>{  rmSync(root, { recursive: true, force: true }) })
-
-  test('enriches both tables and events', async () => {
-    writeFileSync(join(root, 'tables', 'dws_active.yaml'), dumpYaml({
-      table_name: 'dws_active',
-      description: '日活（DAU）',
-      domains: [],
-      columns: [],
-      kind: 'dws',
-      primary_key: [],
-      label_columns: [],
-      alt_labels: [],
-    }))
-    writeFileSync(join(root, 'events', 'social', 'social.chat.yaml'), dumpYaml({
-      name: 'social.chat',
-      description: '聊天事件（即时通讯）',
-      domains: ['社交'],
-      params_fields: {},
-      alt_labels: [],
-    }))
-    const res = await discoverAltLabels(root)
-    expect(res.enriched).toBe(2)
-    expect(res.written).toBe(2)
-    expect(res.errors).toEqual([])
   })
 })

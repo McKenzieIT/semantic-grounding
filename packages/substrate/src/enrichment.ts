@@ -130,7 +130,6 @@ export {
   buildDimInventory,
   discoverEventRelationsDeterministic,
   buildEventLlmPrompt,
-  discoverEventRelationsFor,
   relationVetoSet,
 } from './enrichment/relations.ts'
 export {
@@ -146,17 +145,13 @@ export {
 } from './enrichment/alt-labels.ts'
 export {
   enrichAllTablesAltLabels,
-  tableAltLabelsAdapter,
   enrichAllDwsTables,
-  tableRelationsAdapter,
 } from './enrichment/table-adapter.ts'
 export {
   enrichAllEventsAltLabels,
-  eventAltLabelsAdapter,
   enrichAllEvents,
-  eventRelationsAdapter,
 } from './enrichment/event-adapter.ts'
-export { sweepEnrichment, discoverAltLabels, type SweepResult } from './enrichment/sweep.ts'
+export { sweepEnrichment } from './enrichment/sweep.ts'
 export {
   type EnrichmentKindAdapter,
   type MergeContext,
