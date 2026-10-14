@@ -10,8 +10,8 @@
 
 | # | 候选 | 区域 | 强度 |
 |---|---|---|---|
-| C9 | `loadBuiltinDefinitions` kind↔schema 双声明收敛（schema 半边归 plugin） | substrate | **Strong（首推之一）· 已开图**（[map #139](https://github.com/McKenzieIT/semantic-grounding/issues/139)，frontier = 裁决票 [#140](https://github.com/McKenzieIT/semantic-grounding/issues/140)，执行 [#141](https://github.com/McKenzieIT/semantic-grounding/issues/141)） |
-| C10 | `update*Meta` 三联体 read-merge-validate 手抄收 seam（update 家族半区） | substrate | **Strong（首推之一）· 已开图**（map #139，执行 [#142](https://github.com/McKenzieIT/semantic-grounding/issues/142)、终验 [#143](https://github.com/McKenzieIT/semantic-grounding/issues/143)） |
+| C9 | `loadBuiltinDefinitions` kind↔schema 双声明收敛（schema 半边归 plugin） | substrate | **Strong（首推之一）· 已落地**（[map #139](https://github.com/McKenzieIT/semantic-grounding/issues/139) 四票 2026-10-14 同日全解关图：[#140](https://github.com/McKenzieIT/semantic-grounding/issues/140) 裁决四问全签 → #141 `4e3f353` 认人半边留 `loadBuiltinDefinitions` 返 raw 条目、验货收进 `loadKindDefinitions` 唯一通用循环 `plugin.schema.safeParse`、:118 三值 import 删〔index.ts 1548→1533〕） |
+| C10 | `update*Meta` 三联体 read-merge-validate 手抄收 seam（update 家族半区） | substrate | **Strong（首推之一）· 已落地**（map #139 #142 `2c75b5b` 私有 `updateMetaFile`（io.ts:1020）五点描述符 seam〔`*_META_DESCRIPTOR` 三常量〕、三公开函数各剩 1 行调用、签名/结果类型/错误字符串三族逐字不动、version 回执语义不动〔ADR-0004 裁决 8〕；终验 [#143](https://github.com/McKenzieIT/semantic-grounding/issues/143) 实核 barrel 27 手工 deepEqual） |
 | C11 | import 写域三件：R3 收据文案三抄 / 分类知识两处家 / writable 装载梯子五现场 | mcp | Worth exploring（一域一票可清）· **已开票**（[#144](https://github.com/McKenzieIT/semantic-grounding/issues/144)） |
 | C12 | `tools/shared.ts` 两个单消费者成员迁出（clientNameFromEnvelope → audited / pendingQueueRoot → suggestions） | mcp | Worth exploring（顺手批）· **已开票**（[#145](https://github.com/McKenzieIT/semantic-grounding/issues/145)） |
 | C13 | e2e 读惯例两 helper（versionOf/definition 手抄 ×19+×19）+ 阶段重号等三小件 | 测试拓扑 | Worth exploring · **已开票**（[#146](https://github.com/McKenzieIT/semantic-grounding/issues/146)） |
@@ -25,7 +25,9 @@ Speculative 尾巴（不占编号，随最近落地票顺手）：dry_run 响应
 
 ---
 
-## C9 · `loadBuiltinDefinitions`：kind↔schema 双声明收敛（Strong）
+## C9 · `loadBuiltinDefinitions`：kind↔schema 双声明收敛（Strong）——已落地（map #139，2026-10-14 `4e3f353`）
+
+> **落地核验（2026-10-14，#143 终验）**：形状按 #140 裁决①的执行级裁量落定——认人半边留 `loadBuiltinDefinitions`（按插件身份取 loader、返 raw 条目 `.raw`），验货半边归 `loadKindDefinitions` 既有唯一通用循环 `plugin.schema.safeParse`（index.ts:660 单点）。rg 实核：index.ts 内 `safeParse` 仅此一处代码命中；三 Schema 名只剩 :129-131 公开 re-export（对基线 `8c44911` md5 字节不变，行号 -1 漂移）+ :1369 JSDoc 文字提及；:118 三值 import 删，index.ts 1548→**1533**（硬顶 1550 安全带回归）；loader 认人保留（events domain 子目录硬根因不在本图）；注释诚实化照裁决②（JSDoc 明写通用路径只覆盖平铺布局、自带特殊布局的 kind 仍要在 `loadBuiltinDefinitions` 报到）。改动面仅 index.ts 一文件；四门禁亲跑 typecheck 双包 0 / substrate 450 / mcp 447+1skip / e2e 22（tools: 29）。
 
 **文件**：`packages/substrate/src/index.ts:598-622`（三分支各 ~8 行）· `:118`（`EventDefinitionSchema`/`TableDefinitionSchema`/`ConceptDefinitionSchema` 三值 import）· `kinds/` 三插件（`schema` 字段）。参照系：registry 插件 seam（ADR-0003）与 `loadKindDefinitions` 的注册驱动循环。
 
@@ -40,7 +42,9 @@ Speculative 尾巴（不占编号，随最近落地票顺手）：dry_run 响应
 
 **ADR**：无冲突——ADR-0002/0003 名单不动；「后注册 kind 不改这里就能上图」的宣称（index.ts:587-597/662-678）从「只对扁平布局成立」向真话逼近一步（loader 身份仍在此处，宣称完整兑现需 events 布局改造，不在本候选）。
 
-## C10 · `update*Meta` 三联体：read-merge-validate 手抄收 seam（Strong）
+## C10 · `update*Meta` 三联体：read-merge-validate 手抄收 seam（Strong）——已落地（map #139，2026-10-14 `2c75b5b`）
+
+> **落地核验（2026-10-14，#143 终验）**：三联体（基线 io.ts:958-976/:1008-1026/:1101-1119）收私有 `updateMetaFile`（io.ts:1020）——五点差异走 `UpdateMetaDescriptor` 描述符（`TABLE/EVENT/CONCEPT_META_DESCRIPTOR` 三常量 `as const satisfies`），三公开函数各剩 **1 行** seam 调用（优于票面 3-4 行上限）。rg 实核：`yaml.load(before.raw)` 唯一 1 处（updateMetaFile 体内 :1030）；`updateMetaFile` 全仓唯一定义 + 三调用点全在 io.ts、不进 barrel。红线对基线逐字节比对：错误字符串三族经 `kind.label` 参数化渲染 ≡ 基线字面量（`Table|Event|Concept not found/malformed`、`Validation failed after update`）；审计 verb+subject（`update_*_meta` × `{<kind>_name: name, updates}`）与结果键三族逐字不动；version = `atomicWrite` 返回值内联、从不写后重读（ADR-0004 裁决 8）；三公开签名+结果类型 diff 中均为未改动 context（`^-` 零命中）、`version-roundtrip.spec.ts` 零改动全绿。分层注释两半区对称（create `writeDefinitionFile` / update `updateMetaFile`）；四门禁亲跑同 C9 注记；barrel **27+default** 对 tsdown 构建产物手工 deepEqual 精确相等（acceptance 脚本 npm-ENOENT Windows 坑，照 #61/#87/#123 先例）。
 
 **文件**：`packages/substrate/src/io.ts:958-976`（`updateTableMeta`）· `:1008-1026`（`updateEventMeta`）· `:1101-1119`（`updateConceptMeta`）。参照系：C8.2 `writeDefinitionFile`（io.ts:820，**create** 家族 seam）+ io.ts:741-744 注释自认的 `auditedFileWrite` 抄写史（"Seven write paths previously carried this ceremony as hand-maintained copies"）。
 
