@@ -43,7 +43,7 @@ Issue 追踪在 GitHub（McKenzieIT/semantic-grounding），通过 `gh` CLI 操�
 
 ### 当前基线
 
-2026-10-15 起（#149 后）：**typecheck 双包 0 / substrate 450 / mcp 437+1skip**（#149 删 `assertScopeIdShape` 10 直测，旧值 447+1skip）**/ e2e 22 / catalog spec 29 工具断言（文件 35 测）/ barrel 27+default / 工具面 29**。门禁数字漂移时以当日亲跑为准并勘误本节。
+2026-10-15 起（#160 后）：**typecheck 双包 0 / substrate 449 / mcp 437+1skip**（#149 删 `assertScopeIdShape` 10 直测 447→437；#160 删 combined describe 1 直测 450→449）**/ e2e 22 / catalog spec 29 工具断言（文件 35 测）/ barrel 27+default / 工具面 29**。门禁数字漂移时以当日亲跑为准并勘误本节。
 
 ### 环境坑
 
@@ -89,3 +89,4 @@ Issue 追踪在 GitHub（McKenzieIT/semantic-grounding），通过 `gh` CLI 操�
 - **map [#139](https://github.com/McKenzieIT/semantic-grounding/issues/139)** C9+C10 双深化第二弹——`loadBuiltinDefinitions` 认人/验货分家（plugin.schema.safeParse 唯一循环）+ `update*Meta` 收私有 `updateMetaFile` seam；公开面零变化。
 - **#144–#149 第二轮巡检 standalone 六票批**（2026-10-15 subagent worktree 六路并行落地、主会话串行合入，合入 sha 均为 rebase 后终 sha）：[#144](https://github.com/McKenzieIT/semantic-grounding/issues/144) `91ecbd0` import 写域三件收 seam（`itemVerbDetail` 单点/`countNodesByKind` 单家/`loadWritable` 两 seam 五现场）、[#145](https://github.com/McKenzieIT/semantic-grounding/issues/145) `f4b2301` shared.ts 两单消费者成员迁出（「shared = 跨家族」契约恢复为真）、[#146](https://github.com/McKenzieIT/semantic-grounding/issues/146) `06aa57a` e2e 读惯例收敛（`baselineOf`/`definitionOf` 收编手抄镜像，第二 Phase 4.5 改 4.6）、[#147](https://github.com/McKenzieIT/semantic-grounding/issues/147) `aa92d76` substrate 卫生批三件归一、[#148](https://github.com/McKenzieIT/semantic-grounding/issues/148) `75f16ca` 巡检散文漂移七件清、[#149](https://github.com/McKenzieIT/semantic-grounding/issues/149) `7c9df42` scope-id 单点化（`assertScopeIdShape` 退役，mcp 基线 447+1skip→437+1skip）；docs 收尾 `cad0816`。**S2 死码用户裁决本轮不开票**（另 effort）。
 - **[#150](https://github.com/McKenzieIT/semantic-grounding/issues/150)** CLAUDE.md 票史账本 compact——已关图一行一图、常设小节抽出（基线/环境坑/一行关票）、活跃图 #125 细节保留；压缩前 blob `ac9db29` 可 `git show` 回查，随本 commit 落地已解。
+- **#160–#162 第三轮巡检 standalone 三票批**（2026-10-15 subagent worktree 三路并行落地、主会话串行合入，报告 `docs/architecture-review-2026-10-15.md` 行标与节首核验注记已落）：[#160](https://github.com/McKenzieIT/semantic-grounding/issues/160) `d66a13a` enrichment 收编面死名批（自由 `discoverAltLabels` 合并器退役 + 六死名清〔四适配器值/SweepResult/discoverEventRelationsFor〕；**sweepEnrichment 留存 = 巡检证据勘误**〔sweep.spec:23 经收编面消费〕；substrate 450→**449**）、[#161](https://github.com/McKenzieIT/semantic-grounding/issues/161) `582cb39` update 三件套迁 write.ts + apply_enrichment 约束去手抄（广告面 **+2 description 键对齐 commit-class 口径**——巡检「零 diff」口径勘误；errors.ts:607 假锚 3 词修正随票）、[#162](https://github.com/McKenzieIT/semantic-grounding/issues/162) `ebf0e99` 巡检 §S6 文档/锚点漂移 13 件清（含 ADR-0011 补 #149 Update 节、ADR-0010 死符号改指 `itemSuppressionFieldName` 实测锚）。

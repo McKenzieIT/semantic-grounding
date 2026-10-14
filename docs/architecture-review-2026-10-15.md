@@ -2,7 +2,7 @@
 
 **基线** `main b5c86df`，四门禁当日亲跑全绿：typecheck 双包 0 / substrate **450**（28 文件）/ mcp **437+1skip**（27 文件）/ e2e **22**（banner 29）——与 CLAUDE.md 基线节逐字吻合。前两轮已收官，报告均已删除：首轮全文 `git show 2913c26:docs/architecture-review-2026-10-13.md`、第二轮全文 `git show b5c86df:docs/architecture-review-2026-10-14.md` 可回查，**本文件即第三任**。扫描按热点加权：六票批（#144–#149）与 map #139 刚收 seam 的落点做「收后残件」复核，外加前两轮从未深查的面（substrate `src/enrichment/` 子目录六件 1469 行、metrics.ts、corpus.ts、pending.ts、kinds/、read-epoch.ts、io-probes.ts；mcp git/ 六件、errors.ts、config.ts、binding.ts、server.ts、main.ts）。三路并行子代理（substrate / mcp / 测试+脚本+文档）+ 主会话 rg 亲验全部 Strong 与 Worth exploring 级发现的消费者证据——其中一件子代理提报被主会话**证伪**（RelationGraph 读面，见否决清单），一件修正（K3 广告面 diff 实为零，见 C16②）。
 
-**总判**：本轮**无 Strong 级结构候选**。两轮收割后，代码面的主病（浅 module / 手抄仪式 / 同一知识多份家）已稀薄到卫生级；新发现集中在三类——①「面收窄」卫生批两票（C15/C16，均 Worth exploring、公开面零触碰或纯换装零 diff）；②S2 死码册**补遗**四件（用户已裁另 effort，本轮只补证据不重裁）；③六票批连带锚点残件与散文漂移一票修字批（S6，内含 2 件 Strong 级事实错误）。真正的结构前沿在 KG/memory 票线（map #125，frontier #151），不在巡检轴——见「首推」节明示。
+**总判**：本轮**无 Strong 级结构候选**。两轮收割后，代码面的主病（浅 module / 手抄仪式 / 同一知识多份家）已稀薄到卫生级；新发现集中在三类——①「面收窄」卫生批两票（C15/C16，均 Worth exploring、公开面零触碰或纯换装零 diff）；②S2 死码册**补遗**四件（用户已裁另 effort，本轮只补证据不重裁）；③六票批连带锚点残件与散文漂移一票修字批（S6，内含 2 件 Strong 级事实错误）。真正的结构前沿在 KG/memory 票线（map #125，frontier #151），不在巡检轴——见「首推」节明示。**三票收束（同日）**：C15/C16/S6 已落地（终态 substrate 449），详见候选总览行标、各节首核验注记与首推收束注记。
 
 **已排除**（不重提）：承前两轮全部——首轮 C1–C8、S1（map #88/#95/#106/#113/#118）；S3/S4 余件（#137）；C9/C10（map #139）；C11–C14（#144–#147）；S5（#149）；第二轮否决清单与 ADR/map Out-of-scope 停放项照册（C8.1 concepts 进 epoch、index.ts 分块硬顶 1550〔现 1537，余量 13〕、epoch 外自由函数、epoch 可观测性、注销缓存淘汰、多 session、跨 scope 参考、域模板、run_enrichment 编排下沉、snapshot.ts/schema-provider.ts 暂缓区）；**S2 死码七件+拍板项**（用户裁决另 effort——本轮只补册，见 §S2 补遗）；Speculative 尾巴两件（dry_run `staged` 键 / scratch 钳制双写——现状核实**均未动**，import.ts:497 现址、scratch.ts:108/:160）；KG/memory 票线一切主题（map #125：frontier #151，#136/#152/#154/#155 被挡；ADR-0021..0026 的 memory 存储/晋升/读面/已验证查询/悬空锚点/休眠槽/图节点 id 归该线）。
 
@@ -10,16 +10,18 @@
 
 | # | 候选 | 区域 | 强度 |
 |---|---|---|---|
-| C15 | enrichment 收编面死名批：自由 `discoverAltLabels` 合并包装器（生产死码）+ 收编面六个零消费名（四适配器值 / `SweepResult` / `discoverEventRelationsFor`，连带 :159 整行 `sweepEnrichment`） | substrate | **Worth exploring（首推之一）** |
-| C16 | update 路径三件套错居迁 `write.ts`（`applyFieldUpdate`/`assertUpdateOk`/`ApplyResult`）+ `apply_enrichment` Tier-2 参数约束两行手抄改单家 | mcp | **Worth exploring（首推之一，#145 体例）** |
+| C15 | enrichment 收编面死名批：自由 `discoverAltLabels` 合并包装器（生产死码）+ 收编面六个零消费名（四适配器值 / `SweepResult` / `discoverEventRelationsFor`，连带 :159 整行 `sweepEnrichment`） | substrate | **Worth exploring（首推之一）· 已落地**（[#160](https://github.com/McKenzieIT/semantic-grounding/issues/160)，2026-10-15 `d66a13a`：合并器+六死名删〔combined describe 实为 1 it，substrate 450→449〕；**sweepEnrichment 留存 = 本报告证据勘误**，见节首注记） |
+| C16 | update 路径三件套错居迁 `write.ts`（`applyFieldUpdate`/`assertUpdateOk`/`ApplyResult`）+ `apply_enrichment` Tier-2 参数约束两行手抄改单家 | mcp | **Worth exploring（首推之一，#145 体例）· 已落地**（[#161](https://github.com/McKenzieIT/semantic-grounding/issues/161)，2026-10-15 `582cb39`：字节级迁移 + 约束单家化；**广告面「零 diff」口径勘误为 +2 description 键**，见节首注记） |
 | S2 补遗 | 死码册新增：`JSONRPC_RESERVED_RANGE`（**Strong 单件**，零消费者）/ `INTENT_TOOL_NAMES`+`INTENT_TOOL_REGISTRARS` / `loadMetricDefinitions` 别名 / `TableMetaSchema` export 死键 | 混合 | **并入 S2 议题单（用户已裁另 effort），不独立开票** |
-| S6 | 文档/锚点漂移新增批 13 件：spec 自述对账 ×2（Strong）· ADR 锚点死符号/迁家残件 ×3 · 头注路径/行号锚/时态 ×3 · metrics 文档债 ×3 · tests/README 计数 · enrichment.ts 自注第二实例 | docs | Strong 2 + 修字 11（一票批，#148 体例） |
+| S6 | 文档/锚点漂移新增批 13 件：spec 自述对账 ×2（Strong）· ADR 锚点死符号/迁家残件 ×3 · 头注路径/行号锚/时态 ×3 · metrics 文档债 ×3 · tests/README 计数 · enrichment.ts 自注第二实例 | docs | Strong 2 + 修字 11（一票批，#148 体例）· **已落地**（[#162](https://github.com/McKenzieIT/semantic-grounding/issues/162)，2026-10-15 `ebf0e99`：13 件全清 rg 旧值清零；第 5 件实测锚 `itemSuppressionFieldName`） |
 
 Speculative 尾巴（不占编号）：承前两件未动（dry_run `staged` 键、scratch 钳制双写）+ 本轮新增三件——`SCOPE_ID_PATTERN` 错误文案第二家（shared.ts:98，#149 刚钉稳的线）、config 四联数值校验器同构（config.ts:386-460）、`subjectKey`≡`resultKey` 恒等对（io.ts:976-978）——详见尾注。
 
 ---
 
 ## C15 · enrichment 收编面死名批（Worth exploring）
+
+> **落地核验（2026-10-15，合入 `d66a13a`）**：自由 `discoverAltLabels` 本体 + combined describe（实测 **1 个 it**，substrate 450→**449**）+ 六死名（四适配器值 / `SweepResult` / `discoverEventRelationsFor`）全删；sweep.ts 头注诚实化照处方；barrel index.ts 零 diff、must-stay-absent 名单原样成立；四门禁 worktree 与合入态两跑全绿（mcp 437+1skip / e2e 22 不变）。**本节证据勘误**：原文称「:159 整行可删——sweepEnrichment 的消费者同样全在家族内直连」**不成立**——`tests/sweep.spec.ts:23` 经 `../src/enrichment.ts` 具名 import `sweepEnrichment`，引擎不变量 describe（:73-172）内 ~15 处直呼，该 spec 头注自认 subject 即它。该名**留存**（#160 worktree 裁量按「证据错则停」预案执行，主会话抽验确认）；若日后要收，需先迁 sweep.spec 的 import 落点，超出本票改动面。
 
 **文件**：`packages/substrate/src/enrichment/sweep.ts:114-127`（自由 `discoverAltLabels` 本体）· `src/enrichment.ts:133`（`discoverEventRelationsFor` re-export）· `:149-157`（四适配器值 re-export）· `:159`（`sweepEnrichment, discoverAltLabels, type SweepResult` 整行 re-export）· 唯一消费者 `tests/alt-labels-enrichment.spec.ts:19/:254-284`（combined describe）。
 
@@ -37,6 +39,8 @@ Speculative 尾巴（不占编号）：承前两件未动（dry_run `staged` 键
 **ADR**：无冲突——ADR-0002/0006 ruling 3 的 seam 设计（adapters+engine 模块级、永不上根 barrel）不动，收的只是收编面的展示名。sweep.ts:10-11 头注「free functions are the public contract…dsh depend on them」对**合并器这一个函数**不成立（包 exports 仅 `.`，dsh 只能走 barrel；on-write hook 依赖的是 `enrichAll*` 家族）——拆门时该行注释顺带诚实化。
 
 ## C16 · update 路径三件套错居 + Tier-2 参数约束手抄（Worth exploring，#145 体例顺手批）
+
+> **落地核验（2026-10-15，合入 `582cb39`）**：三件套字节级迁 write.ts（迁体对基线 `cmp` 逐字节相同；audited.ts 回归纯仪式面、shared.ts 头注口径改窄并记 #145/#161 两次迁出史）；约束换装 SummarySchema/ConfidenceSchema import 消费；ADR-0012 末尾补 dated Update（行号历史保留）；errors.ts:607 假锚 3 词修正随票（#145 先例连带）。四门禁两跑全绿（四数字不变）。**本节口径勘误**：原文「纯换装零 tools/list 广告面 diff——SummarySchema 本体不带 .describe」**不成立**——`SummarySchema`/`ConfidenceSchema` 定义自带 `.describe`（shared.ts:59-60/:74-75，zod 4.6.5 toJSONSchema 会输出 description）。real wire 探针（McpServer + InMemoryTransport + 构建产物 `tools/list`）实测：约束面逐字相同，唯一差异 = apply_enrichment 广告**新增 2 个 description 键**（内容 = 单家原文）——方向是对齐其余 commit-class 工具的既有统一口径（add_alias/import_definitions 等同侪本就带此二 description），catalog/e2e 零涟漪。票面预期错、结构目标（约束单家化）完整达成。
 
 **文件**：`packages/mcp/src/tools/audited.ts:372`（`applyFieldUpdate`）· `tools/shared.ts:438`（`ApplyResult` 类型）· `:460`（`assertUpdateOk`）· 唯一生产消费者 `tools/write.ts:196/:198`（update_definition handler）；另 `tools/enrichment.ts:237-238`（约束手抄）↔ `tools/shared.ts:59/:74`（`SummarySchema`/`ConfidenceSchema` 单家）。
 
@@ -66,6 +70,8 @@ barrel 面合计：DERIVATIONS（册上原件）+ 新三名 → S2 开票时 **2
 **子代理提报、主会话证伪、不入册**：RelationGraph 读面（findJoinPath/getRelated/resolveAlias/getAliases）+ `Core.getRelationGraph()` 曾被报「纯测试面」——实为**生产活面**：mcp read.ts:269/:294/:318 三工具（get_join_path / get_related / resolve_alias）直接消费（子代理 rg 漏检，主会话补验抓回）。graphCache/graphVersion/danglingDomainRefs 收集链随之全部健康。S2 册原有「getDerived/getJoinCondition 生产消费仅 vendor」两条不受影响。
 
 ## S6 · 文档/锚点漂移新增批（13 件——一票修字，#148 体例）
+
+> **落地核验（2026-10-15，合入 `ebf0e99`）**：13 件全清、rg 逐项旧值清零、纯修字零断言改动。第 5 件实测锚 = `item-write.ts:128 itemSuppressionFieldName`（票面未给符号，落地时 rg 定位；同行 items.ts 行号锚改内容锚）；带日期 ADR Update 史料「30 tests」/check-core-purity「269」（本报告明文史料豁免）/k11 活断言「321」/上游仓 examples/ 记述按票面豁免保留；第 1/12 件派生表述落位（防 #160 计数下修的跨票陈旧预判成立）。本票分支基线 450（合入终态 449 系 #160 所致）。
 
 **Strong（事实错误，导读者）**：
 
@@ -143,6 +149,8 @@ barrel 面合计：DERIVATIONS（册上原件）+ 新三名 → S2 开票时 **2
 - Speculative 新三件详注：**K4** `ScopeIdPattern` 文案——shared.ts:98 zod message 硬编码 regex 文本而 :97 才 import 了真身（#149「文案逐字不动」保下来的线，动需票面声明）；**K5** config 四联校验器（parseLockTimeout/parseWarnThreshold/parseRatioThreshold/parseRatioFloor，config.ts:386-460 各 ~13 行同骨架）——每件 JSDoc 各钉一条 ADR 裁决（R5 为何 0 合法、拒而不钳、单位教训），seam 化会把裁决挪离执法点，等第 5 个 flag 出现再启；**D** `UpdateMetaDescriptor.subjectKey`≡`resultKey` 三描述符恒等对（io.ts:976-978/:1060/:1106/:1217）——两键分属审计线与公开回执面（ADR-0005/#106），恒等是约定非必然，保留两字段是对两个面的诚实表达。
 
 ## 首推
+
+> **收束注记（2026-10-15）**：处方三票全部落地——#160 `d66a13a` / #161 `582cb39` / #162 `ebf0e99`（subagent worktree 三路并行、主会话串行合入；终态基线 typecheck 双包 0 / substrate **449**〔#160 删 1 直测〕/ mcp 437+1skip / e2e 22〔banner 29〕，合入态亲跑）。两处本报告证据/口径勘误随落地入档（C15 `sweepEnrichment` 收编面消费实证留存、C16 广告面 +2 description 键对齐 commit-class 口径，见各节首注记）。唯 S2 补遗四件待用户另 effort 开票时并入（barrel 27→23 票面声明）。
 
 **本轮不开结构图**——无 Strong 级结构候选，两轮收割后巡检轴的 ROI 已让位于 KG/memory 票线（map #125，frontier #151 → #152 → #136/#154 → #155：图节点 id 统一、memory 存储+record_memory、晋升 trailer、读面挂载、已验证查询，ADR-0021..0026 全部已裁待落地）。处方三票，全部 standalone 体例：
 
