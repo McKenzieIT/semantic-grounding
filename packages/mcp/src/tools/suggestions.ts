@@ -17,13 +17,46 @@
  *
  * @module tools/suggestions
  */
+import { join } from 'node:path'
 import type { McpServer } from '@modelcontextprotocol/server'
 import { discard, listing, loadPending, submit } from '@semantic-grounding/substrate'
 import { z } from 'zod'
 import { SuggestionNotFoundError } from '../errors.ts'
+import type { GitTier2Recorder } from '../git/recorder.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { scopeStamp, toolSuccess } from './audited.ts'
-import { pendingQueueRoot, type ToolFamily } from './shared.ts'
+import type { ToolFamily } from './shared.ts'
+
+// ── Tier-1 pending queue location ────────────────────────────────────────────────────
+// (#145: moved from `tools/shared.ts` — this family is the queue path's one consumer.)
+
+/** The pending-queue directory name inside the git dir. */
+export const PENDING_QUEUE_DIRNAME = 'sg-pending'
+
+/**
+ * Resolve the Tier-1 pending-queue directory for this process's corpus.
+ *
+ * `<gitDir>/sg-pending/`, not somewhere in the worktree — the exact reasoning
+ * `git/lock.ts` already states for the corpus lock, applied to the same hazard: a
+ * suggestion JSON file inside the worktree would be corpus *content*. `git status
+ * --porcelain` would report it as an untracked, uncommitted change (`dirtyEntries`,
+ * `git/posture.ts`, deliberately counts untracked files as dirt), so submitting a
+ * suggestion would make the *next Tier-2 write* refuse with `PostureRefusedError` —
+ * mistaking an agent's own suggestion for an operator's uncommitted edit. The git dir is
+ * outside the tree git tracks, which is exactly the property both the lock and the
+ * pending queue need, and reusing it needs no new corpus-level `.gitignore` entry this
+ * package would otherwise have to ask the operator to add.
+ *
+ * Tier-1 never takes the corpus lock or writes a commit (GLOSSARY § write tier: "not an
+ * auditable mutation; no recorder needed") — this only reads {@link GitTier2Recorder.ready}
+ * for the git dir path, which is safe to call from a read-only tool.
+ * @param recorder - this process's recorder (used only for its resolved git dir).
+ * @returns the pending-queue directory's absolute path.
+ */
+export async function pendingQueueRoot(recorder: GitTier2Recorder): Promise<string> {
+  const paths = await recorder.ready()
+  return join(paths.gitDir, PENDING_QUEUE_DIRNAME)
+}
 
 /** The four Tier-1 tool names. */
 export const SUGGESTION_TOOL_NAMES = ['submit_suggestion', 'list_suggestions', 'get_suggestion', 'discard_suggestion'] as const

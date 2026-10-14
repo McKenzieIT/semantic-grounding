@@ -1,7 +1,10 @@
 /**
- * Shared pieces for ADR-0005's fifteen intent tools: the common Tier-2 parameter block,
- * the `update_definition` bounded-fields schema builder, and the per-call `clientInfo`
- * reader, plus the Tier-1 pending-queue path.
+ * Shared pieces for ADR-0005's fifteen intent tools: the common Tier-2 parameter
+ * block and the `update_definition` bounded-fields schema builder. Every member
+ * here is cross-family by contract — the two single-family members this module
+ * briefly carried moved out to their consumers (#145): the per-call `clientInfo`
+ * reader to `tools/audited.ts` (its one caller), the Tier-1 pending-queue path
+ * to `tools/suggestions.ts` (its one family).
  *
  * The `version` fingerprint helpers this module used to carry
  * (fingerprintTable/Concept/Event, findEventDomain) are retired: the read side of
@@ -18,12 +21,9 @@
  *
  * @module tools/shared
  */
-import { join } from 'node:path'
-import { CLIENT_INFO_META_KEY, type ServerContext } from '@modelcontextprotocol/server'
 import { ConceptDefinitionSchema, EventDefinitionSchema, TableDefinitionSchema, type ConceptDefinition, type EventDefinition, type SemanticGroundingCore, type TableDefinition } from '@semantic-grounding/substrate'
 import { z } from 'zod'
 import { DefinitionNotFoundError, DefinitionValidationError, UnsupportedUpdateFieldError, isSubstrateNotFound } from '../errors.ts'
-import type { GitTier2Recorder } from '../git/recorder.ts'
 import type { ToolRegistrar } from '../server.ts'
 
 // ── Tool family descriptor (#115 / C3) ────────────────────────────────────────────
@@ -461,64 +461,4 @@ export function assertUpdateOk(result: ApplyResult, kind: 'table' | 'event' | 'c
     throw new DefinitionNotFoundError(result.error, { kind, name })
   }
   throw new DefinitionValidationError(result.error, { kind, name })
-}
-
-// ── Per-call `clientInfo` (ADR-0005's 2026-10-09 addendum, second falsified premise) ─
-
-/**
- * Read the calling client's self-reported name off the current request's envelope.
- *
- * `clientInfo` is per-request envelope data under the 2026-07-28 revision, not startup
- * data (#22's measurement: the `serveStdio` factory's ctx carries only `{era}`), so this
- * must be read fresh inside every tool handler and passed as `AuditContext.clientName`
- * — never cached at registration or construction time.
- *
- * `ctx.mcpReq.envelope`'s declared type is `Partial<RequestMetaEnvelope>`, and SDK
- * v2.3.1 declares `RequestMetaEnvelope` as the empty type `{}` ("a neutral hand-written
- * shape keyed by the public meta-key constants", per the SDK's own comment on that
- * alias) — so indexing it by {@link CLIENT_INFO_META_KEY} needs a widening cast under
- * this package's `strict`/`noUncheckedIndexedAccess` tsconfig; it is not a hole in this
- * file's own strictness. The value's shape is self-reported `Implementation`
- * (`{name, version, ...}` per the MCP spec) and is read defensively, never trusted for
- * anything beyond the `X-SG-Client` trailer (reference only, per ADR-0004 ruling 9).
- * @param ctx - the handler's `ServerContext` (the second callback parameter).
- * @returns the client's declared name, or `undefined` when the envelope carried none
- *   (a 2025-era connection, or a 2026-era request that omitted the optional key).
- */
-export function clientNameFromEnvelope(ctx: ServerContext): string | undefined {
-  const envelope = ctx.mcpReq.envelope as Record<string, unknown> | undefined
-  const info = envelope?.[CLIENT_INFO_META_KEY]
-  if (typeof info !== 'object' || info === null) return undefined
-  const name = (info as { readonly name?: unknown }).name
-  return typeof name === 'string' && name.trim() !== '' ? name : undefined
-}
-
-// ── Tier-1 pending queue location ────────────────────────────────────────────────────
-
-/** The pending-queue directory name inside the git dir. */
-export const PENDING_QUEUE_DIRNAME = 'sg-pending'
-
-/**
- * Resolve the Tier-1 pending-queue directory for this process's corpus.
- *
- * `<gitDir>/sg-pending/`, not somewhere in the worktree — the exact reasoning
- * `git/lock.ts` already states for the corpus lock, applied to the same hazard: a
- * suggestion JSON file inside the worktree would be corpus *content*. `git status
- * --porcelain` would report it as an untracked, uncommitted change (`dirtyEntries`,
- * `git/posture.ts`, deliberately counts untracked files as dirt), so submitting a
- * suggestion would make the *next Tier-2 write* refuse with `PostureRefusedError` —
- * mistaking an agent's own suggestion for an operator's uncommitted edit. The git dir is
- * outside the tree git tracks, which is exactly the property both the lock and the
- * pending queue need, and reusing it needs no new corpus-level `.gitignore` entry this
- * package would otherwise have to ask the operator to add.
- *
- * Tier-1 never takes the corpus lock or writes a commit (GLOSSARY § write tier: "not an
- * auditable mutation; no recorder needed") — this only reads {@link GitTier2Recorder.ready}
- * for the git dir path, which is safe to call from a read-only tool.
- * @param recorder - this process's recorder (used only for its resolved git dir).
- * @returns the pending-queue directory's absolute path.
- */
-export async function pendingQueueRoot(recorder: GitTier2Recorder): Promise<string> {
-  const paths = await recorder.ready()
-  return join(paths.gitDir, PENDING_QUEUE_DIRNAME)
 }

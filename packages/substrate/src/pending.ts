@@ -8,7 +8,7 @@
  * source-of-truth. approve-side registration is gated to P9 admin
  * (`disable_admin` can disable the whole layer). The pending queue lives in
  * `<gitDir>/sg-pending/` (inside the git dir, outside the worktree — see the
- * mcp package's `tools/shared.ts#pendingQueueRoot` for the placement ruling),
+ * mcp package's `tools/suggestions.ts#pendingQueueRoot` for the placement ruling),
  * one JSON file per suggestion.
  *
  * Tier-2 (per-scope persistent write, audit-logged, non-disableable) is NOT

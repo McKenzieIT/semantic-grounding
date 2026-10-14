@@ -51,15 +51,15 @@
  *
  * @module tools/audited
  */
-import type { CallToolResult, ServerContext } from '@modelcontextprotocol/server'
+import { CLIENT_INFO_META_KEY, type CallToolResult, type ServerContext } from '@modelcontextprotocol/server'
 import type { EnrichmentHealthEntry, Tier2Batch, Tier2Opts } from '@semantic-grounding/substrate'
 import type { ScopeBinding } from '../binding.ts'
 import type { Derivation } from '../git/message.ts'
 import type { AuditedResult } from '../git/recorder.ts'
 import type { ServerDeps } from '../server.ts'
+import type { ApplyResult } from './shared.ts'
 import { ScopeMismatchError } from '../errors.ts'
 import { maybeGuidance } from './guidance.ts'
-import { clientNameFromEnvelope, type ApplyResult } from './shared.ts'
 
 /**
  * The per-call intent half of an audit record — the fields only the calling
@@ -78,6 +78,37 @@ export interface AuditIntent {
   readonly derivation: Derivation
   /** The caller's own confidence, 0–1. */
   readonly confidence: number
+}
+
+// ── Per-call `clientInfo` (ADR-0005's 2026-10-09 addendum, second falsified premise) ─
+// (#145: moved from `tools/shared.ts` — `auditedWrite` is this reader's one consumer.)
+
+/**
+ * Read the calling client's self-reported name off the current request's envelope.
+ *
+ * `clientInfo` is per-request envelope data under the 2026-07-28 revision, not startup
+ * data (#22's measurement: the `serveStdio` factory's ctx carries only `{era}`), so this
+ * must be read fresh inside every tool handler and passed as `AuditContext.clientName`
+ * — never cached at registration or construction time.
+ *
+ * `ctx.mcpReq.envelope`'s declared type is `Partial<RequestMetaEnvelope>`, and SDK
+ * v2.3.1 declares `RequestMetaEnvelope` as the empty type `{}` ("a neutral hand-written
+ * shape keyed by the public meta-key constants", per the SDK's own comment on that
+ * alias) — so indexing it by {@link CLIENT_INFO_META_KEY} needs a widening cast under
+ * this package's `strict`/`noUncheckedIndexedAccess` tsconfig; it is not a hole in this
+ * file's own strictness. The value's shape is self-reported `Implementation`
+ * (`{name, version, ...}` per the MCP spec) and is read defensively, never trusted for
+ * anything beyond the `X-SG-Client` trailer (reference only, per ADR-0004 ruling 9).
+ * @param ctx - the handler's `ServerContext` (the second callback parameter).
+ * @returns the client's declared name, or `undefined` when the envelope carried none
+ *   (a 2025-era connection, or a 2026-era request that omitted the optional key).
+ */
+export function clientNameFromEnvelope(ctx: ServerContext): string | undefined {
+  const envelope = ctx.mcpReq.envelope as Record<string, unknown> | undefined
+  const info = envelope?.[CLIENT_INFO_META_KEY]
+  if (typeof info !== 'object' || info === null) return undefined
+  const name = (info as { readonly name?: unknown }).name
+  return typeof name === 'string' && name.trim() !== '' ? name : undefined
 }
 
 /**

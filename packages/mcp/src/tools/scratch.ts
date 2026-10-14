@@ -11,7 +11,7 @@
  * an operator's uncommitted edit and REFUSE the next Tier-2 write — the exact
  * collision #90 pinned at `scope.ts`'s "agent-in-bash" root. The home lives at
  * `<gitDir>/sg-scratch/<run-id>/`, the same placement reasoning as
- * `sg-pending/` and `sg-write.lock` (`tools/shared.ts`): the git dir is
+ * `sg-pending/` and `sg-write.lock` (`tools/suggestions.ts`): the git dir is
  * outside the tree git tracks, so scratch is invisible to the gates by
  * construction, not by `.gitignore` discipline.
  *
@@ -25,8 +25,8 @@
  *
  * Like the Tier-1 suggestion quartet this is **not an audited mutation**: no
  * commit, no corpus lock, no recorder write — the only thing borrowed from the
- * recorder is its resolved git-dir path (`pendingQueueRoot`'s pattern), which
- * is safe from a tool that never touches source-of-truth.
+ * recorder is its resolved git-dir path (`tools/suggestions.ts#pendingQueueRoot`'s
+ * pattern), which is safe from a tool that never touches source-of-truth.
  *
  * @module tools/scratch
  */
@@ -123,7 +123,7 @@ function pruneScratchRuns(home: string, keep: number, currentRunId: string): str
  * the home — the whole server-side seam in one call (#92: server 按需建 +
  * 确定性 GC,不靠 agent 自觉).
  * @param recorder - this process's recorder for the bound scope (used only for
- *   its resolved git dir, like `pendingQueueRoot`).
+ *   its resolved git dir, like `tools/suggestions.ts#pendingQueueRoot`).
  * @param keep - how many run directories to retain (values below 1 clamp to 1 —
  *   the run being created must survive its own acquire).
  * @returns the receipt: the new run's id and path, and what the prune removed.
