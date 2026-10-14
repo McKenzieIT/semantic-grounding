@@ -55,6 +55,19 @@ export type RelationInput =
   | { readonly target_kind?: undefined; readonly dim_table: string; readonly join_keys: readonly { readonly dws_column: string; readonly dim_column: string }[] }
   | { readonly target_kind: 'table' | 'concept'; readonly name: string }
 
+/** The join-shaped bucket of a partitioned {@link RelationInput} batch: the
+ * historical asset→dim join, routed down the table/event path. */
+type JoinShapedRelation = { readonly dim_table: string; readonly join_keys: readonly { readonly dws_column: string; readonly dim_column: string }[] }
+
+/** The concept-edge bucket of a partitioned {@link RelationInput} batch
+ * (Q4(b)): `target_kind` + `name`, no join semantics. */
+type ConceptEdgeInput = { readonly target_kind: 'table' | 'concept'; readonly name: string }
+
+/** A declared concept edge as stored on the home concept's `related_refs`: the
+ * input edge with its `name` rewritten to `target` — the edge's OTHER side
+ * (see the concept-edge section below). */
+type ConceptEdgeRecord = { readonly target_kind: 'table' | 'concept'; readonly target: string }
+
 // ── Item-method helpers (#49) ─────────────────────────────────────────────────────
 //
 // Helpers for the item-level write entries (addAlias / removeAliases /
@@ -64,20 +77,20 @@ export type RelationInput =
 // schema + auditedWrite + Core call + response formatting.
 
 /** Is this relation a concept-side edge (Q4(b)), rather than an asset→dim join? */
-function isConceptEdge(rel: RelationInput): rel is { readonly target_kind: 'table' | 'concept'; readonly name: string } {
+function isConceptEdge(rel: RelationInput): rel is ConceptEdgeInput {
   return rel.target_kind !== undefined
 }
 
 /** The veto key for one declared concept edge: the graph-id form of its target
  * (`concept:<name>` for concept targets, the bare table name for table
  * targets) — collision-free between a table and a concept sharing a name. */
-function conceptEdgeKey(edge: { readonly target_kind: 'table' | 'concept'; readonly target: string }): string {
+function conceptEdgeKey(edge: ConceptEdgeRecord): string {
   return edge.target_kind === 'concept' ? `concept:${edge.target}` : edge.target
 }
 
 /** Structural identity for a declared concept edge: same `target_kind` + same
  * `target`. No order or join-key component — an edge has neither. */
-function itemMatchesConceptEdge(existing: unknown, edge: { readonly target_kind: 'table' | 'concept'; readonly target: string }): boolean {
+function itemMatchesConceptEdge(existing: unknown, edge: ConceptEdgeRecord): boolean {
   if (typeof existing !== 'object' || existing === null) return false
   const e = existing as { readonly target_kind?: unknown; readonly target?: unknown }
   return e.target_kind === edge.target_kind && e.target === edge.target
@@ -344,6 +357,29 @@ export async function removeItemAliases(
   return { results, version }
 }
 
+/** Bucket a relation batch into its two shapes, refusing the mix up front
+ * (Q6 / Q4(b)): concept edges and join-shaped relations write different files
+ * with different baselines, so one call carries one shape. Shared verbatim by
+ * the add and remove entries; `verbLabel` names the tool in the split-the-call
+ * error — the two sides' texts differed by that word alone, previously
+ * hand-copied per side.
+ */
+function partitionItemRelations(
+  relations: readonly RelationInput[],
+  verbLabel: 'add_relation' | 'remove_relation',
+): { readonly edges: ConceptEdgeInput[]; readonly joins: JoinShapedRelation[] } {
+  const edges: ConceptEdgeInput[] = []
+  const joins: JoinShapedRelation[] = []
+  for (const rel of relations) {
+    if (isConceptEdge(rel)) edges.push(rel)
+    else joins.push(rel)
+  }
+  if (edges.length > 0 && joins.length > 0) {
+    throw new Error(`${verbLabel} cannot mix join-shaped relations with concept edges in one call — they write different files with different baselines; split the call`)
+  }
+  return { edges, joins }
+}
+
 /**
  * Add relations to a table or event, lifting each key's veto if suppressed —
  * `addItemAliases`' mirror over the relation fields (#109 / #107 Q4: one
@@ -387,17 +423,10 @@ export async function addItemRelations(
   relations: readonly RelationInput[],
   expectedVersion: string,
 ): Promise<{ readonly results: readonly AddVerdict[]; readonly version: string }> {
-  // Partition first (Q6): concept edges and join-shaped relations write
-  // different files with different baselines — one call carries one shape.
-  const edges: Array<{ readonly target_kind: 'table' | 'concept'; readonly name: string }> = []
-  const joins: Array<{ readonly dim_table: string; readonly join_keys: readonly { readonly dws_column: string; readonly dim_column: string }[] }> = []
-  for (const rel of relations) {
-    if (isConceptEdge(rel)) edges.push(rel)
-    else joins.push(rel)
-  }
-  if (edges.length > 0 && joins.length > 0) {
-    throw new Error('add_relation cannot mix join-shaped relations with concept edges in one call — they write different files with different baselines; split the call')
-  }
+  // Partition first (Q6): one call carries one shape — the helper refuses the
+  // mix; a concept-edge batch routes to the concept path, everything else
+  // (joins only, by the mix rule) falls through to the join path.
+  const { edges, joins } = partitionItemRelations(relations, 'add_relation')
   if (edges.length > 0) {
     return addItemConceptEdges(root, applyUpdate, kind, name, edges, expectedVersion)
   }
@@ -406,7 +435,7 @@ export async function addItemRelations(
   }
   // For tables, verify every distinct dim_table has its own definition —
   // checked per batch up front so a bad key rejects the whole call before
-  // any write lands (same all-or-nothing door the mix rule above keeps).
+  // any write lands (same all-or-nothing door the partition's mix rule keeps).
   if (kind === 'table') {
     for (const rel of joins) {
       if (loadTableDefinitionFromLayer(root, rel.dim_table) === null) {
@@ -479,17 +508,10 @@ export async function removeItemRelations(
   relations: readonly RelationInput[],
   expectedVersion: string,
 ): Promise<{ readonly results: readonly ItemVerdict[]; readonly version: string }> {
-  // Partition first (Q4(b)): concept edges and join-shaped relations write
-  // different files with different baselines — one call carries one shape.
-  const edges: Array<{ readonly target_kind: 'table' | 'concept'; readonly name: string }> = []
-  const joins: Array<{ readonly dim_table: string; readonly join_keys: readonly { readonly dws_column: string; readonly dim_column: string }[] }> = []
-  for (const rel of relations) {
-    if (isConceptEdge(rel)) edges.push(rel)
-    else joins.push(rel)
-  }
-  if (edges.length > 0 && joins.length > 0) {
-    throw new Error('remove_relation cannot mix join-shaped relations with concept edges in one call — they write different files with different baselines; split the call')
-  }
+  // Partition first (Q4(b)): one call carries one shape — the helper refuses
+  // the mix; a concept-edge batch routes to the concept path, everything else
+  // (joins only, by the mix rule) falls through to the join path.
+  const { edges, joins } = partitionItemRelations(relations, 'remove_relation')
   if (edges.length > 0) {
     return removeItemConceptEdges(root, applyUpdate, kind, name, edges, expectedVersion)
   }
@@ -546,6 +568,55 @@ export async function removeItemRelations(
 // CONCEPT file this write modifies (subject concept, or target concept for
 // a table subject).
 
+/** Resolve a concept-edge batch's storage home and its stored records (the
+ * section note above): a concept subject owns the file and stores each edge's
+ * OTHER side; a table subject's whole batch lands on the one shared target
+ * concept as a single `table→concept` record. Shared verbatim by the add and
+ * remove concept-edge entries — `verbLabel` names the tool in the
+ * split-the-call error (the texts differed by that word alone, previously
+ * hand-copied per side).
+ *
+ * `checkTargets` carries the pair's one real asymmetry: adding verifies every
+ * declared target exists so a bad key rejects the batch whole (mirroring the
+ * join path's per-batch dim check), while removal leaves targets unchecked —
+ * an absent target is a not-present verdict, not an error.
+ */
+function resolveConceptEdgeHome(
+  root: string,
+  kind: ItemKind,
+  name: string,
+  edges: readonly ConceptEdgeInput[],
+  verbLabel: 'add_relation' | 'remove_relation',
+  opts: { readonly checkTargets: boolean },
+): { readonly home: string; readonly records: ConceptEdgeRecord[] } {
+  if (kind === 'event') {
+    throw new Error('concept-target relations are not supported for events — the legal concept-side edges are concept→concept, concept→table, and table→concept (Q4(b))')
+  }
+  if (kind === 'concept') {
+    if (opts.checkTargets) {
+      for (const e of edges) {
+        if (e.target_kind === 'concept' && loadConceptDefinitionFromLayer(root, e.name) === null) {
+          throw new Error(`Concept not found: ${e.name}`)
+        }
+        if (e.target_kind === 'table' && loadTableDefinitionFromLayer(root, e.name) === null) {
+          throw new Error(`Table not found: ${e.name}`)
+        }
+      }
+    }
+    return { home: name, records: edges.map(e => ({ target_kind: e.target_kind, target: e.name })) }
+  }
+  if (loadTableDefinitionFromLayer(root, name) === null) throw new Error(`Table not found: ${name}`)
+  const targets = new Set(edges.map(e => e.name))
+  if (targets.size !== 1) {
+    throw new Error(`${verbLabel} from a table subject takes concept edges that all name the SAME target concept — each target concept is a different file with its own baseline; split the call`)
+  }
+  const first = edges[0]
+  if (first === undefined) throw new Error('empty concept-edge batch')
+  const home = first.name
+  if (opts.checkTargets && loadConceptDefinitionFromLayer(root, home) === null) throw new Error(`Concept not found: ${home}`)
+  return { home, records: [{ target_kind: 'table', target: name }] }
+}
+
 /**
  * Add declared concept edges to their home concept, lifting each key's veto
  * if suppressed — the batch form of the add-side dual-field overlay over
@@ -584,40 +655,12 @@ async function addItemConceptEdges(
   applyUpdate: ApplyItemUpdate,
   kind: ItemKind,
   name: string,
-  edges: readonly { readonly target_kind: 'table' | 'concept'; readonly name: string }[],
+  edges: readonly ConceptEdgeInput[],
   expectedVersion: string,
 ): Promise<{ readonly results: readonly AddVerdict[]; readonly version: string }> {
-  if (kind === 'event') {
-    throw new Error('concept-target relations are not supported for events — the legal concept-side edges are concept→concept, concept→table, and table→concept (Q4(b))')
-  }
-  // The stored record names the edge's OTHER side; the home is whoever owns
-  // the file: the concept subject itself, or the (single) target concept for
-  // a table subject.
-  let home: string
-  let records: Array<{ readonly target_kind: 'table' | 'concept'; readonly target: string }>
-  if (kind === 'concept') {
-    home = name
-    records = edges.map(e => ({ target_kind: e.target_kind, target: e.name }))
-    for (const e of edges) {
-      if (e.target_kind === 'concept' && loadConceptDefinitionFromLayer(root, e.name) === null) {
-        throw new Error(`Concept not found: ${e.name}`)
-      }
-      if (e.target_kind === 'table' && loadTableDefinitionFromLayer(root, e.name) === null) {
-        throw new Error(`Table not found: ${e.name}`)
-      }
-    }
-  } else {
-    if (loadTableDefinitionFromLayer(root, name) === null) throw new Error(`Table not found: ${name}`)
-    const targets = new Set(edges.map(e => e.name))
-    if (targets.size !== 1) {
-      throw new Error('add_relation from a table subject takes concept edges that all name the SAME target concept — each target concept is a different file with its own baseline; split the call')
-    }
-    const first = edges[0]
-    if (first === undefined) throw new Error('empty concept-edge batch')
-    home = first.name
-    if (loadConceptDefinitionFromLayer(root, home) === null) throw new Error(`Concept not found: ${home}`)
-    records = [{ target_kind: 'table', target: name }]
-  }
+  // Adding checks every declared target (the helper's `checkTargets: true`) —
+  // a bad key rejects the batch whole before any write lands.
+  const { home, records } = resolveConceptEdgeHome(root, kind, name, edges, 'add_relation', { checkTargets: true })
   const raw = itemReadRawDef(root, 'concept', home)
   const existing = itemObjectArray(raw, 'related_refs')
   // In-order duplicate semantics: the first structural occurrence appends,
@@ -674,28 +717,12 @@ async function removeItemConceptEdges(
   applyUpdate: ApplyItemUpdate,
   kind: ItemKind,
   name: string,
-  edges: readonly { readonly target_kind: 'table' | 'concept'; readonly name: string }[],
+  edges: readonly ConceptEdgeInput[],
   expectedVersion: string,
 ): Promise<{ readonly results: readonly ItemVerdict[]; readonly version: string }> {
-  if (kind === 'event') {
-    throw new Error('concept-target relations are not supported for events — the legal concept-side edges are concept→concept, concept→table, and table→concept (Q4(b))')
-  }
-  let home: string
-  let records: Array<{ readonly target_kind: 'table' | 'concept'; readonly target: string }>
-  if (kind === 'concept') {
-    home = name
-    records = edges.map(e => ({ target_kind: e.target_kind, target: e.name }))
-  } else {
-    if (loadTableDefinitionFromLayer(root, name) === null) throw new Error(`Table not found: ${name}`)
-    const targets = new Set(edges.map(e => e.name))
-    if (targets.size !== 1) {
-      throw new Error('remove_relation from a table subject takes concept edges that all name the SAME target concept — each target concept is a different file with its own baseline; split the call')
-    }
-    const first = edges[0]
-    if (first === undefined) throw new Error('empty concept-edge batch')
-    home = first.name
-    records = [{ target_kind: 'table', target: name }]
-  }
+  // Removal leaves targets unchecked (`checkTargets: false`) — an absent
+  // target is a not-present verdict, not an error.
+  const { home, records } = resolveConceptEdgeHome(root, kind, name, edges, 'remove_relation', { checkTargets: false })
   const raw = itemReadRawDef(root, 'concept', home)
   const existing = itemObjectArray(raw, 'related_refs')
   const next = existing.filter(e => !records.some(r => itemMatchesConceptEdge(e, r)))

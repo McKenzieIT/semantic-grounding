@@ -271,9 +271,12 @@ export function loadDomains(semanticLayer: string): Record<string, unknown> {
 /**
  * The canonical normalization form for alias / suppression keys: lowercased
  * and trimmed. One implementation serves every consumer — substrate enrichment
- * filters, enrichment-work merge, MCP item handlers, and the Core item methods
+ * filters, enrichment-work merge, MCP item handlers, the Core item methods
  * (#49 — the three private copies that had drifted across the codebase converge
- * here as the veto-key contract's single source of truth).
+ * here as the veto-key contract's single source of truth), the relation
+ * graph's alias index, and `loadSuppressions` below (#147 — the fourth
+ * private copy, relation-graph's `normalizeAlias`, imports this instead of
+ * re-deriving the form; the inline expression here reads through it too).
  * @param s - the raw label string.
  * @returns the normalized key form.
  */
@@ -292,7 +295,7 @@ export function loadSuppressions(semanticLayer: string): ReadonlySet<string> {
     const out = new Set<string>()
     for (const entry of list) {
       if (typeof entry !== 'string') continue
-      const key = entry.toLowerCase().trim()
+      const key = normalizeLabel(entry)
       if (key !== '') out.add(key)
     }
     return out

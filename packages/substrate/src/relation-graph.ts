@@ -6,7 +6,11 @@
  *
  * @module relation-graph (internal; only `"."` is importable — see ADR-0002)
  */
+import { normalizeLabel } from './io.ts'
 import type { RelationDef } from './registry.ts'
+// The alias-index key form is io.ts's canonical `normalizeLabel` (#49) — this
+// module's private `normalizeAlias` was a fourth copy of the same expression;
+// converged by importing the one implementation (#147).
 
 /** An edge in the relation graph (stored in adjacency list per node). */
 export interface RelationEdge {
@@ -69,7 +73,7 @@ export class RelationGraph {
         if (labels.length === 0) continue
         this.nodeAliases.set(nodeId, labels)
         for (const label of labels) {
-          const key = normalizeAlias(label)
+          const key = normalizeLabel(label)
           if (!key) continue
           const list = this.aliasIndex.get(key)
           if (list) {
@@ -169,7 +173,7 @@ export class RelationGraph {
    * @returns the result
    */
   resolveAlias(term: string): string[] {
-    const key = normalizeAlias(term)
+    const key = normalizeLabel(term)
     if (!key) return []
     return this.aliasIndex.get(key) ?? []
   }
@@ -183,12 +187,4 @@ export class RelationGraph {
   getAliases(nodeId: string): string[] {
     return this.nodeAliases.get(nodeId) ?? []
   }
-}
-
-/**
- * Normalize an alias for index lookup: lowercase + trim whitespace.
- * Returns empty string for blank inputs (caller skips).
- */
-function normalizeAlias(label: string): string {
-  return label.toLowerCase().trim()
 }

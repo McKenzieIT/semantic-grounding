@@ -106,7 +106,7 @@ import { listEnrichmentWorkItems, fetchEnrichmentPrompts, applyEnrichmentResults
 // #49's item-write ritual: the helper family + the six entry functions that
 // the four public item methods below forward into — the same off-barrel
 // internal-module split as enrichment-work.ts (ADR-0002/0003).
-import { addItemAliases, removeItemAliases, addItemRelations, removeItemRelations, type ItemKind, type RelationInput } from './item-write.ts'
+import { addItemAliases, removeItemAliases, addItemRelations, removeItemRelations, type ItemKind, type RelationInput, type ApplyItemUpdate } from './item-write.ts'
 import { withReadEpoch } from './read-epoch.ts'
 import { DataSourceRegistry, type CorpusItem, type GraphNodeProjection } from './registry.ts'
 import { eventKindPlugin } from './kinds/event-kind.ts'
@@ -1445,7 +1445,7 @@ export class SemanticGroundingCore {
     labels: readonly string[],
     expectedVersion: string,
   ): Promise<{ readonly results: readonly AddVerdict[]; readonly version: string }> {
-    return addItemAliases(this.semanticRoot, (k, n, u, v) => this.applyItemUpdate(k, n, u, v), kind, name, labels, expectedVersion)
+    return addItemAliases(this.semanticRoot, this.applyItemUpdateSeam, kind, name, labels, expectedVersion)
   }
 
   async removeAliases(
@@ -1454,7 +1454,7 @@ export class SemanticGroundingCore {
     labels: readonly string[],
     expectedVersion: string,
   ): Promise<{ readonly results: readonly ItemVerdict[]; readonly version: string }> {
-    return removeItemAliases(this.semanticRoot, (k, n, u, v) => this.applyItemUpdate(k, n, u, v), kind, name, labels, expectedVersion)
+    return removeItemAliases(this.semanticRoot, this.applyItemUpdateSeam, kind, name, labels, expectedVersion)
   }
 
   async addRelations(
@@ -1463,7 +1463,7 @@ export class SemanticGroundingCore {
     relations: readonly RelationInput[],
     expectedVersion: string,
   ): Promise<{ readonly results: readonly AddVerdict[]; readonly version: string }> {
-    return addItemRelations(this.semanticRoot, (k, n, u, v) => this.applyItemUpdate(k, n, u, v), kind, name, relations, expectedVersion)
+    return addItemRelations(this.semanticRoot, this.applyItemUpdateSeam, kind, name, relations, expectedVersion)
   }
 
   async removeRelations(
@@ -1472,8 +1472,12 @@ export class SemanticGroundingCore {
     relations: readonly RelationInput[],
     expectedVersion: string,
   ): Promise<{ readonly results: readonly ItemVerdict[]; readonly version: string }> {
-    return removeItemRelations(this.semanticRoot, (k, n, u, v) => this.applyItemUpdate(k, n, u, v), kind, name, relations, expectedVersion)
+    return removeItemRelations(this.semanticRoot, this.applyItemUpdateSeam, kind, name, relations, expectedVersion)
   }
+
+  // The four item forwards' `applyUpdate` seam — `applyItemUpdate` bound to
+  // this Core once, instead of four eta-expanded copies of the same closure (#147).
+  private readonly applyItemUpdateSeam: ApplyItemUpdate = (k, n, u, v) => this.applyItemUpdate(k, n, u, v)
 
   /**
    * Internal: dispatch `updateTableMeta` / `updateEventMeta` /
