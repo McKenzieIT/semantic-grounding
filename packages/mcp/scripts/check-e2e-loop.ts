@@ -253,6 +253,37 @@ async function main(): Promise<void> {
       }
     }
 
+    // ── Phase 1.5 — 探索草稿的家 (ADR-0020 / #92) ────────────────────────────────────
+    step('scratch home: acquire_scratch_dir lands outside the worktree, junk never dirties posture, and a Tier-2 write still goes through')
+    {
+      const acquired = await call(client, 'acquire_scratch_dir', {})
+      const runId = fieldString(acquired, 'run_id')
+      const scratchPath = fieldString(acquired, 'path')
+      assert.match(runId, /^[0-9]{8}T[0-9]{6}Z_[0-9a-f]{6}$/, 'run id = UTC stamp + 6-hex nonce')
+      assert.equal((acquired['retention'] as Record<string, unknown>)?.['keeps_last'], 3, 'default retention keeps the last three runs')
+      const gitDir = fixtureGit(['rev-parse', '--absolute-git-dir'], root).trim()
+      assert.equal(scratchPath, join(gitDir, 'sg-scratch', runId), 'the run lives inside the git dir, outside the worktree git tracks')
+      // The exploration half: intermediate junk dropped in bash, into the acquired run.
+      writeFileSync(join(scratchPath, 'odps-reprobe.sql'), '-- dws_order schema re-probe draft\n')
+      writeFileSync(join(scratchPath, 'dws_order.draft.yaml'), 'table_name: dws_order\n')
+      assert.equal(fixtureGit(['status', '--porcelain'], root).trim(), '', 'scratch junk is invisible to both clean-worktree gates')
+      // The write-back half: a Tier-2 write still lands — no PostureRefusedError. The
+      // event kind deliberately: `updateEventMeta` runs no on-write enrichment hook
+      // (the event hook remains deferred), so this write derives nothing, and the
+      // description carries no bracketed/quoted terms — the deterministic alt-label
+      // extractor must find nothing in it (the fixture's own contract for this event).
+      const v = fieldString(await call(client, 'get_definition', { kind: 'event', name: 'pay_success' }), 'version')
+      const written = await call(client, 'update_definition', {
+        scope_id: 'fixture',
+        kind: 'event',
+        name: 'pay_success',
+        fields: { description: '支付成功事件探索草稿后写回' },
+        expected_version: v,
+        ...tier2('探索草稿后写回', 0.9),
+      })
+      assert.equal(written['changed'], true, 'the Tier-2 write succeeds with scratch junk on disk')
+    }
+
     // ── Phase 2 — 问数 read path: the corpus cannot answer it yet ────────────────────
     step('read path: no alias, no join yet — the scenario the writes will fix')
     {

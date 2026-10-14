@@ -7,7 +7,9 @@
  * round (e.g. event YAML = source-of-truth); it cannot directly write
  * source-of-truth. approve-side registration is gated to P9 admin
  * (`disable_admin` can disable the whole layer). The pending queue lives in
- * `var/` (gitignored runtime data), one JSON file per suggestion.
+ * `<gitDir>/sg-pending/` (inside the git dir, outside the worktree — see the
+ * mcp package's `tools/shared.ts#pendingQueueRoot` for the placement ruling),
+ * one JSON file per suggestion.
  *
  * Tier-2 (per-scope persistent write, audit-logged, non-disableable) is NOT
  * here — it routes through `ctx.audit.recordTier2Write` (P6b grilling Q4), via
@@ -22,7 +24,7 @@ import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlink
 import { join } from 'node:path'
 import { createHash, randomBytes } from 'node:crypto'
 
-/** A queued Tier-1 self-modification suggestion (one JSON file in the pending `var/` queue). */
+/** A queued Tier-1 self-modification suggestion (one JSON file in the `<gitDir>/sg-pending/` queue). */
 export interface PendingSuggestion {
   readonly suggestion_id: string
   readonly kind: string

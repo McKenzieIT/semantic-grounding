@@ -331,7 +331,7 @@ is named here because omitting it made this table read as a guarantee it does no
 | | **Tier-1** | **Tier-2** | **write primitive** (raw-edit) |
 |---|---|---|---|
 | What an agent may do | **suggest** only | write source-of-truth directly | write source-of-truth directly |
-| Where it lands | the [pending queue](#pending-queue) in `var/` (gitignored runtime data) | the corpus YAML under the semantic root | the corpus YAML under the semantic root |
+| Where it lands | the [pending queue](#pending-queue) in `<gitDir>/sg-pending/` (inside the git dir, outside the worktree) | the corpus YAML under the semantic root | the corpus YAML under the semantic root |
 | Audit | not an auditable mutation; no recorder needed | **required** — [D5](#d5-invariant) applies | **optional** — takes an optional `Tier2Opts`; without one the write has no substrate-level audit (the host's concern) |
 | Disableable | yes (`disable_admin` can disable the whole layer) | **no** | n/a (records only when a recorder is passed) |
 | Functions | `submit` / `load` / `listing` / `discard` | `updateTableMeta` / `updateEventMeta` / `syncWriteDefinitions` | `writeTable` / `writeEventYaml` |
@@ -725,7 +725,7 @@ How ODPS schema drift is found under the single-host model (decided in ADR-0019;
 implementation tracked in [#111](https://github.com/McKenzieIT/semantic-grounding/issues/111)).
 The server never probes ODPS — it has no engine client ([#79](https://github.com/McKenzieIT/semantic-grounding/issues/79)).
 Instead the connecting agent, which already holds ODPS access in its own trajectory,
-re-probes the drifted schema into its [scratch home](https://github.com/McKenzieIT/semantic-grounding/issues/92)
+re-probes the drifted schema into its [scratch home](#scratch-home)
 (`<gitDir>/sg-scratch/`), regenerates the affected table/event
 [definitions](#definition), and feeds them back through [batch import](#batch-import).
 Drift is quantified *reactively* — by the Phase-1 `updated` verdicts (what the re-import
@@ -766,3 +766,24 @@ never a hard reject, because a whole re-sync is one `git revert`-able commit. A 
 floor (default ~10) below which only the count guard applies keeps the ratio out of its
 meaningless-on-a-tiny-corpus regime; threshold and floor live in `ServerConfig`, not the
 substrate ([#79](https://github.com/McKenzieIT/semantic-grounding/issues/79)).
+
+### scratch home (草稿家)
+
+The server-managed landing place for an agent's exploration drafts — the SQL dumps,
+re-probed schemas and drafted YAML of the explore-then-write-back loop (decided in
+ADR-0020; landed with the `acquire_scratch_dir` tool in
+[#101](https://github.com/McKenzieIT/semantic-grounding/issues/101)). It lives at
+`<gitDir>/sg-scratch/<run-id>/`, the same family as the [pending queue](#pending-queue)'s
+`sg-pending/` and the corpus lock: inside the git dir, **outside the worktree git
+tracks**, so exploration junk is invisible to both clean-worktree gates by construction
+— dropping drafts anywhere in the corpus worktree is what makes the next
+[Tier-2](#write-tier) write refuse with a posture error, mistaking the agent's own
+scratch for an operator's uncommitted edit. One `acquire_scratch_dir` call = one fresh
+run directory (the unit an exploration is collected in; concurrent explorers stay
+isolated), and cleanup is the **server's** job, not the agent's: every acquire prunes
+the home to the newest N runs (default 3, `ServerConfig.scratchRunsToKeep`), retiring
+the least-recently-touched — an in-flight run keeps bumping its own mtime — while never
+touching anything it does not recognize as a run directory, and never recycling the run
+its own call just handed out. Not an audited mutation: no commit, no corpus lock,
+nothing durable — anything worth keeping must be written back into the corpus before
+its run is retired.

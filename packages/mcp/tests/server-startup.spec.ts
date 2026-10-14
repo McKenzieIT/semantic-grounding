@@ -257,14 +257,16 @@ describe('deployment refusals exit 78 and say nothing on stdout', () => {
 // SCOPE_TOOL_NAMES is ADR-0011's addition (#51): the five scope-management tools, on
 // top of the pre-existing nineteen (ADR-0005's fifteen + ADR-0006's three + ADR-0008's
 // one) — #72 added the family's sixth, `deregister_scope` — PLAYBOOK_TOOL_NAMES is
-// #63's initialization dashboard, and
-// IMPORT_TOOL_NAMES is ADR-0013's bulk import (#68) — twenty-seven
+// #63's initialization dashboard,
+// IMPORT_TOOL_NAMES is ADR-0013's bulk import (#68), #105's `list_definitions` made
+// ADR-0005's reads six (#112), and SCRATCH_TOOL_NAMES is
+// ADR-0020's scratch home (#101) — twenty-nine
 // default-registrar tools in total. None of the tools/list-only
 // tests below need an active scope bound: every tool registers unconditionally, and
 // only a definition-tool *call* without one would answer no_active_scope.
 
 describe('serving', () => {
-  it('answers a 2026-07-28 tools/list with all twenty-seven default-registrar tools, in the revision\'s result shape', () => {
+  it('answers a 2026-07-28 tools/list with all twenty-nine default-registrar tools, in the revision\'s result shape', () => {
     const r = run(['--agent-id', 'analyst-bot', '--registry', freshRegistryPath()], { input: modernToolsList() })
     expect(r.code).toBe(EXIT.ok)
 
@@ -355,7 +357,7 @@ describe('serving', () => {
     const out = responses(r.stdout)
     expect(out).toHaveLength(2)
     expect((out[0]?.['result'] as Record<string, unknown>)?.['protocolVersion']).toBe('2025-11-25')
-    // Same default-registrar tool set as the modern-era test above (all twenty-six).
+    // Same default-registrar tool set as the modern-era test above (all twenty-nine).
     const legacyTools = (out[1]?.['result'] as Record<string, unknown>)?.['tools'] as Array<{ name: string }> | undefined
     expect(legacyTools?.map(t => t.name).sort()).toEqual([...ALL_DEFAULT_TOOL_NAMES].sort())
     // No `-32601`: the regression this guards is reusing one McpServer across the

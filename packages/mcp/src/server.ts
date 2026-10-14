@@ -83,6 +83,7 @@ import { registerEnrichmentTools } from './tools/enrichment.ts'
 import { registerImportTools } from './tools/import.ts'
 import { registerPlaybookTools } from './tools/playbook.ts'
 import { registerScopeTools } from './tools/scope.ts'
+import { registerScratchTools } from './tools/scratch.ts'
 // ADR-0015's MCP-side entry: the epoch itself lives in the substrate
 // (`read-epoch.ts`, reached through the barrel's `SemanticGroundingCore`
 // static — the barrel's 36-name allow-list is untouched). Value import.
@@ -150,10 +151,11 @@ export type ToolRegistrar = (server: McpServer, deps: ServerDeps) => void
  * scope-management tools (`registerScopeTools`, `./tools/scope.ts`), #63 appends
  * the initialization playbook tool (`registerPlaybookTools`, `./tools/playbook.ts`),
  * and #68 appends ADR-0013's bulk-import tool (`registerImportTools`,
- * `./tools/import.ts`)
+ * `./tools/import.ts`), and #101 appends ADR-0020's scratch-home tool
+ * (`registerScratchTools`, `./tools/scratch.ts`)
  * — appending here was the whole integration step the seam was built for.
  */
-export const TOOL_REGISTRARS: readonly ToolRegistrar[] = [...INTENT_TOOL_REGISTRARS, registerEnrichmentTools, registerScopeTools, registerPlaybookTools, registerImportTools]
+export const TOOL_REGISTRARS: readonly ToolRegistrar[] = [...INTENT_TOOL_REGISTRARS, registerEnrichmentTools, registerScopeTools, registerPlaybookTools, registerImportTools, registerScratchTools]
 
 /**
  * Wrap one function so it runs inside a read epoch (ADR-0015): every

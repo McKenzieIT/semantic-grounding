@@ -158,6 +158,14 @@ export interface ServerConfig {
    * do it.
    */
   readonly massUpdateWarnThreshold?: number
+  /**
+   * How many scratch run directories `acquire_scratch_dir`'s GC retains
+   * (`tools/scratch.ts`, ADR-0020 / #92: 保留最近 N 次,默认 N=3). No
+   * flag/env var — same posture as `guidanceThreshold`: ADR-0011 ruling 3
+   * closed the CLI surface at four flags, and the knob exists for tests and
+   * embedding hosts, not operators.
+   */
+  readonly scratchRunsToKeep?: number
 }
 
 /**

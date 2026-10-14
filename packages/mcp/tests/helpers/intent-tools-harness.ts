@@ -73,6 +73,8 @@ export interface IntentToolHarnessOptions {
   /** Import ratio-guard override (ADR-0019 R6; default: `tools/import.ts`'s
    * `DEFAULT_RATIO_GUARD_THRESHOLD`/`DEFAULT_RATIO_GUARD_FLOOR`, 0.5/10). */
   readonly massUpdateRatio?: MassUpdateRatioThresholds
+  /** Scratch-home GC retention override (default: `scratch.ts`'s 3, ADR-0020). */
+  readonly scratchRunsToKeep?: number
 }
 
 /** One built harness. */
@@ -119,6 +121,7 @@ export async function buildIntentToolHarness(opts: IntentToolHarnessOptions = {}
       ...opts.guidanceThreshold !== undefined ? { guidanceThreshold: opts.guidanceThreshold } : {},
       ...opts.massUpdateWarnThreshold !== undefined ? { massUpdateWarnThreshold: opts.massUpdateWarnThreshold } : {},
       ...opts.massUpdateRatio !== undefined ? { massUpdateRatio: opts.massUpdateRatio } : {},
+      ...opts.scratchRunsToKeep !== undefined ? { scratchRunsToKeep: opts.scratchRunsToKeep } : {},
     },
   }
   const server = await buildServer(createServerFactory(deps, opts.registrars ?? TOOL_REGISTRARS))
