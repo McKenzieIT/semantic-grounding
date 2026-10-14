@@ -23,10 +23,10 @@
 | C2 | enrichment work fetch/apply 共享前提 4 份镜像 → resolve 步骤 | substrate | **Strong · 已落地**（map #95 03 `713ee16` `resolveEnrichmentWork` 单点，「fetch 报 stale ⇒ apply 必然 stale」从注释升机制 + 表驱动钉两端） |
 | C3 | 工具家族描述符：names ↔ registrars 单一来源 | mcp | **Strong · 已落地**（[map #113](https://github.com/McKenzieIT/semantic-grounding/issues/113) 三票 2026-10-14 全解关图：#114 裁决四问全签 → 02 `81b05ec` 九家族两键卡片 {names,register} 住家族文件〔`ToolFamily` 住 tools/shared.ts〕，index.ts 双层列表派生四常量，server.ts 改 import 派生再导出 + S3 散文六处一票修、`toHaveLength(29)` 减速带显式保留） |
 | C4 | 写响应信封 4 种拼法 9+ 组装点 → audited.ts 深模块 | mcp | **Strong · 已落地**（[map #106](https://github.com/McKenzieIT/semantic-grounding/issues/106) 四票 2026-10-14 全解关图：`writeReceipt` 信封 11 调用点收编 + 写后 version 回执 + add_* 批量〔#108 `c0c14da` / #109 `ede7853`〕，rg 单点验证与公开面白名单对账落 #110 resolution） |
-| C5 | 27 个 try/catch + 两份前缀 grep → 收进 epoch Proxy chokepoint | mcp | Strong · **复核 2026-10-14 仍成立**（27 个原数存续；`toToolErrorResult` 现 errors.ts:571） |
-| C6 | guidance/playbook 阶段编排分叉 → 一个评估函数 | mcp | Worth exploring · **复核 2026-10-14 仍成立**（四分叉全存续，未动） |
-| C7 | 测试拓扑三处「合并做了一半」的尾巴 | 测试拓扑 | Strong · **复核 2026-10-14 仍成立**（①夹具 dict 18→14 文件——S1 删测试段所致；②③原样） |
-| C8 | 六个小收口（seam 已挣得口粮但没盖满） | 混合 | Worth exploring · **复核 2026-10-14**：1/4/5/6 未动仍成立；2 剩三份手抄〔io.ts:811/868/1029，#108 version 回执已内联〕；3 剩 `getId`/`loadBuiltinDefinitions`/`toExecutableRule` |
+| C5 | 27 个 try/catch + 两份前缀 grep → 收进 epoch Proxy chokepoint | mcp | **Strong · 已落地**（[map #118](https://github.com/McKenzieIT/semantic-grounding/issues/118) 六票 2026-10-14 全解关图：#119 裁决四问 → #120 `16e2a4a` `epochWrapped` 门内 Promise 链映射〔Sg→`toToolErrorResult` 结果、其余原样抛；substrate 零文件 = epoch 逐字节不变〕+ not-found adapter 家族住 errors.ts；handler 手抄 catch-return 实数 **29** 清零〔票面 30→#119 计 31→终核 29〕；chokepoint 单点断言一处盖全部） |
+| C6 | guidance/playbook 阶段编排分叉 → 一个评估函数 | mcp | Worth exploring · **已落地**（map #118 #121 `55bc05f` `evaluateLayers` 住 guidance.ts 单点——阈值默认/laggard 判式/`listEnrichmentWork({})` 全语料扫各生产唯一点、双扫消失；双渲染器共享同一评估对象零判断分叉、两工具响应键值逐字不变；等价性单元断言 +5 测试） |
+| C7 | 测试拓扑三处「合并做了一半」的尾巴 | 测试拓扑 | **Strong · 已落地**（map #118 #122 `0b5e93e`〔rebase 后终 sha，pre-rebase 39fc550〕：①`fixtureTable`/`fixtureEvent` 单点、13 spec 手拼清零〔`primary_key_unique` 测试面只剩 fixtures〕②绑定配方 4→1〔`buildFixtureDeps`+`freshFixtureRegistry`；勘误：第 4 位是 scope-tools 非 server-startup〕③e2e `withProbeScope` 生命周期单点 + isError 解码 `decodeResult` 单 decode 两出口四消费位；零生产码、k11 语料零改动） |
+| C8 | 六个小收口（seam 已挣得口粮但没盖满） | 混合 | Worth exploring · **已落地（择项）**（map #118 #123 `25b26ac`〔rebase 后终 sha，pre-rebase d6054c8〕：C8.1 no-go 边界注释 / C8.2 `writeDefinitionFile` 写分发单 seam 三调用点 / C8.4 `withAuditedBatch` 单点 / C8.5 计数三件套挪 `io-probes.ts` 不进 barrel + 精确钉→带宽不变量 + S4 三小件同票〔toolSuccess/entryHead 惰性/switchTo 双跑减半〕；C8.3 死成员归 S2 另票、C8.6 已随 #81 除名——见节内状态注） |
 | S1 | dsh 姿态面集群：snapshot / LLM seam / SchemaProvider / sync-write 链 / barrel 收窄 / scope-epoch | substrate+mcp | Strong 证据 · **已落地**（[#82](https://github.com/McKenzieIT/semantic-grounding/issues/82) 六项裁决 → [map #88](https://github.com/McKenzieIT/semantic-grounding/issues/88) 五票 2026-10-13 同日全解关图，ADR-0017 accepted；S1.1/S1.3 暂缓进 ADR-0017） |
 | S2 | A 类死码 ~650 行（vendor 三件套 / loadDomains / recorder 预留字段 / 死导出） | 混合 | 免费（直删，零行为损失）· **复核 2026-10-14：八条目 + 弱 A 逐一 rg 全存续**（recorder 已迁 `src/git/recorder.ts`） |
 | S3 | 文档/注释漂移（README 工具数 26→27 契约行等） | docs | 修字（部分与 C3 重叠）· **复核 2026-10-14 仍成立**（README:100 仍 26〔现值应 27、#112 后 28〕；旧路径头注实为 **4** 处，巡检漏计 corpus.spec.ts:7） |
@@ -138,11 +138,13 @@ flowchart TD
 
 **ADR 注意**：显式保留两处已裁决的不对称——import 的 `enrichment_health` 键恒缺（ADR-0013 执行细节）、apply/run_enrichment 不在 `_guidance` 名单（ADR-0014 / #55 R9，7 个 definition 写工具之外的排除是有意的）。参数化即可，不重新诉讼。
 
-## C5 · chokepoint 收编错误映射：删 27 个 try/catch（Strong）
+## C5 · chokepoint 收编错误映射：删 27 个 try/catch（Strong）——已落地（map #118，2026-10-14 `16e2a4a`）
+
+> **落地核验（2026-10-14，#124 终验）**：`epochWrapped`（server.ts:179）`outcome.catch(toToolErrorResult)` 为全包唯一生产调用点（index.ts re-export 非调用）；handler 手抄 catch-return **29 处**清零〔计数终核：票面 30 → #119 计 31 → #120 勘误 29——enrichment「4 直抄 + 2 站位」系双计；pre-image 逐文件复数吻合：read 6 / write 2 / items 4 双层 / suggestions 4 / scope 6 / enrichment 4 / playbook 1 / import 1 / scratch 1，另排除 enrichment/import 两处 Q4 裁决保留的 `batch.abort` catch（后随 #123 `withAuditedBatch` 收编）与 scope/scratch 两处 best-effort 非映射〕；16e2a4a 17 文件全在 mcp = substrate 零改动、epoch 逐字节不变红线兑现；三前缀 `startsWith` 唯一定义 errors.ts `isSubstrateNotFound`（`SUBSTRATE_NOT_FOUND_PREFIXES`），`notFoundAsCoded`（items 承诺链 ×4）/`unknownFilterNamesAsCoded`（enrichment 承诺链 + `assertKnownFilterNamesCoded` 翻译层）就位，`assertUpdateOk` 退化调用、`mapCoreError`/`toScopeAwareToolError` 退役；错误契约测试一处盖全部（tool-error-contract.spec：async throw Sg → `expect(res.result).toEqual(toToolErrorResult(coded))` 逐字段 + 非 Sg 裸 message 镜像钉 + adapter 单测 5 条；MCP 层写中途/并发世代补钉新 spec `read-epoch-midwrite-concurrent.spec`）。
 
 > **复核（2026-10-14）**：原样存续——27 个 handler try/catch 精确同数（`return toToolErrorResult(e)` 逐文件计数 + items 变体）；`toToolErrorResult` 现 `errors.ts:571`；两份 not-found 前缀 grep 现 `shared.ts:346` / `items.ts:40`。工具面 27 未变（#112 未落地），计数无需刷新。
 
-**文件**：`server.ts:196-213`（epoch Proxy；注释 :178-181 明言其存在理由就是反对「赌下一个工具作者记得——ADR-0010 记录过输掉的赌」）· `errors.ts:552-588`（`toToolErrorResult` 返回而非抛，:44-58 实测 SDK 会把 thrown error 剥成裸 `.message`）· 全部 27 个 handler 手写 `try{...}catch(e){return toToolErrorResult(e)}`（read 5 / write 2 / items 4 / suggestions 4 / scope 6 / enrichment 4 / playbook 1 / import 1）· `shared.ts:344-350` 与 `items.ts:38-46` 两份 not-found 前缀 grep（`'Table not found'` 等三前缀 → `DefinitionNotFoundError`）。
+**文件**：`server.ts:196-213`（epoch Proxy；注释 :178-181 明言其存在理由就是反对「赌下一个工具作者记得——ADR-0010 记录过输掉的赌」）· `errors.ts:552-588`（`toToolErrorResult` 返回而非抛，:44-58 实测 SDK 会把 thrown error 剥成裸 `.message`）· 全部 27 个 handler 手写 `try{...}catch(e){return toToolErrorResult(e)}`（read 5 / write 2 / items 4 / suggestions 4 / scope 6 / enrichment 4 / playbook 1 / import 1）· `shared.ts:344-350` 与 `items.ts:38-46` 两份 not-found 前缀 grep（`'Table not found'` 等三前缀 → `DefinitionNotFoundError`）。〔以上为巡检时点行号，落地后以 `epochWrapped`（server.ts）与 errors.ts adapter 家族符号为准。〕
 
 **Before** —— 「返回不抛」的 SDK 对策靠每个 handler 手抄 try/catch：工具 #28 作者忘包，coded error 被 SDK 剥成裸 message，无编译期/测试期 tripwire。substrate 改一句错误文案，两份前缀 grep 同时静默失效（症状：Core 错误冒充内部故障，rethrow、无 code）。items 的调用点习语还是双层 try（:121/:150/:179/:208）。
 
@@ -154,18 +156,22 @@ flowchart TD
 
 **ADR 注意**：ADR-0005（2026-10-09 update）裁的是**机制**（isError result 携 JSON，不走 JSON-RPC error.code），不是「谁包」——实施约定可随实施演进；但 Proxy 同时是 ADR-0015 的 epoch chokepoint，加职责须保 epoch 语义逐字节不变（async 边界小心）。
 
-## C6 · 阶段评估函数：guidance / playbook 编排分叉收拢（Worth exploring）
+## C6 · 阶段评估函数：guidance / playbook 编排分叉收拢（Worth exploring）——已落地（map #118，2026-10-14 `55bc05f`）
+
+> **落地核验（2026-10-14，#124 终验）**：`evaluateLayers(snap, thresholds?)` 住 guidance.ts 单点——`?? DEFAULT_DW/KG_THRESHOLD` 应用（:185-186）、`PHASE_RANK[...] <= PHASE_RANK[...]` laggard 判式（:193）、`listEnrichmentWork({})` 全语料扫（:190）各全包生产唯一点（rg 复核；enrichment.ts:200 的 `listEnrichmentWork(filterOpts(args))` 是 `get_enrichment_work` 工具本体带过滤读、非分叉——判断复核成立）；`guidanceFromEvaluation`/`playbookFromEvaluation` 双渲染器共享同一 `LayersEvaluation` 零判断分叉，两工具响应键值逐字不变（既有 spec 零改动全绿佐证）、e2e Phase 6.6 零改动；等价性单元断言在位（guidance.spec：同一评估对象驱动两渲染器断 `overall_phase === _guidance.phase` + `layers.*.phase === metrics.*.phase`，盖 6 状态 + override 2 态，另单次扫描/生效阈值/laggard tie→DW 钉）；随势收编：`dwPhase`/`kgPhase`/`PHASE_RANK` 收回模块私有（#63 导出理由消灭）、`layerCounts` 仍导出（scope.ts 消费）、均非 barrel 面。
 
 > **复核（2026-10-14）**：四分叉全存续——阈值默认独立（`playbook.ts:257` 注释自认 "each side defaults independently"）· laggard 规则 ×2（`guidance.ts:166` 与 `playbook.ts:286-290` 同判式）· `listEnrichmentWork({})` 双扫（`guidance.ts:105` + `playbook.ts:269`）· 两张平行散文表。#102 的 get_scope counts 复用 `layerCounts` 共享原语，未触分叉。未动。
 
 **文件**：`guidance.ts:95-156` vs `playbook.ts:72-81`（`layerCounts`/`dwPhase`/`kgPhase`/`PHASE_RANK` 四原语已共享 = #63 做对的一半）。
-**分叉**：阈值默认 ×2（`guidance.ts:155-156` vs `playbook.ts:261-262`）· laggard 规则 ×2（`guidance.ts:162` 与 `playbook.ts:286-288` 都写 `PHASE_RANK[dw] <= PHASE[kg]`）· `listEnrichmentWork({})` 扫两遍（`guidance.ts:104` + `playbook.ts:269`，后者 :56-61 "Cost note" 自认）· 两张平行散文表（`hintFor` guidance.ts:131-146 vs `recommendedActionFor`+`summaryMessage`+`LAYER_LABEL` playbook.ts:176-224）。
+**分叉**：阈值默认 ×2（`guidance.ts:155-156` vs `playbook.ts:261-262`）· laggard 规则 ×2（`guidance.ts:162` 与 `playbook.ts:286-288` 都写 `PHASE_RANK[dw] <= PHASE[kg]`）· `listEnrichmentWork({})` 扫两遍（`guidance.ts:104` + `playbook.ts:269`，后者 :56-61 "Cost note" 自认）· 两张平行散文表（`hintFor` guidance.ts:131-146 vs `recommendedActionFor`+`summaryMessage`+`LAYER_LABEL` playbook.ts:176-224）。〔以上为巡检时点行号，落地后以 `evaluateLayers`/`guidanceFromEvaluation`/`playbookFromEvaluation` 符号为准。〕
 
 **After（plain english）** —— 一个评估函数（snap + thresholds → {各层 count/phase、laggard、workRemaining、实际阈值}）一次算完；guidance 渲染 `{phase, hint, metrics}`，playbook 渲染 `{layers, summary, overall_phase}`——各自的散文表保留（受众不同是合法差异），键都从同一份评估来；双扫描消失。两工具「永不同意」的等价性从 e2e 巡检（check-e2e-loop.ts:1008-1013）下沉为单元断言。
 
 **ADR**：无冲突——ADR-0014 恰恰 pin 了「一个阶段推导」，本候选是把它做完；4 值/5 值 phase 类型（GuidancePhase vs PlaybookPhase）的诚实分叉保持不动。
 
-## C7 · 测试拓扑：三处「合并做了一半」的尾巴（Strong）
+## C7 · 测试拓扑：三处「合并做了一半」的尾巴（Strong）——已落地（map #118，2026-10-14 `0b5e93e`）
+
+> **落地核验（2026-10-14，#124 终验）**：①`fixtureTable()`/`fixtureEvent()` 住 enrichment-fixtures.ts（fixtureEvent 走 `EventDefinitionSchema.parse` 共享 schema 默认），13 个手拼 spec（10 全套 + 3 部分）改走 builder 只留 load-bearing override——rg `primary_key_unique` 测试面唯 fixtures 单点（余为 k11 静态语料 YAML，diff 核零改动），schema 加必填字段编辑半径 13 处 spec → 1 文件 2 builder；②harness 导出 `buildFixtureDeps()` + `freshFixtureRegistry()`，全套配方 4 位（harness/enrichment-tools/binding/scope-tools——**勘误：第 4 位是 scope-tools 非 server-startup**，后者只有路径半件也经 freshFixtureRegistry 归一）全走单点；残留 `new BindingStore`/`new ScopeRegistryFile` 均被测对象本体语义测试（binding.spec 锁/logger 契约、scope-registry.spec ENOENT、server-startup `registerDirect` 姿态绕行钉），非配方；③e2e 三段 try/finally 探针收 `withProbeScope()` 单点生命周期、三段 phase 主体逐字不动（22 步恒定）；#20 isError 解码收 inprocess-client `decodeResult` 单 decode + `toolOutcome`（JSON-RPC 信封）/`handlerOutcome`（直连 handler）两出口，e2e `callCodedError`/enrichment `call`/scope `callOk`/playbook `codedErrorOf` 四消费位统一——剩余 `res.result?.['isError']` 均对已持原始响应的单旗布尔断言、非解码重实现（判断复核成立）；零生产码（22 文件 diff 全在 tests/scripts）、k11-seed/read-count-probe/静态语料零改动。
 
 > **复核（2026-10-14）**：三尾巴全在，仅①计数缩小——①标记 grep `confirmation: { status: 'draft'` 现 **14** 个 spec 文件（18→14：S1 删测试段带走部分手拼文件，#98 `item-write.spec` / #52 `concept-write.spec` 为其后新增仍手拼；`enrichment-fixtures.ts` 单一来源消费面未扩）；②三份绑定配方原样（harness `:102-103` 有 `bindStartup` / enrichment-tools `:189` 起 / scope-tools `:72-78` 仍缺）；③`callCodedError` 仍 `check-e2e-loop.ts:150`（#20 解码规则第 4 份拷贝），三段 try/finally 探针样板原样（#72 在 probe 步内插入 deregister 观测，未收生命周期）。
 
@@ -177,7 +183,9 @@ flowchart TD
 
 **ADR**：无冲突——k11 静态语料与两条计数钉死 spec（k11-seed / read-count-probe）不动。
 
-## C8 · 小收口清单（Worth exploring，各自独立、按触发挑）
+## C8 · 小收口清单（Worth exploring，各自独立、按触发挑）——已落地（择项，map #118 #123，2026-10-14 `25b26ac`）
+
+> **落地核验（2026-10-14，#124 终验）**：**1** no-go 落显性边界注释（`readThroughEpoch` 文档处：kind 联合恒 `'tables' | 'events'`、concepts 与 plugin kinds〔`loadRawDir` 路径〕刻意世代外，指回 #119 裁决 + 重开触发器〔concept 写路径批量化或 concepts>100〕 + R6/R7 禁区重申；零行为、无 ADR-0015 addendum）。**2** `writeDefinitionFile` 单 seam（io.ts:820）与 `auditedFileWrite` 分层不撕裂——writeTable/writeEventYaml/writeConceptYaml 三调用点（:881/:930/:1083）缩「验证+算路径+一行调用」，raw 分发对（atomicWrite+invalidateCaches :828-829）全模块唯一，version 回执内联保留、形状零变化。**3** 本图不动（`toExecutableRule` 归 S2 清理票、`getId`/`loadBuiltinDefinitions` 归 00 Q4 议程——见条内状态注）。**4** `withAuditedBatch`（audited.ts:143）begin→循环 record→end、catch→abort→rethrow 单点（`beginBatch()`/`.abort()` 生产唯一点），enrichment/import 两调用点一行包裹。**5** 计数三件套挪 `substrate/src/io-probes.ts`（不进 barrel——对源码与 tsdown 构建产物双 deepEqual 27+default、探针零泄漏），io.ts 只剩 import + 一行增量（:55/:147）；read-count-probe 精确钉改带宽不变量（单定义读 ≤2× 本 kind 语料、整操作 <20× 全语料、写路径 ≤2 原样），K11 常量留 spec 侧当带宽算子。**6** 已随 #81 除名。同票捎 **S4 三小件**：toolSuccess 收敛（read 9 + suggestions 4 内联清零，响应形状全域单点）、entryHead 惰性（有 commit 不付 rev-parse；回退读卡位 fn 后/derived-residue 提交前——该提交不入 window.commits，注释钉）、switchTo/bindStartup posture 双跑减半（report 线程穿 `bindingFor`，错误类别与拒绝行为零变化）。终验门禁亲跑：typecheck 双包 0 / substrate 450 / mcp 446+1skip / e2e 22（banner 29）。
 
 六处「seam 或单一来源已存在但没盖满」的缺口：
 
