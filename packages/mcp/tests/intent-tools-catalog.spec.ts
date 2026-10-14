@@ -2,8 +2,9 @@
  * The tool catalog: names, and the schema shapes the ADRs' rulings bake in —
  * ADR-0005's sixteen intent tools (ruling 6's five reads + #105's `list_definitions`)
  * plus ADR-0006/0008's four enrichment tools
- * plus #63's playbook tool plus ADR-0013's import tool plus #72's deregister
- * tool plus #101's scratch-home tool, twenty-nine total
+ * plus ADR-0011's six scope tools (#72's deregister is the sixth of them)
+ * plus #63's playbook tool plus ADR-0013's import tool
+ * plus #101's scratch-home tool, twenty-nine total
  * today. ADR-0005's own Verification
  * section asks for exactly this ("门禁脚本断言：十五个工具名与 input/output schema
  * 快照"); ADR-0006/0008 inherited the same ask, and the e2e gate's header defers
@@ -65,7 +66,7 @@ function byName(tools: readonly ListedTool[], name: string): ListedTool {
 }
 
 describe('the twenty-nine names', () => {
-  it('registers exactly ADR-0005\'s sixteen + ADR-0006/0008\'s four + ADR-0011\'s six + #63\'s playbook + ADR-0013\'s import + #72\'s deregister + #101\'s scratch home, reconciled against TOOL_NAMES', async () => {
+  it('registers exactly ADR-0005\'s sixteen + ADR-0006/0008\'s four + ADR-0011\'s six + #63\'s playbook + ADR-0013\'s import + #101\'s scratch home, reconciled against TOOL_NAMES', async () => {
     const tools = await listTools()
     expect(tools.map(t => t.name).sort()).toEqual([...TOOL_NAMES].sort())
     // Deliberate hard count, not TOOL_NAMES.length: growing the surface must

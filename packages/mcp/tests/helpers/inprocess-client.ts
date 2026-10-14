@@ -6,8 +6,8 @@
  * handler, real zod `inputSchema` validation, and the real `isError` result shaping
  * all run exactly as they do under `tests/server-startup.spec.ts`'s spawned-process
  * tests — only the transport differs (`InMemoryTransport` instead of a stdio pipe),
- * which is what makes this fast enough to use per-assertion across fifteen tools'
- * worth of tests. The SDK ships no public `Client` class in this workspace (that lives
+ * which is what makes this fast enough to use per-assertion across the tool surface.
+ * The SDK ships no public `Client` class in this workspace (that lives
  * in a separate `@modelcontextprotocol/client` package this repo does not depend on
  * — adding it for test ergonomics alone was not worth a new dependency), so the far
  * end of the linked pair is this file's own minimal request/response matcher.

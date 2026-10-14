@@ -1,5 +1,5 @@
 /**
- * Shared pieces for ADR-0005's fifteen intent tools: the common Tier-2 parameter
+ * Shared pieces for ADR-0005's intent families: the common Tier-2 parameter
  * block and the `update_definition` bounded-fields schema builder. Every member
  * here is cross-family by contract — the two single-family members this module
  * briefly carried moved out to their consumers (#145): the per-call `clientInfo`

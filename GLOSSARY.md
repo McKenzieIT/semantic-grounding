@@ -731,7 +731,7 @@ loop — read grounding for a 问数 scenario, write back through the Tier-2 aud
 land the writes as corpus git commits, answer provenance from `git log -p --follow` —
 over the **real startup seams** (`parseServerConfig` → `startup()` → the same factory
 `serveStdio` calls), not the hand-built deps the unit suite uses (which is the point:
-248 tests prove the parts; this proves the assembled loop in its deployment shape,
+those tests prove the parts; this proves the assembled loop in its deployment shape,
 `autoEnrich` on and all). Enforced by `packages/mcp/scripts/check-e2e-loop.ts` —
 `pnpm e2e` at the package and the workspace root — wired as the third named gate.
 
@@ -811,8 +811,8 @@ on the [batch import](#batch-import) `updated` verdict count — not the total a
 how many it adds: a [cold start](#cold-start) into an empty corpus is almost all `created`
 and must not trip it, while a drifted re-import is almost all `updated`. When `updated`
 exceeds a configured threshold the guard is a **soft signal**: it warns in the response
-and annotates the batch commit's [provenance](#provenance) trailer so a post-hoc
-`git log` reader lands on exactly the risky commits — it does **not** reject the write
+and annotates the batch commit's subject so a post-hoc `git log` reader lands on exactly
+the risky commits — it does **not** reject the write
 (the 500-item cap already bounds runaway size, and a hard refusal is trivially evaded by
 splitting the batch). The corpus-relative *ratio* form of this guard (what fraction of
 the whole corpus a change touches) belongs to ODPS drift re-sync, not batch intake: it is
@@ -862,7 +862,7 @@ ADR-0019; implementation tracked in
 guard trips on the absolute `updated` verdict count ("beyond the eyeball budget"), the
 ratio guard trips on the per-kind fraction `updated(kind) / existing(kind)` ("what share of
 the corpus a change touches — the blast radius"). The two fire **independently**, and both
-are **soft** signals — a WARN plus a commit-[provenance](#provenance)-trailer annotation,
+are **soft** signals — a WARN plus a commit-subject annotation,
 never a hard reject, because a whole re-sync is one `git revert`-able commit. A small-corpus
 floor (default ~10) below which only the count guard applies keeps the ratio out of its
 meaningless-on-a-tiny-corpus regime; threshold and floor live in `ServerConfig`, not the

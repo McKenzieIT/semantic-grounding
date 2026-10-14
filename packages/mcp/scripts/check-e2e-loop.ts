@@ -6,7 +6,7 @@
  *
  * ## What "real seams" means here, and why that is this gate's whole value
  *
- * The 248-test suite drives tools over hand-built deps (`tests/helpers/intent-tools-harness.ts`)
+ * The unit suite drives tools over hand-built deps (`tests/helpers/intent-tools-harness.ts`)
  * with `autoEnrich: false` and no posture check. This script goes through
  * `parseServerConfig` → `startup()` — identity validation, startup posture, recorder
  * construction, `autoEnrich` at its real default (true) — then the same

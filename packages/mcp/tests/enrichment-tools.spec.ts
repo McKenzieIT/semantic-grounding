@@ -2,8 +2,8 @@
  * ADR-0006/0008's four enrichment tools (`get_enrichment_work` /
  * `get_enrichment_prompts` / `apply_enrichment` / `run_enrichment`,
  * `src/tools/enrichment.ts`), driven end to end through the real registration and
- * dispatch path: `buildIntentToolHarness` (production's default registrars — all
- * nineteen tools) plus an `InProcessClient`, so the SDK's real zod `inputSchema`
+ * dispatch path: `buildIntentToolHarness` (production's default registrars — the whole
+ * default tool surface) plus an `InProcessClient`, so the SDK's real zod `inputSchema`
  * validation runs on every call, the same seam an agent's traffic crosses.
  *
  * These cover ADR-0006's Verification section claims directly: a `work_id` survives a
@@ -64,8 +64,8 @@ afterEach(async () => {
 })
 
 /**
- * Serve a corpus through a production-shaped harness — all nineteen tools, autoEnrich
- * on. The root is borrowed (`corpusRoot`), so `close()` tears down only the client;
+ * Serve a corpus through a production-shaped harness — all default-registrar tools,
+ * autoEnrich on. The root is borrowed (`corpusRoot`), so `close()` tears down only the client;
  * the directory's lifecycle belongs to its owner (the module fixture, or a test's own
  * `createFixtureCorpus`).
  * @param root - the corpus root to serve (default the module fixture).

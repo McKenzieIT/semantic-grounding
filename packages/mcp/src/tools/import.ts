@@ -313,13 +313,13 @@ export interface RatioGuardFinding {
  * The ADR-0019 R6 soft trigger, per kind: `updated(kind) / existing(kind)`
  * above the threshold AND `existing(kind)` at or above the small-corpus floor.
  * Soft by construction — the caller turns a finding into a response WARN plus
- * a commit-trailer annotation, never a rejection: the whole re-sync is one
+ * a commit-subject annotation, never a rejection: the whole re-sync is one
  * `git revert`-able commit, and a hard refusal is trivially evaded by batch
  * splitting (the same reasoning ADR-0018 R4 gave the count guard).
  *
  * Deliberately self-contained against the ADR-0018 count guard (#104 lands it
  * separately over this same Phase 2 entry): own config field, own message, own
- * trailer segment — the two guards fire independently and compose additively.
+ * subject-note segment — the two guards fire independently and compose additively.
  */
 export function ratioGuardFindings(
   updatedByKind: Readonly<Record<ImportKind, number>>,
@@ -338,7 +338,7 @@ export function ratioGuardFindings(
   return findings
 }
 
-/** One finding's `6/8 (75%)` fragment — shared by the WARN line and the trailer so they cannot drift apart. */
+/** One finding's `6/8 (75%)` fragment — shared by the WARN line and the subject note so they cannot drift apart. */
 function ratioFragment(f: RatioGuardFinding): string {
   return `${f.updated}/${f.existing} (${Math.round(f.ratio * 100)}% > ${Math.round(f.threshold * 100)}%)`
 }
@@ -348,8 +348,8 @@ function ratioWarnLine(f: RatioGuardFinding): string {
   return `ratio-guard (ADR-0019 R6): ${f.kind} ${ratioFragment(f)} — this re-import overwrites most of the existing ${f.kind} corpus; soft signal only (one git revert undoes the batch)`
 }
 
-/** The commit-trailer annotation all findings fold into, appended to the batch's intent target (ADR-0018 R4's channel). */
-function ratioTrailer(findings: readonly RatioGuardFinding[]): string {
+/** The commit-subject note all findings fold into, appended to the batch's intent target (ADR-0018 R4's channel — the intent target is what lands in the commit's subject). */
+function ratioSubjectNote(findings: readonly RatioGuardFinding[]): string {
   return ` — ratio-guard: ${findings.map(f => `${f.kind} ${ratioFragment(f)}`).join(', ')}`
 }
 
@@ -446,7 +446,7 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
 
       // The ratio guard (ADR-0019 R6): the corpus-relative soft trigger,
       // deliberately self-contained — own config field, own message, own
-      // trailer segment — so the two fire independently. Cold start (all
+      // subject-note segment — so the two fire independently. Cold start (all
       // `created`) never reaches the scan; below the floor the ratio is
       // noise on a tiny denominator and stays the count guard's call.
       if (toUpdate > 0) {
@@ -466,7 +466,7 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
         )
         if (findings.length > 0) {
           warnings.push(...findings.map(ratioWarnLine))
-          intentTarget += ratioTrailer(findings)
+          intentTarget += ratioSubjectNote(findings)
         }
       }
 

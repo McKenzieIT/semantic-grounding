@@ -157,9 +157,10 @@ table/event `.loose()` round-trip 不变、占比守卫冷启动/floor 静默 + 
    kind 是开放存储 kind，按排除法归 table）。守卫在 Phase 2 入口、写前计数，分母天然含本次
    updated 项。
 2. **WARN 通道与 ADR-0018 统一**：占比守卫信号落响应顶层 `warnings: string[]`（零税缺席），
-   trailer 骑 intent target 通道（ADR-0018 R4 同通道）；与 count 守卫各自独立触发，集成后同一
-   批可双标注（51/53 场景有测试钉死）。锚点漂移（`import.ts:287`→305、`io.ts:1028`→1055 等，
-   #108/#109 所致）语义核实一致。
+   标注骑 intent target 通道、落 commit subject（ADR-0018 R4 同通道；「commit trailer」措辞
+   勘误同 ADR-0018 Update 3——机制实落 subject，subject 同样可 `git log --grep` 命中）；与
+   count 守卫各自独立触发，集成后同一批可双标注（51/53 场景有测试钉死）。锚点漂移
+   （`import.ts:287`→305、`io.ts:1028`→1055 等，#108/#109 所致）语义核实一致。
 
 ## References
 

@@ -60,8 +60,9 @@ build 后（`pnpm -r build` 之后的产物）：
 }
 ```
 
-flag 面共四个，每个都有对应环境变量（**flag 优先于 env**；宿主注册面只暴露 env 时可
-env-only 注册——已在真宿主实测过，见 `docs/mcp-dogfood.md`）：
+flag 面以 `--help` 输出为准（权威清单是 usage()，`packages/mcp/src/config.ts`），每个都有
+对应环境变量（**flag 优先于 env**；宿主注册面只暴露 env 时可 env-only 注册——已在真宿主
+实测过，见 `docs/mcp-dogfood.md`）：
 
 | flag | env | 必填 | 说明 |
 |---|---|---|---|
@@ -69,6 +70,9 @@ env-only 注册——已在真宿主实测过，见 `docs/mcp-dogfood.md`）：
 | `--scope <id>` | `SG_SCOPE` | 否 | 启动时急绑该 scope，不可服务则 exit 78 |
 | `--registry <path>` | `SG_REGISTRY` | 否 | scope 注册表，缺省 `~/.semantic-grounding/scopes.yaml` |
 | `--lock-timeout-ms <n>` | `SG_LOCK_TIMEOUT_MS` | 否 | 写等待语料锁的时长，缺省 10000 |
+| `--mass-update-warn-threshold <n>` | `SG_MASS_UPDATE_WARN_THRESHOLD` | 否 | count 守卫阈值：批内 `updated` 超过即 WARN 并标注 commit subject（ADR-0018；软信号不拒写，缺省 50） |
+| `--mass-update-ratio-threshold <f>` | `SG_MASS_UPDATE_RATIO_THRESHOLD` | 否 | 占比守卫触发点：单 kind `updated/existing` 超过即 WARN（ADR-0019 R6；(0,1] 小数，缺省 0.5） |
+| `--mass-update-ratio-floor <n>` | `SG_MASS_UPDATE_RATIO_FLOOR` | 否 | 占比守卫小语料下限：某 kind 的 existing 少于它时占比守卫静默（缺省 10，小语料归 count 守卫管） |
 
 没有 `--corpus`：新语料唯一入口是 `register_scope` 工具（ADR-0011 裁决 3）。退出码：
 64 = 调用形状错（改注册 JSON），78 = 部署不可服务（改注册表或语料库），1 = server
