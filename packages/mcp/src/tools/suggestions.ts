@@ -22,7 +22,7 @@ import { discard, listing, loadPending, submit } from '@semantic-grounding/subst
 import { z } from 'zod'
 import { SuggestionNotFoundError } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
-import { scopeStamp } from './audited.ts'
+import { scopeStamp, toolSuccess } from './audited.ts'
 import { pendingQueueRoot, type ToolFamily } from './shared.ts'
 
 /** The four Tier-1 tool names. */
@@ -61,7 +61,7 @@ function registerSubmitSuggestion(server: McpServer, deps: ServerDeps): void {
         ...input.tenant_id !== undefined ? { tenant_id: input.tenant_id } : {},
         ...input.meta !== undefined ? { meta: input.meta } : {},
       })
-      return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), suggestion }) }] }
+      return toolSuccess({ scope: scopeStamp(snap), suggestion })
     },
   )
 }
@@ -80,7 +80,7 @@ function registerListSuggestions(server: McpServer, deps: ServerDeps): void {
       const snap = deps.bindings.requireSnapshot()
       const root = await pendingQueueRoot(snap.recorder)
       const suggestions = listing(root)
-      return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), suggestions }) }] }
+      return toolSuccess({ scope: scopeStamp(snap), suggestions })
     },
   )
 }
@@ -106,7 +106,7 @@ function registerGetSuggestion(server: McpServer, deps: ServerDeps): void {
       if (suggestion === null) {
         throw new SuggestionNotFoundError(`no pending suggestion "${input.suggestion_id}"`, { suggestion_id: input.suggestion_id })
       }
-      return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), suggestion }) }] }
+      return toolSuccess({ scope: scopeStamp(snap), suggestion })
     },
   )
 }
@@ -127,7 +127,7 @@ function registerDiscardSuggestion(server: McpServer, deps: ServerDeps): void {
       if (!ok) {
         throw new SuggestionNotFoundError(`no pending suggestion "${input.suggestion_id}"`, { suggestion_id: input.suggestion_id })
       }
-      return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), discarded: true, suggestion_id: input.suggestion_id }) }] }
+      return toolSuccess({ scope: scopeStamp(snap), discarded: true, suggestion_id: input.suggestion_id })
     },
   )
 }

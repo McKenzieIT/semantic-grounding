@@ -90,7 +90,7 @@ import { dumpYaml, EventDefinitionSchema, TableDefinitionSchema, writeEventYaml,
 import { z } from 'zod'
 import type { ScopeBinding } from '../binding.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
-import { assertScopeMatch, auditedWrite, scopeStamp, toolSuccess, writeReceipt } from './audited.ts'
+import { assertScopeMatch, auditedWrite, scopeStamp, toolSuccess, withAuditedBatch, writeReceipt } from './audited.ts'
 import { ConceptCreatePayloadSchema, ConfidenceSchema, CONCEPT_ITEM_VERB_KEYS, ScopeIdSchema, SummarySchema, type ToolFamily } from './shared.ts'
 
 /** The bulk-import tool's single name (#54 R6 — intent-level, an `import_` verb joins the surface). */
@@ -536,9 +536,7 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
                 : snap.core.loadConceptDefinitionWithVersion(row.name)
             results[i] = { ...row, ...current?.version !== undefined ? { version: current.version } : {} }
           }
-          const batch = snap.recorder.beginBatch()
-          const tier2 = { recorder: snap.recorder, scope_id: snap.scopeId }
-          try {
+          await withAuditedBatch(snap, async (batch, tier2) => {
             for (const item of staged) {
               // #61's seam rule: each item rides `auditedFileWrite` via the raw
               // primitive with `tier2` — never a hand-copied ceremony. Inside
@@ -569,12 +567,8 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
                 : { index: item.index, kind: item.kind, name: item.name, verdict: 'error', detail: res.error })
               if (res.ok) batch.record('import_definitions', { kind: item.kind, name: item.name })
             }
-            await batch.end()
             return undefined
-          } catch (e) {
-            await batch.abort()
-            throw e
-          }
+          })
         },
       )
 

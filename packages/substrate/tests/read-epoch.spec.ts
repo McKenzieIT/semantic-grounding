@@ -4,7 +4,8 @@
  * epoch (`withReadEpoch`), measured on the k11 fixture (321 tables, 445
  * events loaded / 446 event file reads, 10 concepts) with the same test-only
  * `readYaml` counter the 01-probe landed (`_resetReadYamlCount` /
- * `_getReadYamlCount`, io.ts). Where the probe could only observe
+ * `_getReadYamlCount`, io-probes.ts since #123 / C8.5 — io.ts keeps only the
+ * increment). Where the probe could only observe
  * (count > 0), these pin the post-epoch numbers exactly.
  *
  * Six groups per the ADR's 路径断言 (positive paths fold to 1× full corpus;
@@ -19,7 +20,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { cpSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { _resetReadYamlCount, _getReadYamlCount } from '../src/io.ts'
+import { _resetReadYamlCount, _getReadYamlCount } from '../src/io-probes.ts'
 import { loadTables, loadEvents, loadTableDefinition, writeTable } from '../src/io.ts'
 import { withReadEpoch } from '../src/read-epoch.ts'
 import { assertKnownFilterNames } from '../src/enrichment.ts'

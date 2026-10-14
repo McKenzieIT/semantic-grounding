@@ -88,7 +88,7 @@ import { assertKnownFilterNames } from '@semantic-grounding/substrate'
 import { unknownFilterNamesAsCoded } from '../errors.ts'
 import { ScopeIdSchema, type ToolFamily } from './shared.ts'
 import type { ToolRegistrar } from '../server.ts'
-import { assertScopeMatch, auditedWrite, scopeStamp, toolSuccess, writeReceipt } from './audited.ts'
+import { assertScopeMatch, auditedWrite, scopeStamp, toolSuccess, withAuditedBatch, writeReceipt } from './audited.ts'
 
 /** The enrichment family's four tool names (ADR-0006's three + ADR-0008's fourth). */
 export const ENRICHMENT_TOOL_NAMES = [
@@ -307,37 +307,26 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
           derivation: 'deterministic',
           confidence: 1,
         },
-        async () => {
-          const batch = snap.recorder.beginBatch()
-          const tier2 = {
-            recorder: snap.recorder,
-            scope_id: snap.scopeId,
+        async () => withAuditedBatch(snap, async (batch, tier2) => {
+          // Only the legs the adjudicated scope turned on run, and only those
+          // legs appear in the result — a leg that did not run has nothing to
+          // report (ADR-0007's leftover-detail ruling: report the legs that ran).
+          const relation: {
+            tables?: Awaited<ReturnType<typeof snap.core.discoverRelations>>
+            events?: Awaited<ReturnType<typeof snap.core.discoverEventRelations>>
+          } = {}
+          if (tablesOn) {
+            relation.tables = await snap.core.discoverRelations({ ...scope.tables !== undefined ? { tables: scope.tables } : {}, tier2 })
+            if (relation.tables.written > 0) batch.record('run_enrichment', { round: 'relation', kind: 'table' })
           }
-          try {
-            // Only the legs the adjudicated scope turned on run, and only those
-            // legs appear in the result — a leg that did not run has nothing to
-            // report (ADR-0007's leftover-detail ruling: report the legs that ran).
-            const relation: {
-              tables?: Awaited<ReturnType<typeof snap.core.discoverRelations>>
-              events?: Awaited<ReturnType<typeof snap.core.discoverEventRelations>>
-            } = {}
-            if (tablesOn) {
-              relation.tables = await snap.core.discoverRelations({ ...scope.tables !== undefined ? { tables: scope.tables } : {}, tier2 })
-              if (relation.tables.written > 0) batch.record('run_enrichment', { round: 'relation', kind: 'table' })
-            }
-            if (eventsOn) {
-              relation.events = await snap.core.discoverEventRelations({ ...scope.events !== undefined ? { events: scope.events } : {}, tier2 })
-              if (relation.events.written > 0) batch.record('run_enrichment', { round: 'relation', kind: 'event' })
-            }
-            const altLabels = await snap.core.discoverAltLabels({ ...scope, tier2 })
-            if (altLabels.written > 0) batch.record('run_enrichment', { round: 'alt_labels' })
-            await batch.end()
-            return { relation, alt_labels: altLabels }
-          } catch (e) {
-            await batch.abort()
-            throw e
+          if (eventsOn) {
+            relation.events = await snap.core.discoverEventRelations({ ...scope.events !== undefined ? { events: scope.events } : {}, tier2 })
+            if (relation.events.written > 0) batch.record('run_enrichment', { round: 'relation', kind: 'event' })
           }
-        },
+          const altLabels = await snap.core.discoverAltLabels({ ...scope, tier2 })
+          if (altLabels.written > 0) batch.record('run_enrichment', { round: 'alt_labels' })
+          return { relation, alt_labels: altLabels }
+        }),
       )
       return toolSuccess(await writeReceipt(snap, deps, audited, {
         tool: 'run_enrichment',

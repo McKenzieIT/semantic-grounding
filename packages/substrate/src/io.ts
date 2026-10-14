@@ -50,6 +50,9 @@ import {
 // read-epoch.ts must not import this module (cycle: it is the store this
 // module's loaders memo through — ADR-0015's one-direction dependency).
 import { currentReadEpoch } from './read-epoch.ts'
+// The test-only parse counter's increment — io-probes.ts's only production
+// caller (its reset/get pair is spec-side; #123 / C8.5 moved it out of here).
+import { _countReadYamlParse } from './io-probes.ts'
 
 /**
  * Identity/scope metadata attached to one Tier-2 record (`recordTier2Write`'s
@@ -141,19 +144,15 @@ export function dumpYaml(obj: unknown): string {
   return yaml.dump(obj, { sortKeys: false, lineWidth: -1, noRefs: true, quotingType: '"' })
 }
 function readYaml(path: string): unknown {
-  _readYamlCount++
+  _countReadYamlParse() // the probe's one-line increment (#123/C8.5; io-probes.ts)
   return yaml.load(readFileSync(path, 'utf-8'))
 }
 
 // ── Test-only parse counter (ticket 01-probe) ─────────────────────────────
-// Measures how many YAML reads a given code path triggers. NOT exported from
-// index.ts (build-shape.spec.ts guards the public barrel). Import directly
-// from io.ts in specs, matching the existing test pattern.
-let _readYamlCount = 0
-/** Test-only: reset the readYaml call counter to zero. */
-export function _resetReadYamlCount(): void { _readYamlCount = 0 }
-/** Test-only: read the current readYaml call count since last reset. */
-export function _getReadYamlCount(): number { return _readYamlCount }
+// Moved to io-probes.ts (#123 / C8.5): measures how many YAML reads a given
+// code path triggers. NOT exported from index.ts (the acceptance script pins
+// the public barrel name-by-name); specs import the reset/get pair directly
+// from io-probes.ts. Only the increment call above stays in production code.
 
 // ── Atomic write (mirrors writer._atomic_write via @deepseek-ai/dsh-atomic-write) ──
 const YAML_MODE = 0o644
@@ -398,6 +397,21 @@ function scanTables(semanticLayer: string): RawTable[] {
  * Read one loader family through the open epoch's memo (ADR-0015 R1): hit only
  * when the entry's recorded corpusVersion still equals the live counter, else
  * direct-read and write the fresh entry back.
+ *
+ * **Deliberate boundary — concepts and plugin kinds stay OUTSIDE the epoch**
+ * (#119's Q3 no-go, 2026-10-14): the `kind` union below is exactly `'tables'
+ * | 'events'` on purpose. `loadConcepts` and the registry-driven plugin path
+ * (`loadRawDir`, W27) never route through this memo — they re-scan on every
+ * call, generation or no generation. That is a ruled boundary, not an
+ * oversight: k11 measured 10 concepts with zero symptoms and zero red tests,
+ * so folding them in would trade gate churn + an ADR-0015 addendum + a new
+ * generation nail for zero user-visible benefit. Reopen triggers (recorded in
+ * the same ruling): a batch-shaped concept write path landing (bulk import /
+ * LLM batch writes), or the corpus growing past 100 concepts; the go-plan
+ * (extend the union, gate `loadConcepts`/`loadRawDir`, addendum) hangs off
+ * those. R6/R7 (mtime validation / cross-process caching) stay untouched
+ * either way.
+ *
  * @param semanticLayer - the semantic-layer directory path.
  * @param kind - which loader family the memo slot belongs to (`tables`/`events`).
  * @param scan - the direct disk scan (today's loader body, verbatim).
@@ -765,6 +779,62 @@ async function auditedFileWrite<T>(
   return outcome
 }
 /**
+ * The create-family write result every `write*Yaml`/`writeTable` primitive
+ * returns through the {@link writeDefinitionFile} seam: `{ok, path, version}`
+ * on success (`version` — the write receipt's sha256 fingerprint, #108), or
+ * the domain `error` when the caller's pre-validation rejected the payload.
+ * Structurally identical to the three public result types
+ * (`WriteTableResult` / `WriteEventYamlResult` / `WriteConceptYamlResult`),
+ * which stay the exported spellings (ADR-0003 barrel pins them by name).
+ */
+type WriteFileOutcome = { ok: true; path: string; version: string } | { ok: false; error: string }
+/**
+ * The one write-dispatch seam every create-shaped writer in this module drives
+ * (#123 / C8.2): `tier2` absent → the raw-edit half (atomicWrite +
+ * invalidateCaches + the version receipt); `tier2` present → the audited
+ * write-and-record transaction via {@link auditedFileWrite} (snapshot,
+ * `expected_version` check, rollback-on-recorder-failure) with a committed
+ * callback that just writes the bytes. Before this seam, `writeTable` /
+ * `writeEventYaml` / `writeConceptYaml` each carried both halves as a
+ * verbatim hand copy — three copies of the same dispatch (#119's ruling
+ * verified them token-identical), each new kind re-copying them.
+ *
+ * Layering with `auditedFileWrite`, on purpose: `auditedFileWrite` stays the
+ * generic audited TRANSACTION (the read-merge-validate `update*Meta` family
+ * drives it with a `before`-callback that merges on the snapshotted bytes);
+ * this seam is the raw-or-audited DISPATCH the create family — payload
+ * already validated, path already resolved — sits on top of. Neither tears
+ * the other: every write path in the module now reaches git through exactly
+ * one of these two functions.
+ *
+ * The `version` receipt stays computed inline in both halves (never a
+ * post-write re-read) — the no-op-write-fingerprint property #108 pinned.
+ * @param semanticLayer - the semantic-layer directory path (for cache invalidation).
+ * @param target - the resolved file path to write.
+ * @param bytes - the payload (a string is written verbatim; anything else is YAML-dumped).
+ * @param tier2 - optional Tier-2 options; present selects the audited half.
+ * @param record - the audit record's verb and subject (audited half only).
+ * @returns `{ok: true, path, version}` or `{ok: false, error}` — the caller's
+ *   declared result type, structurally.
+ */
+async function writeDefinitionFile(
+  semanticLayer: string,
+  target: string,
+  bytes: unknown,
+  tier2: Tier2Opts | undefined,
+  record: { readonly verb: string; readonly subject: Record<string, unknown> },
+): Promise<WriteFileOutcome> {
+  if (tier2 === undefined) {
+    const version = await atomicWrite(target, bytes)
+    invalidateCaches(semanticLayer)
+    return { ok: true, path: target, version }
+  }
+  const outcome = await auditedFileWrite(semanticLayer, target, tier2,
+    async () => ({ committed: true as const, value: { path: target, version: await atomicWrite(target, bytes) } }),
+    record)
+  return outcome.committed ? { ok: true, ...outcome.value } : { ok: false, error: outcome.error }
+}
+/**
  * Result of writing table YAML: `{ ok: true, path, version }` on success
  * (`version` — the written file's sha256 fingerprint, #108's write-receipt
  * extension of ADR-0004 ruling 8), or `{ ok: false, error }` when the payload
@@ -808,15 +878,7 @@ export async function writeTable(
   }
   const tablesPath = join(semanticLayer, 'tables')
   const target = join(tablesPath, `${name}.yaml`)
-  if (tier2 === undefined) {
-    const version = await atomicWrite(target, data)
-    invalidateCaches(semanticLayer)
-    return { ok: true, path: target, version }
-  }
-  const outcome = await auditedFileWrite(semanticLayer, target, tier2,
-    async () => ({ committed: true as const, value: { path: target, version: await atomicWrite(target, data) } }),
-    { verb: 'write_table', subject: { table_name: name } })
-  return outcome.committed ? { ok: true, ...outcome.value } : { ok: false, error: outcome.error }
+  return writeDefinitionFile(semanticLayer, target, data, tier2, { verb: 'write_table', subject: { table_name: name } })
 }
 /**
  * Result of writing event YAML: either `{ ok: true, path, version }` on
@@ -865,15 +927,7 @@ export async function writeEventYaml(
     return { ok: false, error: `name mismatch: YAML name=${String(yamlName)} vs event_name=${name}` }
   }
   const target = findEventPath(semanticLayer, name) ?? join(semanticLayer, 'events', '_suggested', `${name}.yaml`)
-  if (tier2 === undefined) {
-    const version = await atomicWrite(target, content)
-    invalidateCaches(semanticLayer)
-    return { ok: true, path: target, version }
-  }
-  const outcome = await auditedFileWrite(semanticLayer, target, tier2,
-    async () => ({ committed: true as const, value: { path: target, version: await atomicWrite(target, content) } }),
-    { verb: 'write_event_yaml', subject: { event_name: name } })
-  return outcome.committed ? { ok: true, ...outcome.value } : { ok: false, error: outcome.error }
+  return writeDefinitionFile(semanticLayer, target, content, tier2, { verb: 'write_event_yaml', subject: { event_name: name } })
 }
 // Tier-2 per-scope persistent write: read-merge-validate-write + audit (mirrors writer.update_table_meta).
 // D5 contract: "Tier-2 不可关" — audit is NON-OPTIONAL. The `recorder` (ctx.audit)
@@ -1026,15 +1080,7 @@ export async function writeConceptYaml(
     if (!r.success) return { ok: false, error: `Concept validation failed: ${r.error.message}` }
   }
   const target = join(semanticLayer, 'concepts', `${name}.yaml`)
-  if (tier2 === undefined) {
-    const version = await atomicWrite(target, data)
-    invalidateCaches(semanticLayer)
-    return { ok: true, path: target, version }
-  }
-  const outcome = await auditedFileWrite(semanticLayer, target, tier2,
-    async () => ({ committed: true as const, value: { path: target, version: await atomicWrite(target, data) } }),
-    { verb: 'write_concept_yaml', subject: { concept_name: name } })
-  return outcome.committed ? { ok: true, ...outcome.value } : { ok: false, error: outcome.error }
+  return writeDefinitionFile(semanticLayer, target, data, tier2, { verb: 'write_concept_yaml', subject: { concept_name: name } })
 }
 /**
  * Tier-2 per-scope write: read-merge-validate-write a single concept's meta

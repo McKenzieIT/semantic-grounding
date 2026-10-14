@@ -167,8 +167,12 @@ export class BindingStore {
    */
   async switchTo(scopeId: string): Promise<SwitchResult> {
     const entry = this.entryOrThrow(scopeId)
-    await this.postureOrThrow(entry) // constant 5: every switch re-runs posture, cached or not
-    const binding = await this.bindingFor(entry)
+    // Constant 5: every switch re-runs posture, cached or not — ONCE, here.
+    // #123 / S4③: the report threads through to construction below; before,
+    // the cache-miss path re-ran posture inside `bindingFor` just to learn
+    // `report.paths`, so a first bind paid the git subprocesses twice.
+    const report = await this.postureOrThrow(entry)
+    const binding = await this.bindingFor(entry, report)
     const counts = this.countsOrThrow(entry)
     const switchedFrom = this.activeBinding?.scopeId ?? null
     this.activeBinding = binding // the atomic pointer swap — one assignment, nothing else
@@ -189,8 +193,10 @@ export class BindingStore {
    */
   async bindStartup(scopeId: string): Promise<ScopeBinding> {
     const entry = this.entryOrThrow(scopeId)
-    await this.postureOrThrow(entry)
-    const binding = await this.bindingFor(entry)
+    // #123 / S4③: same threading as `switchTo` — posture runs once and its
+    // report rides into construction.
+    const report = await this.postureOrThrow(entry)
+    const binding = await this.bindingFor(entry, report)
     this.activeBinding = binding
     return binding
   }
@@ -257,13 +263,17 @@ export class BindingStore {
     return ensureStartupPosture({ corpusRoot: entry.semanticRoot, agentId: this.agentId, ...this.lock !== undefined ? { lock: this.lock } : {}, logger: this.logger })
   }
 
-  /** Cache-fill construction: posture passed, so build the recorder and core this process will reuse forever. */
-  private async bindingFor(entry: ScopeEntry): Promise<ScopeBinding> {
+  /**
+   * Cache-fill construction: posture already ran (the caller's report threads
+   * its resolved paths through, #123 / S4③ — the former second run inside
+   * here existed only to learn `report.paths`), so build the recorder and
+   * core this process will reuse forever.
+   */
+  private async bindingFor(entry: ScopeEntry, report: PostureReport): Promise<ScopeBinding> {
     const cached = this.cache.get(entry.id)
     if (cached !== undefined) return cached
     let binding: ScopeBinding
     try {
-      const report = await this.postureOrThrow(entry) // construction re-runs posture: the recorder wants its resolved paths
       const recorder = new GitTier2Recorder({
         corpusRoot: entry.semanticRoot,
         agentId: this.agentId,

@@ -280,7 +280,6 @@ export class GitTier2Recorder implements Tier2Recorder {
     const paths = await this.ready()
     return this.lock.withLock(async () => {
       await this.assertCleanBeforeWrite(paths)
-      const entryHead = await this.head()
       const previousCtx = this.current
       const previousWindow = this.window
       const window: AuditWindow = { commits: [], files: 0 }
@@ -295,11 +294,24 @@ export class GitTier2Recorder implements Tier2Recorder {
         this.current = previousCtx
         this.window = previousWindow
       }
-      const derived = await this.commitDerivedResidue(ctx, paths)
       const last = window.commits.at(-1)
+      // #123 / S4②: the entry-HEAD fallback is read lazily — a window that
+      // committed never pays the `rev-parse` subprocess (and a window whose
+      // `fn` threw never reads it at all; the eager value was discarded
+      // there). The read sits AFTER `fn` but BEFORE the derived-residue
+      // commit, and that position is load-bearing: `commitDerivedResidue`
+      // commits through `stageAndCommit` directly and does NOT push to
+      // `window.commits`, so reading after it would report the derived sha
+      // as the "unchanged HEAD" on the idempotent-write-with-residue path.
+      // Every commit `fn` itself makes DOES push (`recordTier2Write` when
+      // changed, and a batch's `end()`), so an empty list here means HEAD
+      // is still the entry HEAD — the corpus lock holds every other SG
+      // writer out for the window's duration.
+      const entryHead = last === undefined ? await this.head() : last
+      const derived = await this.commitDerivedResidue(ctx, paths)
       return {
         value,
-        commit: last ?? entryHead,
+        commit: entryHead,
         changed: window.commits.length > 0,
         files: window.files,
         ...derived !== undefined ? { derivedCommit: derived } : {},

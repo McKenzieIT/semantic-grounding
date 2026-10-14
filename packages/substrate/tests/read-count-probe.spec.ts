@@ -4,8 +4,22 @@
  * power over the entire read-epoch map — if measured cost is negligible,
  * the map closes as Out of scope.
  *
- * Method: a test-only counter on `readYaml` (io.ts), reset before each
- * measurement, read after. No production behavior changes.
+ * Method: a test-only counter on `readYaml` (io-probes.ts since #123 / C8.5 —
+ * io.ts keeps only the one-line increment), reset before each measurement,
+ * read after. No production behavior changes.
+ *
+ * ## Exact pins retired → bandwidth invariants (#123 / C8.5)
+ *
+ * The probe originally pinned `toBe(K11_TABLES)` / `toBe(K11_EVENT_READS)` on
+ * the single-definition reads. Those were snapshots of one implementation, not
+ * truths — any legitimate loader reshuffle would break them while the property
+ * that matters held. What the spec asserts now are the TRUE invariants, the
+ * shapes #119's Q4 ruling named: a per-definition bound (≤2 reads for the
+ * write/fast-path resolutions) and a whole-operation bound (≤20× corpus for a
+ * full round), with `K11_TABLES` / `K11_EVENT_READS` kept as the BANDWIDTH
+ * OPERATORS (the multipliers a bound is phrased in), never as equality
+ * targets. A regression to the ADR-0016 pathology class (262× broad-scan)
+ * fails these just as loudly.
  *
  * @module tests/read-count-probe
  */
@@ -14,7 +28,7 @@ import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { _resetReadYamlCount, _getReadYamlCount } from '../src/io.ts'
+import { _resetReadYamlCount, _getReadYamlCount } from '../src/io-probes.ts'
 import {
   loadTables,
   loadEvents,
@@ -40,6 +54,12 @@ const K11 = join(HERE, './fixtures/k11')
  * Note: loadEvents performs 446 readYaml calls (453 files - 7 _index = 446
  * files attempted; the 1 malformed file still triggers readYaml but fails
  * to parse). The 445 figure is successfully loaded events, not reads.
+ *
+ * #123 / C8.5: these constants are BANDWIDTH OPERATORS now, not equality
+ * targets — bounds below are phrased as multiples of them ("≤ 2 × one
+ * kind-corpus scan", "≤ 20 × one full corpus"), so a legitimate loader
+ * reshuffle that changes the exact count by a scan's worth stays green while
+ * the pathology class (an unbounded fan-out per definition) still trips red.
  */
 const K11_TABLES = 321
 const K11_EVENTS_LOADED = 445
@@ -173,9 +193,13 @@ describe('path 4: get_definition (single table)', () => {
       count,
       `loadTableDefinition → loadTables(${K11_TABLES}).find() + schema parse (no extra readYaml)`,
     )
-    // Expected: 321 (one full tables scan)
+    // Today: exactly one full tables scan (321 = K11_TABLES). The asserted
+    // invariant is the BANDWIDTH, not the exact count (#123 / C8.5): reading
+    // ONE definition may cost at most 2× its own kind corpus — an
+    // implementation that scans twice stays green, an unbounded fan-out (the
+    // ADR-0016 broad-scan pathology class) trips red.
     console.log(`  [probe] get_definition (single table): ${count} YAML reads (${(count / ONE_FULL_CORPUS).toFixed(2)}× full corpus)`)
-    expect(count).toBe(K11_TABLES)
+    expect(count).toBeLessThanOrEqual(2 * K11_TABLES)
   })
 
   it('measures YAML parse count for loadEventDefinition', () => {
@@ -189,7 +213,10 @@ describe('path 4: get_definition (single table)', () => {
       `loadEventDefinition → loadEvents(${K11_EVENT_READS}).find() + schema parse`,
     )
     console.log(`  [probe] get_definition (single event): ${count} YAML reads (${(count / ONE_FULL_CORPUS).toFixed(2)}× full corpus)`)
-    expect(count).toBe(K11_EVENT_READS)
+    // Today: exactly one full events scan (446 = K11_EVENT_READS). Bandwidth
+    // invariant, same as the table branch above (#123 / C8.5): ≤ 2× the kind
+    // corpus for a single-definition read.
+    expect(count).toBeLessThanOrEqual(2 * K11_EVENT_READS)
   })
 })
 

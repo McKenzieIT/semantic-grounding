@@ -52,7 +52,7 @@
  * @module tools/audited
  */
 import type { CallToolResult, ServerContext } from '@modelcontextprotocol/server'
-import type { EnrichmentHealthEntry } from '@semantic-grounding/substrate'
+import type { EnrichmentHealthEntry, Tier2Batch, Tier2Opts } from '@semantic-grounding/substrate'
 import type { ScopeBinding } from '../binding.ts'
 import type { Derivation } from '../git/message.ts'
 import type { AuditedResult } from '../git/recorder.ts'
@@ -111,6 +111,48 @@ export async function auditedWrite<T>(
     { ...intent, ...clientName !== undefined ? { clientName } : {} },
     fn,
   )
+}
+
+/**
+ * Drive one `beginBatch` window over a tool's per-item writes (#123 / C8.4):
+ * begin the batch on the snapshot's recorder, hand `perItem` its batch handle
+ * plus the ready-made `tier2` every item rides the substrate seam with
+ * (`{recorder, scope_id}` — exactly what both former call sites built by
+ * hand), `end()` it into the window's single commit when the body resolves,
+ * and `abort()` + rethrow at exactly ONE point when it throws. Before this
+ * helper, `run_enrichment` and `import_definitions` each carried that
+ * scaffolding as a hand copy (begin → per-item loop with `batch.record` →
+ * end; catch → abort → rethrow) — the ruling's verified count of two, each
+ * re-copy-prone with no test pinning the abort half.
+ *
+ * Must run inside {@link auditedWrite}'s `fn` — same requirement as
+ * `beginBatch` itself (the recorder refuses a contextless batch,
+ * `MissingAuditContextError`). `perItem` keeps the loop: its body is the
+ * caller's own per-item work (write via the `tier2` seam, shape the verdict
+ * row, `batch.record` for each landed item) — what this helper owns is the
+ * begin/end/abort ceremony, so "a thrown failure aborts the batch whole"
+ * exists at one place.
+ * @param snap - the entry snapshot the calling handler resolved.
+ * @param perItem - the batch body: receives the `Tier2Batch` handle and the
+ *   batch's `tier2` opts; resolves with the value handed back to
+ *   `auditedWrite` (resolve `undefined` when the rows are the product).
+ * @returns whatever `perItem` resolved with.
+ * @throws whatever `perItem` threw, after the batch has been aborted (the
+ *   recorder's own `abort()` resets the worktree to HEAD).
+ */
+export async function withAuditedBatch<T>(
+  snap: ScopeBinding,
+  perItem: (batch: Tier2Batch, tier2: Tier2Opts) => Promise<T>,
+): Promise<T> {
+  const batch = snap.recorder.beginBatch()
+  try {
+    const value = await perItem(batch, { recorder: snap.recorder, scope_id: snap.scopeId })
+    await batch.end()
+    return value
+  } catch (e) {
+    await batch.abort()
+    throw e
+  }
 }
 
 /**
