@@ -799,13 +799,15 @@ type WriteFileOutcome = { ok: true; path: string; version: string } | { ok: fals
  * verbatim hand copy — three copies of the same dispatch (#119's ruling
  * verified them token-identical), each new kind re-copying them.
  *
- * Layering with `auditedFileWrite`, on purpose: `auditedFileWrite` stays the
- * generic audited TRANSACTION (the read-merge-validate `update*Meta` family
- * drives it with a `before`-callback that merges on the snapshotted bytes);
- * this seam is the raw-or-audited DISPATCH the create family — payload
- * already validated, path already resolved — sits on top of. Neither tears
- * the other: every write path in the module now reaches git through exactly
- * one of these two functions.
+ * Layering with `auditedFileWrite`, on purpose — the write ceremony's three
+ * tiers, none tearing the others: `auditedFileWrite` stays the generic
+ * audited TRANSACTION both family seams' audited arms drive; this seam is
+ * the CREATE family's raw-or-audited DISPATCH (payload already validated,
+ * path already resolved); `updateMetaFile` is the symmetric UPDATE half —
+ * read-merge-validate inside the transaction's `before`-callback, merging on
+ * exactly the snapshotted bytes the version check compared. Every write path
+ * in the module now reaches the disk through exactly one family seam, and
+ * every audited one through `auditedFileWrite`.
  *
  * The `version` receipt stays computed inline in both halves (never a
  * post-write re-read) — the no-op-write-fingerprint property #108 pinned.
@@ -929,9 +931,132 @@ export async function writeEventYaml(
   const target = findEventPath(semanticLayer, name) ?? join(semanticLayer, 'events', '_suggested', `${name}.yaml`)
   return writeDefinitionFile(semanticLayer, target, content, tier2, { verb: 'write_event_yaml', subject: { event_name: name } })
 }
+// ── updateMetaFile: the update family's one read-merge-validate seam (#142 / C10) ──
+// The create family's ceremony was collected into writeDefinitionFile above
+// (#123 / C8.2); the update trio below carried the same disease on the other
+// half of the family — three ~19-line read-merge-validate callback bodies,
+// verbatim siblings apart from five per-kind facts. Those five facts ride a
+// descriptor; the ceremony lives here, once.
+
+/**
+ * The structural slice of a definition schema this seam needs: `safeParse` on
+ * `unknown` reporting a readable `message` on failure. All three definition
+ * schemas (types.ts) satisfy it structurally — the same trick as registry.ts's
+ * `SchemaLike`, kept local because io.ts is the write side and wants the
+ * failure arm typed, not `unknown`.
+ */
+interface SafeParseReporting {
+  safeParse(raw: unknown): { success: true } | { success: false; error: { message: string } }
+}
+/**
+ * The five points one `update*Meta` primitive differs from its siblings on
+ * (C10: the descriptor is data, the ceremony is behavior — a future kind's
+ * update primitive is one descriptor plus a 3-line public function, not a
+ * re-copy of the ceremony):
+ * 1. target resolution — tables/concepts a fixed `join`; events through
+ *    `findEventPath`'s domain-subdir scan;
+ * 2. the not-found / malformed label (`Table` / `Event` / `Concept`);
+ * 3. the schema the merged document must re-validate against;
+ * 4. the audit record's verb and subject key;
+ * 5. the ok-receipt's result key (`table_name` / `event_name` / `concept_name`).
+ */
+interface UpdateMetaDescriptor {
+  /** Resolves the update target; `null` is the not-found exit (this is an UPDATE, not a create — a concurrently deleted file must not be silently re-created). */
+  readonly resolveTarget: (semanticLayer: string, name: string) => string | null
+  /** The kind label for the `${label} not found` / `${label} malformed` error spellings (byte-stable API — callers match on them). */
+  readonly label: string
+  /** Full-schema validation of the merged document before the write. */
+  readonly schema: SafeParseReporting
+  /** The Tier-2 audit record's verb (its subject is `{[subjectKey]: name, updates}`). */
+  readonly verb: string
+  /** The audit subject's entity key. */
+  readonly subjectKey: string
+  /** The ok-receipt's entity key — one of the three public result types' named keys. */
+  readonly resultKey: 'table_name' | 'event_name' | 'concept_name'
+}
+/**
+ * The update family's committed receipt — `{name, version}` re-keyed under
+ * the kind's result key, so `updateMetaFile` returns exactly the calling
+ * public function's own result type, structurally (the three exported
+ * `Update*MetaResult` types stay the exported spellings).
+ */
+type MetaUpdateOk<K extends 'table_name' | 'event_name' | 'concept_name'> = { ok: true; version: string } & Record<K, string>
+/**
+ * Resolve `path` when the file exists on disk, `null` when it does not — the
+ * fixed-layout siblings' (tables/concepts) `resolveTarget`; events resolve
+ * through `findEventPath`, whose `null` already means "not found".
+ * @param path - the candidate file path.
+ * @returns `path`, or `null` when no such file exists.
+ */
+function existingFile(path: string): string | null {
+  return existsSync(path) ? path : null
+}
+/**
+ * The one read-merge-validate-write ceremony every Tier-2 meta update in
+ * this module drives (#142 / C10 — the UPDATE half of the collection
+ * `writeDefinitionFile` started for the create family): resolve the target
+ * (not-found is the caller's `{ok:false}` domain exit, before the
+ * transaction opens), re-read the LATEST on-disk bytes inside the audited
+ * transaction, shallow-merge the caller's `updates` over them,
+ * full-schema-validate the merged document, atomically write it, and hand
+ * the receipt back re-keyed under the descriptor's result key.
+ *
+ * Everything the siblings share lives here and nowhere else: the A13
+ * re-read-merge-write (merge on exactly the snapshotted bytes the
+ * `expected_version` check compared), ADR-0004 ruling 1's snapshot +
+ * recorder-failure rollback (inherited wholesale from `auditedFileWrite`),
+ * and ruling 8 / #108's write receipt — `version` is `atomicWrite`'s return
+ * value computed inline, never a post-write re-read, so a byte-stable no-op
+ * write's receipt IS the file's current fingerprint. The three error
+ * spellings (`not found` / `malformed` / `Validation failed after update`)
+ * are byte-stable API.
+ * @param semanticLayer - the semantic-layer directory path.
+ * @param name - the entity's name (also the audit subject's value).
+ * @param updates - the field overrides shallow-merged over the on-disk YAML.
+ * @param opts - the recorder + optional scope id + optional `expected_version` used for the Tier-2 audit record.
+ * @param kind - the five-point per-kind descriptor.
+ * @returns the calling kind's own result shape: `{ok: true, <resultKey>: name, version}` or `{ok: false, error}`.
+ */
+async function updateMetaFile<K extends 'table_name' | 'event_name' | 'concept_name'>(
+  semanticLayer: string,
+  name: string,
+  updates: Record<string, unknown>,
+  opts: Tier2Opts,
+  kind: UpdateMetaDescriptor & { readonly resultKey: K },
+): Promise<MetaUpdateOk<K> | { ok: false; error: string }> {
+  const target = kind.resolveTarget(semanticLayer, name)
+  if (target === null) return { ok: false, error: `${kind.label} not found: ${name}` }
+  const outcome = await auditedFileWrite(semanticLayer, target, opts, async (before) => {
+    const data = yaml.load(before.raw)
+    if (typeof data !== 'object' || data === null) return { committed: false, error: `${kind.label} malformed: ${name}` }
+    const merged: Record<string, unknown> = { ...(data as Record<string, unknown>), ...updates }
+    const r = kind.schema.safeParse(merged)
+    if (!r.success) return { committed: false, error: `Validation failed after update: ${r.error.message}` }
+    const version = await atomicWrite(target, merged)
+    return { committed: true, value: { name, version } }
+  }, { verb: kind.verb, subject: { [kind.subjectKey]: name, updates } })
+  return outcome.committed
+    ? { ok: true as const, [kind.resultKey]: outcome.value.name, version: outcome.value.version } as MetaUpdateOk<K>
+    : { ok: false, error: outcome.error }
+}
+
 // Tier-2 per-scope persistent write: read-merge-validate-write + audit (mirrors writer.update_table_meta).
 // D5 contract: "Tier-2 不可关" — audit is NON-OPTIONAL. The `recorder` (ctx.audit)
 // records the Tier-2 audit (hash, not body); omitting it is a fail-loud programmer error.
+/**
+ * The tables entry of the update family's five-point descriptor (C10): fixed
+ * `tables/<name>.yaml` layout, `Table` error labels, `TableDefinitionSchema`
+ * re-validation, `update_table_meta` audit verb over a `table_name` subject,
+ * `table_name` as the ok-receipt's key.
+ */
+const TABLE_META_DESCRIPTOR = {
+  resolveTarget: (semanticLayer: string, name: string) => existingFile(join(semanticLayer, 'tables', `${name}.yaml`)),
+  label: 'Table',
+  schema: TableDefinitionSchema,
+  verb: 'update_table_meta',
+  subjectKey: 'table_name',
+  resultKey: 'table_name',
+} as const satisfies UpdateMetaDescriptor
 /**
  * Result of a Tier-2 table-meta update: `{ ok: true, table_name, version }` on
  * success (`version` = the written file's sha256 fingerprint, #108 — a
@@ -961,19 +1086,23 @@ export async function updateTableMeta(
   updates: Record<string, unknown>,
   opts: Tier2Opts,
 ): Promise<UpdateTableMetaResult> {
-  const tf = join(semanticLayer, 'tables', `${name}.yaml`)
-  if (!existsSync(tf)) return { ok: false, error: `Table not found: ${name}` }
-  const outcome = await auditedFileWrite(semanticLayer, tf, opts, async (before) => {
-    const data = yaml.load(before.raw)
-    if (typeof data !== 'object' || data === null) return { committed: false, error: `Table malformed: ${name}` }
-    const merged: Record<string, unknown> = { ...(data as Record<string, unknown>), ...updates }
-    const r = TableDefinitionSchema.safeParse(merged)
-    if (!r.success) return { committed: false, error: `Validation failed after update: ${r.error.message}` }
-    const version = await atomicWrite(tf, merged)
-    return { committed: true, value: { name, version } }
-  }, { verb: 'update_table_meta', subject: { table_name: name, updates } })
-  return outcome.committed ? { ok: true, table_name: outcome.value.name, version: outcome.value.version } : { ok: false, error: outcome.error }
+  return updateMetaFile(semanticLayer, name, updates, opts, TABLE_META_DESCRIPTOR)
 }
+
+/**
+ * The events entry of the update family's five-point descriptor (C10):
+ * `findEventPath` domain-subdir resolution, `Event` error labels,
+ * `EventDefinitionSchema` re-validation, `update_event_meta` audit verb over
+ * an `event_name` subject, `event_name` as the ok-receipt's key.
+ */
+const EVENT_META_DESCRIPTOR = {
+  resolveTarget: findEventPath,
+  label: 'Event',
+  schema: EventDefinitionSchema,
+  verb: 'update_event_meta',
+  subjectKey: 'event_name',
+  resultKey: 'event_name',
+} as const satisfies UpdateMetaDescriptor
 
 // A13 (TOCTOU lost-update): Tier-2 per-scope event-meta update — read-merge-
 // validate-write, parallel to `updateTableMeta`. The event branch of
@@ -1011,18 +1140,7 @@ export async function updateEventMeta(
   updates: Record<string, unknown>,
   opts: Tier2Opts,
 ): Promise<UpdateEventMetaResult> {
-  const ef = findEventPath(semanticLayer, name)
-  if (ef === null) return { ok: false, error: `Event not found: ${name}` }
-  const outcome = await auditedFileWrite(semanticLayer, ef, opts, async (before) => {
-    const data = yaml.load(before.raw)
-    if (typeof data !== 'object' || data === null) return { committed: false, error: `Event malformed: ${name}` }
-    const merged: Record<string, unknown> = { ...(data as Record<string, unknown>), ...updates }
-    const r = EventDefinitionSchema.safeParse(merged)
-    if (!r.success) return { committed: false, error: `Validation failed after update: ${r.error.message}` }
-    const version = await atomicWrite(ef, merged)
-    return { committed: true, value: { name, version } }
-  }, { verb: 'update_event_meta', subject: { event_name: name, updates } })
-  return outcome.committed ? { ok: true, event_name: outcome.value.name, version: outcome.value.version } : { ok: false, error: outcome.error }
+  return updateMetaFile(semanticLayer, name, updates, opts, EVENT_META_DESCRIPTOR)
 }
 
 // ── Concept write primitives (#52 / ADR-0012: the concept write path opened) ──
@@ -1083,6 +1201,20 @@ export async function writeConceptYaml(
   return writeDefinitionFile(semanticLayer, target, data, tier2, { verb: 'write_concept_yaml', subject: { concept_name: name } })
 }
 /**
+ * The concepts entry of the update family's five-point descriptor (C10):
+ * fixed `concepts/<name>.yaml` layout, `Concept` error labels,
+ * `ConceptDefinitionSchema` re-validation, `update_concept_meta` audit verb
+ * over a `concept_name` subject, `concept_name` as the ok-receipt's key.
+ */
+const CONCEPT_META_DESCRIPTOR = {
+  resolveTarget: (semanticLayer: string, name: string) => existingFile(join(semanticLayer, 'concepts', `${name}.yaml`)),
+  label: 'Concept',
+  schema: ConceptDefinitionSchema,
+  verb: 'update_concept_meta',
+  subjectKey: 'concept_name',
+  resultKey: 'concept_name',
+} as const satisfies UpdateMetaDescriptor
+/**
  * Tier-2 per-scope write: read-merge-validate-write a single concept's meta
  * updates and record the write via `opts.recorder` (D5 non-disableable audit).
  * `updateTableMeta`'s exact ceremony for the concept layout: pre-write raw-byte
@@ -1104,18 +1236,7 @@ export async function updateConceptMeta(
   updates: Record<string, unknown>,
   opts: Tier2Opts,
 ): Promise<UpdateConceptMetaResult> {
-  const cf = join(semanticLayer, 'concepts', `${name}.yaml`)
-  if (!existsSync(cf)) return { ok: false, error: `Concept not found: ${name}` }
-  const outcome = await auditedFileWrite(semanticLayer, cf, opts, async (before) => {
-    const data = yaml.load(before.raw)
-    if (typeof data !== 'object' || data === null) return { committed: false, error: `Concept malformed: ${name}` }
-    const merged: Record<string, unknown> = { ...(data as Record<string, unknown>), ...updates }
-    const r = ConceptDefinitionSchema.safeParse(merged)
-    if (!r.success) return { committed: false, error: `Validation failed after update: ${r.error.message}` }
-    const version = await atomicWrite(cf, merged)
-    return { committed: true, value: { name, version } }
-  }, { verb: 'update_concept_meta', subject: { concept_name: name, updates } })
-  return outcome.committed ? { ok: true, concept_name: outcome.value.name, version: outcome.value.version } : { ok: false, error: outcome.error }
+  return updateMetaFile(semanticLayer, name, updates, opts, CONCEPT_META_DESCRIPTOR)
 }
 
 // ── CL-18 Phase 2: partition-column exclude set (calling-layer metadata) ───
