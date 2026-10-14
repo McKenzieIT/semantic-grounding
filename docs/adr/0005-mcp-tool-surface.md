@@ -276,7 +276,8 @@ agent 所需）」维持拒绝——索引行不是 verbatim definition，被拒
 实测发现 search 的**实现**把过滤域对到了图投影 kind——表节点投影携带的是存储 kind
 （`def.kind` ∈ {`dws`,`dim`}，`table-kind.ts:48`），而 `ReadableKindSchema` 的 `table` 在该域上
 无命中，即 `search_definitions(kinds:['table'])` 今日实际返回空（潜在词汇错配，无测试钉住，
-本票不修、维持原行为——修 search 是未经裁决的行为变更，另票处理）。`list_definitions` 的
+本票不修、维持原行为——修 search 是未经裁决的行为变更，另票 [#117](https://github.com/McKenzieIT/semantic-grounding/issues/117)
+处理）。`list_definitions` 的
 过滤域因此折算：`dws`/`dim` → `table`（恰为 `TableDefinitionSchema.kind` 封闭枚举的全部取值，
 `types.ts:285`，折算集合收在 `read.ts` 的 `TABLE_STORAGE_KINDS`），其余投影 kind 直通；索引行的
 `kind` 仍逐字携带投影 kind（`dws`/`dim` 进清单——库存视线正要存储粒度，#93 审计透镜），由
