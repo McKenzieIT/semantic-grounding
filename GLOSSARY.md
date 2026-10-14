@@ -220,6 +220,34 @@ between; replication by definition cites the memories it rests on. Promotion is 
 ordinary audited write, and where it came from is answered by its commit, never by the
 fact itself. Filling in a "confirmed by" field is not promotion.
 
+### verified query (已验证查询)
+
+A business question paired with the query that answers it, plus who verified it and
+when ("大R 留存" → the SQL with the chosen payment threshold). It is a fact, not a
+[memory](#memory-数据-memory): it is what a **practice** memory becomes once a human
+states the 口径, so that two agents asking the same question a week apart get the same
+number. Avoid *saved query* (implies a personal bookmark, not an agreed 口径).
+
+### code reference (代码指针)
+
+Where the authoritative code that produces a table lives — a system name plus a locator
+the system understands (a scheduler node id, a repository path). Opaque to the
+substrate: it is stored, never dereferenced; reading the code is the agent's job with
+whatever tool it has. The code itself is never part of the fact layer — copies drift
+and checking stale logic is worse than checking none. Only table-level lineage, a
+processing summary (grain, dedup 口径, main filters, cadence) and the reference are
+facts.
+
+### metadata governance (元数据治理)
+
+Checking the health of the corpus itself: references that point at definitions no
+longer there, confirmations no evidence backs, fields stuck at import defaults, facts
+duplicated across many definitions. The substrate is the **object** being checked and
+the only thing able to check it. Contrast with **ETL operations** (数据治理 in this
+user's daily sense: did a table produce, is a job skewed), where the warehouse's data
+is the object, the agent checks it from outside, and the substrate only records the
+conclusions.
+
 ### write receipt (写回执)
 
 What a commit-class tool answers with, beyond the verdict: the envelope
