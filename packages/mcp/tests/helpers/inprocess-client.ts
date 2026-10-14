@@ -14,7 +14,7 @@
  *
  * @module tests/helpers/inprocess-client
  */
-import { InMemoryTransport, type JSONRPCMessage, type McpServer } from '@modelcontextprotocol/server'
+import { InMemoryTransport, type CallToolResult, type JSONRPCMessage, type McpServer } from '@modelcontextprotocol/server'
 
 /** A JSON-RPC response, loosely typed for test assertions (success XOR error). */
 export interface JsonRpcResponse {
@@ -121,4 +121,60 @@ export function toolJson(response: JsonRpcResponse): Record<string, unknown> {
   const text = content?.[0]?.text
   if (typeof text !== 'string') throw new Error(`tool result carried no text content: ${JSON.stringify(response.result)}`)
   return JSON.parse(text) as Record<string, unknown>
+}
+
+/**
+ * One tool result as the tests read it: the `isError` flag plus the parsed body.
+ * #20's ruling, decoded in one place (#122 — `check-e2e-loop.ts`'s
+ * `callCodedError`, `enrichment-tools.spec.ts`'s `call`, and
+ * `scope-tools.spec.ts`'s `callOk` all used to re-implement this): a coded
+ * contract failure is an **isError RESULT** whose JSON text carries the
+ * `-31xxx` code — never a JSON-RPC `error.code` — and an error payload parses
+ * exactly like a success body.
+ */
+export interface ToolOutcome {
+  readonly isError: boolean
+  readonly body: Record<string, unknown>
+}
+
+/** One decoded tool result: the raw text blocks plus the isError flag. */
+interface ResultShape {
+  readonly content?: ReadonlyArray<{ readonly type: string; readonly text: string }>
+  readonly isError?: boolean
+}
+
+/**
+ * The one decode behind {@link toolOutcome} and {@link handlerOutcome}: isError
+ * flag + `content[0].text` parsed as JSON.
+ * @param result - a `CallToolResult`-shaped object.
+ * @returns the outcome.
+ */
+function decodeResult(result: ResultShape | undefined): ToolOutcome {
+  const text = result?.content?.[0]?.text
+  if (typeof text !== 'string') throw new Error(`tool result carried no text content: ${JSON.stringify(result)}`)
+  return { isError: result?.isError === true, body: JSON.parse(text) as Record<string, unknown> }
+}
+
+/**
+ * Decode one `tools/call` envelope's result (#20's isError rule, single-sourced
+ * here since #122).
+ * @param response - a `callTool` response.
+ * @returns the outcome; see {@link ToolOutcome}.
+ * @throws if the response carries a JSON-RPC `error` (a non-tool-layer failure).
+ */
+export function toolOutcome(response: JsonRpcResponse): ToolOutcome {
+  if (response.error !== undefined) {
+    throw new Error(`expected a tool result, got a JSON-RPC error: ${JSON.stringify(response.error)}`)
+  }
+  return decodeResult(response.result as ResultShape | undefined)
+}
+
+/**
+ * The direct-handler twin of {@link toolOutcome}: decode a captured handler's
+ * `CallToolResult` — no JSON-RPC envelope, the below-wire slice's shape.
+ * @param result - the handler's returned result.
+ * @returns the outcome; see {@link ToolOutcome}.
+ */
+export function handlerOutcome(result: CallToolResult): ToolOutcome {
+  return decodeResult(result as unknown as ResultShape)
 }

@@ -12,6 +12,21 @@ import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import yaml from 'js-yaml'
+import { fixtureTable } from './enrichment-fixtures.ts'
+
+/** The CL-2 D2 layer's one table — only the domain list differs between the
+ * dangling and the clean layer. */
+function dwsOrderTable(domains: readonly string[]): Record<string, unknown> {
+  return fixtureTable({
+    table_name: 'dws_order',
+    table_comment: 'orders',
+    description: 'Order summary',
+    domains: [...domains],
+    granularity: 'daily',
+    columns: [{ name: 'order_id', type: 'string', comment: 'ID', role: 'dimension' }],
+    partitions: [{ name: 'ds', type: 'string' }],
+  }) as Record<string, unknown>
+}
 
 function makeEntries(...tuples: [string, RelationDef[]][]): { sourceId: string; relations: RelationDef[] }[] {
   return tuples.map(([sourceId, relations]) => ({ sourceId, relations }))
@@ -329,17 +344,7 @@ function makeDanglingLayer(): string {
   // A valid concept 'pay'; the 'ghost' domain has NO concept definition.
   writeFileSync(join(dir, 'concepts', 'pay.yaml'), yaml.dump({ name: 'pay', description: 'payment domain' }))
   // Table with one valid domain (pay) + one dangling domain (ghost).
-  writeFileSync(join(dir, 'tables', 'dws_order.yaml'), yaml.dump({
-    table_name: 'dws_order',
-    table_comment: 'orders',
-    description: 'Order summary',
-    domains: ['pay', 'ghost'],
-    granularity: 'daily',
-    columns: [{ name: 'order_id', type: 'string', comment: 'ID', role: 'dimension' }],
-    metrics: {},
-    partitions: [{ name: 'ds', type: 'string' }],
-    confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-  }))
+  writeFileSync(join(dir, 'tables', 'dws_order.yaml'), yaml.dump(dwsOrderTable(['pay', 'ghost'])))
   return dir
 }
 
@@ -349,17 +354,7 @@ function makeCleanLayer(): string {
   mkdirSync(join(dir, 'concepts'), { recursive: true })
   writeFileSync(join(dir, 'config.yaml'), yaml.dump({ project: { name: 'test', scope_id: 'test' } }))
   writeFileSync(join(dir, 'concepts', 'pay.yaml'), yaml.dump({ name: 'pay', description: 'payment domain' }))
-  writeFileSync(join(dir, 'tables', 'dws_order.yaml'), yaml.dump({
-    table_name: 'dws_order',
-    table_comment: 'orders',
-    description: 'Order summary',
-    domains: ['pay'],
-    granularity: 'daily',
-    columns: [{ name: 'order_id', type: 'string', comment: 'ID', role: 'dimension' }],
-    metrics: {},
-    partitions: [{ name: 'ds', type: 'string' }],
-    confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-  }))
+  writeFileSync(join(dir, 'tables', 'dws_order.yaml'), yaml.dump(dwsOrderTable(['pay'])))
   return dir
 }
 

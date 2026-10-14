@@ -2,12 +2,13 @@ import { test, expect, describe, it } from 'vitest'
 import { SemanticGroundingCore } from '../src/index.ts'
 import { RelationGraph } from '../src/relation-graph.ts'
 import { tableKindPlugin } from '../src/kinds/table-kind.ts'
-import { TableDefinitionSchema, type TableDefinition } from '../src/types.ts'
+import { type TableDefinition } from '../src/types.ts'
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { tmpdir } from 'node:os'
 import { fileURLToPath } from 'node:url'
 import yaml from 'js-yaml'
+import { fixtureEvent, fixtureTable } from './enrichment-fixtures.ts'
 
 function makeService(): SemanticGroundingCore {
   return new SemanticGroundingCore({ semanticRoot: '' })
@@ -27,14 +28,11 @@ test('A2 — getRelationGraph builds from tables/events/metrics + caches until c
   expect(svc.getRelationGraph()).toBe(g)
 })
 
-const DWS: TableDefinition = TableDefinitionSchema.parse({
+const DWS: TableDefinition = fixtureTable({
   table_name: 'dws_pay_order_di', description: '充值订单汇总', table_comment: 'pay',
-  domains: ['付费经济'], granularity: '', engine: 'maxcompute',
+  domains: ['付费经济'],
   columns: [{ name: 'server_id', type: 'string', comment: '区服ID', role: 'dimension' }],
-  metrics: {}, partitions: [{ name: 'ds', type: 'string' }],
-  confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' }, coverage: null,
-  supersedes: [], disambiguation: null, kind: 'dws', primary_key: [], primary_key_unique: null,
-  duplicate_sample: [], label_columns: [], freshness: '', dimension_refs: [],
+  partitions: [{ name: 'ds', type: 'string' }],
 })
 
 test('A3a — tableKindPlugin.toCorpusItem indexes name + description + columns (no longer null)', () => {
@@ -51,22 +49,16 @@ test('A3b — loadRetrievalCorpusAll includes tables + metrics (not just events)
 })
 
 function eventYaml(): string {
-  return yaml.dump({
+  return yaml.dump(fixtureEvent({
     name: 'game.pay.order', description: '充值下单', domains: ['付费经济'],
     params_fields: { server_id: { type: 'string', description: '区服' } },
-    metrics: {}, external_refs: [], disambiguation: [],
-    confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' }, coverage: null,
-  })
+  }))
 }
 function dimYaml(): string {
-  return yaml.dump({
+  return yaml.dump(fixtureTable({
     table_name: 'dim_server', kind: 'dim', primary_key: ['server_id'], label_columns: ['s_name'],
     columns: [{ name: 'server_id', type: 'string', comment: '', role: 'dimension' }, { name: 's_name', type: 'string', comment: '', role: 'dimension' }],
-    metrics: {}, partitions: [], confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-    domains: [], description: '', table_comment: '', granularity: '', engine: 'maxcompute',
-    coverage: null, supersedes: [], disambiguation: null, primary_key_unique: null,
-    duplicate_sample: [], freshness: '', dimension_refs: [],
-  })
+  }))
 }
 
 test('B2 — discoverEventRelations writes events external_refs via the Service', async () => {

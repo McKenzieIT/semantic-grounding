@@ -27,6 +27,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import yaml from 'js-yaml'
+import { fixtureEvent, fixtureTable } from './enrichment-fixtures.ts'
 
 /** The explicit no-op recorder a host must pass if it really means audit-off. */
 const noopRecorder: Tier2Recorder = { recordTier2Write: async () => 'noop-log-id' }
@@ -111,15 +112,11 @@ describe('D5 — audit-off is reachable only by passing an explicit no-op record
   // snapshot, not a reconstruction.
   it('a recorder that throws on updateTableMeta leaves the file byte-identical to its pre-write state, hand-written comment included', async () => {
     const tf = join(dir, 'tables', 'dws_d5_probe.yaml')
-    const doc = {
-      table_name: 'dws_d5_probe', table_comment: 'd5', description: '', alt_labels: [], domains: [],
-      granularity: '', engine: 'maxcompute',
+    const doc = fixtureTable({
+      table_name: 'dws_d5_probe', table_comment: 'd5',
       columns: [{ name: 'server_id', type: 'string', comment: '区服ID', role: 'dimension' }],
-      metrics: {}, partitions: [{ name: 'ds', type: 'string' }],
-      confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-      coverage: null, supersedes: [], disambiguation: null, kind: 'dws', primary_key: [],
-      primary_key_unique: null, duplicate_sample: [], label_columns: [], freshness: '', dimension_refs: [],
-    }
+      partitions: [{ name: 'ds', type: 'string' }],
+    })
     const original = '# hand-written note: do not remove\n'
       + yaml.dump(doc, { sortKeys: false, lineWidth: -1, noRefs: true, quotingType: '"' })
     writeFileSync(tf, original, 'utf8')
@@ -171,13 +168,9 @@ describe('D5 — #61: every remaining audited write path rolls back on a recorde
   }
 
   /** The minimal schema-valid table payload (mirrors item-write's fixture). */
-  const TABLE = {
-    table_name: 'dws_probe', table_comment: '', description: '', alt_labels: [], domains: [],
-    granularity: '', engine: 'maxcompute', metrics: {}, partitions: [{ name: 'ds', type: 'string' }],
-    confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' }, coverage: null,
-    supersedes: [], disambiguation: null, primary_key: [], primary_key_unique: null,
-    duplicate_sample: [], label_columns: [], freshness: '', dimension_refs: [],
-  }
+  const TABLE = fixtureTable({
+    table_name: 'dws_probe', partitions: [{ name: 'ds', type: 'string' }],
+  })
 
   it('writeTable (audited) — the raise propagates and the created file is rolled back to absent', async () => {
     const probe = join(dir, 'tables', 'dws_probe.yaml')
@@ -212,10 +205,7 @@ describe('D5 — #61: every remaining audited write path rolls back on a recorde
   it('updateEventMeta — the raise propagates and the file stays byte-identical', async () => {
     const probe = join(dir, 'events', 'biz', 'pay_probe.yaml')
     const original = '# hand-written note: do not remove\n'
-      + yaml.dump({
-        name: 'pay_probe', event_filter: '', description: '', alt_labels: [], domains: [],
-        params_fields: {}, metrics: {}, disambiguation: [], external_refs: [],
-      }, { sortKeys: false, lineWidth: -1, noRefs: true, quotingType: '"' })
+      + yaml.dump(fixtureEvent({ name: 'pay_probe' }), { sortKeys: false, lineWidth: -1, noRefs: true, quotingType: '"' })
     writeFileSync(probe, original, 'utf8')
     const svc = new SemanticGroundingCore({ semanticRoot: dir, autoEnrich: false })
     svc.setTier2Recorder(exploding)

@@ -38,20 +38,17 @@
  * @see docs/adr/0007-dimension-filter-semantics.md
  * @see docs/adr/0008-enrichment-work-response-sizing.md
  */
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CLIENT_INFO_META_KEY, type CallToolResult } from '@modelcontextprotocol/server'
 import { loadEvents, loadTables } from '@semantic-grounding/substrate'
 import { BindingStore } from '../src/binding.ts'
-import type { ServerConfig } from '../src/config.ts'
-import { ScopeRegistryFile } from '../src/scope-registry.ts'
 import type { ServerDeps } from '../src/server.ts'
 import { registerEnrichmentTools } from '../src/tools/enrichment.ts'
-import { buildIntentToolHarness, HARNESS_SCOPE_ID, type IntentToolHarness } from './helpers/intent-tools-harness.ts'
+import { buildFixtureDeps, buildIntentToolHarness, HARNESS_SCOPE_ID, type IntentToolHarness } from './helpers/intent-tools-harness.ts'
 import { commitExternalEdit, createFixtureCorpus, fixtureGit, type FixtureCorpus } from './helpers/fixture-corpus.ts'
-import { toolJson } from './helpers/inprocess-client.ts'
+import { toolOutcome, type ToolOutcome } from './helpers/inprocess-client.ts'
 
 // ── Main path: real registrars, real zod dispatch, real envelope ────────────────────
 
@@ -80,15 +77,11 @@ async function serve(root: string = fixture.root): Promise<IntentToolHarness> {
   return h
 }
 
-/** One `tools/call` outcome as the tests read it: the isError flag plus the parsed body. */
-interface Outcome {
-  readonly isError: boolean
-  readonly body: Record<string, unknown>
-}
-
 /**
  * Call a tool through the client — real zod validation, real envelope, real
- * `toToolErrorResult` shaping (an error payload parses the same as a success body).
+ * `toToolErrorResult` shaping, decoded by the shared #20 rule (`toolOutcome`:
+ * the isError flag plus the body; an error payload parses the same as a
+ * success body).
  * @param h - the harness to call through.
  * @param name - the tool name.
  * @param args - schema-valid tool input.
@@ -101,9 +94,8 @@ async function call(
   name: string,
   args: Readonly<Record<string, unknown>>,
   clientName?: string,
-): Promise<Outcome> {
-  const res = await h.client.callTool(name, args, clientName !== undefined ? { name: clientName } : undefined)
-  return { isError: res.result?.['isError'] === true, body: toolJson(res) }
+): Promise<ToolOutcome> {
+  return toolOutcome(await h.client.callTool(name, args, clientName !== undefined ? { name: clientName } : undefined))
 }
 
 // ── Retained direct-handler slice: the below-zod doors ──────────────────────────────
@@ -175,29 +167,25 @@ async function callTool(
 }
 
 /**
- * Build the `ServerDeps` a registrar needs, over a fixture corpus — the same
- * construction `main.ts`'s `startup()` performs (register + bind the fixture as the
- * active scope through a real, temp-file-backed `ScopeRegistryFile`/`BindingStore`,
- * ADR-0011/#51 — there is no more process-wide `core`/`recorder` to construct
- * directly), minus the posture check (the fixture is already a clean repo).
- *
- * Each call builds its own throwaway registry — never `defaultRegistryPath()` — so a
- * test never grows state on the machine that runs it.
+ * Build the `ServerDeps` a registrar needs, over a fixture corpus — the shared
+ * `buildFixtureDeps` recipe (#122: temp registry + registered fixture scope +
+ * bound `BindingStore` + `ServerConfig`; the same construction `main.ts`'s
+ * `startup()` performs, minus the posture check — the fixture is already a
+ * clean repo). Each call builds its own throwaway registry — never
+ * `defaultRegistryPath()` — so a test never grows state on the machine that
+ * runs it.
  * @param fixture - the fixture corpus to serve.
  * @returns the deps the registrar closes over.
  */
 async function buildDeps(fixture: FixtureCorpus): Promise<{ readonly deps: ServerDeps }> {
-  const agentId = 'analyst-bot'
-  const registryDir = mkdtempSync(join(tmpdir(), 'sg-registry-'))
-  const registryPath = join(registryDir, 'scopes.yaml')
-  const registry = new ScopeRegistryFile(registryPath)
-  await registry.register({ id: HARNESS_SCOPE_ID, semanticRoot: fixture.root, name: HARNESS_SCOPE_ID, registeredBy: agentId })
-  const bindings = new BindingStore({ registry, agentId, lock: { timeoutMs: 2_000, pollIntervalMs: 10 } })
-  await bindings.bindStartup(HARNESS_SCOPE_ID)
-  liveBindings.push(bindings)
-  liveRegistryDirs.push(registryDir)
-  const config: ServerConfig = { registryPath, agentId, scopeId: HARNESS_SCOPE_ID }
-  return { deps: { registry, bindings, config } }
+  const built = await buildFixtureDeps({
+    semanticRoot: fixture.root,
+    agentId: 'analyst-bot',
+    lock: { timeoutMs: 2_000, pollIntervalMs: 10 },
+  })
+  liveBindings.push(built.bindings)
+  liveRegistryDirs.push(built.registryDir)
+  return { deps: { registry: built.registry, bindings: built.bindings, config: built.config } }
 }
 
 /** The slice's still-live binding stores / registry dirs — disposed in `afterEach`. */

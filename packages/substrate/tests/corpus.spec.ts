@@ -17,6 +17,7 @@ import {
 } from '../src/corpus.ts'
 import { loadRetrievalCorpus, invalidateCaches, getCorpusVersion } from '../src/io.ts'
 import { SemanticGroundingCore } from '../src/index.ts'
+import { fixtureEvent } from './enrichment-fixtures.ts'
 
 
 
@@ -85,7 +86,7 @@ test('loadRetrievalCorpus(semanticLayer) reads events with alt_labels and enrich
   const layer = join(scratch, '10000demo')
   mkdirSync(join(layer, 'events', 'role_public'), { recursive: true })
   // Write event with alt_labels
-  const eventYaml = yaml.dump({
+  const eventYaml = yaml.dump(fixtureEvent({
     name: 'role.online',
     event_filter: "event = 'role.online'",
     description: '玩家上线',
@@ -95,12 +96,7 @@ test('loadRetrievalCorpus(semanticLayer) reads events with alt_labels and enrich
       role_id: { type: 'bigint', description: '角色id' },
       amount: { type: 'double', description: '充值金额' },
     },
-    metrics: {},
-    disambiguation: [],
-    external_refs: [],
-    confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-    coverage: null,
-  })
+  }))
   writeFileSync(join(layer, 'events', 'role_public', 'role.online.yaml'), eventYaml)
   writeFileSync(join(layer, 'config.yaml'), 'project:\n  name: demo\n  scope_id: 10000demo\n')
   try {
@@ -199,7 +195,7 @@ test('loadRetrievalCorpus(layer, "term-only") packs alt_labels but NOT params_fi
   const scratch = mkdtempSync(join(tmpdir(), 'd2h-io-term-'))
   const layer = join(scratch, '10000demo')
   mkdirSync(join(layer, 'events', 'role_public'), { recursive: true })
-  const eventYaml = yaml.dump({
+  const eventYaml = yaml.dump(fixtureEvent({
     name: 'role.online',
     event_filter: "event = 'role.online'",
     description: '玩家上线',
@@ -208,8 +204,7 @@ test('loadRetrievalCorpus(layer, "term-only") packs alt_labels but NOT params_fi
       role_id: { type: 'bigint', description: '角色id' },
       amount: { type: 'double', description: '充值金额' },
     },
-    metrics: {},
-  })
+  }))
   writeFileSync(join(layer, 'events', 'role_public', 'role.online.yaml'), eventYaml)
   writeFileSync(join(layer, 'config.yaml'), 'project:\n  name: demo\n  scope_id: 10000demo\n')
   try {
@@ -233,7 +228,7 @@ test('SemanticGroundingCore.loadRetrievalCorpus() honors corpusVariant config', 
   const scratch = mkdtempSync(join(tmpdir(), 'd2h-svc-variant-'))
   const layer = join(scratch, '10000demo')
   mkdirSync(join(layer, 'events', 'role_public'), { recursive: true })
-  const eventYaml = yaml.dump({
+  const eventYaml = yaml.dump(fixtureEvent({
     name: 'role.online',
     event_filter: "event = 'role.online'",
     description: '玩家上线',
@@ -242,8 +237,7 @@ test('SemanticGroundingCore.loadRetrievalCorpus() honors corpusVariant config', 
       role_id: { type: 'bigint', description: '角色id' },
       amount: { type: 'double', description: '充值金额' },
     },
-    metrics: {},
-  })
+  }))
   writeFileSync(join(layer, 'events', 'role_public', 'role.online.yaml'), eventYaml)
   writeFileSync(join(layer, 'config.yaml'), 'project:\n  name: demo\n  scope_id: 10000demo\n')
   try {

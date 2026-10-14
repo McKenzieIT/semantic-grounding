@@ -27,8 +27,8 @@
  * @module tests/server-startup.spec
  */
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { hostname, tmpdir } from 'node:os'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { hostname } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -37,6 +37,7 @@ import { LOCK_FILENAME, type LockRecord } from '../src/git/lock.ts'
 import { ScopeRegistryFile } from '../src/scope-registry.ts'
 import { TOOL_NAMES } from '../src/tools/index.ts'
 import { createFixtureCorpus, fixtureGit, type FixtureCorpus } from './helpers/fixture-corpus.ts'
+import { freshFixtureRegistry } from './helpers/intent-tools-harness.ts'
 
 const BIN = fileURLToPath(new URL('../src/bin.ts', import.meta.url))
 const REGISTRAR_BIN = fileURLToPath(new URL('./helpers/registrar-server.ts', import.meta.url))
@@ -120,14 +121,16 @@ let liveRegistryDirs: string[] = []
 
 /**
  * A throwaway registry file path, isolated from the real `~/.semantic-grounding`.
- * The file need not exist yet — `ScopeRegistryFile`/`main.ts` both treat ENOENT as an
- * empty registry.
+ * The file need not exist yet — `ScopeRegistryFile`/`main.ts` both treat ENOENT as
+ * an empty registry. The temp-dir half of the shared fixture-deps recipe
+ * (#122): this spawn-based file needs no `BindingStore`/`ServerConfig`, so it
+ * takes only `freshFixtureRegistry()`'s paths.
  * @returns the registry path to pass as `--registry`.
  */
 function freshRegistryPath(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'sg-registry-'))
-  liveRegistryDirs.push(dir)
-  return join(dir, 'scopes.yaml')
+  const { registryDir, registryPath } = freshFixtureRegistry()
+  liveRegistryDirs.push(registryDir)
+  return registryPath
 }
 
 /**

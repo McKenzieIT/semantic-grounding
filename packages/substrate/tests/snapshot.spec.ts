@@ -15,36 +15,35 @@ import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import yaml from 'js-yaml'
+import { fixtureEvent, fixtureTable } from './enrichment-fixtures.ts'
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+/** The layer's one table, at whichever comment/description revision. */
+function orderTable(table_comment: string, description: string): Record<string, unknown> {
+  return fixtureTable({
+    table_name: 'dws_order',
+    table_comment,
+    description,
+    domains: ['pay'],
+    granularity: 'daily',
+    columns: [{ name: 'order_id', type: 'string', comment: 'ID', role: 'dimension' }],
+    partitions: [{ name: 'ds', type: 'string' }],
+  }) as Record<string, unknown>
+}
 
 function makeLayer(): string {
   const dir = mkdtempSync(join(tmpdir(), 'w11-snap-'))
   mkdirSync(join(dir, 'tables'), { recursive: true })
   mkdirSync(join(dir, 'events', 'pay'), { recursive: true })
   writeFileSync(join(dir, 'config.yaml'), yaml.dump({ project: { name: 'test', scope_id: 'test' } }))
-  writeFileSync(join(dir, 'tables', 'dws_order.yaml'), yaml.dump({
-    table_name: 'dws_order',
-    table_comment: 'orders v1',
-    description: 'Order summary v1',
-    domains: ['pay'],
-    granularity: 'daily',
-    columns: [{ name: 'order_id', type: 'string', comment: 'ID', role: 'dimension' }],
-    metrics: {},
-    partitions: [{ name: 'ds', type: 'string' }],
-    confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-  }))
-  writeFileSync(join(dir, 'events', 'pay', 'game.pay.yaml'), yaml.dump({
+  writeFileSync(join(dir, 'tables', 'dws_order.yaml'), yaml.dump(orderTable('orders v1', 'Order summary v1')))
+  writeFileSync(join(dir, 'events', 'pay', 'game.pay.yaml'), yaml.dump(fixtureEvent({
     name: 'game.pay',
     description: 'Payment event v1',
     domains: ['pay'],
     params_fields: { amount: { type: 'double', description: 'pay amount' } },
-    metrics: {},
-    external_refs: [],
-    disambiguation: [],
-    confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-    coverage: null,
-  }))
+  })))
   return dir
 }
 
@@ -81,17 +80,7 @@ describe('W11 C1 — MVCC snapshot isolation', () => {
     expect(event!.description).toBe('Payment event v1')
 
     // Simulate a management-session write: overwrite file + invalidate caches
-    writeFileSync(join(layerDir, 'tables', 'dws_order.yaml'), yaml.dump({
-      table_name: 'dws_order',
-      table_comment: 'orders v2',
-      description: 'Order summary v2',
-      domains: ['pay'],
-      granularity: 'daily',
-      columns: [{ name: 'order_id', type: 'string', comment: 'ID', role: 'dimension' }],
-      metrics: {},
-      partitions: [{ name: 'ds', type: 'string' }],
-      confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-    }))
+    writeFileSync(join(layerDir, 'tables', 'dws_order.yaml'), yaml.dump(orderTable('orders v2', 'Order summary v2')))
     invalidateCaches(layerDir)
 
     // The held snapshot STILL sees v1 (MVCC isolation)
@@ -109,17 +98,7 @@ describe('W11 C1 — MVCC snapshot isolation', () => {
     expect(snap1.loadTableDefinition('dws_order')!.description).toBe('Order summary v1')
 
     // Write v2 + invalidate
-    writeFileSync(join(layerDir, 'tables', 'dws_order.yaml'), yaml.dump({
-      table_name: 'dws_order',
-      table_comment: 'orders v2',
-      description: 'Order summary v2',
-      domains: ['pay'],
-      granularity: 'daily',
-      columns: [{ name: 'order_id', type: 'string', comment: 'ID', role: 'dimension' }],
-      metrics: {},
-      partitions: [{ name: 'ds', type: 'string' }],
-      confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-    }))
+    writeFileSync(join(layerDir, 'tables', 'dws_order.yaml'), yaml.dump(orderTable('orders v2', 'Order summary v2')))
     invalidateCaches(layerDir)
 
     // New snapshot sees v2
@@ -138,17 +117,7 @@ describe('W11 C1 — MVCC snapshot isolation', () => {
       expect(t!.description).toBe('Order summary v1')
 
       // Simulate a concurrent write mid-execution
-      writeFileSync(join(layerDir!, 'tables', 'dws_order.yaml'), yaml.dump({
-        table_name: 'dws_order',
-        table_comment: 'orders v3',
-        description: 'Order summary v3',
-        domains: ['pay'],
-        granularity: 'daily',
-        columns: [{ name: 'order_id', type: 'string', comment: 'ID', role: 'dimension' }],
-        metrics: {},
-        partitions: [{ name: 'ds', type: 'string' }],
-        confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-      }))
+      writeFileSync(join(layerDir!, 'tables', 'dws_order.yaml'), yaml.dump(orderTable('orders v3', 'Order summary v3')))
       invalidateCaches(layerDir!)
 
       // Still sees v1 inside the snapshot
@@ -194,8 +163,9 @@ describe('W11 C1 — MVCC snapshot isolation', () => {
 
   test('snapshot.loadMetricDefinition works for inline metrics', () => {
     layerDir = makeLayer()
-    // Write a table with a metric
-    writeFileSync(join(layerDir, 'tables', 'dws_order.yaml'), yaml.dump({
+    // Write a table with a metric (inline metrics entries are the on-disk shape —
+    // the loader's defaults fill alt_labels/caliber_variants, so they stay raw here).
+    const orderWithMetric = fixtureTable({
       table_name: 'dws_order',
       table_comment: 'orders',
       description: 'Order summary',
@@ -205,12 +175,10 @@ describe('W11 C1 — MVCC snapshot isolation', () => {
         { name: 'order_id', type: 'string', comment: 'ID', role: 'dimension' },
         { name: 'amount', type: 'double', comment: 'Amount', role: 'measure' },
       ],
-      metrics: {
-        total_amount: { expression: 'SUM(amount)', description: 'Total order amount' },
-      },
       partitions: [{ name: 'ds', type: 'string' }],
-      confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-    }))
+    }) as Record<string, unknown>
+    orderWithMetric['metrics'] = { total_amount: { expression: 'SUM(amount)', description: 'Total order amount' } }
+    writeFileSync(join(layerDir, 'tables', 'dws_order.yaml'), yaml.dump(orderWithMetric))
     invalidateCaches(layerDir)
 
     const svc = makeService(layerDir)

@@ -14,36 +14,24 @@ import yaml from 'js-yaml'
 import { SemanticGroundingCore, type Tier2Batch, type Tier2RecordMeta, type Tier2Recorder } from '../src/index.ts'
 import { dumpYaml } from '../src/io.ts'
 import type { EventDefinition, TableDefinition } from '../src/types.ts'
+import { fixtureEvent, fixtureTable } from './enrichment-fixtures.ts'
 
-// ── Fixture builders (mirrors tests/discover-relations.spec.ts's dimDoc/dwsDoc) ────
+// ── Fixture builders (mirror tests/discover-relations.spec.ts's dimDoc/dwsDoc) ────
 
-const dimDoc = (name: string, pk: string): TableDefinition => ({
-  table_name: name, table_comment: '', description: `${name} 维度表`, alt_labels: [], domains: [],
-  granularity: '', engine: 'maxcompute',
+const dimDoc = (name: string, pk: string): TableDefinition => fixtureTable({
+  table_name: name, description: `${name} 维度表`, kind: 'dim',
   columns: [{ name: pk, type: 'string', comment: 'pk', role: 'dimension' }, { name: `${pk}_name`, type: 'string', comment: 'name', role: 'dimension' }],
-  metrics: {}, partitions: [], confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-  coverage: null, supersedes: [], disambiguation: null, kind: 'dim', primary_key: [pk], primary_key_unique: null,
-  duplicate_sample: [], label_columns: [`${pk}_name`], freshness: 'static_reference', dimension_refs: [],
-  suppressed_alt_labels: [], suppressed_dimension_refs: [],
+  primary_key: [pk], label_columns: [`${pk}_name`], freshness: 'static_reference',
 })
 
-const dwsDoc = (name: string, cols: Array<{ name: string; comment?: string }>, overrides: Partial<TableDefinition> = {}): TableDefinition => ({
-  table_name: name, table_comment: '', description: `${name} dws`, alt_labels: [], domains: [],
-  granularity: '', engine: 'maxcompute',
+const dwsDoc = (name: string, cols: Array<{ name: string; comment?: string }>, overrides: Partial<TableDefinition> = {}): TableDefinition => fixtureTable({
+  table_name: name, description: `${name} dws`,
   columns: cols.map(c => ({ name: c.name, type: 'string', comment: c.comment ?? '', role: 'dimension' })),
-  metrics: {}, partitions: [], confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-  coverage: null, supersedes: [], disambiguation: null, kind: 'dws', primary_key: [], primary_key_unique: null,
-  duplicate_sample: [], label_columns: [], freshness: '', dimension_refs: [],
-  suppressed_alt_labels: [], suppressed_dimension_refs: [],
   ...overrides,
 })
 
-const eventDoc = (name: string, fields: Record<string, { type: string; description: string }>, overrides: Partial<EventDefinition> = {}): EventDefinition => ({
-  name, event_filter: '', description: `${name} 事件`, alt_labels: [], domains: [],
-  params_fields: fields, metrics: {}, disambiguation: [], external_refs: [],
-  confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' }, coverage: null,
-  suppressed_alt_labels: [], suppressed_external_refs: [],
-  ...overrides,
+const eventDoc = (name: string, fields: Record<string, { type: string; description: string }>, overrides: Partial<EventDefinition> = {}): EventDefinition => fixtureEvent({
+  name, description: `${name} 事件`, params_fields: fields, ...overrides,
 })
 
 function newLayer(): string {

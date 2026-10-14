@@ -21,6 +21,7 @@ import { join } from 'node:path'
 import type { McpServer } from '@modelcontextprotocol/server'
 import type { SemanticGroundingCore } from '@semantic-grounding/substrate'
 import { BindingStore } from '../../src/binding.ts'
+import type { ServerConfig } from '../../src/config.ts'
 import type { GitTier2Recorder } from '../../src/git/recorder.ts'
 import { ScopeRegistryFile } from '../../src/scope-registry.ts'
 import { createServerFactory, TOOL_REGISTRARS, type ServerDeps, type ToolRegistrar } from '../../src/server.ts'
@@ -31,6 +32,96 @@ import { connectInProcess, toolJson, type InProcessClient } from './inprocess-cl
 
 /** The scope id every harness-built fixture registers and binds under — matches the fixture's own `config.yaml`. */
 export const HARNESS_SCOPE_ID = 'fixture'
+
+/** A throwaway registry's two paths — the shared base of every fixture-deps recipe (#122). */
+export interface FixtureRegistry {
+  /** The registry's temp dir — `rmSync` it in teardown. */
+  readonly registryDir: string
+  /** The registry file path — what `--registry` / `ServerConfig.registryPath` takes. */
+  readonly registryPath: string
+}
+
+/**
+ * A throwaway registry dir + `scopes.yaml` path, never `defaultRegistryPath()` —
+ * the temp-path half of the fixture-deps recipe every test that hand-built a
+ * `ScopeRegistryFile` used to re-assemble (#122). Sync because spawn-based
+ * tests (`server-startup.spec.ts`) weave it into synchronous argv building.
+ * @returns the fresh registry's dir and path.
+ */
+export function freshFixtureRegistry(): FixtureRegistry {
+  const registryDir = mkdtempSync(join(tmpdir(), 'sg-registry-'))
+  return { registryDir, registryPath: join(registryDir, 'scopes.yaml') }
+}
+
+/** What {@link buildFixtureDeps} builds: the temp-registry-backed serving stack. */
+export interface FixtureDeps extends FixtureRegistry {
+  readonly registry: ScopeRegistryFile
+  readonly bindings: BindingStore
+  readonly config: ServerConfig
+}
+
+/** Options for {@link buildFixtureDeps}. */
+export interface BuildFixtureDepsOptions {
+  /**
+   * The corpus root to register under `scopeId` as the fixture scope and bind
+   * eagerly at startup (`bindStartup`). Omit to start from an empty registry
+   * and register/scope your own ids (binding-spec / scope-tools shape) — then
+   * `config` carries no `scopeId`, the no-`--scope` startup shape.
+   */
+  readonly semanticRoot?: string
+  /** The fixture scope's id (default {@link HARNESS_SCOPE_ID}). */
+  readonly scopeId?: string
+  /** The declared agent id (default `'test-agent'`). */
+  readonly agentId?: string
+  /**
+   * Whether the on-write enrichment hook runs. Omit to leave `BindingStore`'s
+   * own default (true, the production `startup()` shape) in place.
+   */
+  readonly autoEnrich?: boolean
+  /** Corpus-lock acquisition overrides (the short-timeout shape concurrency tests want). */
+  readonly lock?: { readonly timeoutMs: number; readonly pollIntervalMs: number }
+  /** Extra `ServerConfig` fields (threshold overrides), spread verbatim. */
+  readonly configExtras?: Partial<ServerConfig>
+}
+
+/**
+ * The one recipe for test-side serving deps (#122 — was five hand-assembled
+ * copies across the harness, `enrichment-tools.spec.ts`, `binding.spec.ts`,
+ * `scope-tools.spec.ts` and `server-startup.spec.ts`): temp registry path +
+ * fixture scope + `BindingStore` + `bindStartup` + `ServerConfig`, the same
+ * construction `main.ts`'s `startup()` performs minus the posture check (a
+ * fixture corpus is already a clean repo). `bindings`/`config` are always
+ * built; a caller that only needs the registry ignores them (an unbound store
+ * holds nothing to dispose).
+ * @param opts - see {@link BuildFixtureDepsOptions}.
+ * @returns the built stack; teardown (dispose + `rmSync(registryDir)`) is the caller's.
+ */
+export async function buildFixtureDeps(opts: BuildFixtureDepsOptions = {}): Promise<FixtureDeps> {
+  const agentId = opts.agentId ?? 'test-agent'
+  const scopeId = opts.scopeId ?? HARNESS_SCOPE_ID
+  const { registryDir, registryPath } = freshFixtureRegistry()
+  const registry = new ScopeRegistryFile(registryPath)
+  const hasScope = opts.semanticRoot !== undefined
+  if (hasScope) {
+    await registry.register({ id: scopeId, semanticRoot: opts.semanticRoot!, name: scopeId, registeredBy: agentId })
+  }
+  const bindings = new BindingStore({
+    registry,
+    agentId,
+    // omitted when unset — `BindingStore`'s own default (true, the production
+    // shape) then applies, exactly as `main.ts`'s `startup()` leaves it.
+    ...opts.autoEnrich !== undefined ? { autoEnrich: opts.autoEnrich } : {},
+    ...opts.lock !== undefined ? { lock: opts.lock } : {},
+  })
+  if (hasScope) await bindings.bindStartup(scopeId)
+  const config: ServerConfig = {
+    registryPath,
+    agentId,
+    ...hasScope ? { scopeId } : {},
+    ...opts.configExtras ?? {},
+  }
+  return { registryDir, registryPath, registry, bindings, config }
+}
 
 /**
  * Build one server instance from a factory, the way `serveStdio` does — `McpServerFactory`
@@ -103,27 +194,23 @@ export async function buildIntentToolHarness(opts: IntentToolHarnessOptions = {}
     ? createFixtureCorpus(opts.fixtureOpts)
     : { root: opts.corpusRoot, cleanup: () => {} }
   const agentId = opts.agentId ?? 'test-agent'
-  const registryDir = mkdtempSync(join(tmpdir(), 'sg-registry-'))
-  const registryPath = join(registryDir, 'scopes.yaml')
 
-  const registry = new ScopeRegistryFile(registryPath)
-  await registry.register({ id: HARNESS_SCOPE_ID, semanticRoot: fixture.root, name: HARNESS_SCOPE_ID, registeredBy: agentId })
-  const bindings = new BindingStore({ registry, agentId, autoEnrich: opts.autoEnrich ?? false })
-  await bindings.bindStartup(HARNESS_SCOPE_ID)
-
-  const deps: ServerDeps = {
-    registry,
-    bindings,
-    config: {
-      registryPath,
-      agentId,
-      scopeId: HARNESS_SCOPE_ID,
+  // The shared fixture-deps recipe (#122): temp registry + registered fixture
+  // scope + bound BindingStore + ServerConfig, with this harness's threshold
+  // overrides riding the config.
+  const built = await buildFixtureDeps({
+    semanticRoot: fixture.root,
+    agentId,
+    autoEnrich: opts.autoEnrich ?? false,
+    configExtras: {
       ...opts.guidanceThreshold !== undefined ? { guidanceThreshold: opts.guidanceThreshold } : {},
       ...opts.massUpdateWarnThreshold !== undefined ? { massUpdateWarnThreshold: opts.massUpdateWarnThreshold } : {},
       ...opts.massUpdateRatio !== undefined ? { massUpdateRatio: opts.massUpdateRatio } : {},
       ...opts.scratchRunsToKeep !== undefined ? { scratchRunsToKeep: opts.scratchRunsToKeep } : {},
     },
-  }
+  })
+  const { registry, bindings } = built
+  const deps: ServerDeps = { registry, bindings, config: built.config }
   const server = await buildServer(createServerFactory(deps, opts.registrars ?? TOOL_REGISTRARS))
   const client = await connectInProcess(server)
   const snap = bindings.requireSnapshot()
@@ -137,7 +224,7 @@ export async function buildIntentToolHarness(opts: IntentToolHarnessOptions = {}
       await client.close()
       bindings.disposeAll()
       if (ownsFixture) fixture.cleanup()
-      rmSync(registryDir, { recursive: true, force: true })
+      rmSync(built.registryDir, { recursive: true, force: true })
     },
   }
 }

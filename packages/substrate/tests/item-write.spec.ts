@@ -30,6 +30,7 @@ import {
 } from '../src/index.ts'
 import { definitionVersion } from '../src/io.ts'
 import { suppressionJoinsUpdate } from '../src/item-write.ts'
+import { fixtureEvent, fixtureTable } from './enrichment-fixtures.ts'
 
 const noopRecorder: Tier2Recorder = { recordTier2Write: async () => 'noop-log-id' }
 
@@ -44,30 +45,19 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
-/** Build a valid table YAML with the minimum fields the schema requires. */
+/**
+ * Build a valid table YAML from the shared fixture source. The dual-field
+ * overlay-hygiene tests below pin that a no-op write never *introduces*
+ * `suppressed_*` — observable only when the fixture itself never landed the
+ * fields on disk — so the base fixture drops the two keys unless the caller's
+ * `extra` sets them.
+ */
 function writeTable(name: string, extra: Record<string, unknown> = {}): void {
-  writeFileSync(join(root, 'tables', `${name}.yaml`), dumpYaml({
-    table_name: name,
-    table_comment: '',
-    description: '',
-    alt_labels: [],
-    domains: [],
-    granularity: '',
-    engine: 'maxcompute',
-    metrics: {},
-    partitions: [{ name: 'ds', type: 'string' }],
-    confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-    coverage: null,
-    supersedes: [],
-    disambiguation: null,
-    primary_key: [],
-    primary_key_unique: null,
-    duplicate_sample: [],
-    label_columns: [],
-    freshness: '',
-    dimension_refs: [],
-    ...extra,
-  }), 'utf8')
+  const doc = fixtureTable({ table_name: name, partitions: [{ name: 'ds', type: 'string' }] }) as Record<string, unknown>
+  Object.assign(doc, extra)
+  if (!('suppressed_alt_labels' in extra)) delete doc['suppressed_alt_labels']
+  if (!('suppressed_dimension_refs' in extra)) delete doc['suppressed_dimension_refs']
+  writeFileSync(join(root, 'tables', `${name}.yaml`), dumpYaml(doc), 'utf8')
 }
 
 function writeDim(name: string, pk: string): void {
@@ -94,18 +84,9 @@ function writeDws(name: string, cols: Array<{ name: string; type: string }>, ext
 }
 
 function writeEvent(name: string, extra: Record<string, unknown> = {}): void {
-  writeFileSync(join(root, 'events', 'biz', `${name}.yaml`), dumpYaml({
-    name,
-    event_filter: '',
-    description: '',
-    alt_labels: [],
-    domains: [],
-    params_fields: {},
-    metrics: {},
-    disambiguation: [],
-    external_refs: [],
-    ...extra,
-  }), 'utf8')
+  const doc = fixtureEvent({ name }) as unknown as Record<string, unknown>
+  Object.assign(doc, extra)
+  writeFileSync(join(root, 'events', 'biz', `${name}.yaml`), dumpYaml(doc), 'utf8')
 }
 
 function newCore(autoEnrich = false): SemanticGroundingCore {

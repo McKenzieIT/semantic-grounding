@@ -14,25 +14,17 @@ import { buildExcludeColumns } from '../src/io.ts'
 import { dumpYaml } from '../src/io.ts'
 import { discoverRelationsDeterministic, type DimInventoryEntry } from '../src/enrichment.ts'
 import type { TableDefinition } from '../src/types.ts'
+import { fixtureTable } from './enrichment-fixtures.ts'
 
-const dimDoc = (name: string, pk: string): TableDefinition => ({
-  table_name: name, table_comment: '', description: `${name} 维度表`, alt_labels: [], domains: [],
-  granularity: '', engine: 'maxcompute',
+const dimDoc = (name: string, pk: string): TableDefinition => fixtureTable({
+  table_name: name, description: `${name} 维度表`, kind: 'dim',
   columns: [{ name: pk, type: 'string', comment: 'pk', role: 'dimension' }, { name: `${pk}_name`, type: 'string', comment: 'name', role: 'dimension' }],
-  metrics: {}, partitions: [], confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-  coverage: null, supersedes: [], disambiguation: null, kind: 'dim', primary_key: [pk], primary_key_unique: null,
-  duplicate_sample: [], label_columns: [`${pk}_name`], freshness: 'static_reference', dimension_refs: [],
-  suppressed_alt_labels: [], suppressed_dimension_refs: [],
+  primary_key: [pk], label_columns: [`${pk}_name`], freshness: 'static_reference',
 })
 
-const dwsDoc = (name: string, cols: Array<{ name: string; comment?: string }>): TableDefinition => ({
-  table_name: name, table_comment: '', description: `${name} dws`, alt_labels: [], domains: [],
-  granularity: '', engine: 'maxcompute',
+const dwsDoc = (name: string, cols: Array<{ name: string; comment?: string }>): TableDefinition => fixtureTable({
+  table_name: name, description: `${name} dws`,
   columns: cols.map(c => ({ name: c.name, type: 'string', comment: c.comment ?? '', role: 'dimension' })),
-  metrics: {}, partitions: [], confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-  coverage: null, supersedes: [], disambiguation: null, kind: 'dws', primary_key: [], primary_key_unique: null,
-  duplicate_sample: [], label_columns: [], freshness: '', dimension_refs: [],
-  suppressed_alt_labels: [], suppressed_dimension_refs: [],
 })
 
 function newLayer(...dws: Array<{ name: string; cols: Array<{ name: string; comment?: string }> }>): string {
@@ -146,15 +138,9 @@ describe('ctx.schema on-write hook (B3, G3 auto-trigger)', () => {
 describe('CL-18 Phase 2: discoverRelationsDeterministic excludeColumns', () => {
   // Minimal builders — independent of the B3 `dwsDoc`/`dimDoc` helpers so the
   // column `role` annotations can be controlled precisely per case.
-  const mkDws = (name: string, cols: Array<{ name: string; role?: string }>): TableDefinition => ({
-    table_name: name, table_comment: '', description: '', alt_labels: [], domains: [],
-    granularity: '', engine: 'maxcompute',
+  const mkDws = (name: string, cols: Array<{ name: string; role?: string }>): TableDefinition => fixtureTable({
+    table_name: name,
     columns: cols.map(c => ({ name: c.name, type: 'string', comment: '', role: c.role ?? 'dimension' })),
-    metrics: {}, partitions: [], confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-    coverage: null, supersedes: [], disambiguation: null, kind: 'dws', primary_key: [],
-    primary_key_unique: null, duplicate_sample: [], label_columns: [], freshness: '',
-    dimension_refs: [],
-    suppressed_alt_labels: [], suppressed_dimension_refs: [],
   })
 
   const mkDim = (name: string, pks: readonly string[]): DimInventoryEntry => ({

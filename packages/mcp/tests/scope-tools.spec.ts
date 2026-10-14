@@ -22,13 +22,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { CallToolResult } from '@modelcontextprotocol/server'
-import { BindingStore } from '../src/binding.ts'
-import type { ServerConfig } from '../src/config.ts'
-import { SgApplicationError } from '../src/errors.ts'
-import { ScopeRegistryFile } from '../src/scope-registry.ts'
 import type { ServerDeps } from '../src/server.ts'
+import { SgApplicationError } from '../src/errors.ts'
 import { registerScopeTools } from '../src/tools/scope.ts'
 import { createFixtureCorpus, fixtureGit, type FixtureCorpus } from './helpers/fixture-corpus.ts'
+import { handlerOutcome } from './helpers/inprocess-client.ts'
+import { buildFixtureDeps, type FixtureDeps } from './helpers/intent-tools-harness.ts'
 
 type Handler = (args: unknown, extra?: unknown) => Promise<CallToolResult> | CallToolResult
 
@@ -48,10 +47,9 @@ function captureScopeTools(deps: ServerDeps): Map<string, Handler> {
 async function callOk(tools: Map<string, Handler>, name: string, args: unknown): Promise<Record<string, unknown>> {
   const handler = tools.get(name)
   if (handler === undefined) throw new Error(`tool not registered: ${name}`)
-  const result = await handler(args, {}) as CallToolResult
-  const text = (result.content[0] as { text: string }).text
-  if (result.isError === true) throw new Error(`expected success, got error result: ${text}`)
-  return JSON.parse(text) as Record<string, unknown>
+  const { isError, body } = handlerOutcome(await handler(args, {}) as CallToolResult)
+  if (isError) throw new Error(`expected success, got error result: ${JSON.stringify(body)}`)
+  return body
 }
 
 /**
@@ -77,28 +75,27 @@ async function callErr(tools: Map<string, Handler>, name: string, args: unknown)
   }
 }
 
-let registryDir: string
+let deps: FixtureDeps
 let fixtureA: FixtureCorpus
 let fixtureB: FixtureCorpus
 let tools: Map<string, Handler>
-let bindings: BindingStore
 
-beforeEach(() => {
-  registryDir = mkdtempSync(join(tmpdir(), 'sg-scope-tools-'))
-  const registryPath = join(registryDir, 'scopes.yaml')
-  const registry = new ScopeRegistryFile(registryPath)
-  bindings = new BindingStore({ agentId: 'bot', registry, lock: { timeoutMs: 2_000, pollIntervalMs: 10 } })
-  const config: ServerConfig = { registryPath, agentId: 'bot' }
-  tools = captureScopeTools({ registry, bindings, config })
+beforeEach(async () => {
+  // The shared fixture-deps recipe (#122), empty-registry shape: this file is
+  // about the handlers, and every scope below is registered through the tool
+  // under test — never pre-registered by the fixture.
+  deps = await buildFixtureDeps({ agentId: 'bot', lock: { timeoutMs: 2_000, pollIntervalMs: 10 } })
+  const serverDeps: ServerDeps = { registry: deps.registry, bindings: deps.bindings, config: deps.config }
+  tools = captureScopeTools(serverDeps)
   fixtureA = createFixtureCorpus()
   fixtureB = createFixtureCorpus()
 })
 
 afterEach(() => {
-  bindings.disposeAll()
+  deps.bindings.disposeAll()
   fixtureA.cleanup()
   fixtureB.cleanup()
-  rmSync(registryDir, { recursive: true, force: true })
+  rmSync(deps.registryDir, { recursive: true, force: true })
 })
 
 describe('get_scope_scaffold', () => {
@@ -145,7 +142,7 @@ describe('register_scope', () => {
   it('never switches — the active scope stays unbound after registering (ruling 3)', async () => {
     const out = await callOk(tools, 'register_scope', { id: 'a', path: fixtureA.root })
     expect(out['active_unchanged']).toBe(true)
-    expect(bindings.snapshot()).toBeUndefined()
+    expect(deps.bindings.snapshot()).toBeUndefined()
     expect((await callOk(tools, 'list_scopes', {}))['active']).toBeNull()
   })
 
@@ -225,7 +222,7 @@ describe('deregister_scope (#72)', () => {
     const out = await callOk(tools, 'deregister_scope', { scope_id: 'a' })
     expect(out['active_cleared']).toBe(true)
     expect(out['binding_cleared']).toBe(true)
-    expect(bindings.snapshot()).toBeUndefined()
+    expect(deps.bindings.snapshot()).toBeUndefined()
     const listed = await callOk(tools, 'list_scopes', {})
     expect(listed['total']).toBe(0)
     expect(listed['active']).toBeNull()

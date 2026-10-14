@@ -17,31 +17,17 @@ import {
 import { MetricDefinitionSchema } from '../src/types.ts'
 import { dumpYaml } from '../src/io.ts'
 import type { TableDefinition, MetricDef } from '../src/types.ts'
+import { fixtureTable } from './enrichment-fixtures.ts'
 
 function table(over: Partial<TableDefinition> = {}): TableDefinition {
-  return {
+  return fixtureTable({
     table_name: 'dws_pay_order_di',
     table_comment: 'pay orders',
     description: 'dws pay',
     domains: ['付费经济'],
-    granularity: '',
-    engine: 'maxcompute',
     columns: [{ name: 'order_id', type: 'string', comment: '', role: 'dimension' }],
-    metrics: {},
-    partitions: [],
-    confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-    coverage: null,
-    supersedes: [],
-    disambiguation: null,
-    kind: 'dws',
-    primary_key: [],
-    primary_key_unique: null,
-    duplicate_sample: [],
-    label_columns: [],
-    freshness: '',
-    dimension_refs: [],
     ...over,
-  } as TableDefinition
+  })
 }
 
 const mdef = (e: string, d = '', cv: MetricDef['caliber_variants'] = []): MetricDef => ({

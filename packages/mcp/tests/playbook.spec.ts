@@ -28,7 +28,7 @@ import type { Guidance } from '../src/tools/guidance.ts'
 import type { InitializationPlaybook, PlaybookPhase } from '../src/tools/playbook.ts'
 import { buildIntentToolHarness, tier2, versionOf, type IntentToolHarness } from './helpers/intent-tools-harness.ts'
 import { createFixtureCorpus } from './helpers/fixture-corpus.ts'
-import { toolJson } from './helpers/inprocess-client.ts'
+import { toolJson, toolOutcome } from './helpers/inprocess-client.ts'
 
 let h: IntentToolHarness | undefined
 afterEach(() => h?.close())
@@ -39,13 +39,15 @@ async function playbookOf(scopeId: string): Promise<InitializationPlaybook> {
   return toolJson(await h.client.callTool('get_initialization_playbook', { scope_id: scopeId })) as unknown as InitializationPlaybook
 }
 
-/** A parsed coded `isError` result (the `-31xxx` discrimination path #20 ruled). */
+/** A parsed coded `isError` result (the `-31xxx` discrimination path #20 ruled,
+ * decoded by the shared `toolOutcome` — #122's single decode point). */
 async function codedErrorOf(name: string, args: Readonly<Record<string, unknown>>): Promise<{ readonly code: number; readonly data: Record<string, unknown> }> {
   if (h === undefined) throw new Error('harness not built')
   const res = await h.client.callTool(name, args)
   expect(res.error).toBeUndefined()
-  expect(res.result?.['isError']).toBe(true)
-  return toolJson(res) as { code: number; data: Record<string, unknown> }
+  const { isError, body } = toolOutcome(res)
+  expect(isError).toBe(true)
+  return body as { code: number; data: Record<string, unknown> }
 }
 
 /** The gap-clearing trio that empties the base fixture's enrichment-work queue

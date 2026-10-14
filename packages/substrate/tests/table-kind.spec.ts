@@ -11,19 +11,14 @@
 import { test, expect, describe } from 'vitest'
 import { tableKindPlugin } from '../src/kinds/table-kind.ts'
 import type { TableDefinition } from '../src/types.ts'
+import { fixtureTable } from './enrichment-fixtures.ts'
 
 function mkTable(dimension_refs: TableDefinition['dimension_refs']): TableDefinition {
-  return {
-    table_name: 'dws_x', table_comment: '', description: '', alt_labels: [], domains: [],
-    granularity: '', engine: 'maxcompute',
+  return fixtureTable({
+    table_name: 'dws_x',
     columns: [{ name: 'a', type: 'string', comment: '', role: 'dimension' }],
-    metrics: {}, partitions: [],
-    confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-    coverage: null, supersedes: [], disambiguation: null, kind: 'dws', primary_key: [],
-    primary_key_unique: null, duplicate_sample: [], label_columns: [], freshness: '',
     dimension_refs,
-    suppressed_alt_labels: [], suppressed_dimension_refs: [],
-  }
+  })
 }
 
 describe('tableKindPlugin.relations — alternative FKs (sl-5)', () => {

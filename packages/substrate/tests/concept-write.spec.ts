@@ -34,6 +34,7 @@ import {
   type Tier2Recorder,
 } from '../src/index.ts'
 import { definitionVersion } from '../src/io.ts'
+import { fixtureTable } from './enrichment-fixtures.ts'
 
 const noopRecorder: Tier2Recorder = { recordTier2Write: async () => 'noop-log-id' }
 
@@ -49,28 +50,9 @@ afterEach(() => {
 })
 
 function writeTable(name: string, extra: Record<string, unknown> = {}): void {
-  writeFileSync(join(root, 'tables', `${name}.yaml`), dumpYaml({
-    table_name: name,
-    table_comment: '',
-    description: '',
-    alt_labels: [],
-    domains: [],
-    granularity: '',
-    engine: 'maxcompute',
-    metrics: {},
-    partitions: [{ name: 'ds', type: 'string' }],
-    confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-    coverage: null,
-    supersedes: [],
-    disambiguation: null,
-    primary_key: [],
-    primary_key_unique: null,
-    duplicate_sample: [],
-    label_columns: [],
-    freshness: '',
-    dimension_refs: [],
-    ...extra,
-  }), 'utf8')
+  const doc = fixtureTable({ table_name: name, partitions: [{ name: 'ds', type: 'string' }] }) as Record<string, unknown>
+  Object.assign(doc, extra)
+  writeFileSync(join(root, 'tables', `${name}.yaml`), dumpYaml(doc), 'utf8')
 }
 
 function writeConcept(name: string, extra: Record<string, unknown> = {}): void {

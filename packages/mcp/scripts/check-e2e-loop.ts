@@ -80,9 +80,9 @@ import { startup } from '../src/main.ts'
 import { createServerFactory, SERVER_INFO } from '../src/server.ts'
 import { TOOL_NAMES } from '../src/tools/index.ts'
 import { ScopeRegistryFile } from '../src/scope-registry.ts'
-import { buildServer, tier2 } from '../tests/helpers/intent-tools-harness.ts'
-import { commitExternalEdit, createFixtureCorpus, fixtureGit, fixtureTable } from '../tests/helpers/fixture-corpus.ts'
-import { connectInProcess, toolJson, type InProcessClient } from '../tests/helpers/inprocess-client.ts'
+import { buildServer, freshFixtureRegistry, tier2 } from '../tests/helpers/intent-tools-harness.ts'
+import { commitExternalEdit, createFixtureCorpus, fixtureGit, fixtureTable, type FixtureCorpus } from '../tests/helpers/fixture-corpus.ts'
+import { connectInProcess, toolJson, toolOutcome, type InProcessClient } from '../tests/helpers/inprocess-client.ts'
 
 /** The writing agent this gate declares at startup — the commit author (ADR-0004 ruling 9). */
 const AGENT_ID = 'e2e-gate-agent'
@@ -145,7 +145,8 @@ async function call(client: InProcessClient, name: string, args: Readonly<Record
  * Call a tool whose *contract* failure is a coded `isError` result, and return the
  * decoded payload — the discrimination path #20 ruled (`toToolErrorResult` returns
  * rather than throws; the `-31xxx` code lives in the result's JSON text, never on
- * JSON-RPC `error.code`). Asserts exactly that shape on the way in.
+ * JSON-RPC `error.code`). Asserts exactly that shape on the way in; the decode
+ * itself is the shared `toolOutcome` (#122's single point).
  */
 async function callCodedError(
   client: InProcessClient,
@@ -154,10 +155,10 @@ async function callCodedError(
 ): Promise<{ readonly code: number; readonly name: string; readonly retryable: boolean; readonly message: string }> {
   const response = await client.callTool(name, args, { name: CLIENT_NAME })
   assert.equal(response.error, undefined, `${name} must fail as an isError RESULT, not a JSON-RPC error (#20's ruling)`)
-  assert.equal((response.result as { readonly isError?: boolean } | undefined)?.isError, true, `${name} was expected to fail`)
-  const payload = toolJson(response) as { code: number; name: string; retryable: boolean; message: string }
-  assert.equal(typeof payload.code, 'number', 'coded error payload carries a numeric code')
-  return payload
+  const outcome = toolOutcome(response)
+  assert.equal(outcome.isError, true, `${name} was expected to fail`)
+  assert.equal(typeof outcome.body['code'], 'number', 'coded error payload carries a numeric code')
+  return outcome.body as { code: number; name: string; retryable: boolean; message: string }
 }
 
 /** Read a string field out of a parsed tool body, with the field named in the failure. */
@@ -211,6 +212,33 @@ async function boot(opts: { readonly registryPath: string; readonly scopeId?: st
       await client.close()
       result.deps.bindings.disposeAll()
     },
+  }
+}
+
+/**
+ * One isolated probe phase's whole lifecycle (#122 — Phases 6.5/6.6/6.7's
+ * shared shape, collected so a failure path can never leak a temp dir: the
+ * three phases used to hand-assemble this try/finally, and one missed `rmSync`
+ * was one leaked directory): own fixture corpus, own throwaway registry, own
+ * boot. The phase body runs inside `run`, verbatim, against the same names it
+ * always used (`(client, fixture, boot)` arrives renamed per phase).
+ * @param agentId - the probe's declared agent id.
+ * @param run - the phase body; a throw still tears the world down.
+ * @returns whatever `run` resolves to.
+ */
+async function withProbeScope<T>(
+  agentId: string,
+  run: (client: InProcessClient, fixture: FixtureCorpus, boot: Boot) => Promise<T>,
+): Promise<T> {
+  const fixture = createFixtureCorpus({ withEvents: false })
+  const { registryDir, registryPath } = freshFixtureRegistry()
+  const probeBoot = await boot({ registryPath, agentId })
+  try {
+    return await run(probeBoot.client, fixture, probeBoot)
+  } finally {
+    await probeBoot.shutdown()
+    fixture.cleanup()
+    rmSync(registryDir, { recursive: true, force: true })
   }
 }
 
@@ -955,14 +983,7 @@ async function main(): Promise<void> {
     // — switching scopes on the MAIN flow's live server would silently redirect its
     // later reads/writes to the wrong corpus, so this never touches `client`/`root`.
     step('scope tools: scaffold → register → list → switch → get → deregister, each a real tools/call')
-    {
-      const scopeFixture = createFixtureCorpus({ withEvents: false })
-      const scopeRegistryDir = mkdtempSync(join(tmpdir(), 'sg-e2e-registry-'))
-      const scopeRegistryPath = join(scopeRegistryDir, 'scopes.yaml')
-      const probeBoot = await boot({ registryPath: scopeRegistryPath, agentId: 'scope-probe-agent' })
-      try {
-        const probeClient = probeBoot.client
-
+    await withProbeScope('scope-probe-agent', async (probeClient, scopeFixture) => {
         const scaffold = await call(probeClient, 'get_scope_scaffold', { scope_id: 'probe', path: scopeFixture.root })
         assert.equal(scaffold['scope_id'], 'probe')
         assert.ok(Array.isArray(scaffold['steps']) && (scaffold['steps'] as unknown[]).length === 5, 'five bootstrap steps')
@@ -996,12 +1017,7 @@ async function main(): Promise<void> {
         const afterDeregister = await call(probeClient, 'list_scopes', {})
         assert.equal(afterDeregister['total'], 0)
         assert.equal(afterDeregister['active'], null)
-      } finally {
-        await probeBoot.shutdown()
-        scopeFixture.cleanup()
-        rmSync(scopeRegistryDir, { recursive: true, force: true })
-      }
-    }
+    })
 
     // ── Phase 6.6 — the initialization playbook (#63, ADR-0014), over the real wire ─
     // Its own fixture/registry/boot (same isolation rule as Phase 6.5): the probe
@@ -1009,14 +1025,7 @@ async function main(): Promise<void> {
     // stops a live server observes in one gate run, plus the reuse contract
     // (playbook phases equal _guidance's on the same corpus state).
     step('initialization playbook: scope_registration before register, real two-layer phases after switch, equivalence with _guidance')
-    {
-      const pbFixture = createFixtureCorpus({ withEvents: false })
-      const pbRegistryDir = mkdtempSync(join(tmpdir(), 'sg-e2e-registry-'))
-      const pbRegistryPath = join(pbRegistryDir, 'scopes.yaml')
-      const pbBoot = await boot({ registryPath: pbRegistryPath, agentId: 'playbook-probe-agent' })
-      try {
-        const pbClient = pbBoot.client
-
+    await withProbeScope('playbook-probe-agent', async (pbClient, pbFixture) => {
         // Before registration: phase 1 of the five — a successful answer, not an
         // error (R6: scope 不存在), whose recommended action is register_scope (R3).
         const before = await call(pbClient, 'get_initialization_playbook', { scope_id: 'pb-probe' })
@@ -1056,12 +1065,7 @@ async function main(): Promise<void> {
         assert.equal(afterLayers['dw']?.['phase'], guidance.metrics.dw.phase)
         assert.equal(afterLayers['kg']?.['phase'], guidance.metrics.kg.phase)
         assert.equal(after['overall_phase'], guidance.phase)
-      } finally {
-        await pbBoot.shutdown()
-        pbFixture.cleanup()
-        rmSync(pbRegistryDir, { recursive: true, force: true })
-      }
-    }
+    })
 
     // ── Phase 6.7 — bulk import (#68, ADR-0013), over the real wire ────────────────
     // Same isolation rule as 6.5/6.6 (own fixture/registry/boot): the initialization
@@ -1069,13 +1073,7 @@ async function main(): Promise<void> {
     // commit — then the idempotent re-issue and the drift update, all against a
     // young corpus so `_guidance` rides the write response too.
     step('import_definitions: mixed batch one commit, per-item verdicts, idempotent re-issue, drift update')
-    {
-      const impFixture = createFixtureCorpus({ withEvents: false })
-      const impRegistryDir = mkdtempSync(join(tmpdir(), 'sg-e2e-registry-'))
-      const impRegistryPath = join(impRegistryDir, 'scopes.yaml')
-      const impBoot = await boot({ registryPath: impRegistryPath, agentId: 'import-probe-agent' })
-      try {
-        const impClient = impBoot.client
+    await withProbeScope('import-probe-agent', async (impClient, impFixture, impBoot) => {
         await call(impClient, 'register_scope', { id: 'imp-probe', path: impFixture.root })
         await call(impClient, 'switch_scope', { scope_id: 'imp-probe' })
         const impCount = (): number => Number(fixtureGit(['rev-list', '--count', 'HEAD'], impFixture.root).trim())
@@ -1133,12 +1131,7 @@ async function main(): Promise<void> {
         const pay = (await call(impClient, 'get_definition', { kind: 'table', name: 'dws_seed_pay' }))['definition'] as Record<string, unknown>
         assert.equal(pay['table_comment'], 'seed v2')
         assert.equal(fixtureGit(['status', '--porcelain'], impFixture.root).trim(), '', 'the import fixture ends clean')
-      } finally {
-        await impBoot.shutdown()
-        impFixture.cleanup()
-        rmSync(impRegistryDir, { recursive: true, force: true })
-      }
-    }
+    })
 
     // ── Phase 7 — the 2026-07-28 envelope, over the real executable ────────────────
     step('spawn sg-mcp (src/bin.ts): 2026-07-28 envelope markers on a real tools/call')

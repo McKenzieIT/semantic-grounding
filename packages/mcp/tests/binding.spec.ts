@@ -21,16 +21,20 @@ import { assertScopeLoadable, BindingStore } from '../src/binding.ts'
 import { NoActiveScopeError, ScopeNotFoundError, ScopeUnloadableError } from '../src/errors.ts'
 import { ScopeRegistryFile } from '../src/scope-registry.ts'
 import { createFixtureCorpus, fixtureGit, type FixtureCorpus } from './helpers/fixture-corpus.ts'
+import { buildFixtureDeps, type FixtureDeps } from './helpers/intent-tools-harness.ts'
 
-let registryDir: string
+let deps: FixtureDeps
 let registry: ScopeRegistryFile
 let fixtureA: FixtureCorpus
 let fixtureB: FixtureCorpus
 let stores: BindingStore[]
 
-beforeEach(() => {
-  registryDir = mkdtempSync(join(tmpdir(), 'sg-binding-spec-'))
-  registry = new ScopeRegistryFile(join(registryDir, 'scopes.yaml'))
+beforeEach(async () => {
+  // The shared fixture-deps recipe (#122), empty-registry shape: this file is
+  // the store's own contract, so it registers its own ids over the temp
+  // registry and builds its per-test stores itself.
+  deps = await buildFixtureDeps({ agentId: 'bot', lock: { timeoutMs: 2_000, pollIntervalMs: 10 } })
+  registry = deps.registry
   fixtureA = createFixtureCorpus()
   fixtureB = createFixtureCorpus()
   stores = []
@@ -38,9 +42,10 @@ beforeEach(() => {
 
 afterEach(() => {
   for (const store of stores) store.disposeAll()
+  deps.bindings.disposeAll()
   fixtureA.cleanup()
   fixtureB.cleanup()
-  rmSync(registryDir, { recursive: true, force: true })
+  rmSync(deps.registryDir, { recursive: true, force: true })
 })
 
 /** A store wired to the shared registry, tracked for teardown disposal. */

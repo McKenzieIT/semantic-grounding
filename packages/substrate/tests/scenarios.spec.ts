@@ -29,6 +29,7 @@ import {
 } from '../src/io.ts'
 import { submit, load as loadPending, listing, discard, isValidId } from '../src/pending.ts'
 import { makeCriticCtx } from '../src/vendor/nl2sql-types.ts'
+import { fixtureEvent, fixtureTable } from './enrichment-fixtures.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURES = join(HERE, 'fixtures')
@@ -105,11 +106,10 @@ test('S1 data-model fidelity — zod parse + round-trip + canonicalize + DIM sup
 test('S3 write-tiers — Tier-1 suggest->pending->approve; Tier-2 via ctx.audit recorder', async () => {
   resetLayer()
   // Tier-1: suggest does NOT touch source-of-truth (the fixture event is already present)
-  const content = yaml.dump({
+  const content = yaml.dump(fixtureEvent({
     name: 'role.online', event_filter: "event = 'role.online'", description: 'suggest',
     params_fields: { roleId: { type: 'int', description: '角色id' } },
-    confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-  }, { sortKeys: false, lineWidth: -1 })
+  }), { sortKeys: false, lineWidth: -1 })
   const rec = submit(VAR_PENDING, { kind: 'event_yaml', subject: 'role.online', content, scope_id: '10000demo' })
   expect(isValidId(rec.suggestion_id)).toBe(true)
   // approve consumes the queue: writeEventYaml + discard
@@ -127,28 +127,11 @@ test('S3 write-tiers — Tier-1 suggest->pending->approve; Tier-2 via ctx.audit 
 })
 
 test('freshness preprocess maps legacy Chinese value', () => {
+  // The raw 静态参考 spelling is the schema INPUT (the preprocess maps it) —
+  // overlaid outside `fixtureTable`'s typed parameter for exactly that reason.
   const parsed = TableDefinitionSchema.parse({
-    table_name: 'dws_test_freshness',
-    table_comment: '',
-    description: '',
-    domains: [],
-    granularity: '',
-    engine: 'maxcompute',
-    columns: [],
-    metrics: {},
-    partitions: [],
-    confirmation: { status: 'draft', confirmed_by: '', confirmed_at: '' },
-    coverage: null,
-    supersedes: [],
-    disambiguation: null,
-    kind: 'dws',
-    primary_key: [],
-    primary_key_unique: null,
-    duplicate_sample: [],
-    label_columns: [],
+    ...fixtureTable({ table_name: 'dws_test_freshness' }),
     freshness: '静态参考',
-    alt_labels: [],
-    dimension_refs: [],
   })
   expect(parsed.freshness).toBe('static_reference')
 })
