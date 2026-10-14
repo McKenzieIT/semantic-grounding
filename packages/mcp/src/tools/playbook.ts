@@ -4,10 +4,15 @@
  * `recommended_action` `{tool, hint}` hybrid), R7 (the full return shape), R10
  * (`scope_id` required, per-scope, no whole-registry aggregation), R13 (the
  * corpus-level `summary`). The phase *model* itself (R1/R2/R4/R5/R6/R8/R9/R12)
- * is not re-implemented here: this module imports `layerCounts`/`dwPhase`/
- * `kgPhase`/`PHASE_RANK` from `tools/guidance.ts` — #55's resolution pinned that
- * reuse ("`_guidance.phase` 调用本工具的阶段判断，接口不变"), so there is exactly
- * one phase derivation in this package and the equivalence is testable (see
+ * is not re-implemented here: this module consumes `evaluateLayers` from
+ * `tools/guidance.ts` — #119 Q2/#121's single evaluation (both layers'
+ * count/phase with the threshold actually in effect, the laggard layer, and the
+ * work-queue total from one scan). #63 shared the four phase *functions*
+ * (`layerCounts`/`dwPhase`/`kgPhase`/`PHASE_RANK`) and this tool composed them
+ * itself; #121 folded that composition — threshold defaults, the laggard rule,
+ * a second work-index scan — into the evaluation, so the fork between the two
+ * tools is wording only, and the equivalence is testable on one shared object
+ * (see `tests/guidance.spec.ts`'s equivalence describe and
  * `tests/playbook.spec.ts`'s first describe).
  *
  * ## Where this tool's view is wider than `_guidance`'s
@@ -54,11 +59,12 @@
  *
  * ## Cost note
  *
- * `dwPhase` internally lists enrichment work to decide `backfill`, and this
- * module lists it once more for `summary.enrichment_work_remaining` and the
- * coverage numbers. That second scan is deliberate: routing the number through
- * the shared derivation is what keeps the phase logic single-sourced, and this
- * is an occasional dashboard read, not a hot path.
+ * Through #120 this module listed the enrichment-work index a second time — once
+ * inside `dwPhase` for the phase, once here for `summary.enrichment_work_remaining`
+ * and the coverage numbers — a deliberate trade #63 made to keep the phase logic
+ * single-sourced. #121 removed the trade along with its cause: `evaluateLayers`
+ * scans once and both numbers read that one total, so the playbook costs one
+ * scan, not two.
  *
  * @module tools/playbook
  */
@@ -69,16 +75,7 @@ import { ScopeMismatchError } from '../errors.ts'
 import { scopeEntryReachable } from '../scope-registry.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { toolSuccess } from './audited.ts'
-import {
-  DEFAULT_DW_THRESHOLD,
-  DEFAULT_KG_THRESHOLD,
-  dwPhase,
-  kgPhase,
-  layerCounts,
-  PHASE_RANK,
-  type GuidancePhase,
-  type GuidanceThresholds,
-} from './guidance.ts'
+import { evaluateLayers, type GuidancePhase, type GuidanceThresholds, type LayersEvaluation } from './guidance.ts'
 import { ScopeIdSchema, type ToolFamily } from './shared.ts'
 
 /** The playbook tool's single name. */
@@ -251,55 +248,58 @@ function unregisteredPlaybook(scopeId: string, registeredRoot: string | null, re
 }
 
 /**
- * Compute the full playbook from the entry snapshot — the same counts, the same
- * phase functions, the same thresholds `maybeGuidance` reads.
+ * Render the playbook body from one evaluation — the playbook half of #121's
+ * one-evaluation/two-renderers split: `guidance.ts`'s `evaluateLayers` made
+ * every judgment (phases, laggard, effective thresholds, the work total from
+ * its single scan); this words the two prose tables (R3's actions, R13's
+ * message) and shapes R7's fields around them. Exported for the equivalence
+ * specs, which drive both renderers from one shared `LayersEvaluation`.
+ * @param e - the evaluation (from `evaluateLayers`).
+ * @param scope - the response's `scope` stamp (id + semantic root).
+ */
+export function playbookFromEvaluation(e: LayersEvaluation, scope: { readonly id: string; readonly root: string | null }): InitializationPlaybook {
+  const layers = {
+    dw: {
+      phase: e.dw.phase,
+      coverage: coverageFor(e.dw.phase, e.dw.count, e.dw.threshold, e.workRemaining),
+      recommended_action: recommendedActionFor('dw', e.dw.phase),
+    },
+    kg: {
+      phase: e.kg.phase,
+      coverage: coverageFor(e.kg.phase, e.kg.count, e.kg.threshold, e.workRemaining),
+      recommended_action: recommendedActionFor('kg', e.kg.phase),
+    },
+  }
+  // The evaluation already judged the laggard (#55 R8's rule, judged once in
+  // `evaluateLayers`); the renderer only reads it out — the message's layer
+  // label, counts, and gate follow the same object.
+  const laggard = e[e.laggard]
+  return {
+    scope,
+    overall_phase: laggard.phase,
+    summary: {
+      message: summaryMessage(e.laggard, laggard.phase, laggard.count, laggard.threshold, e.workRemaining),
+      total_definitions: e.dw.count + e.kg.count,
+      dw_definitions: e.dw.count,
+      kg_definitions: e.kg.count,
+      enrichment_work_remaining: e.workRemaining,
+    },
+    layers,
+  }
+}
+
+/**
+ * Compute the full playbook from the entry snapshot: {@link evaluateLayers} +
+ * {@link playbookFromEvaluation} — the same evaluation `_guidance` renders from,
+ * thresholds and all (#121; through #63/#120 this function composed the phase
+ * primitives itself, duplicating the threshold defaults, the laggard rule, and
+ * the work-index scan).
  * @param snap - the entry snapshot (the scope this process is serving).
  * @param thresholds - per-layer overrides; each side defaults independently.
  * @param root - the scope's semantic root, for the response's `scope` stamp.
  */
 async function playbookFromSnapshot(snap: ScopeBinding, thresholds: GuidanceThresholds | undefined, root: string): Promise<InitializationPlaybook> {
-  const dwThreshold = thresholds?.dw ?? DEFAULT_DW_THRESHOLD
-  const kgThreshold = thresholds?.kg ?? DEFAULT_KG_THRESHOLD
-  const { dw: dwCount, kg: kgCount } = layerCounts(snap)
-  const dwPhaseValue = await dwPhase(snap, dwCount, dwThreshold)
-  const kgPhaseValue = kgPhase(kgCount, kgThreshold)
-  // The queue length for the summary/coverage numbers. dwPhase just listed this
-  // same index internally; see this module's doc for why the second read is the
-  // right trade (one derivation, occasionally scanned twice).
-  const { total: workRemaining } = await snap.core.listEnrichmentWork({})
-
-  const layers = {
-    dw: {
-      phase: dwPhaseValue,
-      coverage: coverageFor(dwPhaseValue, dwCount, dwThreshold, workRemaining),
-      recommended_action: recommendedActionFor('dw', dwPhaseValue),
-    },
-    kg: {
-      phase: kgPhaseValue,
-      coverage: coverageFor(kgPhaseValue, kgCount, kgThreshold, workRemaining),
-      recommended_action: recommendedActionFor('kg', kgPhaseValue),
-    },
-  }
-  // `_guidance.phase`'s exact laggard rule, on the shared ranking table: the
-  // more-behind layer, ties to DW (equal phases make the tie irrelevant to the
-  // value; the message's layer label follows the same convention).
-  const dwIsLaggard = PHASE_RANK[dwPhaseValue] <= PHASE_RANK[kgPhaseValue]
-  const laggard: LayerId = dwIsLaggard ? 'dw' : 'kg'
-  const laggardPhase = dwIsLaggard ? dwPhaseValue : kgPhaseValue
-  const laggardCount = dwIsLaggard ? dwCount : kgCount
-  const laggardThreshold = dwIsLaggard ? dwThreshold : kgThreshold
-  return {
-    scope: { id: snap.scopeId, root },
-    overall_phase: laggardPhase,
-    summary: {
-      message: summaryMessage(laggard, laggardPhase, laggardCount, laggardThreshold, workRemaining),
-      total_definitions: dwCount + kgCount,
-      dw_definitions: dwCount,
-      kg_definitions: kgCount,
-      enrichment_work_remaining: workRemaining,
-    },
-    layers,
-  }
+  return playbookFromEvaluation(await evaluateLayers(snap, thresholds), { id: snap.scopeId, root })
 }
 
 /**

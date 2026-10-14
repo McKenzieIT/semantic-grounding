@@ -36,19 +36,31 @@
  * concept node's `kind` is always the fixed literal `'concept'`
  * (`kinds/concept-kind.ts`); every other registered kind's node — today, a table
  * (whose `kind` is its own open storage kind, e.g. `dim`/`dws`, `kinds/table-kind.ts`)
- * or an event (fixed `'event'`) — is DW by elimination. DW's `backfill` check reuses
+ * or an event (fixed `'event'`) — is DW by elimination. DW's `backfill` check reads
  * `listEnrichmentWork({})` (no dimension filter = whole corpus), the same
- * deterministic gap index `get_enrichment_work` exposes — so {@link maybeGuidance}
- * is async.
+ * deterministic gap index `get_enrichment_work` exposes — scanned exactly once per
+ * evaluation, inside {@link evaluateLayers} (#121), which is the only reason it
+ * (and therefore {@link maybeGuidance} and the playbook) is async.
  *
- * ## #63: the phase derivation is exported, not duplicated
+ * ## #121: one evaluation, two renderers
  *
- * `layerCounts`/`dwPhase`/`kgPhase` (and `PHASE_RANK`) were module-private until
- * `get_initialization_playbook` (`tools/playbook.ts`, #63) needed them. #55's
- * resolution pinned the reuse rule — "`_guidance.phase` 调用本工具的阶段判断，接口
- * 不变" — so the playbook imports these instead of forking a second phase
- * derivation. They are exported for that one consumer; their signatures and
- * semantics are unchanged.
+ * #63 shared the phase *functions* with `tools/playbook.ts` by exporting them
+ * (`layerCounts`/`dwPhase`/`kgPhase`/`PHASE_RANK`), but the playbook then
+ * re-composed them — its own threshold-default application, its own copy of the
+ * laggard rule, and a second `listEnrichmentWork({})` scan for the summary
+ * numbers: a four-way fork the 00 review (#119 Q2) closed. {@link evaluateLayers}
+ * is now the single evaluation: both layers' count/phase with the threshold
+ * actually in effect, the laggard layer, and the work-queue total from ONE scan.
+ * This module renders `_guidance` from it ({@link guidanceFromEvaluation}); the
+ * playbook renders `{layers, summary, overall_phase}` from the same object
+ * (`playbook.ts`'s `playbookFromEvaluation`). The two prose tables stay —
+ * different audiences is a legitimate difference — but no judgment is duplicated
+ * anymore: phase, laggard, and thresholds all come from one place, and the
+ * equivalence is pinned by a unit assertion that drives both renderers from one
+ * shared `LayersEvaluation` (`tests/guidance.spec.ts`). `dwPhase`/`kgPhase`/
+ * `PHASE_RANK` went back to module-private with the fold (their export existed
+ * for the playbook's own composition); `layerCounts` remains exported —
+ * `tools/scope.ts` (#102) is its live consumer.
  *
  * @module tools/guidance
  */
@@ -90,43 +102,100 @@ export interface Guidance {
   readonly metrics: Readonly<{ dw: LayerMetrics; kg: LayerMetrics }>
 }
 
-/** Lower rank = further behind. Exported for `tools/playbook.ts` (#63) — the
- * single ranking table both tools order phases by; a second copy could drift into
- * disagreeing with `_guidance` about which layer is the laggard. */
-export const PHASE_RANK: Readonly<Record<GuidancePhase, number>> = { seeding: 0, backfill: 1, llm_supplement: 2, mature: 3 }
+/** Lower rank = further behind — the single ranking table both tools' phases
+ * order by; a second copy could drift into disagreeing with `_guidance` about
+ * which layer is the laggard. Module-private since #121 folded its last external
+ * reader (`playbook.ts`'s own laggard copy) into {@link evaluateLayers}. */
+const PHASE_RANK: Readonly<Record<GuidancePhase, number>> = { seeding: 0, backfill: 1, llm_supplement: 2, mature: 3 }
 
 /** DW's phase: `seeding` (no definitions) → `backfill` (deterministic relation /
  * alias gaps outstanding) → `llm_supplement` (gaps clear, count still below
- * threshold) → `mature`. The `backfill` check is the only reason this function
- * (and therefore {@link maybeGuidance}) is async. Exported for
- * `tools/playbook.ts` (#63) — the one phase derivation, shared, never forked. */
-export async function dwPhase(snap: ScopeBinding, count: number, threshold: number): Promise<GuidancePhase> {
+ * threshold) → `mature` — a pure step over the work total {@link evaluateLayers}
+ * already scanned (#121 moved the scan there: through #63/#120 this function
+ * scanned for itself and `playbook.ts` scanned a second time for its summary).
+ * Module-private since #121; the one phase derivation, shared, never forked. */
+function dwPhase(count: number, threshold: number, workRemaining: number): GuidancePhase {
   if (count === 0) return 'seeding'
-  const work = await snap.core.listEnrichmentWork({})
-  if (work.total > 0) return 'backfill'
+  if (workRemaining > 0) return 'backfill'
   return count < threshold ? 'llm_supplement' : 'mature'
 }
 
 /** KG's phase: `seeding` → `llm_supplement` → `mature` — `backfill` is skipped
- * (concepts have no enrichment rounds at all, ADR-0012/#46). Exported for
- * `tools/playbook.ts` (#63), same single-derivation rule as {@link dwPhase}. */
-export function kgPhase(count: number, threshold: number): GuidancePhase {
+ * (concepts have no enrichment rounds at all, ADR-0012/#46). Module-private
+ * since #121 (its #63 export existed for the playbook's own composition), same
+ * single-derivation rule as {@link dwPhase}. */
+function kgPhase(count: number, threshold: number): GuidancePhase {
   if (count === 0) return 'seeding'
   return count < threshold ? 'llm_supplement' : 'mature'
 }
 
 /** DW count (tables + events) and KG count (concepts), split from one
  * schema-valid, graph-attached scan — see this module's doc for why a concept
- * node's fixed `kind` lets DW fall out "by elimination". Exported for
- * `tools/playbook.ts` (#63), same single-derivation rule as {@link dwPhase}. */
+ * node's fixed `kind` lets DW fall out "by elimination". Still exported: the
+ * playbook now reads counts through {@link evaluateLayers} (#121), but
+ * `tools/scope.ts` (#102) consumes this primitive directly — the one count
+ * derivation, shared, never forked. */
 export function layerCounts(snap: ScopeBinding): { readonly dw: number; readonly kg: number } {
   const nodes = snap.core.projectGraphNodes({ includeDerived: false })
   const kg = nodes.filter(n => n.kind === 'concept').length
   return { dw: nodes.length - kg, kg }
 }
 
+/** One layer's full evaluation: its metrics plus the threshold that actually
+ * judged it — the override when given, #55 R12's default when not. The default
+ * application lives in {@link evaluateLayers} alone (#121: the fork this closed
+ * was two independent `?? DEFAULT_*` resolutions, one per tool). */
+export interface EvaluatedLayer {
+  readonly count: number
+  readonly phase: GuidancePhase
+  readonly threshold: number
+}
+
+/** One full corpus evaluation — #121's single judgment object. Both tools'
+ * phase keys (and the playbook's coverage/summary numbers) come from here; the
+ * renderers that consume it add wording and shape, never judgment. */
+export interface LayersEvaluation {
+  readonly dw: EvaluatedLayer
+  readonly kg: EvaluatedLayer
+  /** The more-behind layer (#55 R8): `PHASE_RANK[dw] <= PHASE_RANK[kg]`, the one
+   * laggard rule in the package — ties read as DW, where equal phases make the
+   * tie irrelevant to the value either renderer reports. */
+  readonly laggard: 'dw' | 'kg'
+  /** Outstanding deterministic enrichment work items, from the evaluation's one
+   * and only `listEnrichmentWork({})` scan — the same total decides DW's
+   * `backfill` and feeds the playbook's `enrichment_work_remaining`/coverage. */
+  readonly workRemaining: number
+}
+
+/**
+ * Evaluate both layers from the entry snapshot — #119 Q2's single evaluation
+ * function (#121): thresholds resolve to their effective values here (the only
+ * `?? DEFAULT_*` in the package), the laggard rule is judged here (the only
+ * `PHASE_RANK` comparison), and the work index is scanned here, exactly once
+ * (through #120 the guidance path scanned inside `dwPhase` and the playbook
+ * scanned a second time for its summary). `guidance.ts` renders `_guidance`
+ * from the result ({@link guidanceFromEvaluation}); `tools/playbook.ts` renders
+ * its playbook from the same result — that shared object is what the
+ * equivalence unit assertion pins.
+ * @param snap - the entry snapshot (ADR-0011 ruling 1 — resolved at handler entry).
+ * @param thresholds - per-layer overrides; each side defaults independently
+ *   ({@link DEFAULT_DW_THRESHOLD}, {@link DEFAULT_KG_THRESHOLD}) when absent.
+ */
+export async function evaluateLayers(snap: ScopeBinding, thresholds?: GuidanceThresholds): Promise<LayersEvaluation> {
+  const dwThreshold = thresholds?.dw ?? DEFAULT_DW_THRESHOLD
+  const kgThreshold = thresholds?.kg ?? DEFAULT_KG_THRESHOLD
+  const { dw: dwCount, kg: kgCount } = layerCounts(snap)
+  // The evaluation's one whole-corpus scan (#121): the same total that decides
+  // DW's `backfill` feeds the playbook's summary/coverage numbers.
+  const { total: workRemaining } = await snap.core.listEnrichmentWork({})
+  const dw: EvaluatedLayer = { count: dwCount, phase: dwPhase(dwCount, dwThreshold, workRemaining), threshold: dwThreshold }
+  const kg: EvaluatedLayer = { count: kgCount, phase: kgPhase(kgCount, kgThreshold), threshold: kgThreshold }
+  const laggard: 'dw' | 'kg' = PHASE_RANK[dw.phase] <= PHASE_RANK[kg.phase] ? 'dw' : 'kg'
+  return { dw, kg, laggard, workRemaining }
+}
+
 /** The hint for one layer at one phase. `mature` is unreachable here —
- * {@link maybeGuidance} never selects a `mature` layer as the laggard — and
+ * {@link guidanceFromEvaluation} never selects a `mature` layer as the laggard — and
  * KG's `backfill` is unreachable per this module's doc; both are given a defined
  * (empty) string rather than throwing, so this stays a total function. */
 function hintFor(layer: 'dw' | 'kg', phase: GuidancePhase): string {
@@ -147,24 +216,35 @@ function hintFor(layer: 'dw' | 'kg', phase: GuidancePhase): string {
 }
 
 /**
- * Compute `_guidance`, or `undefined` once both layers have reached `mature`.
- * Called by `tools/audited.ts`'s `writeReceipt` — the write envelope's single
- * injection point for the 7 guidance-carrying tools (#55/#56's model; #108
- * folded the per-handler `guidanceField` spread into the envelope).
+ * Render `_guidance` from one evaluation — the guidance half of #121's
+ * one-evaluation/two-renderers split. Pure: every judgment (phases, laggard,
+ * effective thresholds, the work total) already happened in
+ * {@link evaluateLayers}; this only words and shapes it, or returns `undefined`
+ * once both layers are `mature` (zero tax, #55 R9).
+ */
+export function guidanceFromEvaluation(e: LayersEvaluation): Guidance | undefined {
+  if (e.dw.phase === 'mature' && e.kg.phase === 'mature') return undefined
+  const laggard = e[e.laggard]
+  return {
+    phase: laggard.phase,
+    hint: hintFor(e.laggard, laggard.phase),
+    // Verbatim `{count, phase}` per layer: `metrics` predates the evaluation
+    // carrying thresholds too, and #121 changes no response key.
+    metrics: { dw: { count: e.dw.count, phase: e.dw.phase }, kg: { count: e.kg.count, phase: e.kg.phase } },
+  }
+}
+
+/**
+ * Compute `_guidance`, or `undefined` once both layers have reached `mature`:
+ * {@link evaluateLayers} + {@link guidanceFromEvaluation}, nothing else (#121
+ * collapsed the per-tool composition into that pair). Called by
+ * `tools/audited.ts`'s `writeReceipt` — the write envelope's single injection
+ * point for the 7 guidance-carrying tools (#55/#56's model; #108 folded the
+ * per-handler `guidanceField` spread into the envelope).
  * @param snap - the entry snapshot (ADR-0011 ruling 1 — resolved at handler entry).
  * @param thresholds - per-layer overrides; each side defaults independently
  *   ({@link DEFAULT_DW_THRESHOLD}, {@link DEFAULT_KG_THRESHOLD}) when absent.
  */
 export async function maybeGuidance(snap: ScopeBinding, thresholds?: GuidanceThresholds): Promise<Guidance | undefined> {
-  const dwThreshold = thresholds?.dw ?? DEFAULT_DW_THRESHOLD
-  const kgThreshold = thresholds?.kg ?? DEFAULT_KG_THRESHOLD
-  const { dw: dwCount, kg: kgCount } = layerCounts(snap)
-  const dw: LayerMetrics = { count: dwCount, phase: await dwPhase(snap, dwCount, dwThreshold) }
-  const kg: LayerMetrics = { count: kgCount, phase: kgPhase(kgCount, kgThreshold) }
-  if (dw.phase === 'mature' && kg.phase === 'mature') return undefined
-
-  const dwIsLaggard = PHASE_RANK[dw.phase] <= PHASE_RANK[kg.phase]
-  const phase = dwIsLaggard ? dw.phase : kg.phase
-  const hint = dwIsLaggard ? hintFor('dw', dw.phase) : hintFor('kg', kg.phase)
-  return { phase, hint, metrics: { dw, kg } }
+  return guidanceFromEvaluation(await evaluateLayers(snap, thresholds))
 }

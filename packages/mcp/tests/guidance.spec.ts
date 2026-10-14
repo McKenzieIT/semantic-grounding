@@ -14,13 +14,23 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ScopeBinding } from '../src/binding.ts'
 import { GUIDANCE_TOOL_NAMES } from '../src/tools/audited.ts'
-import { DEFAULT_DW_THRESHOLD, DEFAULT_KG_THRESHOLD, maybeGuidance, type Guidance } from '../src/tools/guidance.ts'
+import {
+  DEFAULT_DW_THRESHOLD,
+  DEFAULT_KG_THRESHOLD,
+  evaluateLayers,
+  guidanceFromEvaluation,
+  maybeGuidance,
+  type Guidance,
+  type LayersEvaluation,
+} from '../src/tools/guidance.ts'
+import { playbookFromEvaluation } from '../src/tools/playbook.ts'
 import { buildIntentToolHarness, tier2, versionOf, type IntentToolHarness } from './helpers/intent-tools-harness.ts'
 import { toolJson } from './helpers/inprocess-client.ts'
 
-/** A snapshot stub carrying only what `maybeGuidance` reads: a flat node list
- * (DW nodes get an arbitrary non-`'concept'` kind, mirroring a table's open
- * storage-kind string) and a controllable enrichment-work total. */
+/** A snapshot stub carrying only what the evaluation reads (`evaluateLayers`,
+ * #121 — the same surface `maybeGuidance` ever read): a flat node list (DW nodes
+ * get an arbitrary non-`'concept'` kind, mirroring a table's open storage-kind
+ * string) and a controllable enrichment-work total. */
 function fakeSnapshot(opts: { readonly dw: number; readonly kg: number; readonly dwWorkTotal?: number }): ScopeBinding {
   const nodes = [
     ...Array.from({ length: opts.dw }, () => ({ kind: 'dws' })),
@@ -78,6 +88,80 @@ describe('maybeGuidance', () => {
     expect(atDefault).toMatchObject({ phase: 'llm_supplement', metrics: { dw: { phase: 'llm_supplement' } } })
     // Override dw's threshold down to 3: the same count now reads as mature.
     expect(await maybeGuidance(fakeSnapshot({ dw: 3, kg: 5, dwWorkTotal: 0 }), { dw: 3 })).toBeUndefined()
+  })
+})
+
+// ── #121: the single evaluation, and the two renderers it feeds ────────────────────
+
+describe('evaluateLayers — the single evaluation (#121)', () => {
+  it('scans the enrichment-work index exactly once — the one whole-corpus read both tools share', async () => {
+    let scans = 0
+    const snap = {
+      core: {
+        projectGraphNodes: () => [{ kind: 'dws' }, { kind: 'dws' }],
+        listEnrichmentWork: async () => { scans += 1; return { work: [], total: 3, truncated: false } },
+      },
+    } as unknown as ScopeBinding
+    const e = await evaluateLayers(snap)
+    expect(scans).toBe(1)
+    // The one scan fed both consumers of it: the phase decision...
+    expect(e.dw.phase).toBe('backfill')
+    // ...and the total the playbook's summary/coverage numbers ride on.
+    expect(e.workRemaining).toBe(3)
+  })
+
+  it('resolves each layer to the threshold actually in effect — the only ?? DEFAULT application', async () => {
+    const atDefault = await evaluateLayers(fakeSnapshot({ dw: 3, kg: 5, dwWorkTotal: 0 }))
+    expect(atDefault.dw).toEqual({ count: 3, phase: 'llm_supplement', threshold: DEFAULT_DW_THRESHOLD })
+    expect(atDefault.kg).toEqual({ count: 5, phase: 'mature', threshold: DEFAULT_KG_THRESHOLD })
+    const overridden = await evaluateLayers(fakeSnapshot({ dw: 3, kg: 5, dwWorkTotal: 0 }), { dw: 3, kg: 6 })
+    expect(overridden.dw).toEqual({ count: 3, phase: 'mature', threshold: 3 })
+    expect(overridden.kg).toEqual({ count: 5, phase: 'llm_supplement', threshold: 6 })
+  })
+
+  it('judges the laggard once — ties read as DW', async () => {
+    expect((await evaluateLayers(fakeSnapshot({ dw: 0, kg: 0 }))).laggard).toBe('dw')
+    expect((await evaluateLayers(fakeSnapshot({ dw: 5, kg: 0, dwWorkTotal: 0 }))).laggard).toBe('kg')
+    expect((await evaluateLayers(fakeSnapshot({ dw: 2, kg: 5, dwWorkTotal: 3 }))).laggard).toBe('dw')
+  })
+})
+
+describe('the two renderers agree on one shared evaluation (#121 primary equivalence defense)', () => {
+  /** Drive BOTH renderers from the SAME evaluation object and demand every phase
+   * key matches — the fork #121 closed (playbook composing its own thresholds,
+   * laggard rule, and scan) cannot reopen without this going red:
+   * `overall_phase` vs `_guidance.phase`, `layers.*.phase` vs `metrics.*.phase`,
+   * and the both-mature edge, where `_guidance` goes zero-tax and the playbook
+   * reports mature outright. */
+  function assertRenderersAgree(e: LayersEvaluation): void {
+    const g = guidanceFromEvaluation(e)
+    const pb = playbookFromEvaluation(e, { id: 'fixture', root: '/corpus' })
+    if (g === undefined) {
+      expect(pb.overall_phase).toBe('mature')
+      expect(pb.layers.dw.phase).toBe('mature')
+      expect(pb.layers.kg.phase).toBe('mature')
+      return
+    }
+    expect(pb.overall_phase).toBe(g.phase)
+    expect(pb.layers.dw.phase).toBe(g.metrics.dw.phase)
+    expect(pb.layers.kg.phase).toBe(g.metrics.kg.phase)
+  }
+
+  it('agrees across the reachable state space — ties, either laggard, and both-mature', async () => {
+    const states: ReadonlyArray<{ readonly dw: number; readonly kg: number; readonly dwWorkTotal?: number }> = [
+      { dw: 0, kg: 0 },                                                       // both seeding, tie -> DW
+      { dw: 5, kg: 0, dwWorkTotal: 0 },                                       // KG seeding is the laggard
+      { dw: 2, kg: 0, dwWorkTotal: 3 },                                       // DW backfill is the laggard
+      { dw: 5, kg: 5, dwWorkTotal: 3 },                                       // DW backfill over KG mature
+      { dw: 3, kg: 1, dwWorkTotal: 0 },                                       // both llm_supplement, tie -> DW
+      { dw: DEFAULT_DW_THRESHOLD, kg: DEFAULT_KG_THRESHOLD, dwWorkTotal: 0 }, // both mature, _guidance zero-tax
+    ]
+    for (const s of states) assertRenderersAgree(await evaluateLayers(fakeSnapshot(s)))
+  })
+
+  it('agrees under threshold overrides too — the effective thresholds are the evaluation\'s, once', async () => {
+    assertRenderersAgree(await evaluateLayers(fakeSnapshot({ dw: 3, kg: 5, dwWorkTotal: 0 }), { dw: 3 }))
+    assertRenderersAgree(await evaluateLayers(fakeSnapshot({ dw: 0, kg: 5, dwWorkTotal: 0 }), { dw: 3, kg: 6 }))
   })
 })
 
