@@ -248,11 +248,16 @@ fact itself. Filling in a "confirmed by" field is not promotion.
 
 ### verified query (已验证查询)
 
-A business question paired with the query that answers it, plus who verified it and
-when ("大R 留存" → the SQL with the chosen payment threshold). It is a fact, not a
-[memory](#memory-数据-memory): it is what a **practice** memory becomes once a human
-states the 口径, so that two agents asking the same question a week apart get the same
-number. Avoid *saved query* (implies a personal bookmark, not an agreed 口径).
+A business question paired with the query that answers it ("大R 留存" → the SQL with
+the chosen payment tier). It is a fact, not a [memory](#memory-数据-memory): it is what
+a **practice** memory becomes once a human states the 口径 or a document fixes it, so
+that two agents asking the same question a week apart get the same number. Two agents
+happening to choose the same 口径 does not make it verified — a 口径 is agreed, not
+observed. Being a verified query *is* the claim of verification; who verified it and
+when is answered by its commit, never by a field on it. Its query text is the original,
+not a copy of something kept elsewhere, and is written for any period rather than for
+the one it was first run on. Avoid *saved query* (implies a personal bookmark, not an
+agreed 口径).
 
 ### code reference (代码指针)
 

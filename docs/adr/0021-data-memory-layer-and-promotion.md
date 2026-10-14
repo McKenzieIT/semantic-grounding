@@ -68,3 +68,8 @@ SG 今天只有一种存储单位 —— definition（`table` / `event` / `conce
   传了可选 `data_window` 时，窗外的 incident / observation 隐藏；未传窗时不隐藏，按新近度占挂载预算。理由：
   未传窗时按字面隐藏只能拿今天作参照（ADR-0023 已否），G3′ 在 agent 不传窗时会直接失败。
 - Consequences 中「挂载预算与挂在哪些读工具归后续决策票」已由 ADR-0024 裁定。
+
+## Update 2026-10-15（ADR-0025 / #138）
+
+- **R6 对已验证查询按类型收窄**：晋升为 `query` 只认 ① source 与 ② user-stated，③ replicated 拒写——口径是被
+  约定的，不是被观测的；两个 agent 自选一致只留作 practice memory。其余晋升目标仍认三类。
