@@ -12,14 +12,14 @@
 |---|---|---|---|
 | C9 | `loadBuiltinDefinitions` kind↔schema 双声明收敛（schema 半边归 plugin） | substrate | **Strong（首推之一）· 已落地**（[map #139](https://github.com/McKenzieIT/semantic-grounding/issues/139) 四票 2026-10-14 同日全解关图：[#140](https://github.com/McKenzieIT/semantic-grounding/issues/140) 裁决四问全签 → #141 `4e3f353` 认人半边留 `loadBuiltinDefinitions` 返 raw 条目、验货收进 `loadKindDefinitions` 唯一通用循环 `plugin.schema.safeParse`、:118 三值 import 删〔index.ts 1548→1533〕） |
 | C10 | `update*Meta` 三联体 read-merge-validate 手抄收 seam（update 家族半区） | substrate | **Strong（首推之一）· 已落地**（map #139 #142 `2c75b5b` 私有 `updateMetaFile`（io.ts:1020）五点描述符 seam〔`*_META_DESCRIPTOR` 三常量〕、三公开函数各剩 1 行调用、签名/结果类型/错误字符串三族逐字不动、version 回执语义不动〔ADR-0004 裁决 8〕；终验 [#143](https://github.com/McKenzieIT/semantic-grounding/issues/143) 实核 barrel 27 手工 deepEqual） |
-| C11 | import 写域三件：R3 收据文案三抄 / 分类知识两处家 / writable 装载梯子五现场 | mcp | Worth exploring（一域一票可清）· **已开票**（[#144](https://github.com/McKenzieIT/semantic-grounding/issues/144)） |
-| C12 | `tools/shared.ts` 两个单消费者成员迁出（clientNameFromEnvelope → audited / pendingQueueRoot → suggestions） | mcp | Worth exploring（顺手批）· **已开票**（[#145](https://github.com/McKenzieIT/semantic-grounding/issues/145)） |
-| C13 | e2e 读惯例两 helper（versionOf/definition 手抄 ×19+×19）+ 阶段重号等三小件 | 测试拓扑 | Worth exploring · **已开票**（[#146](https://github.com/McKenzieIT/semantic-grounding/issues/146)） |
-| C14 | substrate 小卫生批：item-write 两对镜像 helper 化 / Core 四连抄闭包 / normalizeAlias 第四份 / paramsText 微件 | substrate | Worth exploring（按触发挑）· **已开票**（[#147](https://github.com/McKenzieIT/semantic-grounding/issues/147)） |
+| C11 | import 写域三件：R3 收据文案三抄 / 分类知识两处家 / writable 装载梯子五现场 | mcp | Worth exploring（一域一票可清）· **已落地**（[#144](https://github.com/McKenzieIT/semantic-grounding/issues/144)，2026-10-15 `fb4fa77`：itemVerbDetail 单点三调 / countNodesByKind 单家·layerCounts 退两行投影 / loadWritable+WithVersion 两 seam 清五现场；响应键值逐字不变、双守卫一行不碰） |
+| C12 | `tools/shared.ts` 两个单消费者成员迁出（clientNameFromEnvelope → audited / pendingQueueRoot → suggestions） | mcp | Worth exploring（顺手批）· **已落地**（[#145](https://github.com/McKenzieIT/semantic-grounding/issues/145)，2026-10-15 `1d6ec4e`：迁体字节级一致仅加出处行、shared 净删 70 行、「跨家族」契约恢复为真） |
+| C13 | e2e 读惯例两 helper（versionOf/definition 手抄 ×19+×19）+ 阶段重号等三小件 | 测试拓扑 | Worth exploring · **已落地**（[#146](https://github.com/McKenzieIT/semantic-grounding/issues/146)，2026-10-15 `328acc1`：baselineOf/definitionOf 收编实测 ×22/×19、impCount 归一 root 参数化、第二 Phase 4.5 改 4.6；22 步断言零改动） |
+| C14 | substrate 小卫生批：item-write 两对镜像 helper 化 / Core 四连抄闭包 / normalizeAlias 第四份 / paramsText 微件 | substrate | Worth exploring（按触发挑）· **已落地**（[#147](https://github.com/McKenzieIT/semantic-grounding/issues/147)，2026-10-15 `a5dcde0`：两对全收未降级 / applyItemUpdateSeam 绑定成员 / normalizeAlias 归一 import 复用；公开面 ^export md5 逐一相同） |
 | S2 | A 类死码承前复核刷新：mcp 四件 + substrate 三件直删级，vendor/nl2sql 等三件收窄拍板项 | 混合 | 直删级免费 · 拍板项归 grilling——**用户裁决本轮不开票**（另 effort，刷新证据在 §S2） |
-| S3 | 文档/散文漂移新增七件（README flag 面 4→7 / GLOSSARY 守卫词条 trailer→subject / catalog spec 自述对不上账等） | docs | 修字（一票批）· **已开票**（[#148](https://github.com/McKenzieIT/semantic-grounding/issues/148)） |
+| S3 | 文档/散文漂移新增七件（README flag 面 4→7 / GLOSSARY 守卫词条 trailer→subject / catalog spec 自述对不上账等） | docs | 修字（一票批）· **已落地**（[#148](https://github.com/McKenzieIT/semantic-grounding/issues/148)，2026-10-15 `15fcb47`：七件清、ratioTrailer→ratioSubjectNote、断言零字节动） |
 | S4 | ~~小粒度整合 + 段位挪用~~ | mcp | **收束：已随 #137 落地（faf4962）** |
-| S5 | 新增：#137 连带暴露——scope-id 字符集知识两处家 + `assertScopeIdShape` 退役 | mcp | **Strong**（deletion test 直接过）· **已开票**（[#149](https://github.com/McKenzieIT/semantic-grounding/issues/149)） |
+| S5 | 新增：#137 连带暴露——scope-id 字符集知识两处家 + `assertScopeIdShape` 退役 | mcp | **Strong**（deletion test 直接过）· **已落地**（[#149](https://github.com/McKenzieIT/semantic-grounding/issues/149)，2026-10-15 `ad4d8b0`：SCOPE_ID_PATTERN 单点；10 直测删——mcp 基线 447+1skip → **437+1skip**） |
 
 Speculative 尾巴（不占编号，随最近落地票顺手）：dry_run 响应 `staged` 键与 `results` 零信息增量（import.ts:509-515，#104 昨落契约、有钉，现在是改它最便宜的时刻）；scratch 的 `Math.max(1, keep)` 钳制双写（scratch.ts:108/:160）；`ratioTrailer` 命名沿用被勘误措辞（归 S3 同票）。
 
@@ -59,7 +59,9 @@ Speculative 尾巴（不占编号，随最近落地票顺手）：dry_run 响应
 
 **ADR**：无冲突——与 `auditedFileWrite` 分层不撕裂（后者保持通用审计事务层，`update*Meta` 是 meta 族原语内部收拢，io.ts:802-808 分层注释自洽）；ADR-0004 裁决 8 的写回执语义（version = 所写字节指纹）逐字不动。
 
-## C11 · import 写域三件：同构知识多份（Worth exploring，一域一票可清）
+## C11 · import 写域三件：同构知识多份（Worth exploring，一域一票可清）——已落地（#144，2026-10-15 `fb4fa77`）
+
+> **落地核验（2026-10-15，合入终验）**：三件全落——`itemVerbDetail(n)` 定义唯一（import.ts:232）三调用（:407/:490/:544），原字面量仅存单点内部一份 + spec 契约钉一份（import-definitions.spec.ts:506，属预期）；`countNodesByKind` guidance.ts:146 唯一导出、import.ts :463 消费，`layerCounts` :165 退两行投影、scope.ts:301 行为不变；`loadWritable`/`loadWritableWithVersion` 两 seam（shared.ts:167/:193）清五现场（write.ts:83/:118/:141 + import.ts:399/:515），read.ts per-kind 分发原样保留。响应键值逐字不变；双守卫（#111 裁决独立触发）与码内自裁注释逐字未动。
 
 **文件**：`packages/mcp/src/tools/import.ts`（603 行，#104/#111/#112 落地后的最大新浅模块嫌疑）+ `write.ts` + `guidance.ts`。
 
@@ -69,7 +71,9 @@ Speculative 尾巴（不占编号，随最近落地票顺手）：dry_run 响应
 
 **ADR**：无冲突——ADR-0019 R6 的 per-kind 分母语义原样（C11② 只合并推导不合并守卫）；ADR-0012 三 kind 词表不动。
 
-## C12 · `tools/shared.ts`：两个单消费者成员迁出（Worth exploring，顺手批）
+## C12 · `tools/shared.ts`：两个单消费者成员迁出（Worth exploring，顺手批）——已落地（#145，2026-10-15 `1d6ec4e`）
+
+> **落地核验（2026-10-15，合入终验）**：`clientNameFromEnvelope` 迁 audited.ts:106、`PENDING_QUEUE_DIRNAME`+`pendingQueueRoot` 迁 suggestions.ts:34/:56，迁体对基线字节级一致仅加 #145 出处行；shared.ts 净删 70 行、四个失效 import 同步删、模块 doc 诚实化；scratch.ts ×3 / substrate pending.ts ×1 注释改指新家；suggestions spec 头注指针随批 docs commit 补指 suggestions.ts。合入态 rg：三符号在 shared.ts 零残留。
 
 **文件**：`tools/shared.ts:435`（`clientNameFromEnvelope`，唯一消费者 `audited.ts:109`）· `:446/:468`（`PENDING_QUEUE_DIRNAME` + `pendingQueueRoot`，唯一家族消费者 `suggestions.ts` ×4 调用；scratch.ts:28/:126 仅注释引用其 pattern）。
 
@@ -79,7 +83,9 @@ Speculative 尾巴（不占编号，随最近落地票顺手）：dry_run 响应
 
 **ADR**：无冲突（ADR-0005 addendum 的 clientInfo 语义随函数走；ADR-0011 的 sg-pending 门外布局不动）。
 
-## C13 · e2e 读惯例：两 helper + 三小件（Worth exploring）
+## C13 · e2e 读惯例：两 helper + 三小件（Worth exploring）——已落地（#146，2026-10-15 `328acc1`）
+
+> **落地核验（2026-10-15，合入终验）**：两 helper 落脚本内（harness 面零扩大）——`baselineOf` 消费 **22**（实测手拼 20 非票面 19，含 :1060 一处 + `got`/`drawn` 命名中间量同族 2 处一并收编）；`definitionOf` 消费 19、cast 只剩 helper 体内 1 处；`impCount` 删、`commitCount(root)` 提顶层参数化（探针 corpus 与主 fixture 不同根，零参闭包无法跨 scope 复用，26+4 调用点加 root 实参）；第二个 Phase 4.5（concept write path）改 **4.6**（suppression 保留 4.5，时序在前，一行扰动）。`step(` 22 处零 diff、断言文案逐字不动。
 
 **文件**：`packages/mcp/scripts/check-e2e-loop.ts`（1206 行，全仓最大单文件）。
 
@@ -89,7 +95,9 @@ Speculative 尾巴（不占编号，随最近落地票顺手）：dry_run 响应
 
 **ADR**：无冲突（e2e 头注自述「detailed schema pinning stays in the catalog spec」的分工不动）。
 
-## C14 · substrate 小卫生批（Worth exploring，按触发挑）
+## C14 · substrate 小卫生批（Worth exploring，按触发挑）——已落地（#147，2026-10-15 `a5dcde0`）
+
+> **落地核验（2026-10-15，合入终验）**：第 1 件**两对全收未降级**——`partitionItemRelations(rels, verbLabel)`（item-write.ts:367，调用 :429/:514）+ `resolveConceptEdgeHome(..., {checkTargets})`（:584，调用 :663 true / :725 false），四条错误字符串（混批 / SAME target concept / event 拒绝 / empty batch）逐字唯一。第 2 件四前转收 `applyItemUpdateSeam` 绑定成员（index.ts:1480），index.ts 1533→**1537** 净 +4——巡检「净减」预估不成立（四调用点本就单行、1:1 等行替换，绑定成员必净增 ≥1 行；硬顶 1550 余量 13 仍在安全带，「改箭头属性可净 0」因动 ADR 引用的 audited dispatch 方法形态而未采，resolution 在案）。第 3 件 import 复用（relation-graph → io.ts `normalizeLabel`，单向无环），substrate 树 `toLowerCase().trim()` 仅剩 normalizeLabel 本体一处，#49 JSDoc 补记第四份收敛史。公开面：四文件 `^export` 行对基线 md5 逐一相同。
 
 1. **item-write 两对 add/remove 镜像**：edges/joins 分桶前奏（split + 混批报错 + concept 拒绝）在 add/remove 各一份（item-write.ts:390-416 ↔ 482-498，error 文案仅工具名不同，靠手抄同步）；concept-edge 的 home/records 解析两份近镜像（:596-620 ↔ 683-698，remove 是 add 的严格子集）。→ 私有 `partitionItemRelations(rels, verbLabel)` 与 `resolveConceptEdgeHome(...)`。**两份非三份、有真差异点需 flag 参数化**，故 Worth exploring 而非 Strong。
 2. **Core 四 item 前转闭包 4 连抄**：`(k, n, u, v) => this.applyItemUpdate(k, n, u, v)` 同一 eta-expansion 在 index.ts:1463/1472/1481/1490 手抄四次 → 一个绑定成员。纯卫生，但处于 1550 临界文件，每行净减都算数。
@@ -132,7 +140,9 @@ Speculative 尾巴（不占编号，随最近落地票顺手）：dry_run 响应
 - **死触发器三条**：npm 发布 `@semantic-grounding/substrate`（#1/#12/#32/#40 四处记录，触发器「dsh 下次发版」已被 #79 独立发展裁决杀死——有意废止则四处注记或收口票一次说明）；server 侧 LLM provider 接线（#12，已被 ADR-0017 删 LLM seam 事实废止）；epoch 外自由函数治理（#73/#88，触发器「活的非 MCP 调用方」S1 单宿主后已死）。
 - **`getDanglingDomainRefs` 联动更新**：上文拍板项写「与 #131 治理票联动」——#131 已关（ADR-0022：元数据治理 = SG 自身作检查器），依赖已清，可随 grilling 直接裁。
 
-## S3 · 文档/散文漂移（新增七件——承前件已随 #137 清零）
+## S3 · 文档/散文漂移（新增七件——承前件已随 #137 清零）——已落地（#148，2026-10-15 `15fcb47`）
+
+> **落地核验（2026-10-15，合入终验）**：七件全清——README flag 面派生化 + 三 flag 行（缺省 50 / 0.5 / 10 对齐 usage）；dogfood 更正块同补 + 补记注（2026-10-15）；GLOSSARY 两守卫词条 trailer→subject；`ratioTrailer`→`ratioSubjectNote`（合入态 src 零残留）；「248」×2 派生化；计数散文三处派生化（残留 fifteen/nineteen 逐一核验均为票史豁免位）；catalog spec 头注求和 24→29（补 ADR-0011 六件族）、it 标题 30→29（删 #72 双计），断言零字节动。**口径勘误两则**：第 3 件的 ADR-0018 :130-132 勘误基线已在（`04b0503` 随 #104 关图自落，不重复落注）；GLOSSARY 行号 :755/:806/:675 因 #130 词汇插入实为 :783/:834/:703（内容锚点唯一匹配）。
 
 1. **README.md:63-71「flag 面共四个」+ 表 4 行**——config.ts:215-224 OPTIONS 已 **7** 个 string flag（`--mass-update-warn-threshold` / `--mass-update-ratio-threshold` / `--mass-update-ratio-floor` 三缺，usage :262-280 逐一有文档）。README 是 #70 专门立的接入面文档，三个新 flag（#104/#111，ADR-0018 R5 / ADR-0019 R6 落地）一条没进。**Strong**。
 2. **docs/mcp-dogfood.md:34-39 更正块同病**——自称「现行 flag 面」仍列四个，比 README 静态表格更误导（读者当权威面）。同票批。
@@ -146,7 +156,9 @@ Speculative 尾巴（不占编号，随最近落地票顺手）：dry_run 响应
 
 `ApplyResult`/`UpdateResult` 近形合一（shared.ts 导出、version 可选兼容 meta-update 裸 `{ok:true}`）、`countsOrThrow` fold、scope.ts 不可达字符集门删除（zod `ScopeIdSchema` 先拦 + 错段位）+ dogfood 派生表述/三处占位/四处旧路径头注。首轮 S4 六件至此全部清零（三小件随 #123、余三件随 #137）。
 
-## S5 · 新增：#137 连带暴露——scope-id 字符集知识两处家（Strong）
+## S5 · 新增：#137 连带暴露——scope-id 字符集知识两处家（Strong）——已落地（#149，2026-10-15 `ad4d8b0`）
+
+> **落地核验（2026-10-15，合入终验）**：`SCOPE_ID_PATTERN` 唯一定义（scope-registry.ts:58）+ `ScopeIdSchema` 消费（shared.ts:97）；`assertScopeIdShape` 本体 + spec describe（it.each 10 测）删——**mcp 基线 447+1skip → 437+1skip**（447−10 逐数吻合，其余 spec 零改动）；scope.ts「gate lives in zod」注释诚实化为全真（one home, imported rather than re-spelled）。zod `.regex()` 与 registry 共享同一 RegExp 实例（无 g/y 标志、`.test()` 无状态副作用，与 `ExpectedVersionSchema` 同模式）。
 
 **文件**：`scope-registry.ts:53`（`SCOPE_ID_PATTERN`）· `:108-114`（`assertScopeIdShape`）↔ `tools/shared.ts:94-97`（`ScopeIdSchema` 内联 regex）。
 

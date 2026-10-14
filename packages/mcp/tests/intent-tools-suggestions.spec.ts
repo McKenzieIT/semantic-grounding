@@ -3,7 +3,7 @@
  * `list_suggestions`, `get_suggestion`, `discard_suggestion`.
  *
  * The load-bearing regression this file exists for: the pending queue lives at
- * `<gitDir>/sg-pending/`, *not* inside the worktree (`tools/shared.ts`'s
+ * `<gitDir>/sg-pending/`, *not* inside the worktree (`tools/suggestions.ts`'s
  * `pendingQueueRoot` doc — the same hazard `git/lock.ts` already states for the
  * corpus lock). If it lived in the worktree instead, `submit_suggestion` would leave
  * an untracked file `git status --porcelain` reports as dirty, and the *next* Tier-2
