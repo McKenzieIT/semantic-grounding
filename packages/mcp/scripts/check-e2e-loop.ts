@@ -170,6 +170,25 @@ function fieldString(body: Readonly<Record<string, unknown>>, key: string): stri
   return value
 }
 
+/**
+ * The current `version` (content fingerprint) of a definition — the value every
+ * write's `expected_version` must carry (ADR-0004 ruling 8's read-then-write
+ * loop). The e2e twin of the harness's `versionOf` (#146: every phase used to
+ * hand-roll `fieldString(await call(… 'get_definition' …), 'version')`).
+ */
+async function baselineOf(client: InProcessClient, kind: 'table' | 'event' | 'concept' | 'metric', name: string): Promise<string> {
+  return fieldString(await call(client, 'get_definition', { kind, name }), 'version')
+}
+
+/**
+ * A definition's body as `get_definition` reports it — the read-back every
+ * content assertion starts from (#146: the `(...)['definition'] as Record<string,
+ * unknown>` cast used to live at every call site instead).
+ */
+async function definitionOf(client: InProcessClient, kind: 'table' | 'event' | 'concept' | 'metric', name: string): Promise<Record<string, unknown>> {
+  return (await call(client, 'get_definition', { kind, name }))['definition'] as Record<string, unknown>
+}
+
 /** Fixture columns with the `comment` field `TableDefinitionSchema` re-validates on update. */
 function columns(...specs: ReadonlyArray<readonly [string, string, string]>): ReadonlyArray<Record<string, unknown>> {
   return specs.map(([name, type, role]) => ({ name, type, role, comment: '' }))
@@ -242,6 +261,16 @@ async function withProbeScope<T>(
   }
 }
 
+/**
+ * How many commits the corpus at `root` carries — every phase's zero/one/two-commit
+ * ledger. Parameterized by root because the probe scopes count their OWN fixture
+ * (#146: main's zero-arg `commitCount()` closure and Phase 6.7's same-bodied
+ * `impCount()` were this one counter over two different roots).
+ */
+function commitCount(root: string): number {
+  return Number(fixtureGit(['rev-list', '--count', 'HEAD'], root).trim())
+}
+
 // ── The gate ─────────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
@@ -251,7 +280,6 @@ async function main(): Promise<void> {
   const fixture = createFixtureCorpus({ withEvents: true })
   const root = fixture.root
   const head = (): string => fixtureGit(['rev-parse', 'HEAD'], root).trim()
-  const commitCount = (): number => Number(fixtureGit(['rev-list', '--count', 'HEAD'], root).trim())
 
   let active: Boot | undefined
   const registryDir = mkdtempSync(join(tmpdir(), 'sg-e2e-registry-'))
@@ -300,7 +328,7 @@ async function main(): Promise<void> {
       // (the event hook remains deferred), so this write derives nothing, and the
       // description carries no bracketed/quoted terms — the deterministic alt-label
       // extractor must find nothing in it (the fixture's own contract for this event).
-      const v = fieldString(await call(client, 'get_definition', { kind: 'event', name: 'pay_success' }), 'version')
+      const v = await baselineOf(client, 'event', 'pay_success')
       const written = await call(client, 'update_definition', {
         scope_id: 'fixture',
         kind: 'event',
@@ -323,9 +351,8 @@ async function main(): Promise<void> {
       assert.ok(hits !== undefined && hits.length > 0, 'search finds something for "order"')
       assert.equal(hits[0]?.id, 'dws_order', 'the exact-substring bonus ranks dws_order first')
 
-      const got = await call(client, 'get_definition', { kind: 'table', name: 'dws_order' })
-      assert.match(fieldString(got, 'version'), SHA256, 'get_definition returns the fingerprint (since #108, every definition write receipt does too)')
-      const def = got['definition'] as Record<string, unknown>
+      assert.match(await baselineOf(client, 'table', 'dws_order'), SHA256, 'get_definition returns the fingerprint (since #108, every definition write receipt does too)')
+      const def = await definitionOf(client, 'table', 'dws_order')
       assert.deepEqual(def['dimension_refs'], [], 'no join derived yet')
 
       const path = await call(client, 'get_join_path', { from: 'dws_order', to: 'dim_shop' })
@@ -339,14 +366,14 @@ async function main(): Promise<void> {
     // ── Phase 2.5 — dimension filters: call-wide, door-rejected (#31, ADR-0007) ────
     step('dimension filter door: unknown names -> coded -31040, both dimensions listed, zero commits')
     {
-      const before = commitCount()
+      const before = commitCount(root)
       const rejected = await callCodedError(client, 'run_enrichment', { scope_id: 'fixture', tables: ['dws_nope'], events: ['evt_nope_a', 'evt_nope_b'] })
       assert.equal(rejected.code, -31040, 'unknown_filter_name (the enrichment segment\'s first allocation)')
       assert.equal(rejected.name, 'UnknownFilterNameError')
       assert.equal(rejected.retryable, false)
       assert.ok(rejected.message.includes('dws_nope') && rejected.message.includes('evt_nope_a, evt_nope_b'),
         `the door lists BOTH dimensions' unknown names in one round trip: ${rejected.message}`)
-      assert.equal(commitCount(), before, 'the door fires before any scan — nothing committed')
+      assert.equal(commitCount(root), before, 'the door fires before any scan — nothing committed')
 
       const rejectedRead = await callCodedError(client, 'get_enrichment_work', { tables: ['dws_nope'] })
       assert.equal(rejectedRead.code, -31040, 'the read side shares the door — no silently empty index for a typo')
@@ -356,12 +383,12 @@ async function main(): Promise<void> {
     {
       // The mirror pair, each on the pristine corpus: the named leg writes exactly one
       // file, the unnamed dimension is untouched on disk.
-      const before = commitCount()
+      const before = commitCount(root)
       const evRun = await call(client, 'run_enrichment', { scope_id: 'fixture', events: ['pay_success'] })
       assert.equal(evRun['changed'], true)
-      assert.equal(commitCount(), before + 1)
+      assert.equal(commitCount(root), before + 1)
       assert.equal((await active.trailersOf(fieldString(evRun, 'commit')))['Files'], '1', 'only events/biz/pay_success.yaml')
-      const orderAfterEvRun = (await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }))['definition'] as Record<string, unknown>
+      const orderAfterEvRun = await definitionOf(client, 'table', 'dws_order')
       assert.deepEqual(orderAfterEvRun['dimension_refs'], [], 'the tables leg never ran — the #25 spill, inverted and pinned')
       const evSubject = fixtureGit(['log', '-1', '--format=%s'], root).trim()
       assert.ok(evSubject.startsWith('run_enrichment(1 event(s)):'), `subject names the dimension that ran: ${evSubject}`)
@@ -373,12 +400,12 @@ async function main(): Promise<void> {
       // the events leg does not — pay_success's alt_labels gap (which no deterministic
       // round can fill) survives exactly as it was. #25's incident inverted and pinned:
       // one named table, one file, the event side untouched.
-      const beforeT = commitCount()
+      const beforeT = commitCount(root)
       const tRun = await call(client, 'run_enrichment', { scope_id: 'fixture', tables: ['dws_order'] })
       assert.equal(tRun['changed'], true)
-      assert.equal(commitCount(), beforeT + 1)
+      assert.equal(commitCount(root), beforeT + 1)
       assert.equal((await active.trailersOf(fieldString(tRun, 'commit')))['Files'], '1', 'only tables/dws_order.yaml')
-      const evtAfter = (await call(client, 'get_definition', { kind: 'event', name: 'pay_success' }))['definition'] as Record<string, unknown>
+      const evtAfter = await definitionOf(client, 'event', 'pay_success')
       assert.deepEqual(evtAfter['alt_labels'], [], 'the events dimension was out of the call — its gap is intact')
       assert.ok(((evtAfter['external_refs'] as unknown[]) ?? []).length > 0, 'and the refs the events run DID fill are still there')
       const tSubject = fixtureGit(['log', '-1', '--format=%s'], root).trim()
@@ -392,7 +419,7 @@ async function main(): Promise<void> {
     step('create_definition(dws_pay_flow): one audited commit, no on-write hook')
     let payFlowCommit: string
     {
-      const before = commitCount()
+      const before = commitCount(root)
       const created = await call(client, 'create_definition', { scope_id: 'fixture',
         kind: 'table',
         table: fixtureTable({
@@ -405,18 +432,18 @@ async function main(): Promise<void> {
       assert.equal(created['changed'], true)
       payFlowCommit = fieldString(created, 'commit')
       assert.match(payFlowCommit, /^[0-9a-f]{40}$/)
-      assert.equal(commitCount(), before + 1, 'create compiles to the write primitive — exactly one commit, no enrichment residue')
+      assert.equal(commitCount(root), before + 1, 'create compiles to the write primitive — exactly one commit, no enrichment residue')
       assert.equal((await active.trailersOf(payFlowCommit))['Tool'], 'create_definition')
     }
 
     step('run_enrichment: N logical writes absorbed into one deterministic commit (Files/Rounds)')
     {
-      const before = commitCount()
+      const before = commitCount(root)
       const run = await call(client, 'run_enrichment', { scope_id: 'fixture' })
       assert.equal(run['changed'], true)
       assert.deepEqual(run['enrichment_health'], [], 'healthy round reports no failures inline')
       const runCommit = fieldString(run, 'commit')
-      assert.equal(commitCount(), before + 1, 'ONE commit for the whole full sweep (beginBatch absorption)')
+      assert.equal(commitCount(root), before + 1, 'ONE commit for the whole full sweep (beginBatch absorption)')
       const trailers = await active.trailersOf(runCommit)
       assert.equal(trailers['Tool'], 'run_enrichment')
       assert.equal(trailers['Derivation'], 'deterministic')
@@ -441,7 +468,7 @@ async function main(): Promise<void> {
       assert.ok(walked.includes('dws_order') && walked.includes('dim_shop'), `join path spans both ends: ${JSON.stringify(walked)}`)
       const related = await call(client, 'get_relations', { target: 'dws_order' })
       assert.ok(((related['relations'] as unknown[])).length > 0, 'dws_order has relations now')
-      const payFlow = (await call(client, 'get_definition', { kind: 'table', name: 'dws_pay_flow' }))['definition'] as Record<string, unknown>
+      const payFlow = await definitionOf(client, 'table', 'dws_pay_flow')
       const refs = payFlow['dimension_refs'] as Array<{ dim_table: string }>
       assert.ok(refs?.some(r => r.dim_table === 'dim_shop'), 'deterministic round filled dws_pay_flow→dim_shop')
     }
@@ -449,7 +476,7 @@ async function main(): Promise<void> {
     // ── Phase 4 — update / alias / relation writes ─────────────────────────────────
     step('update_definition + stale_baseline: coded isError result, re-read, retry succeeds')
     {
-      const v1 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
+      const v1 = await baselineOf(client, 'table', 'dws_order')
       const updated = await call(client, 'update_definition', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         fields: { description: '订单域宽表：按日聚合计单与支付' },
@@ -470,7 +497,7 @@ async function main(): Promise<void> {
       assert.equal(stale.retryable, true, 'the one retryable error: re-read and retry')
       assert.equal(stale.name, 'StaleBaselineRejection')
 
-      const v2 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
+      const v2 = await baselineOf(client, 'table', 'dws_order')
       assert.notEqual(v2, v1, 'the re-read picks up a fresh fingerprint')
       const retried = await call(client, 'update_definition', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
@@ -483,8 +510,8 @@ async function main(): Promise<void> {
 
     step('add_alias (batch): two labels ONE commit; the receipt\'s version chains the next write with zero read-backs')
     {
-      const v3 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
-      const before = commitCount()
+      const v3 = await baselineOf(client, 'table', 'dws_order')
+      const before = commitCount(root)
       const added = await call(client, 'add_alias', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order', labels: ['订单宽表', '宽表_订单'],
         expected_version: v3,
@@ -492,7 +519,7 @@ async function main(): Promise<void> {
       })
       assert.equal(added['changed'], true)
       assert.ok(Array.isArray(added['enrichment_health']))
-      assert.equal(commitCount(), before + 1, 'TWO labels, ONE commit — the same-target batch collapse is visible in git history (#109)')
+      assert.equal(commitCount(root), before + 1, 'TWO labels, ONE commit — the same-target batch collapse is visible in git history (#109)')
       assert.deepEqual(
         (added['results'] as Array<Record<string, unknown>>)?.map(r => [r['key'], r['outcome'], r['unsuppressed']]),
         [['订单宽表', 'added', false], ['宽表_订单', 'added', false]],
@@ -507,14 +534,14 @@ async function main(): Promise<void> {
       // fingerprint.
       const receiptV = fieldString(added, 'version')
       assert.match(receiptV, SHA256)
-      const before2 = commitCount()
+      const before2 = commitCount(root)
       const repeat = await call(client, 'add_alias', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order', labels: ['订单宽表'],
         expected_version: receiptV,
         ...tier2('重复添加同一别名', 0.9),
       })
       assert.equal(repeat['changed'], false, 'idempotent no-op reports changed:false')
-      assert.equal(commitCount(), before2, 'and produces no commit (ADR-0005 ruling 8)')
+      assert.equal(commitCount(root), before2, 'and produces no commit (ADR-0005 ruling 8)')
       assert.equal(fieldString(repeat, 'version'), receiptV, 'the no-op receipt names the file\'s current fingerprint')
     }
 
@@ -527,7 +554,7 @@ async function main(): Promise<void> {
       })
       assert.equal(created['changed'], true)
 
-      const v5 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
+      const v5 = await baselineOf(client, 'table', 'dws_order')
       const related = await call(client, 'add_relation', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         relations: [{ dim_table: 'dim_region', join_keys: [{ dws_column: 'region_id', dim_column: 'region_id' }] }],
@@ -551,8 +578,8 @@ async function main(): Promise<void> {
       })
       assert.equal(created['changed'], true)
 
-      const v6 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
-      const before = commitCount()
+      const v6 = await baselineOf(client, 'table', 'dws_order')
+      const before = commitCount(root)
       const updated = await call(client, 'update_definition', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         fields: { description: '订单域宽表：触发派生残留的更新' },
@@ -560,7 +587,7 @@ async function main(): Promise<void> {
         ...tier2('再补一版描述', 0.85),
       })
       assert.equal(updated['changed'], true)
-      assert.equal(commitCount(), before + 2, 'one agent write, two commits (ADR-0004 2026-10-09 addendum ①)')
+      assert.equal(commitCount(root), before + 2, 'one agent write, two commits (ADR-0004 2026-10-09 addendum ①)')
       const agentCommit = fieldString(updated, 'commit')
       assert.equal(agentCommit, fixtureGit(['rev-parse', 'HEAD~1'], root).trim(), 'the response names the agent commit; the residue landed after it')
       assert.equal((await active.trailersOf(agentCommit))['Tool'], 'update_definition')
@@ -568,7 +595,7 @@ async function main(): Promise<void> {
       assert.equal(residue['Tool'], 'enrich_on_write', 'derived residue gets its own honest commit, never folded')
       assert.equal(residue['Derivation'], 'deterministic')
 
-      const def = (await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }))['definition'] as Record<string, unknown>
+      const def = await definitionOf(client, 'table', 'dws_order')
       const refs = def['dimension_refs'] as Array<{ dim_table: string }>
       const names = refs?.map(r => r.dim_table) ?? []
       assert.ok(names.includes('dim_shop'), 'round-1 derived ref still there')
@@ -578,26 +605,26 @@ async function main(): Promise<void> {
       // The on-write hook only sweeps the *written* table; the full sweep sees the
       // cross-table derivation it could not (ADR-0006 ruling 6's own rationale — a
       // newly onboarded DIM makes yesterday's tables joinable by name).
-      const before2 = commitCount()
+      const before2 = commitCount(root)
       const sweep = await call(client, 'run_enrichment', { scope_id: 'fixture' })
       assert.equal(sweep['changed'], true, 'dws_pay_flow→dim_pay was waiting for the full sweep')
-      const payFlowRefs = ((await call(client, 'get_definition', { kind: 'table', name: 'dws_pay_flow' }))['definition'] as Record<string, unknown>)['dimension_refs'] as Array<{ dim_table: string }>
+      const payFlowRefs = (await definitionOf(client, 'table', 'dws_pay_flow'))['dimension_refs'] as Array<{ dim_table: string }>
       assert.ok(payFlowRefs?.some(r => r.dim_table === 'dim_pay'), 'the sweep derived the cross-table join')
-      assert.equal(commitCount(), before2 + 1)
+      assert.equal(commitCount(root), before2 + 1)
       const rerun = await call(client, 'run_enrichment', { scope_id: 'fixture' })
       assert.equal(rerun['changed'], false, 'and now genuinely nothing is left to derive')
-      assert.equal(commitCount(), before2 + 1, 'an idempotent run makes no commit')
+      assert.equal(commitCount(root), before2 + 1, 'an idempotent run makes no commit')
     }
 
     // ── Phase 4.5 — suppression: delete doesn't come back (#38, ADR-0010) ──────────
     step('remove_relation vetoes a machine-derived ref; a full sweep (not just the on-write hook) still respects it; add_relation lifts it')
     {
-      const before1 = (await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }))['definition'] as Record<string, unknown>
+      const before1 = await definitionOf(client, 'table', 'dws_order')
       const payRef = (before1['dimension_refs'] as RelationRefLike[]).find(r => r.dim_table === 'dim_pay')
       assert.ok(payRef !== undefined, 'dim_pay is on dws_order from the residue round')
       assert.equal(payRef.origin, 'deterministic', 'precondition: this ref is machine-derived, not curated')
 
-      const v1 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
+      const v1 = await baselineOf(client, 'table', 'dws_order')
       const removed = await call(client, 'remove_relation', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         relations: [{ dim_table: 'dim_pay', join_keys: payRef.join_keys }],
@@ -608,7 +635,7 @@ async function main(): Promise<void> {
       assert.deepEqual(removed['results'] as RemoveVerdict[], [{ key: 'dim_pay', outcome: 'removed', suppressed: true, reasserted: false }],
         'machine-derived removal vetoes immediately — the on-write hook (same write) does not bring it back')
 
-      const afterRemove = (await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }))['definition'] as Record<string, unknown>
+      const afterRemove = await definitionOf(client, 'table', 'dws_order')
       assert.ok(!(afterRemove['dimension_refs'] as RelationRefLike[]).some(r => r.dim_table === 'dim_pay'), 'dim_pay gone from the content array')
       assert.ok((afterRemove['suppressed_dimension_refs'] as string[]).includes('dim_pay'), 'dim_pay recorded in the veto array')
 
@@ -616,15 +643,15 @@ async function main(): Promise<void> {
       // sweep over the whole corpus, which would otherwise rediscover dim_pay by its
       // still-matching column name, also respects the veto (shared relationVetoSet
       // filter inside enrichAllDwsTables, #38 slice 3).
-      const beforeSweep = commitCount()
+      const beforeSweep = commitCount(root)
       const sweep = await call(client, 'run_enrichment', { scope_id: 'fixture' })
       assert.equal(sweep['changed'], false, 'nothing left to derive — the veto, not an accident of scope, is why')
-      assert.equal(commitCount(), beforeSweep, 'and therefore no commit')
-      const afterSweep = (await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }))['definition'] as Record<string, unknown>
+      assert.equal(commitCount(root), beforeSweep, 'and therefore no commit')
+      const afterSweep = await definitionOf(client, 'table', 'dws_order')
       assert.ok(!(afterSweep['dimension_refs'] as RelationRefLike[]).some(r => r.dim_table === 'dim_pay'), 'dim_pay still absent after a full sweep')
 
       // Adding it back lifts the veto (#37 §5).
-      const v2 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
+      const v2 = await baselineOf(client, 'table', 'dws_order')
       const readded = await call(client, 'add_relation', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         relations: [{ dim_table: 'dim_pay', join_keys: payRef.join_keys }],
@@ -634,7 +661,7 @@ async function main(): Promise<void> {
       assert.equal(readded['changed'], true)
       assert.deepEqual(readded['results'], [{ key: 'dim_pay', outcome: 'added', unsuppressed: true }],
         'add_relation reports the veto it lifted in its verdict row (#107 Q5: the top-level key is gone)')
-      const afterReadd = (await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }))['definition'] as Record<string, unknown>
+      const afterReadd = await definitionOf(client, 'table', 'dws_order')
       assert.ok((afterReadd['dimension_refs'] as RelationRefLike[]).some(r => r.dim_table === 'dim_pay'), 'dim_pay back on the table')
       assert.ok(!(afterReadd['suppressed_dimension_refs'] as string[]).includes('dim_pay'), 'and its veto lifted')
     }
@@ -644,8 +671,8 @@ async function main(): Promise<void> {
       // dws_order gets a new column (channel_id) with no DIM to match it yet, so
       // dim_channel's creation and the column's arrival are sequenced independently —
       // no on-write hook can jump ahead of the curated add_relation below.
-      const current = (await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }))['definition'] as Record<string, unknown>
-      const v1 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
+      const current = await definitionOf(client, 'table', 'dws_order')
+      const v1 = await baselineOf(client, 'table', 'dws_order')
       const addedColumn = await call(client, 'update_definition', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         fields: { columns: [...current['columns'] as unknown[], { name: 'channel_id', type: 'string', role: 'dimension', comment: '' }] },
@@ -665,7 +692,7 @@ async function main(): Promise<void> {
       // dim_channel deterministically (channel_id now matches on both sides) — the
       // merge must keep it curated (the preserve-filter fix, #38 slice 2), or this
       // scenario could never get off the ground.
-      const v2 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
+      const v2 = await baselineOf(client, 'table', 'dws_order')
       const relationInput = { dim_table: 'dim_channel', join_keys: [{ dws_column: 'channel_id', dim_column: 'channel_id' }] }
       const curated = await call(client, 'add_relation', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
@@ -674,7 +701,7 @@ async function main(): Promise<void> {
         ...tier2('订单表挂渠道维度（业务口径，先于确定性轮次手动认领）', 0.8),
       })
       assert.equal(curated['changed'], true)
-      const afterCurate = (await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }))['definition'] as Record<string, unknown>
+      const afterCurate = await definitionOf(client, 'table', 'dws_order')
       const channelRef1 = (afterCurate['dimension_refs'] as RelationRefLike[]).find(r => r.dim_table === 'dim_channel')
       assert.ok(channelRef1 !== undefined, 'dim_channel attached')
       assert.equal(channelRef1.origin, undefined, 'stays curated through its own on-write hook (the collision this scenario needs)')
@@ -682,7 +709,7 @@ async function main(): Promise<void> {
       // First removal: present, curated (not machine-derived) -> no veto. But the SAME
       // write's on-write hook deterministically rediscovers it (channel_id still
       // matches) -> reasserted:true. This is the dance's first step.
-      const v3 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
+      const v3 = await baselineOf(client, 'table', 'dws_order')
       const firstRemoval = await call(client, 'remove_relation', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         relations: [relationInput],
@@ -692,13 +719,13 @@ async function main(): Promise<void> {
       assert.deepEqual(firstRemoval['results'] as RemoveVerdict[], [{ key: 'dim_channel', outcome: 'removed', suppressed: false, reasserted: true }],
         'curated removal records no veto; the deterministic round brings it right back in the same write')
 
-      const afterFirst = (await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }))['definition'] as Record<string, unknown>
+      const afterFirst = await definitionOf(client, 'table', 'dws_order')
       const channelRef2 = (afterFirst['dimension_refs'] as RelationRefLike[]).find(r => r.dim_table === 'dim_channel')
       assert.ok(channelRef2 !== undefined, 'dim_channel is back')
       assert.equal(channelRef2.origin, 'deterministic', 'this time it came back machine-derived, not curated')
 
       // Second removal: now present AND machine-derived -> vetoes for good.
-      const v4 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
+      const v4 = await baselineOf(client, 'table', 'dws_order')
       const secondRemoval = await call(client, 'remove_relation', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         relations: [relationInput],
@@ -709,16 +736,16 @@ async function main(): Promise<void> {
         'the second removal catches it machine-derived -> vetoes it, and this time the on-write hook honors the veto')
 
       // Full-sweep proof, not just the on-write hook.
-      const beforeSweep = commitCount()
+      const beforeSweep = commitCount(root)
       const sweep = await call(client, 'run_enrichment', { scope_id: 'fixture' })
       assert.equal(sweep['changed'], false, 'the full sweep finds nothing to do — dim_channel stays vetoed')
-      assert.equal(commitCount(), beforeSweep)
-      const afterSweep = (await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }))['definition'] as Record<string, unknown>
+      assert.equal(commitCount(root), beforeSweep)
+      const afterSweep = await definitionOf(client, 'table', 'dws_order')
       assert.ok(!(afterSweep['dimension_refs'] as RelationRefLike[]).some(r => r.dim_table === 'dim_channel'), 'dim_channel absent after a full sweep')
       assert.ok((afterSweep['suppressed_dimension_refs'] as string[]).includes('dim_channel'), 'the veto is on record')
 
       // Lift it.
-      const v5 = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
+      const v5 = await baselineOf(client, 'table', 'dws_order')
       const relifted = await call(client, 'add_relation', { scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
         relations: [relationInput],
@@ -728,7 +755,7 @@ async function main(): Promise<void> {
       assert.deepEqual(relifted['results'], [{ key: 'dim_channel', outcome: 'added', unsuppressed: true }])
     }
 
-    // ── Phase 4.5 — the concept write path (ADR-0012 / Q4(b)) ───────────────────────
+    // ── Phase 4.6 — the concept write path (ADR-0012 / Q4(b)) ───────────────────────
     step('create_definition(kind:concept) ×2, properties round-trip, concept-edge storage-home asymmetry, read path hits concept: nodes')
     {
       const created1 = await call(client, 'create_definition', {
@@ -748,7 +775,7 @@ async function main(): Promise<void> {
       })
       assert.equal(created2['changed'], true)
 
-      const lifecycle = (await call(client, 'get_definition', { kind: 'concept', name: '订单生命周期' }))['definition'] as Record<string, unknown>
+      const lifecycle = await definitionOf(client, 'concept', '订单生命周期')
       assert.deepEqual(lifecycle['properties'], { domain: '交易' }, 'Q4(b) properties round-trip through create_definition')
 
       // Storage-home asymmetry, live and over the wire: a TABLE subject's
@@ -756,7 +783,7 @@ async function main(): Promise<void> {
       // have no edge field at all — so the baseline this write races against is
       // 订单生命周期's fingerprint, never dws_order's own. Prove the wrong
       // baseline really is wrong before proving the right one works.
-      const dwsOrderVersion = fieldString(await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version')
+      const dwsOrderVersion = await baselineOf(client, 'table', 'dws_order')
       const wrongBaseline = await callCodedError(client, 'add_relation', {
         scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
@@ -768,7 +795,7 @@ async function main(): Promise<void> {
       assert.equal(wrongBaseline.name, 'StaleBaselineRejection')
       assert.equal(wrongBaseline.retryable, true)
 
-      const lifecycleV1 = fieldString(await call(client, 'get_definition', { kind: 'concept', name: '订单生命周期' }), 'version')
+      const lifecycleV1 = await baselineOf(client, 'concept', '订单生命周期')
       const tableToConcept = await call(client, 'add_relation', {
         scope_id: 'fixture',
         kind: 'table', name: 'dws_order',
@@ -777,15 +804,15 @@ async function main(): Promise<void> {
         ...tier2('table→concept 边：dws_order 归属订单生命周期', 0.8),
       })
       assert.equal(tableToConcept['changed'], true)
-      const afterTableEdge = (await call(client, 'get_definition', { kind: 'concept', name: '订单生命周期' }))['definition'] as Record<string, unknown>
+      const afterTableEdge = await definitionOf(client, 'concept', '订单生命周期')
       const lifecycleRefs1 = afterTableEdge['related_refs'] as Array<{ target_kind: string; target: string }>
       assert.ok(lifecycleRefs1.some(r => r.target_kind === 'table' && r.target === 'dws_order'), 'the edge landed on the CONCEPT file, not on dws_order')
-      const dwsOrderAfter = (await call(client, 'get_definition', { kind: 'table', name: 'dws_order' }))['definition'] as Record<string, unknown>
+      const dwsOrderAfter = await definitionOf(client, 'table', 'dws_order')
       assert.equal(dwsOrderAfter['related_refs'], undefined, 'tables have no edge field at all — nothing to find there')
 
       // concept→concept and concept→table: no asymmetry when the subject already
       // owns the file — both land on the SUBJECT concept itself.
-      const lifecycleV2 = fieldString(await call(client, 'get_definition', { kind: 'concept', name: '订单生命周期' }), 'version')
+      const lifecycleV2 = await baselineOf(client, 'concept', '订单生命周期')
       const conceptToConcept = await call(client, 'add_relation', {
         scope_id: 'fixture',
         kind: 'concept', name: '订单生命周期',
@@ -795,7 +822,7 @@ async function main(): Promise<void> {
       })
       assert.equal(conceptToConcept['changed'], true)
 
-      const channelV1 = fieldString(await call(client, 'get_definition', { kind: 'concept', name: '渠道' }), 'version')
+      const channelV1 = await baselineOf(client, 'concept', '渠道')
       const conceptToTable = await call(client, 'add_relation', {
         scope_id: 'fixture',
         kind: 'concept', name: '渠道',
@@ -808,7 +835,7 @@ async function main(): Promise<void> {
       // Clean removal, no two-step dance: concepts have no on-write enrichment
       // hook, so a curated edge's removal is final on the FIRST call — contrast
       // with the table/event suppression dance two phases up.
-      const channelV2 = fieldString(await call(client, 'get_definition', { kind: 'concept', name: '渠道' }), 'version')
+      const channelV2 = await baselineOf(client, 'concept', '渠道')
       const removed = await call(client, 'remove_relation', {
         scope_id: 'fixture',
         kind: 'concept', name: '渠道',
@@ -820,7 +847,7 @@ async function main(): Promise<void> {
         'curated concept-edge removal is clean and final on the first call — no on-write hook to bring it back')
 
       // add_alias / resolve_alias on a concept — AliasKindSchema parity, live.
-      const lifecycleV3 = fieldString(await call(client, 'get_definition', { kind: 'concept', name: '订单生命周期' }), 'version')
+      const lifecycleV3 = await baselineOf(client, 'concept', '订单生命周期')
       const aliasAdded = await call(client, 'add_alias', {
         scope_id: 'fixture',
         kind: 'concept', name: '订单生命周期', labels: ['订单周期'],
@@ -899,7 +926,7 @@ async function main(): Promise<void> {
       assert.equal(trailers['Confidence'], '0.8')
       const subject = fixtureGit(['log', '-1', '--format=%s'], root).trim()
       assert.equal(subject, 'apply_enrichment(dws_pay_flow): 补充支付流水中文名', 'single-item subject names the definition')
-      const def = (await call(client2, 'get_definition', { kind: 'table', name: 'dws_pay_flow' }))['definition'] as Record<string, unknown>
+      const def = await definitionOf(client2, 'table', 'dws_pay_flow')
       assert.ok(((def['alt_labels'] as string[]) ?? []).includes('支付流水'), 'the oracle answer landed on disk')
     }
 
@@ -920,7 +947,7 @@ async function main(): Promise<void> {
       const fresh = work.find(w => w.target === 'dim_region' && w.gap.startsWith('alt_labels'))
       assert.ok(fresh !== undefined, 'dim_region still has its gap — fresh item for the same batch')
 
-      const before = commitCount()
+      const before = commitCount(root)
       const batch = await call(client2, 'apply_enrichment', {
         scope_id: 'fixture',
         results: [
@@ -934,7 +961,7 @@ async function main(): Promise<void> {
       assert.equal(byTarget.get('dim_shop'), 'stale_baseline', 'the edited target is reported, never blindly merged')
       assert.equal(byTarget.get('dim_region'), 'applied', 'its sibling landed anyway')
       assert.equal(batch['changed'], true)
-      assert.equal(commitCount(), before + 1, 'one commit for the whole batch — the stale rejection added none')
+      assert.equal(commitCount(root), before + 1, 'one commit for the whole batch — the stale rejection added none')
 
       // A fully idempotent batch: the fresh dim_shop work item re-issued, answered with
       // the table's own name (nothing new to merge).
@@ -948,7 +975,7 @@ async function main(): Promise<void> {
       })
       assert.equal((noop['results'] as Verdict[])[0]?.verdict, 'idempotent', 'an answer adding nothing new is idempotent, not applied')
       assert.equal(noop['changed'], false)
-      assert.equal(commitCount(), before + 1, 'no new commit (ADR-0006 ruling 4)')
+      assert.equal(commitCount(root), before + 1, 'no new commit (ADR-0006 ruling 4)')
     }
 
     // ── Phase 6 — provenance: git log answers who/when/on-what-basis ───────────────
@@ -1057,7 +1084,7 @@ async function main(): Promise<void> {
         // the state it produced; the playbook then reads that same state.
         const aliased = await call(pbClient, 'add_alias', { scope_id: 'pb-probe',
           kind: 'table', name: 'dws_order', labels: ['订单宽表'],
-          ...tier2('补别名', 0.9), expected_version: fieldString(await call(pbClient, 'get_definition', { kind: 'table', name: 'dws_order' }), 'version'),
+          ...tier2('补别名', 0.9), expected_version: await baselineOf(pbClient, 'table', 'dws_order'),
         })
         const guidance = aliased['_guidance'] as { phase: string; metrics: { dw: { phase: string }; kg: { phase: string } } }
         const after = await call(pbClient, 'get_initialization_playbook', { scope_id: 'pb-probe' })
@@ -1076,7 +1103,6 @@ async function main(): Promise<void> {
     await withProbeScope('import-probe-agent', async (impClient, impFixture, impBoot) => {
         await call(impClient, 'register_scope', { id: 'imp-probe', path: impFixture.root })
         await call(impClient, 'switch_scope', { scope_id: 'imp-probe' })
-        const impCount = (): number => Number(fixtureGit(['rev-list', '--count', 'HEAD'], impFixture.root).trim())
 
         // One batch, three kinds, two pre-planted error rows (a DIM failing its
         // superRefine, a cross-kind duplicate) that must not abort the four good
@@ -1094,7 +1120,7 @@ async function main(): Promise<void> {
           summary: 'imported from DDL dump', derivation: 'agent', confidence: 0.9,
         })
 
-        const before = impCount()
+        const before = commitCount(impFixture.root)
         const first = await call(impClient, 'import_definitions', batch('seed v1'))
         assert.equal(first['changed'], true)
         assert.deepEqual(first['summary'], { created: 4, updated: 0, skipped: 0, errors: 2 })
@@ -1103,7 +1129,7 @@ async function main(): Promise<void> {
         assert.match(rows[4]?.detail ?? '', /zod:/, 'the DIM superRefine failure surfaces as its own verdict row')
         assert.match(rows[5]?.detail ?? '', /duplicate name in batch/, 'as does the cross-kind duplicate')
         // N logical writes, ONE commit, with the batch trailers to show for it.
-        assert.equal(impCount(), before + 1)
+        assert.equal(commitCount(impFixture.root), before + 1)
         const subject = fixtureGit(['log', '-1', '--format=%s'], impFixture.root).trim()
         assert.match(subject, /^import_definitions\(4\/6 items \(4 created, 0 updated\)\): imported from DDL dump$/)
         const trailers = await impBoot.trailersOf(fieldString(first, 'commit'))
@@ -1113,22 +1139,21 @@ async function main(): Promise<void> {
         // The 7th write tool carries `_guidance` (#53 option D; young corpus ⇒ injected).
         assert.ok(first['_guidance'] !== undefined, 'an initializing corpus gets the guidance field on import too')
         // The imports are first-class corpus citizens: the read path sees them.
-        const drawn = await call(impClient, 'get_definition', { kind: 'event', name: 'game.seed.draw' })
-        assert.equal(fieldString(drawn, 'version').length, 64)
+        assert.equal((await baselineOf(impClient, 'event', 'game.seed.draw')).length, 64)
 
         // Idempotent re-issue: the same four items skip, the same two error rows
         // repeat (they are payload facts, not corpus state), and nothing commits.
         const second = await call(impClient, 'import_definitions', batch('seed v1'))
         assert.equal(second['changed'], false)
         assert.deepEqual(second['summary'], { created: 0, updated: 0, skipped: 4, errors: 2 })
-        assert.equal(impCount(), before + 1, 'zero new commits — beginBatch end() saw a clean tree')
+        assert.equal(commitCount(impFixture.root), before + 1, 'zero new commits — beginBatch end() saw a clean tree')
 
         // Drift: one item's content moved on — updated, full overwrite, one commit.
         const third = await call(impClient, 'import_definitions', batch('seed v2'))
         assert.equal(third['changed'], true)
         assert.deepEqual(third['summary'], { created: 0, updated: 1, skipped: 3, errors: 2 })
-        assert.equal(impCount(), before + 2)
-        const pay = (await call(impClient, 'get_definition', { kind: 'table', name: 'dws_seed_pay' }))['definition'] as Record<string, unknown>
+        assert.equal(commitCount(impFixture.root), before + 2)
+        const pay = await definitionOf(impClient, 'table', 'dws_seed_pay')
         assert.equal(pay['table_comment'], 'seed v2')
         assert.equal(fixtureGit(['status', '--porcelain'], impFixture.root).trim(), '', 'the import fixture ends clean')
     })
