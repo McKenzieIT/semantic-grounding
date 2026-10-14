@@ -203,7 +203,7 @@ superseded when the gap is re-verified, always shown alongside the fact it quali
 **inference** (an unverified judgement plus its basis; promoted once verified),
 **practice** (an adopted 口径 or workaround; promoted as a verified query or metric
 definition once a human states it), **incident** (a time-bounded event with a validity
-window; never promoted, hidden once expired). Avoid *note*, *lesson* and *observation*
+window; never promoted, hidden when it falls outside the [data window](#data-window-查询时间窗) being asked about). Avoid *note*, *lesson* and *observation*
 as synonyms for memory — the last is one of its types.
 
 A memory is never edited after it is written. It is replaced by a newer memory that
@@ -221,6 +221,16 @@ how its fields are laid out, so the fact layer can change its structure without
 stranding its memories. A column anchor still belongs to its definition: if the column
 disappears, the memory falls back to the definition rather than being lost. Avoid
 *link* and *tag* (both suggest the fact side points back, which it never does).
+
+### data window (查询时间窗)
+
+The stretch of business dates a question is about ("compare DAU on 20261009 and
+20261010"), as opposed to the date the question is asked. A [memory](#memory-数据-memory)'s
+validity is judged against the data window, never against today: an incident on
+20261010 matters to a question about that week, even months later, and is noise to a
+question about September. When no data window is given, nothing time-bounded is hidden;
+the newest simply come first. Avoid *as-of date* (suggests a snapshot of the corpus,
+not of the data).
 
 ### promotion (晋升)
 
