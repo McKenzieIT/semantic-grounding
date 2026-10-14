@@ -23,8 +23,8 @@
  * in `types.ts`. This module stays the one import path (re-exports below), so
  * external contracts are unchanged (ADR-0002). What remains defined here is
  * the ADR-0007 dimension-filter door validation — corpus-door concern, not
- * pipeline machinery. #67 then deletes the leftover duplication and leaves
- * this file a pure barrel.
+ * pipeline machinery. #67 has since deleted the leftover duplication; beyond
+ * the door validation above, this file is a pure barrel.
  *
  * Substrate discipline: this module imports ONLY the substrate (types/io) +
  * atomic-write — it does NOT import `@deepseek-ai/dsh-llm`. The semantic-layer
@@ -46,9 +46,9 @@ import { loadTables, loadEvents } from './io.ts'
  * (a contract violation the *caller* can act on), not a coded wire error: the MCP
  * layer maps this onto its own `-31040` `UnknownFilterNameError` (`packages/mcp/src/
  * errors.ts`), the same way every other substrate condition gets its wire shape at
- * the tool boundary. The message lists every unknown name and never the corpus's full name
- * list (a 579-item corpus would make the error itself a size problem — #30's whole
- * subject).
+ * the tool boundary. The message lists every unknown name and never the corpus's
+ * full name list (a large corpus would make the error itself a size problem —
+ * #30's whole subject).
  */
 export class UnknownFilterNamesError extends Error {
   /** The unknown `tables` names, in input order (empty when the rejection was not about tables). */
@@ -117,8 +117,8 @@ export function assertKnownFilterNames(
 // (ADR-0002): the free functions keep their byte-identical contracts, now as
 // thin wrappers over the sweep engine; the seam itself (adapters, engine,
 // adapter contract types) stays module-level — never on the root barrel
-// (ADR-0003, ADR-0006 ruling 3). #67 then collapses the leftover duplication
-// here, leaving this file a pure barrel.
+// (ADR-0003, ADR-0006 ruling 3). #67 has since collapsed the leftover
+// duplication here — everything below is re-export.
 
 export {
   type DimInventoryEntry,

@@ -105,9 +105,11 @@ enrichment 轮的写-删循环时成票」。map #32 的 dogfood 实测了这个
   `suppressed_external_refs`）、`:296-297`（表 schema `suppressed_alt_labels`/
   `suppressed_dimension_refs`）、`packages/substrate/src/enrichment.ts:909`（`aliasVetoSet`）、
   `:918`（`relationVetoSet`）、`packages/substrate/src/io.ts:266`（`loadSuppressions`，读
-  `suppressions.yaml`）、`packages/mcp/src/tools/items.ts:111`（`suppressionFieldName`，三个
-  否决字段名与 kind/content 的映射）、`:293`（`remove_alias` 注册，描述文本含 ensure-absent
-  与回执语义）、`:421`（`remove_relation` 注册）、`packages/mcp/src/tools/shared.ts:177-188`
+  `suppressions.yaml`）、`packages/substrate/src/item-write.ts:128`
+  （`itemSuppressionFieldName`，否决字段名与 kind/content 的映射——#49 item 语义沉 Core
+  时自 mcp `items.ts` 迁入，#109 增 concept 的 `suppressed_related_refs` 后共四键）、
+  `packages/mcp/src/tools/items.ts`（`remove_alias` 注册，描述文本含 ensure-absent
+  与回执语义；`remove_relation` 注册）、`packages/mcp/src/tools/shared.ts:177-188`
   （`TABLE_ARRAY_REF_REDIRECT`/`EVENT_ARRAY_REF_REDIRECT` 的 `suppressed_*` 重定向项）、
   `packages/mcp/src/errors.ts:159`（`unsupported_update_field: -31020`）
 - 前置历史依据：ADR-0005 Consequences 原始段落（`remove_relation` 不持久、触发条件写死

@@ -3,8 +3,9 @@
  *
  * Domain logic (normalizeLabel, dual-field overlay, origin routing, veto lift,
  * ensure-absent, idempotency, batch verdicts) is now covered by the substrate's
- * `item-write.spec.ts` (30 tests calling Core methods directly). This file pins
- * only what the MCP wire adds on top:
+ * `item-write.spec.ts`, which calls Core methods directly (its own body is the
+ * live count — later additions like #109/#122/#147 land there, not here). This
+ * file pins only what the MCP wire adds on top:
  *
  * - Response shape: `commit`, `changed`, `enrichment_health`, `results`/`unsuppressed`.
  * - Error mapping: `DefinitionNotFoundError` → `-31021`, `StaleBaselineError` → coded stale.

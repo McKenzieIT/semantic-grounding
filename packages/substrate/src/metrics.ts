@@ -52,7 +52,7 @@ const SEP = '__'
 /**
  * Build the unique metric name for one (source, metric-key) pair, namespaced
  * `<source>__<key>` so shared keys (e.g. `row_count`) do not collide across
- * the 321 tables.
+ * the corpus's tables.
  * @param source - the table/event name the metric was extracted from.
  * @param key - the metric key in the source's `metrics:` record.
  * @returns the namespaced metric name.
@@ -68,10 +68,11 @@ export function metricName(source: string, key: string): string {
  * Returns null when the name has no `__` separator or it sits at the start
  * (no host). The inverse of {@link metricName}.
  *
- * Used by `SemanticLayerService.loadMetricDefinition` and
- * `DefinitionSnapshot.loadMetricDefinition` to recover the host + key from a
- * metric name and look the key up in the host's inline `metrics:` block (M1
- * virtual projection — no standalone `metrics/*.yaml` files are read).
+ * Used by `SemanticGroundingCore.loadMetricDefinition` (`index.ts`) and
+ * `DefinitionSnapshot.loadMetricDefinition` (`snapshot.ts`) to recover the
+ * host + key from a metric name and look the key up in the host's inline
+ * `metrics:` block (M1 virtual projection — no standalone `metrics/*.yaml`
+ * files are read).
  * @param name - the namespaced metric name.
  * @returns `{ host, key }` or null when the name is not a `<host>__<key>` pair.
  */

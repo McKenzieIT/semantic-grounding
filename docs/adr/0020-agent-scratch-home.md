@@ -38,8 +38,9 @@ map #89 缺口 (a)：agent 的探索/草稿工作（ODPS re-probe 的 SQL 产物
 
 ### R1 · 位置：worktree 外 `<gitDir>/sg-scratch/<run-id>/`
 
-与 `<gitDir>/sg-pending/`、`sg-write.lock` 同族（`tools/shared.ts#pendingQueueRoot` 的放置
-论证全文适用）：git dir 在 git 追踪的树**之外**，落在里面的文件对 `git status --porcelain`
+与 `<gitDir>/sg-pending/`、`sg-write.lock` 同族（`tools/suggestions.ts#pendingQueueRoot`
+的放置论证全文适用——#145 迁家后该 seam 居 suggestions.ts）：git dir 在 git 追踪的
+树**之外**，落在里面的文件对 `git status --porcelain`
 不可见 —— 对两道门**构造性免疫**，不依赖 `.gitignore` 完备、不惧 `clean -fdx`。
 
 否决 **in-worktree `.gitignore` 隐形区**：只挡已知忽略模式，agent 往 corpus 根随手写仍污染、
@@ -81,8 +82,9 @@ scope 上且反复发生（map Notes：反复的探索→更新是主路）—�
 ### R4 · 非审计变更：Tier-1 同款姿态
 
 不 commit、不取 corpus 锁、不走 recorder 写路径 —— 从 recorder 只借 gitDir 路径解析
-（`pendingQueueRoot` 同款，read-only 工具亦可安全调用）。响应仍带 scope stamp
-（ADR-0011 的自描述层）：跨 switch 迟到的响应仍能说清自己服务的是哪个 scope。
+（`tools/suggestions.ts#pendingQueueRoot` 同款，read-only 工具亦可安全调用）。
+响应仍带 scope stamp（ADR-0011 的自描述层）：跨 switch 迟到的响应仍能说清自己
+服务的是哪个 scope。
 
 ### R5 · substrate 零改动
 

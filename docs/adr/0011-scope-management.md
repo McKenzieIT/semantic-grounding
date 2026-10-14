@@ -135,8 +135,8 @@ get_scope(scope_id?) → 读
 - 单测（新增 4 个文件，`packages/mcp/tests/`）：
   - `scope-registry.spec.ts`——`ScopeRegistryFile` 的注册读写回、幂等、1:1 冲突两个
     方向及其错误数据形状、跨实例持久化、进程内 promise-chain mutex 下的交错注册、
-    畸形注册表文件拒绝猜测（intranet-security）、`assertScopeIdShape`/
-    `scopeEntryReachable`。
+    畸形注册表文件拒绝猜测（intranet-security）、`assertScopeIdShape`
+    〔#149 已退役，见文末 Update〕/`scopeEntryReachable`。
   - `binding.spec.ts`——`BindingStore` 的 snapshot/requireSnapshot、`--scope` 启动
     绑定、`switchTo`（切换序列、registry 缺省持久化、counts、在途请求快照不可变、
     切回时的缓存复用、未注册 id 拒绝、目录转脏后的拒绝）、`restoreActive`
@@ -215,6 +215,18 @@ per-scope core + `switch_scope` 是唯一且已验证的多 scope 机制**（本
 （`restoreActive` 换 `read().active`）。substrate 测试基线 462→432（scope-delegation /
 per-scope-read 两 spec 随被测机制整删，对账详 #86 resolution）。
 
+## Update — #149（2026-10-15）：charset 门单点化，`assertScopeIdShape` 退役
+
+裁决 10 的字符集门原由两半把守：schema 侧 `ScopeIdSchema` 自拼正则，注册表侧
+`assertScopeIdShape`（本 ADR 落地时的 `scope-registry.ts:102`）在 handler 边界再校验一遍。
+[#149](https://github.com/McKenzieIT/semantic-grounding/issues/149)（巡检 S5 单点化）把
+规则收成单一家：正则本体只住 `scope-registry.ts` 的 `SCOPE_ID_PATTERN`（:58，常数 10 的
+one home），`tools/shared.ts` 的 `ScopeIdSchema` 改为 import 该常数作 zod 门（消息文案
+逐字不动）；`assertScopeIdShape` 函数本体随之退役，其 10 个直测 describe 同删——字符集
+拒绝现在只发生在 schema 门，「字符集先于 posture」的拒绝顺序不变（mcp 基线
+447+1skip→437+1skip）。上文 Verification 与 References 中的 `assertScopeIdShape` 系
+历史提及，彼时为真，保留原样。
+
 ## References
 
 - 设计来源：[#45](https://github.com/McKenzieIT/semantic-grounding/issues/45) 的
@@ -225,7 +237,8 @@ per-scope-read 两 spec 随被测机制整删，对账详 #86 resolution）。
   两条被本票 supersede）
 - 执行票：[#51](https://github.com/McKenzieIT/semantic-grounding/issues/51)
 - 行为依据：`packages/mcp/src/scope-registry.ts:54`（`SCOPE_ID_PATTERN`，常数 10）、
-  `:97`（`defaultRegistryPath`，裁决 2）、`:102`（`assertScopeIdShape`）、`:114`
+  `:97`（`defaultRegistryPath`，裁决 2）、`:102`（`assertScopeIdShape`
+  〔#149 已退役，见文末 Update〕）、`:114`
   （`ScopeRegistryFile` 类，三层并发防线的实现）、`:356`（`scopeEntryReachable`）、
   `packages/mcp/src/binding.ts:96`（`BindingStore` 类，裁决 1 的入口快照绑定与
   `switchTo` 原子指针置换）、`:306`（`assertScopeLoadable`，`register_scope` 的全量
