@@ -60,7 +60,9 @@
  * shared `LayersEvaluation` (`tests/guidance.spec.ts`). `dwPhase`/`kgPhase`/
  * `PHASE_RANK` went back to module-private with the fold (their export existed
  * for the playbook's own composition); `layerCounts` remains exported —
- * `tools/scope.ts` (#102) is its live consumer.
+ * `tools/scope.ts` (#102) is its live consumer — and since #144 the per-kind
+ * scan under it, {@link countNodesByKind}, is exported too (`tools/import.ts`'s
+ * ratio-guard denominator), the one classification of graph nodes by kind.
  *
  * @module tools/guidance
  */
@@ -129,16 +131,39 @@ function kgPhase(count: number, threshold: number): GuidancePhase {
   return count < threshold ? 'llm_supplement' : 'mature'
 }
 
-/** DW count (tables + events) and KG count (concepts), split from one
- * schema-valid, graph-attached scan — see this module's doc for why a concept
- * node's fixed `kind` lets DW fall out "by elimination". Still exported: the
- * playbook now reads counts through {@link evaluateLayers} (#121), but
- * `tools/scope.ts` (#102) consumes this primitive directly — the one count
- * derivation, shared, never forked. */
-export function layerCounts(snap: ScopeBinding): { readonly dw: number; readonly kg: number } {
+/**
+ * Per-kind node counts from one schema-valid, graph-attached scan — the
+ * classification knowledge's single home (#144): a concept node's `kind` is
+ * the fixed literal `'concept'` (`kinds/concept-kind.ts`), an event's is
+ * `'event'`, and a table's is its own open storage kind (`dim`/`dws`,
+ * `kinds/table-kind.ts`), so tables fall out by elimination. Exported because
+ * two projections need different groupings of the same corpus fact: this
+ * module's {@link layerCounts} (DW = tables + events vs KG = concepts) and
+ * `tools/import.ts`'s ratio guard (ADR-0019 R6), whose denominator is
+ * per-kind. `import.ts`'s own count used to be a by-elimination second copy;
+ * the trick is documented once, here.
+ */
+export function countNodesByKind(snap: ScopeBinding): Readonly<Record<'table' | 'event' | 'concept', number>> {
   const nodes = snap.core.projectGraphNodes({ includeDerived: false })
-  const kg = nodes.filter(n => n.kind === 'concept').length
-  return { dw: nodes.length - kg, kg }
+  let tables = 0
+  let events = 0
+  let concepts = 0
+  for (const node of nodes) {
+    if (node.kind === 'concept') concepts += 1
+    else if (node.kind === 'event') events += 1
+    else tables += 1
+  }
+  return { table: tables, event: events, concept: concepts }
+}
+
+/** DW count (tables + events) and KG count (concepts) — a two-line projection
+ * of {@link countNodesByKind}, the per-kind single source (#144). Still
+ * exported for its own live consumer: `tools/scope.ts` (#102) reads this
+ * layer-shaped derivation directly — the one count judgment, shared, never
+ * forked. */
+export function layerCounts(snap: ScopeBinding): { readonly dw: number; readonly kg: number } {
+  const { table, event, concept } = countNodesByKind(snap)
+  return { dw: table + event, kg: concept }
 }
 
 /** One layer's full evaluation: its metrics plus the threshold that actually

@@ -88,10 +88,10 @@ import { isDeepStrictEqual } from 'node:util'
 import type { McpServer } from '@modelcontextprotocol/server'
 import { dumpYaml, EventDefinitionSchema, TableDefinitionSchema, writeEventYaml, writeTable } from '@semantic-grounding/substrate'
 import { z } from 'zod'
-import type { ScopeBinding } from '../binding.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { assertScopeMatch, auditedWrite, scopeStamp, toolSuccess, withAuditedBatch, writeReceipt } from './audited.ts'
-import { ConceptCreatePayloadSchema, ConfidenceSchema, CONCEPT_ITEM_VERB_KEYS, ScopeIdSchema, SummarySchema, type ToolFamily } from './shared.ts'
+import { countNodesByKind } from './guidance.ts'
+import { ConceptCreatePayloadSchema, ConfidenceSchema, CONCEPT_ITEM_VERB_KEYS, loadWritable, loadWritableWithVersion, ScopeIdSchema, SummarySchema, type ToolFamily } from './shared.ts'
 
 /** The bulk-import tool's single name (#54 R6 — intent-level, an `import_` verb joins the surface). */
 export const IMPORT_TOOL_NAMES = ['import_definitions'] as const
@@ -223,6 +223,17 @@ function ignoredItemVerbKeyCount(definition: unknown): number {
 }
 
 /**
+ * The R3 verdict-row receipt's literal format (ADR-0019 R3) — an online
+ * contract string, single-sourced so the three row kinds that carry it (a
+ * Phase-1 `skipped` row, a dry-run staged row, a landed Phase-2 row) cannot
+ * drift into three differently-worded receipts. #144 folded what were three
+ * hand-written spread literals; the count is {@link ignoredItemVerbKeyCount}'s.
+ */
+function itemVerbDetail(n: number): string {
+  return `ignored ${n} item-verb keys (related_refs/suppressed_* are add_relation/add_alias territory)`
+}
+
+/**
  * Phase 1's per-item strict parse, as one tagged union so the kind and the
  * payload type travel together (a `schema` variable selected by `kind` parses
  * fine at runtime but leaves TypeScript holding the three output types as an
@@ -296,33 +307,6 @@ export interface RatioGuardFinding {
   readonly ratio: number
   /** The threshold that was exceeded (for the message; reflects the effective config). */
   readonly threshold: number
-}
-
-/**
- * The ratio guard's denominator helper: how many definitions of each kind the
- * corpus already holds, counted **before** Phase 2 writes anything (the guard
- * runs at the Phase 2 entry, so the counts are the pre-batch corpus — an
- * `updated` item is by definition already inside its denominator).
- *
- * Counted from `projectGraphNodes({includeDerived:false})` — the schema-valid,
- * graph-attached scan — for the same reason `tools/guidance.ts`'s
- * `layerCounts` prefers it over raw loader output: a malformed leftover YAML
- * is not source-of-truth anyone is overwriting. A concept node's `kind` is the
- * fixed literal `'concept'` and an event's is `'event'`; a table's is its own
- * open storage kind (`dim`/`dws`), so tables fall out by elimination — the
- * same documented trick, per-kind this time.
- */
-function existingKindCounts(snap: ScopeBinding): Readonly<Record<ImportKind, number>> {
-  const nodes = snap.core.projectGraphNodes({ includeDerived: false })
-  let tables = 0
-  let events = 0
-  let concepts = 0
-  for (const node of nodes) {
-    if (node.kind === 'concept') concepts += 1
-    else if (node.kind === 'event') events += 1
-    else tables += 1
-  }
-  return { table: tables, event: events, concept: concepts }
 }
 
 /**
@@ -412,11 +396,7 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
         }
         seen.set(name, i)
 
-        const existing = parsed.kind === 'table'
-          ? snap.core.loadTableDefinition(name)
-          : parsed.kind === 'event'
-            ? snap.core.loadEventDefinition(name)
-            : snap.core.loadConceptDefinition(name)
+        const existing = loadWritable(snap.core, parsed.kind, name)
         const payload = parsed.kind === 'table' ? parsed.table : parsed.kind === 'event' ? parsed.event : parsed.concept
         // Concepts only: how many item-verb keys the schema stripped (R3's
         // receipt — the row tells the caller the keys were seen and ignored).
@@ -424,7 +404,7 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
         if (existing !== null && wouldBeNoOp(parsed.kind, payload, existing)) {
           results.push({
             index: i, kind: parsed.kind, name, verdict: 'skipped',
-            ...ignored > 0 ? { detail: `ignored ${ignored} item-verb keys (related_refs/suppressed_* are add_relation/add_alias territory)` } : {},
+            ...ignored > 0 ? { detail: itemVerbDetail(ignored) } : {},
           })
           continue
         }
@@ -477,7 +457,10 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
         const ratio = deps.config.massUpdateRatio
         const findings = ratioGuardFindings(
           updatedByKind,
-          existingKindCounts(snap),
+          // The denominator, per kind, from guidance's single classification
+          // (#144): counted here at the Phase 2 entry, so it is the pre-batch
+          // corpus — an `updated` item is by definition already inside it.
+          countNodesByKind(snap),
           ratio?.threshold ?? DEFAULT_RATIO_GUARD_THRESHOLD,
           ratio?.floor ?? DEFAULT_RATIO_GUARD_FLOOR,
         )
@@ -504,7 +487,7 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
           index: s.index, kind: s.kind, name: s.name, verdict: s.verdict,
           // Same Phase-1 receipt the real write's rows carry: the item-verb
           // strip count is adjudication, not a write-time fact.
-          ...s.ignoredItemVerbKeys !== undefined ? { detail: `ignored ${s.ignoredItemVerbKeys} item-verb keys (related_refs/suppressed_* are add_relation/add_alias territory)` } : {},
+          ...s.ignoredItemVerbKeys !== undefined ? { detail: itemVerbDetail(s.ignoredItemVerbKeys) } : {},
         })
         const preview = [...results, ...staged.map(stagedRow)].sort((a, b) => a.index - b.index)
         return toolSuccess({
@@ -529,11 +512,7 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
           // here and the response (#108 / #107 Q3).
           for (const [i, row] of results.entries()) {
             if (row.verdict !== 'skipped') continue
-            const current = row.kind === 'table'
-              ? snap.core.loadTableDefinitionWithVersion(row.name)
-              : row.kind === 'event'
-                ? snap.core.loadEventDefinitionWithVersion(row.name)
-                : snap.core.loadConceptDefinitionWithVersion(row.name)
+            const current = loadWritableWithVersion(snap.core, row.kind, row.name)
             results[i] = { ...row, ...current?.version !== undefined ? { version: current.version } : {} }
           }
           await withAuditedBatch(snap, async (batch, tier2) => {
@@ -562,7 +541,7 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
               results.push(res.ok
                 ? {
                     index: item.index, kind: item.kind, name: item.name, verdict: item.verdict, version: res.version,
-                    ...item.ignoredItemVerbKeys !== undefined ? { detail: `ignored ${item.ignoredItemVerbKeys} item-verb keys (related_refs/suppressed_* are add_relation/add_alias territory)` } : {},
+                    ...item.ignoredItemVerbKeys !== undefined ? { detail: itemVerbDetail(item.ignoredItemVerbKeys) } : {},
                   }
                 : { index: item.index, kind: item.kind, name: item.name, verdict: 'error', detail: res.error })
               if (res.ok) batch.record('import_definitions', { kind: item.kind, name: item.name })

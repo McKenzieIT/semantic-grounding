@@ -20,7 +20,7 @@
  */
 import { join } from 'node:path'
 import { CLIENT_INFO_META_KEY, type ServerContext } from '@modelcontextprotocol/server'
-import { ConceptDefinitionSchema, EventDefinitionSchema, TableDefinitionSchema } from '@semantic-grounding/substrate'
+import { ConceptDefinitionSchema, EventDefinitionSchema, TableDefinitionSchema, type ConceptDefinition, type EventDefinition, type SemanticGroundingCore, type TableDefinition } from '@semantic-grounding/substrate'
 import { z } from 'zod'
 import { DefinitionNotFoundError, DefinitionValidationError, UnsupportedUpdateFieldError, isSubstrateNotFound } from '../errors.ts'
 import type { GitTier2Recorder } from '../git/recorder.ts'
@@ -146,6 +146,59 @@ export const RelationSubjectKindSchema = z.enum(['table', 'event', 'concept'])
  * (not one of Q4(b)'s three edges).
  */
 export const RelationTargetKindSchema = z.enum(['table', 'concept'])
+
+// ── Writable-definition loading seams (#144) ────────────────────────────────────────
+
+/**
+ * Load one writable kind's definition by name — the kind→`load*Definition`
+ * dispatch, single-sourced (#144). Five call sites hand-wrote this three-way
+ * ladder before (`write.ts`'s three create-side existence checks; `import.ts`'s
+ * Phase-1 read and the WithVersion variant below), each re-pairing kind with
+ * core method on its own. This is a *loading* seam, not `read.ts`'s
+ * `get_definition` per-kind response dispatch — that path shapes output per
+ * kind and stays where it is. Callers treat the result as the union they need:
+ * an existence check tests it against null, and `import`'s no-op comparison
+ * receives it as the `unknown` side of `isDeepStrictEqual`.
+ * @param core - the serving snapshot's core (`snap.core`).
+ * @param kind - {@link WritableKindSchema}'s three values.
+ * @param name - the definition's identity key (`table_name` for tables, `name` otherwise).
+ * @returns the parsed definition, or null when no definition of that kind matches.
+ */
+export function loadWritable(
+  core: SemanticGroundingCore,
+  kind: 'table' | 'event' | 'concept',
+  name: string,
+): TableDefinition | EventDefinition | ConceptDefinition | null {
+  if (kind === 'table') return core.loadTableDefinition(name)
+  if (kind === 'event') return core.loadEventDefinition(name)
+  return core.loadConceptDefinition(name)
+}
+
+/**
+ * {@link loadWritable}'s fingerprint-carrying half — the same dispatch over
+ * the `load*DefinitionWithVersion` methods (ADR-0004 ruling 8's read side:
+ * definition plus the sha256 of the exact file an update-class write checks
+ * `expected_version` against). Its one caller today is `import`'s skipped-row
+ * receipt, which reads the file's CURRENT `version` (nothing was written for a
+ * skipped item, so the file's present fingerprint IS the receipt, #108) and
+ * ignores the `definition` half.
+ * @param core - the serving snapshot's core (`snap.core`).
+ * @param kind - {@link WritableKindSchema}'s three values.
+ * @param name - the definition's identity key (`table_name` for tables, `name` otherwise).
+ * @returns the parsed definition and its `version` fingerprint, or null when
+ *   no definition of that kind matches (or, per the substrate's own contract,
+ *   thrown loudly when a definition loads but its backing file cannot be
+ *   resolved).
+ */
+export function loadWritableWithVersion(
+  core: SemanticGroundingCore,
+  kind: 'table' | 'event' | 'concept',
+  name: string,
+): { readonly definition: TableDefinition | EventDefinition | ConceptDefinition; readonly version: string } | null {
+  if (kind === 'table') return core.loadTableDefinitionWithVersion(name)
+  if (kind === 'event') return core.loadEventDefinitionWithVersion(name)
+  return core.loadConceptDefinitionWithVersion(name)
+}
 
 // ── `add_relation` / `remove_relation` item shape ────────────────────────────────────
 

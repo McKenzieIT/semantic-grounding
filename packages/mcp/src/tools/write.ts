@@ -36,6 +36,7 @@ import {
   UPDATE_COMMON_FIELDS,
   assertNoRedirectedFields,
   assertUpdateOk,
+  loadWritable,
   type ToolFamily,
 } from './shared.ts'
 
@@ -79,7 +80,7 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
 
       if (input.kind === 'table') {
         const name = input.table.table_name
-        if (snap.core.loadTableDefinition(name) !== null) {
+        if (loadWritable(snap.core, 'table', name) !== null) {
           throw new DefinitionAlreadyExistsError(`table "${name}" already exists — use update_definition to change it`, { kind: 'table', name })
         }
         const res = await auditedWrite(
@@ -114,7 +115,7 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
         // race to note, because concepts have no on-write enrichment hook
         // anywhere downstream (no rounds exist to ask for one).
         const name = input.concept.name
-        if (snap.core.loadConceptDefinition(name) !== null) {
+        if (loadWritable(snap.core, 'concept', name) !== null) {
           throw new DefinitionAlreadyExistsError(`concept "${name}" already exists — use update_definition to change it`, { kind: 'concept', name })
         }
         const res = await auditedWrite(
@@ -137,7 +138,7 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
       }
 
       const name = input.event.name
-      if (snap.core.loadEventDefinition(name) !== null) {
+      if (loadWritable(snap.core, 'event', name) !== null) {
         throw new DefinitionAlreadyExistsError(`event "${name}" already exists — use update_definition to change it`, { kind: 'event', name })
       }
       const res = await auditedWrite(
