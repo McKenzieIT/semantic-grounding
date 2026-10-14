@@ -7,8 +7,13 @@
 
 ## 0. 两条已确认的前提
 
-**P1 — 实测载体 = k11 夹具复制出的 scope**（用户 Q1 裁决 A）。
-本机**无任何已注册 scope**（`~/.semantic-grounding/scopes.yaml` 不存在，#127 实测）；唯一可用语料是仓内测试夹具 `packages/substrate/tests/fixtures/k11/`：**321 张表 / 453 个事件 / 10 个概念**，游戏数仓，ODPS 风格 `dim_`/`dws_` 分层 + `ds` 分区。卡片内容取自真实工作经验，运行载体用它——它已有真实规模，且那 446 条被污染的描述正是「迁移前现状」，接力实测可直接演示「经验从描述搬进 memory 之后 B 才读得对」。
+**P1 — 实测载体 = X63-永测服（scope 10000354）**（2026-10-14 用户改判，supersede 原裁决）。
+
+- **原裁决（Q1 选 A）**：k11 夹具复制出的 scope。依据是当时本机**无任何已注册 scope**（#127 实测），唯一可用语料是仓内夹具 `packages/substrate/tests/fixtures/k11/`（321 表 / 453 事件 / 10 概念）。
+- **改判输入**：同日用户在 QoderWork 上完成 **X63-永测服** 的真实初始化——scope `10000354` 1:1 绑定 `/Users/mckenzie/avatar/Game-semantic/X63-永测服`，**182 条定义（61 表 / 110 事件 / 11 概念）+ 25 条表 join 边 + 16 条概念实体边**，全部经 MCP 写工具落盘、审计链完整（一次 `import_definitions` 单 commit 带 182 条 created 回执、11 次 `add_relation` 各自成 commit）。两层均判 mature。
+- **为何更合适**：它是用户**真实初始化**的语料，而非测试夹具；并且初始化过程本身产出了第一批真实的数据 memory 候选（`partition_keys` 写在 schema 外而规范字段 `partitions` 为空、41 张分区表全中；`kind` 61 张全停在导入默认值 `dws`；server 把分区类型统一小写 `STRING→string`）。
+- **约束（关键）**：**X63 只能从 QoderWork 宿主取到**，当前 pod 环境够不着。故接力剧本的 A/B 两腿（至少写入腿）须在 QoderWork 上驱动；#129 给出的 `claude -p --bare` / `codex exec` 方案只适用于 Mac 本地宿主，**不适用于 X63 载体**，harness 形状需按 QoderWork 重定。
+- k11 夹具**保留为备选**：它的 446 条污染描述仍是「memory 污染事实层」最完整的现成证据，`check-relay.ts` 若要一个不依赖 QoderWork 的确定性回归载体，仍可用它。
 
 **P2 — 治理场景里 SG 是经验库，不是检查器**（用户 Q5 确认）。
 用户的真实数据治理工作 = **检查 ETL 逻辑是否倾斜、数据是否产出**。ADR-0019 R1 已裁服务端永不碰 ODPS，故倾斜检查、产出探测由 agent 自己在 bash / ODPS 侧执行（与 ADR-0011「基础设施执行归 agent-in-bash」一致），SG 只负责把**结论**记下来、让下一个 agent 读到。
