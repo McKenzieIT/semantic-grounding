@@ -173,7 +173,7 @@ export class BindingStore {
     // `report.paths`, so a first bind paid the git subprocesses twice.
     const report = await this.postureOrThrow(entry)
     const binding = await this.bindingFor(entry, report)
-    const counts = this.countsOrThrow(entry)
+    const counts = scopeCountsOrThrow(entry)
     const switchedFrom = this.activeBinding?.scopeId ?? null
     this.activeBinding = binding // the atomic pointer swap — one assignment, nothing else
     await this.registry.setActive(scopeId)
@@ -298,11 +298,6 @@ export class BindingStore {
     }
     this.cache.set(entry.id, binding)
     return binding
-  }
-
-  /** Definition counts via the substrate's own loaders — the switch response's landing digest. */
-  private countsOrThrow(entry: ScopeEntry): ScopeCounts {
-    return scopeCountsOrThrow(entry)
   }
 }
 

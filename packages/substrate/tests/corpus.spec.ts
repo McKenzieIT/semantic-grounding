@@ -4,7 +4,7 @@
  * description) + `alt_labels` (SKOS aliases) into the indexed `description`;
  * does NOT index `domain` (probe refuted it).
  *
- * Run: `pnpm vitest run packages/data/semantic-layer`
+ * Run: `pnpm vitest run packages/substrate`
  */
 import { test, expect } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'

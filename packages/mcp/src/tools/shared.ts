@@ -376,8 +376,11 @@ export function assertNoRedirectedFields(fields: Readonly<Record<string, unknown
 
 // ── Discriminating `updateTableMeta` / `updateEventMeta`'s non-throwing failure ─────
 
-/** The shape `updateTableMeta` / `updateEventMeta` return — one success field name differs, the failure shape is identical. */
-type UpdateResult = { readonly ok: true } | { readonly ok: false; readonly error: string }
+/** The one non-throwing write-result shape. The `update*Meta` family resolves
+ * `{ok:true}` bare; the item-overlay apply path (`applyFieldUpdate`) resolves the
+ * same shape plus the written file's `version` fingerprint (#108) — hence the
+ * optional key: present on every apply result, absent on every meta-update result. */
+export type ApplyResult = { readonly ok: true; readonly version?: string } | { readonly ok: false; readonly error: string }
 
 /**
  * Turn `updateTableMeta` / `updateEventMeta` / `updateConceptMeta`'s
@@ -399,7 +402,7 @@ type UpdateResult = { readonly ok: true } | { readonly ok: false; readonly error
  * @throws DefinitionValidationError for every other failure message (the merged
  *   document failed the kind's full schema).
  */
-export function assertUpdateOk(result: UpdateResult, kind: 'table' | 'event' | 'concept', name: string): void {
+export function assertUpdateOk(result: ApplyResult, kind: 'table' | 'event' | 'concept', name: string): void {
   if (result.ok) return
   if (isSubstrateNotFound(result.error)) {
     throw new DefinitionNotFoundError(result.error, { kind, name })

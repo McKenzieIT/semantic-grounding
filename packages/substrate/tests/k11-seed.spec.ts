@@ -3,7 +3,7 @@
  * `examples/k11-semantic-layer/` loads correctly through the semantic-layer
  * loaders. Catches drift between the seed YAML and the loader contracts.
  *
- * Run: `npx vitest run packages/data/semantic-layer/tests/k11-seed.spec.ts`
+ * Run: `npx vitest run packages/substrate/tests/k11-seed.spec.ts`
  */
 import { test, expect, describe } from 'vitest'
 import { join, dirname } from 'node:path'

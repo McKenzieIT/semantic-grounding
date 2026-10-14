@@ -47,13 +47,13 @@ import type { McpServer } from '@modelcontextprotocol/server'
 import { loadConfig, resolveSemanticLayer } from '@semantic-grounding/substrate'
 import { z } from 'zod'
 import { assertScopeLoadable } from '../binding.ts'
-import { ScopeNotFoundError, DefinitionValidationError } from '../errors.ts'
+import { ScopeNotFoundError } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { ensureStartupPosture } from '../git/posture.ts'
 import { toolSuccess } from './audited.ts'
 import { layerCounts } from './guidance.ts'
 import { ScopeIdSchema, type ToolFamily } from './shared.ts'
-import { assertScopeIdShape, scopeEntryReachable } from '../scope-registry.ts'
+import { scopeEntryReachable } from '../scope-registry.ts'
 
 /** The scope-management tool names, in ADR-0011's listing order plus `deregister_scope` beside its verb pair (#72). */
 export const SCOPE_TOOL_NAMES = [
@@ -147,7 +147,9 @@ function registerRegisterScope(server: McpServer, deps: ServerDeps): void {
       inputSchema: RegisterScopeInputSchema,
     },
     async (input, _ctx) => {
-      assertScopeIdShape(input.id, m => new DefinitionValidationError(m))
+      // The id's charset gate lives in zod (ScopeIdSchema, ADR-0011 constant 6) — a
+      // handler-side re-check would be unreachable and would surface a scope-surface
+      // condition under the intent segment's codes.
       const semanticRoot = realpathSync(input.path)
       // Constant 2: posture + full load at the door, before the table is touched.
       // Posture failures surface #19's own coded posture_refused (−31004) with its

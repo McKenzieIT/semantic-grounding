@@ -59,7 +59,7 @@ import type { AuditedResult } from '../git/recorder.ts'
 import type { ServerDeps } from '../server.ts'
 import { ScopeMismatchError } from '../errors.ts'
 import { maybeGuidance } from './guidance.ts'
-import { clientNameFromEnvelope } from './shared.ts'
+import { clientNameFromEnvelope, type ApplyResult } from './shared.ts'
 
 /**
  * The per-call intent half of an audit record — the fields only the calling
@@ -315,11 +315,6 @@ export async function writeReceipt(
 export function toolSuccess(payload: unknown): CallToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(payload) }] }
 }
-
-/** The shape every field-overlay write needs back — the success branch's field
- * name (`table_name`/`event_name`) is dropped, since no caller of this wrapper
- * reads it; the write receipt's `version` fingerprint is kept (#108). */
-type ApplyResult = { readonly ok: true; readonly version: string } | { readonly ok: false; readonly error: string }
 
 /**
  * Apply one field overlay via `updateTableMeta` / `updateEventMeta` /

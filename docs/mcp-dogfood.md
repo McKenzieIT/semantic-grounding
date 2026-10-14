@@ -5,7 +5,8 @@ Part B 的落点（裁决：dogfood 记录进 docs/，resolution 链接此处）
 「另做一次真 agent dogfood」的验收材料。
 
 脚本化的一半（Part A，CI 可跑、无 LLM）已由 `pnpm e2e` 承担：
-`packages/mcp/scripts/check-e2e-loop.ts`，13 步走完读→写→commit→provenance 回路。
+`packages/mcp/scripts/check-e2e-loop.ts` 走完读→写→commit→provenance 回路——
+步数不写死在这里，以脚本跑完自报为准（C3 教训：散文硬数字必烂）。
 本篇只记**真 agent** 才能测出的东西。
 
 ## 为什么宿主是 QoderWork 等办公 agent（而不是 Claude Code）
@@ -41,8 +42,6 @@ modern era；`"method":"initialize"` 即 2025 legacy era（`legacy:'serve'` 下�
 确认后可改回直接注册 `node …/src/bin.ts --corpus … --agent-id …`（Node ≥ 22.18 直跑 .ts；
 或先 `pnpm -r build` 后用 `node …/packages/mcp/lib/bin.js`）。
 
-**记录：**（era + 开场原文关键行）
-
 ## 覆盖清单（与 ADR-0005 §Verification 的 dogfood 条目对齐）
 
 1. **问数读路径**：让 agent 回答一个真实问数场景——「订单表要关联哪张维表、用户说
@@ -54,8 +53,6 @@ modern era；`"method":"initialize"` 即 2025 legacy era（`legacy:'serve'` 下�
 3. **可选加餐**：`run_enrichment` → `get_enrichment_work` → `apply_enrichment` 的
    出题-答题回路（agent 用自己的模型答题）。
 4. 每次写后 `git log -p --follow` 抽查一条：author 是 agent、trailer 载明依据。
-
-**记录：**（每项：成功/失败、agent 的原话或截图要点、git log 摘录）
 
 ## 实测记录（进行中）
 
@@ -117,8 +114,6 @@ ref 变体）。规避顺序：先净描述（update 写干净文本，hook 无�
   质量（bigram 打分的 Followup 触发条件）、enrichment work 的 prompt 是否好答。
 - **宿主兼容**：era、clientInfo 逐请求变化是否出现在 `X-SG-Client`、`legacy:'serve'`
   的回退是否真的被走到。
-
-**记录：**
 
 **记录（清理 + 打地鼠，2026-10-10）**：25 commits（1 描述重写〔无括引干净文本〕+ 24 条
 remove_alias）全 audited；23 条碎片清除，4 个业务别名保留。**写-删循环 domain 变体实锤**：

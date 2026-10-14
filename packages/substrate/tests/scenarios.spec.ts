@@ -7,7 +7,7 @@
  * TableDefinition.partitions contract P13b makeCriticCtx consumes (the
  * SemanticGroundingCore exposes these via ctx.schema.load_*).
  *
- * Run: `pnpm vitest run packages/data/semantic-layer`
+ * Run: `pnpm vitest run packages/substrate`
  */
 import { test, expect, afterAll } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, copyFileSync, readFileSync } from 'node:fs'

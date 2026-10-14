@@ -24,6 +24,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { CallToolResult } from '@modelcontextprotocol/server'
 import type { ServerDeps } from '../src/server.ts'
 import { SgApplicationError } from '../src/errors.ts'
+import { ScopeIdSchema } from '../src/tools/shared.ts'
 import { registerScopeTools } from '../src/tools/scope.ts'
 import { createFixtureCorpus, fixtureGit, type FixtureCorpus } from './helpers/fixture-corpus.ts'
 import { handlerOutcome } from './helpers/inprocess-client.ts'
@@ -160,10 +161,13 @@ describe('register_scope', () => {
     expect(err.name).toBe('ScopeIdConflictError')
   })
 
-  it('refuses an id outside the charset before touching posture or the table', async () => {
-    const err = await callErr(tools, 'register_scope', { id: 'Not_Valid!', path: fixtureA.root })
-    expect(err.message).toContain('not shaped')
-    expect((await callOk(tools, 'list_scopes', {}))['total']).toBe(0)
+  it('the id charset gate is the input schema, not a handler-side re-check', () => {
+    // The register input's `id` is zod's ScopeIdSchema (ADR-0011 constant 6, the
+    // same rule `assertScopeIdShape` encodes for non-zod callers) — the handler
+    // carries no second gate, so an id like this never reaches posture or the table.
+    expect(ScopeIdSchema.safeParse('Not_Valid!').success).toBe(false)
+    expect(ScopeIdSchema.safeParse('1').success).toBe(true)
+    expect(ScopeIdSchema.safeParse('a-valid-id').success).toBe(true)
   })
 
   it('refuses a corpus that is not its own clean git repository (posture, #19\'s own code)', async () => {

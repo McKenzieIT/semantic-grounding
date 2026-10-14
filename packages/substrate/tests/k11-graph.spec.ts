@@ -4,7 +4,7 @@
  * (metric-kind -> derived_from edges), asserting the graph carries both
  * relation types + reachable join paths. Runs after enrichment writes refs.
  *
- * Run: `npx vitest run packages/data/semantic-layer/tests/k11-graph.spec.ts`
+ * Run: `npx vitest run packages/substrate/tests/k11-graph.spec.ts`
  */
 import { test, expect } from 'vitest'
 import { join, dirname } from 'node:path'
