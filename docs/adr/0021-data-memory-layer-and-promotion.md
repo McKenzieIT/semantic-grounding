@@ -52,3 +52,12 @@ SG 今天只有一种存储单位 —— definition（`table` / `event` / `conce
   无 id —— R3/R4 的前置工作，归存储形状票。
 - 锚点目标被改名/删除时 memory 的去向未定，可能使 KG 管理缺口「删除/合并/改名」转热（map #125 fog）。
 - k11 存量污染（446 事件 + 107 表的带日期自由文本）是否迁移为 memory 未定（map #125 fog）。
+
+## Update 2026-10-14（ADR-0023 / #134）
+
+- **R6 核验依据修订**：复现守卫「按 `X-SG-Session` 核验」改为「按 memory YAML 的 `recorded.session`
+  核验」（服务端创建时写入、agent 不可自填；trailer 照写）。理由：substrate 读面零 git 依赖看不到 trailer，
+  squash 会合并多会话 trailer 使计数失真（ADR-0023 R5）。被 supersede 为 `wrong` 的 memory 不计入 ③。
+- Consequences 中三项「归存储形状票」已由 ADR-0023 裁定：三休眠槽**退役**（R8）；锚点 id 统一为图节点
+  `<kind>:<名>` + 列片段 + 边 `<起点> -<类型>-> <终点>`（R4）；晋升回指以服务端追加的 `promoted` 记在
+  memory 侧（R6，事实层仍零反向链接）。

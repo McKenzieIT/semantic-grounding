@@ -206,6 +206,22 @@ definition once a human states it), **incident** (a time-bounded event with a va
 window; never promoted, hidden once expired). Avoid *note*, *lesson* and *observation*
 as synonyms for memory — the last is one of its types.
 
+A memory is never edited after it is written. It is replaced by a newer memory that
+**supersedes** it, for one of two reasons that readers must keep apart: **outdated** (it
+held, until the newer one took over — "大R ≥ 328" for last quarter is still the right
+口径 for last quarter) or **wrong** (it never held, so it is never shown again and never
+counts as evidence).
+
+### anchor (锚点)
+
+The identity a [memory](#memory-数据-memory) is pinned to: a [definition](#definition),
+one column or parameter of a definition, or a [relation](#relation) between two of them.
+An anchor names its target by kind and name, never by where the target is stored or
+how its fields are laid out, so the fact layer can change its structure without
+stranding its memories. A column anchor still belongs to its definition: if the column
+disappears, the memory falls back to the definition rather than being lost. Avoid
+*link* and *tag* (both suggest the fact side points back, which it never does).
+
 ### promotion (晋升)
 
 Writing a conclusion that has outgrown its context out of the [memory](#memory-数据-memory)
