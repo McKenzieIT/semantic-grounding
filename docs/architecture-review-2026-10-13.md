@@ -21,7 +21,7 @@
 |---|---|---|---|
 | C1 | item 写 overlay 仪式 6 份手抄 → item-write 内部 module | substrate | **Strong（首推）· 已落地**（[map #95](https://github.com/McKenzieIT/semantic-grounding/issues/95) 五票 2026-10-13 同日全解关图：02 `8dad11b` `item-write.ts` 651 行新家〔gate/veto/verdict/字段配对各一个家〕，index.ts 2021→1517） |
 | C2 | enrichment work fetch/apply 共享前提 4 份镜像 → resolve 步骤 | substrate | **Strong · 已落地**（map #95 03 `713ee16` `resolveEnrichmentWork` 单点，「fetch 报 stale ⇒ apply 必然 stale」从注释升机制 + 表驱动钉两端） |
-| C3 | 工具家族描述符：names ↔ registrars 单一来源 | mcp | Strong · **复核 2026-10-14 仍成立且收益放大**（漂移证据四类全存续；#112 落地将加第 28 工具 = 26→27（#72）后又一次扩面，散文对账负担续涨） |
+| C3 | 工具家族描述符：names ↔ registrars 单一来源 | mcp | **Strong · 已落地**（[map #113](https://github.com/McKenzieIT/semantic-grounding/issues/113) 三票 2026-10-14 全解关图：#114 裁决四问全签 → 02 `81b05ec` 九家族两键卡片 {names,register} 住家族文件〔`ToolFamily` 住 tools/shared.ts〕，index.ts 双层列表派生四常量，server.ts 改 import 派生再导出 + S3 散文六处一票修、`toHaveLength(29)` 减速带显式保留） |
 | C4 | 写响应信封 4 种拼法 9+ 组装点 → audited.ts 深模块 | mcp | **Strong · 已落地**（[map #106](https://github.com/McKenzieIT/semantic-grounding/issues/106) 四票 2026-10-14 全解关图：`writeReceipt` 信封 11 调用点收编 + 写后 version 回执 + add_* 批量〔#108 `c0c14da` / #109 `ede7853`〕，rg 单点验证与公开面白名单对账落 #110 resolution） |
 | C5 | 27 个 try/catch + 两份前缀 grep → 收进 epoch Proxy chokepoint | mcp | Strong · **复核 2026-10-14 仍成立**（27 个原数存续；`toToolErrorResult` 现 errors.ts:571） |
 | C6 | guidance/playbook 阶段编排分叉 → 一个评估函数 | mcp | Worth exploring · **复核 2026-10-14 仍成立**（四分叉全存续，未动） |
@@ -103,11 +103,13 @@ flowchart TD
 
 **ADR**：无冲突——ADR-0006 裁决 4 的四 verdict、ADR-0008 的索引/题面分体全保（fetch/apply 仍是两个动词）。
 
-## C3 · 工具家族描述符：names ↔ registrars 单一来源（Strong）
+## C3 · 工具家族描述符：names ↔ registrars 单一来源（Strong）——已落地（map #113，2026-10-14 `81b05ec`）
+
+> **落地核验（2026-10-14，#116 终验）**：九家族两键卡片 `X_TOOL_FAMILY: ToolFamily`（names 数组与 register 函数绑在一起）各住其家族文件（`ToolFamily` 类型住 `tools/shared.ts`，type-only 引 `ToolRegistrar` 无运行时环）；`tools/index.ts` 以 `INTENT_TOOL_FAMILIES`（read/write/items/suggestions）+ `TOOL_FAMILIES`（+enrichment/scope/playbook/import/scratch）双层列表 flatMap/map 派生 `TOOL_NAMES`·`INTENT_TOOL_NAMES`·`INTENT_TOOL_REGISTRARS`·`TOOL_REGISTRARS` 四常量；`server.ts` 改 import 派生 `TOOL_REGISTRARS` 再导出，手编 5 元数组与「mirror 自认」注释整块重写——names ↔ registrars 漂移从「catalog spec 抓到」变「结构上不可能」。banner 工具计数参数化（`startupBanner(result, toolCount)`，main 默认路径传 `TOOL_NAMES.length`，自定义面经 `ServeOptions.toolCount` 自报）。S3 散文六处照 #114 Q4 裁决一票修（README 契约行硬 29 +「权威 = banner `tools:` 行」指向句、:98 删「registrar 函数数」概念、harness 三处派生表述、e2e 步名「≡ TOOL_NAMES」、server-startup:358 已在 29 零改动存档）；`toHaveLength(29)` 减速带显式保留（显式字面量，81b05ec 未触碰）；`TOOL_NAMES` 类型放宽 `readonly string[]` 为唯一公共面涟漪。门禁：typecheck 双包 0 / substrate 450 / mcp 433+1skip / e2e 22（banner 实报 tools: 29）。
 
 > **复核（2026-10-14，`main 5e6ce7f`）**：漂移证据全部存续（行号微移）——`server-startup.spec.ts:358`「twenty-six」· `intent-tools-harness.ts:12/55/86`「twenty-four」×3 · `check-e2e-loop.ts:246` 步名家族枚举仍漏 #72 的 deregister（加总 26）· `intent-tools-catalog.spec.ts:22` 注释自称 `toHaveLength(26)` 与 `:72` 断言 27 自矛盾 · `main.ts:159-161` banner 仍打 `registrars.length`（「8 registrar(s)」）· README.md:100 仍「应报 26」。`server.ts:156` 与 `tools/index.ts` 镜像结构、自认 mirror 的注释原样。**收益放大**：#105 已裁决第 28 工具 `list_definitions`（落地票 [#112](https://github.com/McKenzieIT/semantic-grounding/issues/112) 开放）——26→27（#72）后又一次扩面，五处散文每加一工具都要再碰一遍；若与 #112 同批落 C3，扩面编辑半径一处化，catalog 减速带同票改 28。
 
-**文件**：`server.ts:156`（`TOOL_REGISTRARS` 手编 5 元数组）· `tools/index.ts:32-72`（`TOOL_NAMES` / `INTENT_TOOL_NAMES` / `INTENT_TOOL_REGISTRARS` 双层手编，:59-65 注释自认 mirror）。
+**文件**：`server.ts:156`（`TOOL_REGISTRARS` 手编 5 元数组）· `tools/index.ts:32-72`（`TOOL_NAMES` / `INTENT_TOOL_NAMES` / `INTENT_TOOL_REGISTRARS` 双层手编，:59-65 注释自认 mirror）。〔以上为巡检时点行号，落地后以 `X_TOOL_FAMILY` 描述符卡片与 `TOOL_FAMILIES` 派生常量为准。〕
 **漂移实证**：`server-startup.spec.ts:358`「twenty-six」（陈旧）· `intent-tools-harness.ts:12/55/86`「twenty-four」×3（#68 加到 27 后没更新）· `check-e2e-loop.ts:246` 步名手列家族=26（漏 #72 的 deregister）· `main.ts:159-161` banner 打 `registrars.length`=8 冒充工具数 27（文档 :148-152 自称报 tool count）。
 
 **Before** —— `TOOL_NAMES`（tools/index.ts 手编 ×2 层）与 `TOOL_REGISTRARS`（server.ts:156 手编）互为镜像，靠 catalog spec 的 tools/list ≡ TOOL_NAMES 对账兜底；工具总数活在 5+ 处散文里，3 处已烂。单一来源只做了一半：names 有单一来源，**names ↔ registrars 的对应关系**没有。
