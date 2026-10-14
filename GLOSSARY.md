@@ -178,6 +178,48 @@ time-independent policy. No compaction or expiry — every catalog surveyed keep
 vetoes for good, and this corpus's measured ceiling (~2.7 vetoes per definition) is
 far below any pressure that would justify one.
 
+### memory (数据 memory)
+
+An experiential record about one or more definitions that holds only within the context
+that produced it: it carries a point in time, a partition or session context, or it is
+not yet verified ("877 rows vs 873 distinct `order_id` on `ds=20260729`", "subject
+inferred from the table name", "upstream did not produce on 20261003"). The dividing
+line against a fact is a single test: **does it still hold outside the moment and
+session that produced it, and has it been verified?** Both yes → it belongs in a
+[definition](#definition); either no → it is a memory.
+
+A memory is **not a definition and never part of one**: it lives in its own store,
+anchors by identity to one or more definitions or [relations](#relation) (at least one),
+and writing it changes no definition. The reference runs one way — the fact layer
+holds no link back to its memories. So the model is two stores, not three: the **fact
+layer**, seen through two views — the semantic layer (warehouse objects: tables,
+events, metrics) and the knowledge graph (business concepts and their edges) — and the
+**memory layer**. "Three layers" remains fine as a way to talk to users.
+
+Five types, each with a fixed way out: **observation** (a dated measurement or
+phenomenon; its conclusion may be [promoted](#promotion-晋升) once replicated, the
+number never is), **caveat** (the range a fact was *not* verified over; never promoted,
+superseded when the gap is re-verified, always shown alongside the fact it qualifies),
+**inference** (an unverified judgement plus its basis; promoted once verified),
+**practice** (an adopted 口径 or workaround; promoted as a verified query or metric
+definition once a human states it), **incident** (a time-bounded event with a validity
+window; never promoted, hidden once expired). Avoid *note*, *lesson* and *observation*
+as synonyms for memory — the last is one of its types.
+
+### promotion (晋升)
+
+Writing a conclusion that has outgrown its context out of the [memory](#memory-数据-memory)
+layer and into the fact layer. The agent promotes on its own — there is no approver —
+but must declare the evidence, and only three kinds count: a **deterministic source**
+(DDL, column comment, documentation, code), a **human stating it** in the conversation,
+or **independent replication** — at least two memories from different sessions on
+different days reaching the same conclusion, which the server checks rather than takes
+on trust. A single observation, the agent's own inference, or a batch run vouching for
+itself is not evidence. The first two kinds may promote directly with no memory in
+between; replication by definition cites the memories it rests on. Promotion is an
+ordinary audited write, and where it came from is answered by its commit, never by the
+fact itself. Filling in a "confirmed by" field is not promotion.
+
 ### write receipt (写回执)
 
 What a commit-class tool answers with, beyond the verdict: the envelope
