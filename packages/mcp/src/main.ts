@@ -54,6 +54,7 @@ import { requireAgentId } from './git/identity.ts'
 import { BindingStore, type ScopeBinding } from './binding.ts'
 import { ScopeRegistryFile } from './scope-registry.ts'
 import { serve, SERVER_INFO, TOOL_REGISTRARS, type ServeOptions, type ServerDeps } from './server.ts'
+import { TOOL_NAMES } from './tools/index.ts'
 
 /** Process exit codes; see this module's header for why these values. */
 export const EXIT = {
@@ -151,14 +152,14 @@ export async function startup(config: ServerConfig, log: Log = stderrLog): Promi
  * instead of in `git log` a week later. It also states the tool count, so a client showing
  * zero tools is confirmed rather than suspected.
  * @param result - what {@link startup} produced.
- * @param registrars - the registrars about to be installed.
+ * @param toolCount - how many tools the surface about to be served installs.
  * @returns the banner lines.
  */
-export function startupBanner(result: StartupResult, registrars: readonly unknown[]): string[] {
+export function startupBanner(result: StartupResult, toolCount: number): string[] {
   const { deps, boot } = result
-  const tools = registrars.length === 0
+  const tools = toolCount === 0
     ? '0 (skeleton)'
-    : `${registrars.length} registrar(s)`
+    : `${toolCount}`
   return [
     `[semantic-grounding] ${SERVER_INFO.name} ${SERVER_INFO.version} serving MCP over stdio`,
     `[semantic-grounding]   registry:  ${deps.config.registryPath}`,
@@ -223,7 +224,10 @@ export async function runMain(
   }
 
   const registrars = opts.registrars ?? TOOL_REGISTRARS
-  for (const line of startupBanner(result, registrars)) log(line)
+  // The banner reports tools, not registrar functions (#115): the default face
+  // counts `TOOL_NAMES`; a custom face states its own count via `opts.toolCount`,
+  // because a registrar list does not reveal how many tools it installs.
+  for (const line of startupBanner(result, opts.toolCount ?? TOOL_NAMES.length)) log(line)
 
   serve(result.deps, opts)
 

@@ -79,7 +79,7 @@ import {
   type GuidancePhase,
   type GuidanceThresholds,
 } from './guidance.ts'
-import { ScopeIdSchema } from './shared.ts'
+import { ScopeIdSchema, type ToolFamily } from './shared.ts'
 
 /** The playbook tool's single name. */
 export const PLAYBOOK_TOOL_NAMES = ['get_initialization_playbook'] as const
@@ -352,3 +352,7 @@ function registerGetInitializationPlaybook(server: McpServer, deps: ServerDeps):
 export const registerPlaybookTools: ToolRegistrar = (server, deps) => {
   registerGetInitializationPlaybook(server, deps)
 }
+
+/** The playbook family's descriptor card (#115): its names and registrar bound in one
+ * place, for `tools/index.ts` to compose — never a second copy of either key. */
+export const PLAYBOOK_TOOL_FAMILY: ToolFamily = { names: PLAYBOOK_TOOL_NAMES, register: registerPlaybookTools }

@@ -26,6 +26,7 @@ import {
   UPDATE_COMMON_FIELDS,
   AliasKindSchema,
   RelationSubjectKindSchema,
+  type ToolFamily,
 } from './shared.ts'
 
 /** The four item-level tool names. */
@@ -222,3 +223,7 @@ export const registerItemTools: ToolRegistrar = (server, deps) => {
   registerAddRelation(server, deps)
   registerRemoveRelation(server, deps)
 }
+
+/** The item-level family's descriptor card (#115): its names and registrar bound in
+ * one place, for `tools/index.ts` to compose — never a second copy of either key. */
+export const ITEM_TOOL_FAMILY: ToolFamily = { names: ITEM_TOOL_NAMES, register: registerItemTools }

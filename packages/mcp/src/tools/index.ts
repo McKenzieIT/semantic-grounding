@@ -1,77 +1,87 @@
 /**
- * ADR-0005's intent tools — the `#20` half of the `ToolRegistrar` seam
- * `server.ts` declares (`#21`'s three enrichment tools are the other half).
+ * The tool catalog's single composition point (#115 / C3): every family file owns a
+ * two-key descriptor card (`X_TOOL_FAMILY`, `ToolFamily` in `./shared.ts` — its own
+ * `X_TOOL_NAMES` constant bound to its own `registerXTools` registrar, both still
+ * defined and exported there), and this module is the only place those cards become
+ * the flat lists the rest of the server consumes. `INTENT_TOOL_FAMILIES` is
+ * ADR-0005's four intent families (#20's half of the `ToolRegistrar` seam
+ * `server.ts` declares); `TOOL_FAMILIES` adds the five that followed. The four
+ * constants below are all `flatMap`/`map` over those two lists — no tool name and no
+ * registrar is hand-listed here, so adding a family means exporting its card and
+ * taking one slot, and every consumer (`server.ts`'s served surface, the startup
+ * banner's tool count, the catalog spec's `tools/list` reconciliation, the e2e gate's
+ * inventory check) follows automatically — the hand-glued copies that used to live in
+ * `server.ts` and `check-e2e-loop.ts` each drifted the first time a tool was added.
  *
- * `INTENT_TOOL_REGISTRARS` is what `server.ts` appends to `TOOL_REGISTRARS`; each
- * registrar it combines is itself pure registration (no corpus read, no lock, no I/O —
- * every one of the four sub-registrars this re-exports already satisfies that, see
- * their own module docs).
+ * Each registrar this composes is pure registration (no corpus read, no lock, no I/O
+ * — every family file's own module doc states the same contract), which is why
+ * composing them costs nothing beyond the import.
  *
  * @module tools
  */
 import type { ToolRegistrar } from '../server.ts'
-import { IMPORT_TOOL_NAMES, registerImportTools } from './import.ts'
-import { ENRICHMENT_TOOL_NAMES } from './enrichment.ts'
-import { ITEM_TOOL_NAMES, registerItemTools } from './items.ts'
-import { PLAYBOOK_TOOL_NAMES } from './playbook.ts'
-import { READ_TOOL_NAMES, registerReadTools } from './read.ts'
-import { SCOPE_TOOL_NAMES } from './scope.ts'
-import { SCRATCH_TOOL_NAMES } from './scratch.ts'
-import { SUGGESTION_TOOL_NAMES, registerSuggestionTools } from './suggestions.ts'
-import { WRITE_TOOL_NAMES, registerWriteTools } from './write.ts'
+import { ENRICHMENT_TOOL_FAMILY } from './enrichment.ts'
+import { IMPORT_TOOL_FAMILY } from './import.ts'
+import { ITEM_TOOL_FAMILY } from './items.ts'
+import { PLAYBOOK_TOOL_FAMILY } from './playbook.ts'
+import { READ_TOOL_FAMILY } from './read.ts'
+import { SCOPE_TOOL_FAMILY } from './scope.ts'
+import { SCRATCH_TOOL_FAMILY } from './scratch.ts'
+import { SUGGESTION_TOOL_FAMILY } from './suggestions.ts'
+import { WRITE_TOOL_FAMILY } from './write.ts'
 
 /**
- * Every intent tool name this ticket registers, grouped the way ADR-0005 lists them
- * (read six — ruling 6's five plus #105's `list_definitions` — then the two
- * definition-level writes, then the four item-level writes, then the Tier-1
- * quartet) — ten write tools plus six read tools, sixteen total.
- *
- * Derived from each tool file's own name constant rather than hand-listed again here,
- * so a future tool addition changes one file and this list follows automatically —
- * the same reasoning `errors.ts`'s code maps use for "allocated so far" rather than a
- * hand-synced duplicate.
+ * ADR-0005's four intent families (#20): the read family (ruling 6's five plus
+ * #105's `list_definitions`), the two definition-level writes, the four item-level
+ * writes, and the Tier-1 suggestion quartet.
  */
-export const INTENT_TOOL_NAMES = [
-  ...READ_TOOL_NAMES,
-  ...WRITE_TOOL_NAMES,
-  ...ITEM_TOOL_NAMES,
-  ...SUGGESTION_TOOL_NAMES,
+export const INTENT_TOOL_FAMILIES = [
+  READ_TOOL_FAMILY,
+  WRITE_TOOL_FAMILY,
+  ITEM_TOOL_FAMILY,
+  SUGGESTION_TOOL_FAMILY,
 ] as const
 
-/** The registrars `server.ts`'s `TOOL_REGISTRARS` appends for this ticket. */
-export const INTENT_TOOL_REGISTRARS: readonly ToolRegistrar[] = [
-  registerReadTools,
-  registerWriteTools,
-  registerItemTools,
-  registerSuggestionTools,
-]
+/**
+ * Every family the default surface serves: the four intent families plus the five
+ * that followed — ADR-0006/0008's enrichment tools (#21), ADR-0011's scope
+ * management plus #72's deregister (#51), #63's initialization playbook, ADR-0013's
+ * bulk import (#68), and ADR-0020's scratch home (#101). #51, #63, #68 and #101 each
+ * merged a family in under this same rule: the composition grew by one import and
+ * one slot, no hand-list anywhere.
+ */
+export const TOOL_FAMILIES = [
+  ...INTENT_TOOL_FAMILIES,
+  ENRICHMENT_TOOL_FAMILY,
+  SCOPE_TOOL_FAMILY,
+  PLAYBOOK_TOOL_FAMILY,
+  IMPORT_TOOL_FAMILY,
+  SCRATCH_TOOL_FAMILY,
+] as const
 
 /**
- * Every tool name the server registers — ADR-0005's sixteen intent tools (ruling
- * 6's five reads + #105's sixth) plus ADR-0006/0008's four enrichment tools plus
- * ADR-0011's six scope tools plus #55/#63's playbook tool plus ADR-0013's
- * bulk-import tool plus ADR-0020's scratch-home tool. This is the single
- * source for anything that needs "the whole surface" as a list (the catalog
- * spec's `tools/list` reconciliation, the e2e gate's inventory check): compose
- * from here, never hand-glue the families again — the hand-glued copy in
- * `check-e2e-loop.ts` drifted to a "18 tools" comment the first time a tool
- * was added. #51 merged the scope family in under this same rule: the
- * composition grew by one import, no hand-list anywhere. #63 added the
- * playbook family the same way; #68 the import family; #101 the scratch family.
- *
- * Mirrors `server.ts`'s `TOOL_REGISTRARS` (`[...INTENT_TOOL_REGISTRARS,
- * registerEnrichmentTools, registerScopeTools, registerPlaybookTools,
- * registerImportTools, registerScratchTools]`) family by family. The catalog
- * spec asserts `tools/list`
+ * Every intent tool name, derived — the families' own name constants flat-mapped in
+ * ADR-0005's listing order (reads, definition-level writes, item-level writes, the
+ * Tier-1 quartet). A future tool addition changes its family file and this follows
+ * automatically — the same reasoning `errors.ts`'s code maps use for "allocated so
+ * far" rather than a hand-synced duplicate.
+ */
+export const INTENT_TOOL_NAMES: readonly string[] = INTENT_TOOL_FAMILIES.flatMap(family => family.names)
+
+/** The intent families' registrars, derived. */
+export const INTENT_TOOL_REGISTRARS: readonly ToolRegistrar[] = INTENT_TOOL_FAMILIES.map(family => family.register)
+
+/**
+ * Every tool name the default surface serves, derived from `TOOL_FAMILIES` — the
+ * single list for anything that needs "the whole surface" (the catalog spec's
+ * `tools/list` reconciliation, the e2e gate's inventory check, the startup banner's
+ * tool count). The registrar side of the same composition is `TOOL_REGISTRARS`
+ * below, which `server.ts` imports and serves; the catalog spec asserts `tools/list`
  * (over the default registrars) equals this list, so a name constant and a
  * registration that disagree fail a test rather than shipping two different
  * surfaces to production and tests respectively.
  */
-export const TOOL_NAMES = [
-  ...INTENT_TOOL_NAMES,
-  ...ENRICHMENT_TOOL_NAMES,
-  ...SCOPE_TOOL_NAMES,
-  ...PLAYBOOK_TOOL_NAMES,
-  ...IMPORT_TOOL_NAMES,
-  ...SCRATCH_TOOL_NAMES,
-] as const
+export const TOOL_NAMES: readonly string[] = TOOL_FAMILIES.flatMap(family => family.names)
+
+/** Every registrar the default surface runs, in family order — the one list `server.ts` imports. */
+export const TOOL_REGISTRARS: readonly ToolRegistrar[] = TOOL_FAMILIES.map(family => family.register)

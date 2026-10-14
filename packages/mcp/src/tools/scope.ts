@@ -52,7 +52,7 @@ import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { ensureStartupPosture } from '../git/posture.ts'
 import { toolSuccess } from './audited.ts'
 import { layerCounts } from './guidance.ts'
-import { ScopeIdSchema } from './shared.ts'
+import { ScopeIdSchema, type ToolFamily } from './shared.ts'
 import { assertScopeIdShape, scopeEntryReachable } from '../scope-registry.ts'
 
 /** The scope-management tool names, in ADR-0011's listing order plus `deregister_scope` beside its verb pair (#72). */
@@ -337,3 +337,7 @@ export const registerScopeTools: ToolRegistrar = (server, deps) => {
   registerSwitchScope(server, deps)
   registerGetScope(server, deps)
 }
+
+/** The scope-management family's descriptor card (#115): its names and registrar bound
+ * in one place, for `tools/index.ts` to compose — never a second copy of either key. */
+export const SCOPE_TOOL_FAMILY: ToolFamily = { names: SCOPE_TOOL_NAMES, register: registerScopeTools }

@@ -85,7 +85,7 @@ import { z } from 'zod'
 import type { CallToolResult } from '@modelcontextprotocol/server'
 import { assertKnownFilterNames, UnknownFilterNamesError } from '@semantic-grounding/substrate'
 import { toToolErrorResult, UnknownFilterNameError } from '../errors.ts'
-import { ScopeIdSchema } from './shared.ts'
+import { ScopeIdSchema, type ToolFamily } from './shared.ts'
 import type { ToolRegistrar } from '../server.ts'
 import { assertScopeMatch, auditedWrite, scopeStamp, toolSuccess, writeReceipt } from './audited.ts'
 
@@ -354,3 +354,7 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
     },
   )
 }
+
+/** The enrichment family's descriptor card (#115): its names and registrar bound in
+ * one place, for `tools/index.ts` to compose — never a second copy of either key. */
+export const ENRICHMENT_TOOL_FAMILY: ToolFamily = { names: ENRICHMENT_TOOL_NAMES, register: registerEnrichmentTools }

@@ -8,8 +8,8 @@
  * a real `~/.semantic-grounding/scopes.yaml` would grow state on every CI machine that
  * ever ran it.
  *
- * By default the server mirrors production exactly — {@link TOOL_REGISTRARS}, all
- * twenty-four tools — so a new tool is testable here the moment it is registered, with
+ * By default the server mirrors production exactly — {@link TOOL_REGISTRARS}, every
+ * default-registrar tool — so a new tool is testable here the moment it is registered, with
  * no second harness to build (the gap #21 had to fill privately). Pass `registrars` to
  * narrow deliberately.
  *
@@ -53,7 +53,7 @@ export interface IntentToolHarnessOptions {
   readonly fixtureOpts?: FixtureCorpusOptions
   /**
    * Tool registrars to install (default `TOOL_REGISTRARS` — the production surface,
-   * all twenty-four tools). The pre-#57 default was `INTENT_TOOL_REGISTRARS` (fifteen),
+   * all default-registrar tools). The pre-#57 default was `INTENT_TOOL_REGISTRARS` (fifteen),
    * which left the enrichment family untestable here and spawned a private second
    * harness in `enrichment-tools.spec.ts`.
    */
@@ -92,7 +92,7 @@ export interface IntentToolHarness {
 
 /**
  * Build one end-to-end harness: fixture corpus → registered + bound as the active scope
- * → server (production's default registrars, all twenty-four tools, unless narrowed)
+ * → server (production's default registrars, all default-registrar tools, unless narrowed)
  * → connected in-process client.
  * @param opts - see {@link IntentToolHarnessOptions}.
  * @returns the harness.

@@ -23,7 +23,7 @@ import { z } from 'zod'
 import { SuggestionNotFoundError, toToolErrorResult } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { scopeStamp } from './audited.ts'
-import { pendingQueueRoot } from './shared.ts'
+import { pendingQueueRoot, type ToolFamily } from './shared.ts'
 
 /** The four Tier-1 tool names. */
 export const SUGGESTION_TOOL_NAMES = ['submit_suggestion', 'list_suggestions', 'get_suggestion', 'discard_suggestion'] as const
@@ -155,3 +155,7 @@ export const registerSuggestionTools: ToolRegistrar = (server, deps) => {
   registerGetSuggestion(server, deps)
   registerDiscardSuggestion(server, deps)
 }
+
+/** The Tier-1 suggestion family's descriptor card (#115): its names and registrar
+ * bound in one place, for `tools/index.ts` to compose — never a second copy of either key. */
+export const SUGGESTION_TOOL_FAMILY: ToolFamily = { names: SUGGESTION_TOOL_NAMES, register: registerSuggestionTools }

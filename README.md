@@ -90,15 +90,16 @@ node <仓库绝对路径>/packages/mcp/src/bin.ts --agent-id check
 [semantic-grounding]   registry:  C:\Users\you\.semantic-grounding\scopes.yaml
 [semantic-grounding]   scope:     (none — definition tools answer no_active_scope until switch_scope)
 [semantic-grounding]   agent:     check
-[semantic-grounding]   tools:     8 registrar(s)
+[semantic-grounding]   tools:     29
 ```
 
 - `registry:` 行核对实际解析的注册表路径（`--registry`/`SG_REGISTRY` 拼错在这里现形）；
 - `scope:` 行显示启动绑定的 scope 或显式的「无」；
-- `tools:` 行是 **registrar 函数数（8）**，不是工具数——工具总数的对账看下一条。
+- `tools:` 行是**工具总数**（默认面 29，权威显示即此行）。
 
-连上客户端后调 `tools/list`，应报 **26** 个工具（catalog 单测与 e2e 两道门对账
-`tools/list ≡ TOOL_NAMES`，`packages/mcp/src/tools/index.ts`）。引导用的
+连上客户端后调 `tools/list`，应报 **29** 个工具（catalog 单测与 e2e 两道门对账
+`tools/list ≡ TOOL_NAMES`，`packages/mcp/src/tools/index.ts`；工具总数的权威显示是
+上面 banner 的 `tools:` 行，两边对不上即是漂移）。引导用的
 `create_definition` / `update_definition` / `register_scope` / `get_scope_scaffold` 都
 应出现在列表里。**自检只想看 banner 时，建议临时 `SG_REGISTRY` 指向一个临时文件**，
 避免在真注册表里留下测试痕迹。

@@ -39,6 +39,7 @@ import { toToolErrorResult } from '../errors.ts'
 import type { GitTier2Recorder } from '../git/recorder.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { scopeStamp, toolSuccess } from './audited.ts'
+import type { ToolFamily } from './shared.ts'
 
 /** The scratch-home tool names. */
 export const SCRATCH_TOOL_NAMES = ['acquire_scratch_dir'] as const
@@ -171,3 +172,7 @@ function registerAcquireScratchDir(server: McpServer, deps: ServerDeps): void {
 export const registerScratchTools: ToolRegistrar = (server, deps) => {
   registerAcquireScratchDir(server, deps)
 }
+
+/** The scratch-home family's descriptor card (#115): its names and registrar bound in
+ * one place, for `tools/index.ts` to compose — never a second copy of either key. */
+export const SCRATCH_TOOL_FAMILY: ToolFamily = { names: SCRATCH_TOOL_NAMES, register: registerScratchTools }

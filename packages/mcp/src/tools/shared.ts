@@ -11,7 +11,10 @@
  * parallel copy that had already forked on hand-renamed event files.
  *
  * Nothing here registers a tool — see `read.ts` / `write.ts` / `items.ts` /
- * `suggestions.ts` for the registrars that import from this module.
+ * `suggestions.ts` for the registrars that import from this module. The one thing
+ * added since (#115 / C3) is type-only: the `ToolFamily` descriptor-card interface
+ * every family file's `X_TOOL_FAMILY` binds through, so each family keeps owning its
+ * names and its registrar while `index.ts` composes the cards.
  *
  * @module tools/shared
  */
@@ -21,6 +24,33 @@ import { ConceptDefinitionSchema, EventDefinitionSchema, TableDefinitionSchema }
 import { z } from 'zod'
 import { DefinitionNotFoundError, DefinitionValidationError, UnsupportedUpdateFieldError } from '../errors.ts'
 import type { GitTier2Recorder } from '../git/recorder.ts'
+import type { ToolRegistrar } from '../server.ts'
+
+// ── Tool family descriptor (#115 / C3) ────────────────────────────────────────────
+
+/**
+ * One tool family's descriptor card: the family's own name constant bound to its own
+ * registrar, both still defined and exported in the family's file — the card is pure
+ * binding, a second home for neither key. `tools/index.ts` composes these cards into
+ * every flat list the server consumes (`TOOL_NAMES` / `TOOL_REGISTRARS` and the intent
+ * halves), so adding a family means exporting a card and taking one slot in one list,
+ * never re-hand-gluing names against registrars somewhere else — the drift
+ * `server.ts`'s former hand-written registrar mirror and the e2e gate's former
+ * hand-listed step name both demonstrated before this type existed.
+ *
+ * The type lives here rather than `tools/index.ts` because every family file already
+ * leans on this module, while `index.ts` imports the cards themselves — a type in
+ * `index.ts` would force family → index → family import cycles. The `register` key's
+ * type is `server.ts`'s {@link ToolRegistrar}, imported type-only above (erased at
+ * compile time), matching the value-level direction that already exists:
+ * `server.ts` → `tools/index.ts` → family files, never back at runtime.
+ */
+export interface ToolFamily {
+  /** The family's tool-name constant (`X_TOOL_NAMES`) — the wire names `tools/list` reports. */
+  readonly names: readonly string[]
+  /** The family's registrar (`registerXTools`) — pure registration, per `ToolRegistrar`'s own contract. */
+  readonly register: ToolRegistrar
+}
 
 // ── Common Tier-2 parameter block (ADR-0005 ruling 7) ───────────────────────────────
 

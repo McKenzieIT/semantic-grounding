@@ -16,7 +16,7 @@ import { z } from 'zod'
 import { DefinitionNotFoundError, toToolErrorResult } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { scopeStamp } from './audited.ts'
-import { ReadableKindSchema } from './shared.ts'
+import { ReadableKindSchema, type ToolFamily } from './shared.ts'
 
 /** The six read tool names — ADR-0005 ruling 6's five in listing order, then #105's `list_definitions` (read face five→six, 2026-10-14 Update). */
 export const READ_TOOL_NAMES = [
@@ -466,3 +466,7 @@ export const registerReadTools: ToolRegistrar = (server, deps) => {
   registerResolveAlias(server, deps)
   registerListDefinitions(server, deps)
 }
+
+/** The read family's descriptor card (#115): its names and registrar bound in one
+ * place, for `tools/index.ts` to compose — never a second copy of either key. */
+export const READ_TOOL_FAMILY: ToolFamily = { names: READ_TOOL_NAMES, register: registerReadTools }

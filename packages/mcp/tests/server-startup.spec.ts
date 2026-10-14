@@ -536,7 +536,7 @@ describe('ToolRegistrar seam', () => {
     expect(r.code).toBe(EXIT.ok)
     const tools = (responses(r.stdout)[0]?.['result'] as { tools?: Array<{ name?: string }> } | undefined)?.tools
     expect(tools?.map(t => t.name)).toEqual(['seam_probe'])
-    expect(r.stderr).toContain('tools:     1 registrar(s)')
+    expect(r.stderr).toContain('tools:     1')
   })
 
   it('still refuses startup when a registrar is installed', () => {

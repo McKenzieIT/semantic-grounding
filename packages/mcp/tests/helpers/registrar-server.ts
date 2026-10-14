@@ -31,7 +31,8 @@ const outcome = await runMain(
   process.argv.slice(2),
   process.env,
   message => process.stderr.write(`${message}\n`),
-  { registrars: [echoRegistrar] },
+  // The custom face states its own banner count (#115): one registrar, one tool.
+  { registrars: [echoRegistrar], toolCount: 1 },
 )
 
 if (outcome.kind === 'exit') process.exit(outcome.code)

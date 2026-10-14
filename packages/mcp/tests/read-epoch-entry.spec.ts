@@ -2,8 +2,8 @@
  * ADR-0015's MCP-side entry proof (#77): a tool handler installed through the
  * normal `ToolRegistrar` seam runs inside one read epoch, because
  * `createServerFactory` hands every registrar an epoch-entering server whose
- * `registerTool` wraps the handler (server.ts's chokepoint — the 26 tool files
- * themselves are untouched).
+ * `registerTool` wraps the handler (server.ts's chokepoint — every tool file
+ * itself is untouched).
  *
  * Observable without any test-only counter (the `readYaml` probe lives in the
  * substrate's io.ts, unreachable from this package by design — ADR-0002's

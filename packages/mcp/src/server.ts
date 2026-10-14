@@ -2,10 +2,10 @@
  * The stdio server: how a `SemanticGroundingCore` and its git recorder become an MCP
  * server ([#22](https://github.com/McKenzieIT/semantic-grounding/issues/22)).
  *
- * This module itself registers **no tools** — #20 (ADR-0005's fifteen intent
- * tools, `./tools/index.ts`) and #21 (ADR-0006's three enrichment tools,
- * `./tools/enrichment.ts`) both append to {@link TOOL_REGISTRARS} below.
- * Before either landed, the server answered `tools/list` with an empty list —
+ * This module itself registers **no tools** — every family contributes its
+ * descriptor card (`X_TOOL_FAMILY`) to `./tools/index.ts`, whose derived
+ * {@link TOOL_REGISTRARS} this module imports and serves (#115).
+ * Before any family landed, the server answered `tools/list` with an empty list —
  * serving, with nothing to offer.
  *
  * Every shape here was settled by measuring SDK v2.3.1 rather than reading its docs, and
@@ -72,18 +72,13 @@ import { serveStdio, type ServeStdioOptions, type StdioServerHandle } from '@mod
 import type { ServerConfig } from './config.ts'
 import type { BindingStore } from './binding.ts'
 import type { ScopeRegistryFile } from './scope-registry.ts'
-// Value import (not `import type`): `TOOL_REGISTRARS` needs the real arrays /
-// functions at runtime. Every tool file's own import of `ServerDeps` /
-// `ToolRegistrar` back from this module is `import type`-only (erased at
-// compile time), so this does not create a runtime import cycle — only
-// `tools/index.ts` / `tools/enrichment.ts` → this module's *types*, never the
-// reverse at the value level.
-import { INTENT_TOOL_REGISTRARS } from './tools/index.ts'
-import { registerEnrichmentTools } from './tools/enrichment.ts'
-import { registerImportTools } from './tools/import.ts'
-import { registerPlaybookTools } from './tools/playbook.ts'
-import { registerScopeTools } from './tools/scope.ts'
-import { registerScratchTools } from './tools/scratch.ts'
+// Value import (not `import type`): the served registrars are a runtime value,
+// derived in `./tools/index.ts` from the family descriptor cards (#115). Every
+// tool file's own import of `ServerDeps` / `ToolRegistrar` back from this module
+// is `import type`-only (erased at compile time), so this does not create a
+// runtime import cycle — only `tools/index.ts` and the family files → this
+// module's *types*, never the reverse at the value level.
+import { TOOL_REGISTRARS } from './tools/index.ts'
 // ADR-0015's MCP-side entry: the epoch itself lives in the substrate
 // (`read-epoch.ts`, reached through the barrel's `SemanticGroundingCore`
 // static — the barrel's 36-name allow-list is untouched). Value import.
@@ -142,20 +137,16 @@ export interface ServerDeps {
 export type ToolRegistrar = (server: McpServer, deps: ServerDeps) => void
 
 /**
- * The registrars the executable installs, in order.
- *
- * #22 shipped this empty ("stdio transport 启动但零工具可用" was its acceptance
- * criterion). #20 appends ADR-0005's fifteen intent tools (`INTENT_TOOL_REGISTRARS`,
- * `./tools/index.ts`) and #21 appends ADR-0006's three enrichment tools
- * (`registerEnrichmentTools`, `./tools/enrichment.ts`); #51 appends ADR-0011's five
- * scope-management tools (`registerScopeTools`, `./tools/scope.ts`), #63 appends
- * the initialization playbook tool (`registerPlaybookTools`, `./tools/playbook.ts`),
- * and #68 appends ADR-0013's bulk-import tool (`registerImportTools`,
- * `./tools/import.ts`), and #101 appends ADR-0020's scratch-home tool
- * (`registerScratchTools`, `./tools/scratch.ts`)
- * — appending here was the whole integration step the seam was built for.
+ * The registrars the executable installs, in family order — a re-export of the
+ * list `./tools/index.ts` derives from `TOOL_FAMILIES`' descriptor cards (#115),
+ * not a second hand-written composition: there is no mirror of the family list in
+ * this module to drift. #22 shipped the seam empty ("stdio transport 启动但零工具
+ * 可用" was its acceptance criterion); every family since (#20's four intent
+ * families, #21's enrichment, #51's scope management, #63's playbook, #68's
+ * import, #101's scratch home) landed by exporting its card and taking a slot in
+ * `TOOL_FAMILIES`, never by editing this module.
  */
-export const TOOL_REGISTRARS: readonly ToolRegistrar[] = [...INTENT_TOOL_REGISTRARS, registerEnrichmentTools, registerScopeTools, registerPlaybookTools, registerImportTools, registerScratchTools]
+export { TOOL_REGISTRARS }
 
 /**
  * Wrap one function so it runs inside a read epoch (ADR-0015): every
@@ -174,8 +165,8 @@ function epochWrapped<A extends unknown[], R>(fn: (...args: A) => R): (...args: 
  * ADR-0015's handler chokepoint: the server every registrar receives, with
  * `registerTool` intercepted so **every installed tool handler** — read tools
  * and write tools alike — runs inside one read epoch per call. One place of
- * entry; the 26 `server.registerTool(...)` call sites across the tool files
- * stay untouched by design (the alternative, wrapping each handler at its
+ * entry; every `server.registerTool(...)` call site across the tool files
+ * stays untouched by design (the alternative, wrapping each handler at its
  * definition, would bet correctness on the next tool author remembering —
  * the bet ADR-0010 already recorded losing).
  *
@@ -247,7 +238,7 @@ export function createServerFactory(
     server.server.setRequestHandler('resources/list', () => ({ resources: [] }))
     server.server.setRequestHandler('resources/templates/list', () => ({ resourceTemplates: [] }))
     // ADR-0015: every registrar installs through the epoch-entering proxy, so
-    // all 26 tool handlers run one read epoch per call (see
+    // every registered tool handler runs one read epoch per call (see
     // `epochEnteringServer`). Registrars stay pure registration — the wrap is
     // applied to the handlers they install, never to registration itself.
     for (const register of registrars) register(epochEnteringServer(server), deps)
@@ -259,6 +250,14 @@ export function createServerFactory(
 export interface ServeOptions {
   /** Tool registrars to install (default {@link TOOL_REGISTRARS}). */
   readonly registrars?: readonly ToolRegistrar[]
+  /**
+   * The `tools:` count the startup banner should report when a custom
+   * {@link registrars} face is served (#115): the default face reports
+   * `TOOL_NAMES.length`, but a registrar list does not reveal how many tools it
+   * installs, so a face that swaps the registrars states its own count here.
+   * Read only by `runMain`'s banner — {@link serve} itself ignores it.
+   */
+  readonly toolCount?: number
   /** Sink for the SDK's out-of-band errors (default: a line on stderr). */
   readonly onerror?: (error: Error) => void
   /** Transport override, for tests that drive the server over a pair of streams. */

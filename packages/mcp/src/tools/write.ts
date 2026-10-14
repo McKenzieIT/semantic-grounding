@@ -36,6 +36,7 @@ import {
   UPDATE_COMMON_FIELDS,
   assertNoRedirectedFields,
   assertUpdateOk,
+  type ToolFamily,
 } from './shared.ts'
 
 /** The two definition-level write tool names. */
@@ -221,3 +222,7 @@ export const registerWriteTools: ToolRegistrar = (server, deps) => {
   registerCreateDefinition(server, deps)
   registerUpdateDefinition(server, deps)
 }
+
+/** The write family's descriptor card (#115): its names and registrar bound in one
+ * place, for `tools/index.ts` to compose — never a second copy of either key. */
+export const WRITE_TOOL_FAMILY: ToolFamily = { names: WRITE_TOOL_NAMES, register: registerWriteTools }

@@ -92,7 +92,7 @@ import type { ScopeBinding } from '../binding.ts'
 import { toToolErrorResult } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { assertScopeMatch, auditedWrite, scopeStamp, toolSuccess, writeReceipt } from './audited.ts'
-import { ConceptCreatePayloadSchema, ConfidenceSchema, CONCEPT_ITEM_VERB_KEYS, ScopeIdSchema, SummarySchema } from './shared.ts'
+import { ConceptCreatePayloadSchema, ConfidenceSchema, CONCEPT_ITEM_VERB_KEYS, ScopeIdSchema, SummarySchema, type ToolFamily } from './shared.ts'
 
 /** The bulk-import tool's single name (#54 R6 — intent-level, an `import_` verb joins the surface). */
 export const IMPORT_TOOL_NAMES = ['import_definitions'] as const
@@ -608,3 +608,7 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
 export const registerImportTools: ToolRegistrar = (server, deps) => {
   registerImportDefinitions(server, deps)
 }
+
+/** The import family's descriptor card (#115): its names and registrar bound in one
+ * place, for `tools/index.ts` to compose — never a second copy of either key. */
+export const IMPORT_TOOL_FAMILY: ToolFamily = { names: IMPORT_TOOL_NAMES, register: registerImportTools }
