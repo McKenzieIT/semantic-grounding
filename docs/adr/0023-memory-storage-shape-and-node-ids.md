@@ -58,6 +58,12 @@ ADR-0021 定了 memory 是独立存储、不是 definition、不进指纹、必�
   加宽 substrate 公共面；改插件内部的 id 铸造规则不新增导出、不服务外部宿主，与之无关。
 - **「统一 id 需要语料迁移」**：实测零 YAML 迁移。
 
+## Update 2026-10-15（ADR-0025 / #138）
+
+- **R8「确认 → 已验证查询自带 `verified_by/at`」作废**：ADR-0025 R4 裁定 `query` YAML 不设 `verified_by/at`——
+  是 `query` 节点本身即「已验证」的声明，谁、何时、凭什么由晋升 commit（作者 + `X-SG-Evidence` / `X-SG-Session` /
+  `X-SG-Memory`）回答。确认的归宿收窄为 trailer `X-SG-Evidence`。
+
 ## Update 2026-10-15（ADR-0026 / #153）
 
 - Consequences 中「锚点目标被改名/删除（节点或边）时 memory 的最低行为未定」已由 ADR-0026 裁定：memory 不迁移、
