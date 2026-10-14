@@ -3,6 +3,7 @@
 - **票**：[#128](https://github.com/McKenzieIT/semantic-grounding/issues/128)（map [#125](https://github.com/McKenzieIT/semantic-grounding/issues/125) 子票，task·HITL）
 - **日期**：2026-10-14
 - **用途**：① [#130](https://github.com/McKenzieIT/semantic-grounding/issues/130) 三层领域模型与晋升规则的试判素材；② [#131](https://github.com/McKenzieIT/semantic-grounding/issues/131) 工作流定位的场景依据；③ Destination ④ 跨 agent 接力剧本的种子。
+- **裁决回填（2026-10-14）**：[决策：三层领域模型与 memory→事实晋升规则](https://github.com/McKenzieIT/semantic-grounding/issues/130) 已用本卡集逐张试判并关票，结论见 [ADR-0021](adr/0021-data-memory-layer-and-promotion.md)。各卡「晋升判据提示」的去向：E2 的「结论与验证边界分家」→ caveat 类 memory（R8）；§5-1「晋升须比填 `confirmed_by` 更硬」→ 三类证据 + 复现守卫（R6）；§5-4「存储须容两种卡」→ 交 [决策：memory 存储形状、锚点 id 与三个休眠槽归宿](https://github.com/McKenzieIT/semantic-grounding/issues/134)。**未被裁的一处**：A1「命名约定类事实（`_df`/`_di`）的归宿」——ADR-0021 只定它属事实、可经确定性来源直升，**落在哪（每表一份 vs 概念层约定）未裁**，已记入 [map：SG 短期方向](https://github.com/McKenzieIT/semantic-grounding/issues/125) 的 Not yet specified。
 - **采集方式**：主会话从真实语料实挖候选卡 + 用户逐轮确认（五轮问询，Q1 scope / Q2 工程 / Q3 分析 / Q4 治理前提修正 / Q5 ETL 运维）。
 
 ## 0. 两条已确认的前提
