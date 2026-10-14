@@ -183,7 +183,7 @@ function registerSearchDefinitions(server: McpServer, deps: ServerDeps): void {
       try {
         const snap = deps.bindings.requireSnapshot()
         const kindFilter = input.kinds !== undefined ? new Set<string>(input.kinds) : undefined
-        const candidates = buildCandidates(snap.core).filter(c => kindFilter === undefined || kindFilter.has(c.kind))
+        const candidates = buildCandidates(snap.core).filter(c => kindFilter === undefined || kindFilter.has(foldTableStorageKind(c.kind)))
         const hits = rankDefinitions(input.query, candidates, input.top_k ?? 10)
         return { content: [{ type: 'text', text: JSON.stringify({ scope: scopeStamp(snap), hits }) }] }
       } catch (e) {
@@ -363,6 +363,18 @@ export const LIST_DEFINITIONS_CAP = 1000
  */
 const TABLE_STORAGE_KINDS: ReadonlySet<string> = new Set(['dws', 'dim'])
 
+/**
+ * Fold a projection kind into the `ReadableKind` vocabulary the `kinds` filters
+ * speak — the one place the dws/dim → table fold is defined, consumed by both
+ * read filters that narrow by kind (`search_definitions` per #117,
+ * `list_definitions` per #112). Every other projection kind passes through
+ * unchanged; ranked and inventory ROWS never go through it — they carry the
+ * projection kind verbatim.
+ */
+function foldTableStorageKind(projectionKind: string): string {
+  return TABLE_STORAGE_KINDS.has(projectionKind) ? 'table' : projectionKind
+}
+
 /** One `list_definitions` index row — the four fields an inventory needs, and nothing else (no `description`, no `version`). */
 export interface DefinitionIndexRow {
   readonly id: string
@@ -406,7 +418,7 @@ export function listDefinitionsIndex(
 ): { readonly total: number; readonly truncated: boolean; readonly definitions: readonly DefinitionIndexRow[] } {
   const filter = kinds !== undefined ? new Set(kinds) : undefined
   const rows = nodes
-    .filter(n => filter === undefined || filter.has(TABLE_STORAGE_KINDS.has(n.kind) ? 'table' : n.kind))
+    .filter(n => filter === undefined || filter.has(foldTableStorageKind(n.kind)))
     .sort(byKindThenId)
   return {
     total: rows.length,

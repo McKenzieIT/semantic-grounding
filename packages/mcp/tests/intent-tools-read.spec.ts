@@ -13,6 +13,16 @@ import { toolJson } from './helpers/inprocess-client.ts'
 let h: IntentToolHarness | undefined
 afterEach(() => h?.close())
 
+/** Add one derived metric to dws_order through the real write door (the only producer of metric nodes). */
+async function addGmvMetric(h2: IntentToolHarness): Promise<void> {
+  await h2.client.callTool('update_definition', { scope_id: 'fixture',
+    kind: 'table', name: 'dws_order',
+    fields: { metrics: { gmv: { expression: 'sum(pay_amt)', description: '', alt_labels: [], caliber_variants: [] } } },
+    summary: '补充指标', derivation: 'agent', confidence: 0.9,
+    expected_version: (toolJson(await h2.client.callTool('get_definition', { kind: 'table', name: 'dws_order' })) as { version: string }).version,
+  })
+}
+
 describe('rankDefinitions (pure)', () => {
   const candidates: SearchCandidate[] = [
     { id: 'dws_order', kind: 'table', label: 'dws_order', domains: [], description: '订单宽表', altLabels: ['订单宽表'] },
@@ -58,6 +68,25 @@ describe('search_definitions (wired)', () => {
     const res = await h.client.callTool('search_definitions', { query: 'dws_order', kinds: ['event'] })
     const body = toolJson(res) as { hits: Array<{ id: string }> }
     expect(body.hits.map(x => x.id)).not.toContain('dws_order')
+  })
+
+  // #117: the kinds filter folds storage kinds (dws/dim → table) — asserted by
+  // SEMANTICS (the fixture's table definitions are found), never by hard-coding
+  // which storage kind a given fixture table carries, so the pin survives a
+  // fixture swapping dws for dim.
+  it("kinds:['table'] finds the fixture's tables — the filter folds storage kinds (#117)", async () => {
+    h = await buildIntentToolHarness()
+    const res = await h.client.callTool('search_definitions', { query: 'o', kinds: ['table'] })
+    const body = toolJson(res) as { hits: Array<{ id: string }> }
+    expect(body.hits.map(x => x.id).sort()).toEqual(['dim_shop', 'dws_order'])
+  })
+
+  it("kinds:['metric'] still finds derived metrics — pass-through kinds unaffected by the fold (#117)", async () => {
+    h = await buildIntentToolHarness()
+    await addGmvMetric(h)
+    const res = await h.client.callTool('search_definitions', { query: 'gmv', kinds: ['metric'] })
+    const body = toolJson(res) as { hits: Array<{ id: string }> }
+    expect(body.hits.map(x => x.id)).toContain('dws_order__gmv')
   })
 
   it('caps results at top_k', async () => {
@@ -266,16 +295,6 @@ describe('listDefinitionsIndex (pure — #105)', () => {
 })
 
 describe('list_definitions (wired — #105, the inventory index)', () => {
-  /** Add one derived metric to dws_order through the real write door (the only producer of metric nodes). */
-  async function addGmvMetric(h2: IntentToolHarness): Promise<void> {
-    await h2.client.callTool('update_definition', { scope_id: 'fixture',
-      kind: 'table', name: 'dws_order',
-      fields: { metrics: { gmv: { expression: 'sum(pay_amt)', description: '', alt_labels: [], caliber_variants: [] } } },
-      summary: '补充指标', derivation: 'agent', confidence: 0.9,
-      expected_version: (toolJson(await h2.client.callTool('get_definition', { kind: 'table', name: 'dws_order' })) as { version: string }).version,
-    })
-  }
-
   it('lists the whole corpus — concepts, tables (storage kinds), events, derived metrics — in deterministic order, rows exactly {id, kind, label, domains}', async () => {
     h = await buildIntentToolHarness({ fixtureOpts: { withEvents: true } })
     // The metric write FIRST — writing the concept file straight to disk afterwards

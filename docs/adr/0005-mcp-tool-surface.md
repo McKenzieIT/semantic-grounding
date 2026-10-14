@@ -291,3 +291,15 @@ mcp test **385 pass + 1 skip**（25 files，较基线 +10：catalog 27→28 名�
 词条经 domain-modeling 三条件现场裁**不加**（单用例术语，未达复现条件；索引/题面分离语义已有
 GLOSSARY「enrichment work」词条与 ADR-0008 承载）。合入 main `417d1a4`（与 #104/#111 同批
 集成分支复跑四门禁：typecheck 双包 0 / substrate 450 / mcp **420+1skip** / e2e 21 / catalog 28）。
+
+### #117 执行核正补记：search 的 kinds 过滤折算（2026-10-14）
+
+上一节「维持原行为、另票 [#117](https://github.com/McKenzieIT/semantic-grounding/issues/117)
+处理」的缓修兑现（该节「今日实际返回空」自此为历史陈述）：`search_definitions` 的 `kinds`
+过滤域折算存储 kind（`dws`/`dim` → `table`），与 `list_definitions` **同一折算单点共享**
+（`read.ts` 的 `foldTableStorageKind`，集合仍是 `TABLE_STORAGE_KINDS`，两过滤位唯一消费点）；
+`kinds:['table']` 自此命中表定义，排名行携带的 kind 维持投影值逐字不动。修复方向即裁决 1
+「声明语义」先例的补齐，非新裁决。triage 四核全过：全仓无调用方/文档依赖「`kinds:['table']`
+= 空」的病态行为（命中仅缺陷记录本身）；`kindFilter.has` 全仓唯一，无第二处同型错配；
+GLOSSARY 无涉。mcp spec 按语义断言钉死（`kinds:['table']` 命中表定义，不硬编码哪张表携带
+哪个存储 kind；`kinds:['metric']` 直通不受扰）。substrate 零改动。
