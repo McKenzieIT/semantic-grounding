@@ -219,7 +219,12 @@ one column or parameter of a definition, or a [relation](#relation) between two 
 An anchor names its target by kind and name, never by where the target is stored or
 how its fields are laid out, so the fact layer can change its structure without
 stranding its memories. A column anchor still belongs to its definition: if the column
-disappears, the memory falls back to the definition rather than being lost. Avoid
+disappears, the memory falls back to the definition rather than being lost. When an
+anchor's target itself disappears, the memory is **dangling**: it is never rewritten
+or deleted, it does not stop the target being removed, and it stays readable — a
+removed relation's memories still show on its two ends, and asking for a definition
+that no longer exists returns the memories left behind on it. Dangling is judged
+against the current corpus, so a target that comes back brings its memories back. Avoid
 *link* and *tag* (both suggest the fact side points back, which it never does).
 
 ### data window (查询时间窗)

@@ -39,3 +39,9 @@ ADR-0023 定了存储与锚点。没定挂在哪几个工具、挂多少、按�
 - 读面依赖 ADR-0023 R1 的常驻锚点索引（#152）与统一节点 id（#151）；边锚点按逻辑方向认身份，两端 id 即可查。
 - **Followup**：若 #129 L1 轨迹实测显示 B 看到 `memory_counts` 不跟进 `get_definition`，再议提示；预算常量
   8 / 5 / 3 按实测调；`data_window` 是否也用于定义加载侧的其他过滤不在本图。
+
+## Update 2026-10-15（ADR-0026 / #153）
+
+- **R5 推广**：边锚点目标已不存在的条目照常进 `edge_memories`、带 `relation_missing: true`；`get_definition`
+  对已不存在的定义仍报 `definition_not_found`，错误 data 附 `orphaned_memories`（每条 `definition_missing: true`，
+  R3/R4 规则照用）。
