@@ -303,3 +303,15 @@ GLOSSARY「enrichment work」词条与 ADR-0008 承载）。合入 main `417d1a4
 = 空」的病态行为（命中仅缺陷记录本身）；`kindFilter.has` 全仓唯一，无第二处同型错配；
 GLOSSARY 无涉。mcp spec 按语义断言钉死（`kinds:['table']` 命中表定义，不硬编码哪张表携带
 哪个存储 kind；`kinds:['metric']` 直通不受扰）。substrate 零改动。
+
+## Update 2026-10-15 — #176 落地：submit_suggestion 的 scope_id/tenant_id 退役
+
+Tier-1 suggestion 工具**无 scope 参数**自始是裁决 7 的口径（「Tier-1 无此参」）；
+`submit_suggestion` 早年透传 substrate `SubmitArgs` 的可选 `scope_id`/`tenant_id`，
+全仓零下游消费（`tenant_id` 全文档面亦零命中）——名为 scope 引用、实为自由元数据，随
+[#176](https://github.com/McKenzieIT/semantic-grounding/issues/176) 从工具 schema 与
+`SubmitArgs`/`PendingSuggestion` 两面一并退役（#171 公开面字段级退役先例）。读路径兼容
+实测无虞、不走退守：substrate `load`/`listing` 是裸 `JSON.parse`（无 zod），存量队列条目
+所带旧键原样容忍；工具面 zod 默认 strip，旧客户端继续传两参被静默剥除而非报错——两面各
+有一测钉死。工具数仍 29（catalog `toHaveLength(29)` 不动），其余 schema
+（kind/subject/content/meta）与 ADR-0011 裁决 6 的 9 个 commit 类工具 scope_id 面不动。

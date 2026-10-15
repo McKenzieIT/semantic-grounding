@@ -107,7 +107,7 @@ test('S3 write-tiers — Tier-1 suggest->pending->approve; Tier-2 via ctx.audit 
     name: 'role.online', event_filter: "event = 'role.online'", description: 'suggest',
     params_fields: { roleId: { type: 'int', description: '角色id' } },
   }), { sortKeys: false, lineWidth: -1 })
-  const rec = submit(VAR_PENDING, { kind: 'event_yaml', subject: 'role.online', content, scope_id: '10000demo' })
+  const rec = submit(VAR_PENDING, { kind: 'event_yaml', subject: 'role.online', content })
   expect(isValidId(rec.suggestion_id)).toBe(true)
   // approve consumes the queue: writeEventYaml + discard
   const loaded = loadPending(VAR_PENDING, rec.suggestion_id)
@@ -121,6 +121,33 @@ test('S3 write-tiers — Tier-1 suggest->pending->approve; Tier-2 via ctx.audit 
   const r = await updateTableMeta(LAYER, 'dws_pay_order_di', { granularity: '日增量，每行一笔' }, { recorder, scope_id: '10000demo' })
   expect(r.ok).toBe(true)
   expect(calls).toContain('update_table_meta')
+})
+
+test('S3 legacy queue entries carrying retired scope_id/tenant_id keys still load and list (#176)', () => {
+  // #176 retired the early-passthrough scope_id/tenant_id from SubmitArgs/
+  // PendingSuggestion. Entries persisted before that still carry the keys; the read
+  // path (load/listing = plain JSON.parse + `as PendingSuggestion`, no zod) must
+  // tolerate them — the retired keys ride along on the runtime object, never an error.
+  const root = join(mkdtempSync(join(tmpdir(), 'sg-pending-legacy-')), 'queue')
+  mkdirSync(root, { recursive: true })
+  const legacy = {
+    suggestion_id: '20260101T000000Z_deadbeef_0001',
+    kind: 'alt_label',
+    subject: 'dws_order',
+    content: '订单宽表',
+    submitted_at: '2026-01-01T00:00:00.000Z',
+    scope_id: '10000demo',
+    tenant_id: 'legacy-tenant',
+    meta: {},
+  }
+  writeFileSync(join(root, `${legacy.suggestion_id}.json`), JSON.stringify(legacy), 'utf8')
+
+  const got = loadPending(root, legacy.suggestion_id)
+  expect(got?.subject).toBe('dws_order')
+  // tolerated (present at runtime), not stripped — JSON.parse has no schema to strip with
+  expect((got as unknown as Record<string, unknown>)['scope_id']).toBe('10000demo')
+  expect((got as unknown as Record<string, unknown>)['tenant_id']).toBe('legacy-tenant')
+  expect(listing(root).map(s => s.suggestion_id)).toEqual([legacy.suggestion_id])
 })
 
 test('freshness preprocess maps legacy Chinese value', () => {

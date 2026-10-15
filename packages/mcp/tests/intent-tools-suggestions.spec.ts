@@ -36,6 +36,22 @@ describe('submit_suggestion / list_suggestions / get_suggestion / discard_sugges
     expect(got.suggestion.content).toBe('订单宽表')
   })
 
+  it('strips — does not reject — legacy scope_id/tenant_id inputs (#176: retired, zod default strip tolerates old clients)', async () => {
+    h = await buildIntentToolHarness()
+    const res = await h.client.callTool('submit_suggestion', {
+      kind: 'alt_label',
+      subject: 'dws_order',
+      content: '订单宽表',
+      scope_id: 'fixture',
+      tenant_id: 'legacy-tenant',
+    })
+    expect(res.result?.['isError']).toBeUndefined()
+    const submitted = toolJson(res) as { suggestion: Record<string, unknown> }
+    expect(submitted.suggestion['subject']).toBe('dws_order')
+    expect(submitted.suggestion).not.toHaveProperty('scope_id')
+    expect(submitted.suggestion).not.toHaveProperty('tenant_id')
+  })
+
   it('lists every submitted suggestion, oldest first', async () => {
     h = await buildIntentToolHarness()
     await h.client.callTool('submit_suggestion', { kind: 'alt_label', subject: 'a', content: '1' })

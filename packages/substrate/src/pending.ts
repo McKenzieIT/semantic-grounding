@@ -24,15 +24,21 @@ import { mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, unlink
 import { join } from 'node:path'
 import { createHash, randomBytes } from 'node:crypto'
 
-/** A queued Tier-1 self-modification suggestion (one JSON file in the `<gitDir>/sg-pending/` queue). */
+/**
+ * A queued Tier-1 self-modification suggestion (one JSON file in the `<gitDir>/sg-pending/` queue).
+ *
+ * #176 retired the early-passthrough `scope_id`/`tenant_id` fields (zero consumers
+ * repo-wide). Entries written before that retirement still carry them; the read path
+ * (`load`/`listing` are plain `JSON.parse`, no zod) tolerates unknown keys — a legacy
+ * entry reads back with the extra keys riding along, never an error (pinned by the
+ * scenarios spec).
+ */
 export interface PendingSuggestion {
   readonly suggestion_id: string
   readonly kind: string
   readonly subject: string
   readonly content: string
   readonly submitted_at: string
-  readonly scope_id: string | null
-  readonly tenant_id: string | null
   readonly meta: Record<string, unknown>
 }
 
@@ -63,20 +69,18 @@ function shortHash(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex').slice(0, 8)
 }
 
-/** Arguments for submitting a Tier-1 suggestion (kind/subject/content + optional scope/tenant/meta). */
+/** Arguments for submitting a Tier-1 suggestion (kind/subject/content + optional meta). */
 export interface SubmitArgs {
   readonly kind: string
   readonly subject: string
   readonly content: string
-  readonly scope_id?: string | null
-  readonly tenant_id?: string | null
   readonly meta?: Record<string, unknown>
 }
 
 /**
  * Submit a Tier-1 suggestion to the pending queue (does NOT touch source-of-truth).
  * @param root - the pending-queue directory path (created when missing).
- * @param args - the suggestion payload (kind/subject/content + optional scope/tenant/meta).
+ * @param args - the suggestion payload (kind/subject/content + optional meta).
  * @returns the persisted suggestion (with a generated `suggestion_id` + ISO `submitted_at`).
  */
 export function submit(root: string, args: SubmitArgs): PendingSuggestion {
@@ -89,8 +93,6 @@ export function submit(root: string, args: SubmitArgs): PendingSuggestion {
     subject: args.subject,
     content: args.content,
     submitted_at: new Date().toISOString(),
-    scope_id: args.scope_id ?? null,
-    tenant_id: args.tenant_id ?? null,
     meta: args.meta ?? {},
   }
   writeFileSync(join(root, `${suggestion_id}.json`), JSON.stringify(rec, null, 2), 'utf8')

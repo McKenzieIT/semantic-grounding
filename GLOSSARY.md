@@ -520,6 +520,15 @@ means performing the corresponding [Tier-2](#write-tier) write and discarding th
 queue entry. "Admin" in the approve gate is a *role*, not necessarily a human: it can
 be a higher-privilege agent or an automated rule.
 
+The suggestion payload carries **no `scope_id`/`tenant_id`**: ADR-0005 ruling 7's
+"Tier-1 tools take no scope params" was always the canon, and the two early-passthrough
+fields (`SubmitArgs`/`PendingSuggestion`, zero consumers repo-wide) were retired by
+[#176](https://github.com/McKenzieIT/semantic-grounding/issues/176). Queue entries
+written before that retirement still carrying the keys read back unchanged —
+`load`/`listing` are plain `JSON.parse` with no schema, so unknown keys are tolerated,
+not stripped (and the tool layer's zod default strip silently drops the two from a
+legacy client's input instead of rejecting it).
+
 ### Tier-2 recorder
 
 The interface (see ADR-0001, `docs/adr/0001-d5-tier2-audit-invariant.md`) through

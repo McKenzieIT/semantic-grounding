@@ -65,8 +65,10 @@ const SubmitSuggestionInputSchema = z.object({
   kind: z.string().min(1).describe('A free-text category for this suggestion (e.g. "alt_label", "dimension_ref") — the pending queue does not constrain it.'),
   subject: z.string().min(1).describe('What this suggestion is about, typically a table_name or event name.'),
   content: z.string().min(1).describe('The suggested content, in whatever shape `kind` implies.'),
-  scope_id: z.string().min(1).optional(),
-  tenant_id: z.string().min(1).optional(),
+  // #176: no `scope_id`/`tenant_id` here — ADR-0005 ruling 7's "no scope params on
+  // Tier-1" was always the canon; these two were an early passthrough with zero
+  // consumers repo-wide. zod's default strip means a legacy client still sending
+  // them is silently tolerated, not rejected (pinned by the mcp spec).
   meta: z.record(z.string(), z.unknown()).optional(),
 })
 
@@ -84,14 +86,12 @@ function registerSubmitSuggestion(server: McpServer, deps: ServerDeps): void {
       const root = await pendingQueueRoot(snap.recorder)
       // Built explicitly, not `submit(root, input)`: zod leaves an omitted optional
       // key genuinely absent, but under this package's `exactOptionalPropertyTypes`
-      // that is a different type from `SubmitArgs`'s `string | null` optionals — the
-      // key must be omitted from the object literal entirely, not set to `undefined`.
+      // that is a different type from `SubmitArgs`'s `meta` optional — the key must
+      // be omitted from the object literal entirely, not set to `undefined`.
       const suggestion = submit(root, {
         kind: input.kind,
         subject: input.subject,
         content: input.content,
-        ...input.scope_id !== undefined ? { scope_id: input.scope_id } : {},
-        ...input.tenant_id !== undefined ? { tenant_id: input.tenant_id } : {},
         ...input.meta !== undefined ? { meta: input.meta } : {},
       })
       return toolSuccess({ scope: scopeStamp(snap), suggestion })

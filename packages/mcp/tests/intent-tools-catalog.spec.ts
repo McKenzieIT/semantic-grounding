@@ -348,6 +348,11 @@ describe('Tier-1 suggestion tool schemas — ADR-0005 ruling 7 ("Tier-1 无此�
     expect(tool.inputSchema.required?.slice().sort()).toEqual(['content', 'kind', 'subject'])
   })
 
+  it('submit_suggestion carries no scope_id/tenant_id — exactly kind/subject/content/meta (#176, ruling 7)', async () => {
+    const tool = byName(await listTools(), 'submit_suggestion')
+    expect(Object.keys(tool.inputSchema.properties ?? {}).sort()).toEqual(['content', 'kind', 'meta', 'subject'])
+  })
+
   it('list_suggestions takes no parameters at all', async () => {
     const tool = byName(await listTools(), 'list_suggestions')
     expect(tool.inputSchema.properties).toEqual({})
