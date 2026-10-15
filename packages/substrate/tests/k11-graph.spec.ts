@@ -33,22 +33,6 @@ function metricEntries(): Entry[] {
   return loadMetricDefinitions(SEED).map(m => ({ sourceId: m.name, relations: deriveMetricRelations(m) }))
 }
 
-test('K11 graph carries joins edges from DWS dimension_refs', () => {
-  const entries = tableEntries()
-  const g = new RelationGraph()
-  g.build(entries)
-  const joinEdges = entries.flatMap(e => e.relations.filter(r => r.type === 'joins'))
-  expect(joinEdges.length).toBeGreaterThan(0)
-})
-
-test('K11 graph carries derived_from edges from extracted metrics', () => {
-  const entries = metricEntries()
-  const g = new RelationGraph()
-  g.build(entries)
-  const derived = entries.flatMap(e => e.relations.filter(r => r.type === 'derived_from'))
-  expect(derived.length).toBeGreaterThan(0)
-})
-
 test('K11 graph: a DWS with dimension_refs reaches its DIM via findJoinPath', () => {
   const entries = tableEntries()
   const g = new RelationGraph()

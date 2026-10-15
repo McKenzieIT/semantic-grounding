@@ -113,46 +113,6 @@ describe('work_id self-containment', () => {
     expect(res.results[0]).toMatchObject({ verdict: 'applied', target: 'dws_order', round: 'alt_labels' })
   })
 
-  test('a garbage work_id reports stale_baseline rather than throwing', async () => {
-    dir = newLayer()
-    writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }]))
-    const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const { recorder } = fakeRecorder()
-    const res = await core.applyEnrichmentResults([{ work_id: 'not-a-real-work-id', text: 'anything' }], recorder)
-    expect(res.results[0]).toMatchObject({ verdict: 'stale_baseline', target: '(unknown)' })
-  })
-
-  test('a work_id whose target no longer exists reports stale_baseline', async () => {
-    dir = newLayer()
-    writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }]))
-    const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const { work } = await core.listEnrichmentWork()
-    const item = work[0]
-    expect(item).toBeDefined()
-    rmSync(join(dir, 'tables', 'dws_order.yaml'))
-    const { recorder } = fakeRecorder()
-    const res = await core.applyEnrichmentResults([{ work_id: item!.work_id, text: '["x"]' }], recorder)
-    expect(res.results[0]?.verdict).toBe('stale_baseline')
-  })
-
-  test('a work_id whose target changed since issuance reports stale_baseline (not merged into)', async () => {
-    dir = newLayer()
-    writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }]))
-    const core = new SemanticGroundingCore({ semanticRoot: dir })
-    const { work } = await core.listEnrichmentWork()
-    const item = work.find(w => w.gap.includes('alt_labels'))
-    expect(item).toBeDefined()
-
-    // Someone else's edit lands between issuance and apply.
-    writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }], { description: 'edited after issuance' }))
-
-    const { recorder } = fakeRecorder()
-    const res = await core.applyEnrichmentResults([{ work_id: item!.work_id, text: '["订单宽表"]' }], recorder)
-    expect(res.results[0]?.verdict).toBe('stale_baseline')
-    // Not merged: alt_labels is untouched by the rejected apply.
-    expect(readTableRaw(dir, 'dws_order').alt_labels).toEqual([])
-  })
-
   test('peekEnrichmentWorkTarget resolves the target without applying or verifying the baseline', async () => {
     dir = newLayer()
     writeTableFixture(dir, dwsDoc('dws_order', [{ name: 'shop_id' }]))

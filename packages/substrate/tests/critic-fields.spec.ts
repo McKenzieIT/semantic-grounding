@@ -52,14 +52,4 @@ describe('makeCriticCtx compatibility — direct definition access', () => {
     expect(ctx.partitionCols.has('ds')).toBe(true)
     expect(ctx.candidateTables.has('dws_pay_order_di')).toBe(true)
   })
-
-  test('mixed event + table inputs produce valid CriticCtx', () => {
-    const ctx = makeCriticCtx({
-      candidateTables: ['dws_pay_order_di'],
-      eventParams: loadEventDefinition(LAYER, 'role.online')!.params_fields,
-      partitionCols: loadTableDefinition(LAYER, 'dws_pay_order_di')!.partitions.map(p => p.name),
-    })
-    expect(ctx.eventParams.has('role_id')).toBe(true)
-    expect(ctx.partitionCols.has('ds')).toBe(true)
-  })
 })

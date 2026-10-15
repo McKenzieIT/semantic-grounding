@@ -1,18 +1,18 @@
 /**
  * P2-impl registry unit tests — DataSourceRegistry + kind plugins.
  * G1/G2 aligned: schema field, toCorpusItem (reads alt_labels from def),
- * raw-based getId, three relation types, MetricPlugin.
+ * raw-based getId, three relation types. Metric projection (M1 virtual
+ * kind:metric) lives in metrics-derivation.spec / metrics.spec.
  */
 import { test, expect } from 'vitest'
 import yaml from 'js-yaml'
 import { readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { EventDefinitionSchema, TableDefinitionSchema, MetricDefinitionSchema } from '../src/types.ts'
+import { EventDefinitionSchema, TableDefinitionSchema } from '../src/types.ts'
 import { DataSourceRegistry } from '../src/registry.ts'
 import { eventKindPlugin } from '../src/kinds/event-kind.ts'
 import { tableKindPlugin } from '../src/kinds/table-kind.ts'
-import { projectMetricCorpusItem, deriveMetricRelations } from '../src/metrics.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const FIXTURES = join(HERE, 'fixtures')
@@ -146,40 +146,4 @@ test('tableKindPlugin — relations maps dimension_refs with G2 type', () => {
   expect(rels[0]!.type).toBe('joins')
   expect(rels[0]!.target).toBe('table:dim_charm_info')
   expect(rels[0]!.on).toBe('charm_id = charm_id')
-})
-
-// ── metric projection (M1: virtual kind:metric) ────────────────────────
-
-const METRIC_DEF = MetricDefinitionSchema.parse({
-  name: 'DAU',
-  description: '日活跃用户数',
-  domains: ['用户'],
-  computation: {
-    sql: "SELECT COUNT(DISTINCT user_id) FROM ods_login WHERE ds = '{{date}}'",
-    metadata: { aggregation: 'count_distinct', field: 'user_id', source: 'ods_login', time_grain: 'daily' },
-  },
-  relations: [
-    { type: 'derived_from', target: 'ods_login', description: '基于登录事件的用户去重' },
-  ],
-})
-
-test('MetricDefinitionSchema — parses metric definition', () => {
-  expect(METRIC_DEF.name).toBe('DAU')
-  expect(METRIC_DEF.computation.sql).toContain('COUNT(DISTINCT')
-})
-
-test('projectMetricCorpusItem — produces retrievable item', () => {
-  const item = projectMetricCorpusItem(METRIC_DEF)
-  expect(item).not.toBeNull()
-  expect(item.id).toBe('metric:DAU')
-  expect(item.description).toContain('日活跃用户数')
-  expect(item.description).toContain('count_distinct')
-})
-
-test('deriveMetricRelations — returns derived_from (G2 type)', () => {
-  const rels = deriveMetricRelations(METRIC_DEF)
-  expect(rels).toHaveLength(1)
-  expect(rels[0]).toBeDefined()
-  expect(rels[0]!.type).toBe('derived_from')
-  expect(rels[0]!.target).toBe('ods_login')
 })

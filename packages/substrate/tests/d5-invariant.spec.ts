@@ -45,14 +45,13 @@ describe('D5 — auditable mutation with no recorder wired throws', () => {
     await expect(newService().updateTableMeta('any_table', { description: 'x' })).rejects.toThrow(/D5/)
   })
 
-  it('updateEventMeta throws', async () => {
-    await expect(newService().updateEventMeta('any.event', { description: 'x' })).rejects.toThrow(/D5/)
-  })
-
-  it('the throw names the invariant as non-disableable, not as a missing optional dep', async () => {
+  it('updateEventMeta throws, naming the invariant as non-disableable, not as a missing optional dep', async () => {
     // The message is the only thing telling an operator that this is a policy,
     // not a misconfiguration to be worked around.
-    await expect(newService().updateEventMeta('any.event', { description: 'x' })).rejects.toThrow(/non-disableable/)
+    const err: unknown = await newService().updateEventMeta('any.event', { description: 'x' }).catch(e => e)
+    expect(err).toBeInstanceOf(Error)
+    expect((err as Error).message).toMatch(/D5/)
+    expect((err as Error).message).toMatch(/non-disableable/)
   })
 })
 
@@ -145,7 +144,7 @@ test('D5 — each core instance carries its own recorder', async () => {
 // byte-identical rollback); the io-level paths rolled back correctly only by
 // courtesy of the ceremony being re-copied faithfully. #61 folded them all
 // into io.ts's `auditedFileWrite` seam; this block pins every wiring the seam
-// has (six call sites since the sync-write chain's removal, S1.4) — the
+  // has (two call sites since the sync-write chain's removal, S1.4) — the
 // recorder raise propagates and disk ends at its pre-write state, on both
 // restore branches (create ⇒ the file is gone; update ⇒ the bytes are
 // byte-identical, hand-written comment included) across the table/event/concept

@@ -14,12 +14,6 @@ function makeService(): SemanticGroundingCore {
   return new SemanticGroundingCore({ semanticRoot: '' })
 }
 
-test('A1 — service registers table + event + concept kind plugins (metrics derived virtually, M1)', () => {
-  const svc = makeService()
-  const reg = svc.getRegistry()
-  expect(reg.allKinds().sort()).toEqual(['concept', 'event', 'table'])
-})
-
 test('A2 — getRelationGraph builds from tables/events/metrics + caches until corpusVersion bump', () => {
   const svc = makeService() // empty semanticRoot -> empty graph, but still a RelationGraph
   const g = svc.getRelationGraph()

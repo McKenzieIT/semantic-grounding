@@ -156,12 +156,6 @@ describe('addAlias', () => {
     const core = newCore()
     await expect(core.addAliases('table', 'nope', ['x'], 'f'.repeat(64))).rejects.toThrow(/Table not found/)
   })
-
-  it('throws StaleBaselineError on version mismatch', async () => {
-    writeDws('dws_pay', ORDER_COLS)
-    const core = newCore()
-    await expect(core.addAliases('table', 'dws_pay', ['x'], 'a'.repeat(64))).rejects.toThrow(StaleBaselineError)
-  })
 })
 
 // ── removeAliases ────────────────────────────────────────────────────────

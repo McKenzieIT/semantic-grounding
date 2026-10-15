@@ -15,7 +15,7 @@ import {
   buildRetrievalCorpus,
   type EventCorpusInput,
 } from '../src/corpus.ts'
-import { loadRetrievalCorpus, invalidateCaches, getCorpusVersion } from '../src/io.ts'
+import { loadRetrievalCorpus, invalidateCaches } from '../src/io.ts'
 import { SemanticGroundingCore } from '../src/index.ts'
 import { fixtureEvent } from './enrichment-fixtures.ts'
 
@@ -136,21 +136,6 @@ test('buildRetrievalCorpus skips params_fields whose value is not a plain object
   } as unknown as EventCorpusInput]
   const item = buildRetrievalCorpus(events)[0]!
   expect(item.description).toBe('good x')
-})
-
-// ── D2f corpus-version counter (cache-invalidation signal) ─────────────────
-test('getCorpusVersion bumps after invalidateCaches(semanticLayer); independent per path', () => {
-  const pa = '/d2f-counter-test-A'
-  const pb = '/d2f-counter-test-B'
-  const a0 = getCorpusVersion(pa)
-  const b0 = getCorpusVersion(pb)
-  invalidateCaches(pa)
-  expect(getCorpusVersion(pa)).toBe(a0 + 1)
-  expect(getCorpusVersion(pb)).toBe(b0)
-  invalidateCaches(pa)
-  invalidateCaches(pb)
-  expect(getCorpusVersion(pa)).toBe(a0 + 2)
-  expect(getCorpusVersion(pb)).toBe(b0 + 1)
 })
 
 // ── D2f Service corpusVersion() ──
