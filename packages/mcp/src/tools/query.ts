@@ -102,12 +102,10 @@ function plausibleCalendarDate(candidate: string): boolean {
  * Find the partition-date literals in a SQL text (ADR-0025 R2's refusal
  * input): every date-shaped literal — quoted or bare, `YYYYMMDD` or
  * `YYYY-MM-DD`, calendar-plausible — in first-occurrence order, deduplicated.
- * Exported standalone so the detection口径 has its own focused tests, the
- * same rule `rankDefinitions` follows.
  * @param sql - the query's SQL body.
  * @returns the offending literals (empty = clean, parameterized SQL).
  */
-export function findPartitionDateLiterals(sql: string): string[] {
+function findPartitionDateLiterals(sql: string): string[] {
   const seen = new Set<string>()
   for (const pattern of DATE_LITERAL_CANDIDATES) {
     pattern.lastIndex = 0

@@ -92,8 +92,9 @@ export const ExpectedVersionSchema = z.string().regex(
 ).describe('The sha256 content fingerprint this write assumes the target still carries (from get_definition.version). A mismatch is rejected as stale_baseline: re-read and retry.')
 
 /**
- * `scope_id`: the write assertion of ADR-0011's three-layer defense, required on the
- * 8 commit-class tools. Compared synchronously at handler entry against the snapshot
+ * `scope_id`: the write assertion of ADR-0011's three-layer defense, required on
+ * every commit-class tool (each carries it via the create/update common fields).
+ * Compared synchronously at handler entry against the snapshot
  * the handler bound — a mismatch is `scope_mismatch` (−31064), not a silent redirect.
  * The charset is the registry's own {@link SCOPE_ID_PATTERN} (constant 6), imported
  * rather than re-spelled — the rule's one home — conservative, trailer- and path-safe.

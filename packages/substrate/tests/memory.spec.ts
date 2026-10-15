@@ -35,7 +35,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import yaml from 'js-yaml'
-import { SemanticGroundingCore, dumpYaml, type Tier2Recorder } from '../src/index.ts'
+import { SemanticGroundingCore, dumpYaml } from '../src/index.ts'
 import {
   MEMORY_ID_PATTERN,
   _memoryIndexProbeCounts,
@@ -44,8 +44,8 @@ import {
   type MemoryDraft,
 } from '../src/memory.ts'
 import { fixtureTable } from './enrichment-fixtures.ts'
+import { fullCorpus, newMemoryCore } from './memory-fixtures.ts'
 
-const noopRecorder: Tier2Recorder = { recordTier2Write: async () => 'noop-log-id' }
 
 let root: string
 beforeEach(() => {
@@ -58,73 +58,6 @@ beforeEach(() => {
 afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
-
-/** The E3-card table: a DWS whose `ch_id` column carries the 「2渠」黑话. */
-function writeAccTable(extra: Record<string, unknown> = {}): void {
-  writeFileSync(join(root, 'tables', 'dws_acc.yaml'), dumpYaml(fixtureTable({
-    table_name: 'dws_acc',
-    kind: 'dws',
-    columns: [
-      { name: 'ch_id', type: 'string', comment: '渠道id,又叫 2渠', role: 'dimension' },
-      { name: 'ch_type', type: 'string', comment: '渠道,又叫 1渠', role: 'dimension' },
-      { name: 'pay_amt', type: 'decimal', comment: '充值金额', role: 'measure' },
-    ],
-    dimension_refs: [{ dim_table: 'dim_shop', derivation: '', join_keys: [{ dws_column: 'ch_id', dim_column: 'shop_id' }] }],
-    domains: ['payment'],
-    ...extra,
-  })), 'utf8')
-}
-
-function writeShopDim(): void {
-  writeFileSync(join(root, 'tables', 'dim_shop.yaml'), dumpYaml(fixtureTable({
-    table_name: 'dim_shop',
-    kind: 'dim',
-    columns: [{ name: 'shop_id', type: 'string', comment: '渠道id', role: 'dimension' }],
-    primary_key: ['shop_id'],
-    label_columns: ['shop_id'],
-  })), 'utf8')
-}
-
-function writePaymentConcept(): void {
-  writeFileSync(join(root, 'concepts', 'payment.yaml'), dumpYaml({
-    name: 'payment',
-    description: '付费经济',
-    alt_labels: ['大R', '高付费'],
-    properties: {},
-    related_refs: [],
-    suppressed_alt_labels: [],
-    suppressed_related_refs: [],
-  }), 'utf8')
-}
-
-function writePayEvent(): void {
-  mkdirSync(join(root, 'events', 'game'), { recursive: true })
-  writeFileSync(join(root, 'events', 'game', 'pay.order.yaml'), dumpYaml({
-    name: 'pay.order',
-    event_filter: '',
-    description: '支付下单',
-    alt_labels: [],
-    domains: [],
-    params_fields: { pay_amt: { type: 'decimal', description: '金额' } },
-    metrics: {},
-    external_refs: [],
-    suppressed_alt_labels: [],
-    suppressed_external_refs: [],
-  }), 'utf8')
-}
-
-function fullCorpus(): void {
-  writeAccTable()
-  writeShopDim()
-  writePaymentConcept()
-  writePayEvent()
-}
-
-function newCore(): SemanticGroundingCore {
-  const core = new SemanticGroundingCore({ semanticRoot: root, scopeId: 'fixture', autoEnrich: false })
-  core.setTier2Recorder(noopRecorder)
-  return core
-}
 
 function memoryFiles(): string[] {
   const dir = join(root, 'memory')
@@ -148,8 +81,8 @@ async function recordOne(core: SemanticGroundingCore, draft: MemoryDraft, sessio
 
 describe('recordMemories — the three seed cards (E3 / A3 / G3′)', () => {
   it('E3 (内部黑话 → inference): lands one file, server-written recorded, canonical anchors', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     const { id } = await recordOne(core, {
       type: 'inference',
       anchors: ['dws_acc', 'dws_acc#ch_id'], // bare name + column fragment
@@ -171,8 +104,8 @@ describe('recordMemories — the three seed cards (E3 / A3 / G3′)', () => {
   })
 
   it('A3 (大R口径 → practice): basis + optional valid_from land', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     const { id } = await recordOne(core, {
       type: 'practice',
       anchors: ['concept:payment'],
@@ -186,8 +119,8 @@ describe('recordMemories — the three seed cards (E3 / A3 / G3′)', () => {
   })
 
   it('G3′ (未产出事故 → incident): closed window lands; edge anchors resolve canonically', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     const { id } = await recordOne(core, {
       type: 'incident',
       anchors: ['table:dws_acc -joins-> table:dim_shop'],
@@ -204,8 +137,8 @@ describe('recordMemories — the three seed cards (E3 / A3 / G3′)', () => {
 
 describe('recordMemories — per-type required/forbidden fields', () => {
   it('incident without valid_until rejects, naming the 1-based item index', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     const res = await core.recordMemories([
       { type: 'caveat', anchors: ['dws_acc'], body: 'ok entry' },
       { type: 'incident', anchors: ['dws_acc'], body: 'no window', valid_from: '2026-10-01' },
@@ -217,8 +150,8 @@ describe('recordMemories — per-type required/forbidden fields', () => {
   })
 
   it('practice without basis rejects; inference with valid_from rejects', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     const a = await core.recordMemories([{ type: 'practice', anchors: ['dws_acc'], body: 'x' }], { session: 's1', agent: 'a' })
     expect(a).toMatchObject({ ok: false, item_index: 1 })
     const b = await core.recordMemories([{ type: 'inference', anchors: ['dws_acc'], body: 'x', basis: 'y', valid_from: '2026-10-01' }], { session: 's1', agent: 'a' })
@@ -230,8 +163,8 @@ describe('recordMemories — per-type required/forbidden fields', () => {
 
 describe('recordMemories — write-time anchor existence', () => {
   it('a missing node, a missing column, and a missing/reversed edge each reject the batch', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     for (const anchors of [['table:nope'], ['dws_acc#no_such_col'], ['table:dim_shop -joins-> table:dws_acc']]) {
       const res = await core.recordMemories([{ type: 'caveat', anchors, body: 'x' }], { session: 's1', agent: 'a' })
       expect(res).toMatchObject({ ok: false, item_index: 1 })
@@ -240,8 +173,8 @@ describe('recordMemories — write-time anchor existence', () => {
   })
 
   it('an event column fragment and a concept node resolve (prefixed output)', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     const { id } = await recordOne(core, { type: 'caveat', anchors: ['pay.order#pay_amt', 'payment'], body: 'x' })
     expect(readMemoryYaml(id).anchors).toEqual(['event:pay.order#pay_amt', 'concept:payment'])
   })
@@ -251,8 +184,8 @@ describe('recordMemories — write-time anchor existence', () => {
 
 describe('recordMemories — supersedes', () => {
   it('a non-existent target rejects; an existing one lands with the reference', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     const miss = await core.recordMemories([{ type: 'practice', anchors: ['dws_acc'], body: 'x', basis: 'b', supersedes: [{ id: 'mem-20260101-aaaaaaaa', reason: 'outdated' }] }], { session: 's1', agent: 'a' })
     expect(miss).toMatchObject({ ok: false, item_index: 1 })
 
@@ -265,8 +198,8 @@ describe('recordMemories — supersedes', () => {
   })
 
   it('supersedes a DANGLING entry succeeds — the referenced entry\'s anchors are not re-checked (ADR-0026 R6)', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     // The doomed table and one memory anchored on it.
     writeFileSync(join(root, 'tables', 'dws_old.yaml'), dumpYaml(fixtureTable({
       table_name: 'dws_old', kind: 'dws',
@@ -288,8 +221,8 @@ describe('recordMemories — supersedes', () => {
 
 describe('recordMemories — deterministic NOOP vs cross-session re-record', () => {
   it('same session + type + anchor set + normalized body = idempotent; a different session re-records', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     const draft: MemoryDraft = {
       type: 'observation',
       anchors: ['dws_acc', 'dim_shop'],
@@ -313,8 +246,8 @@ describe('recordMemories — deterministic NOOP vs cross-session re-record', () 
   })
 
   it('neighbors: a same-type sibling on a shared anchor appears; a wrong-superseded one does not', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     const a = await recordOne(core, { type: 'practice', anchors: ['dws_acc'], body: 'rule one', basis: 'b' }, 's1')
     expect(a.neighbors).toEqual([])
     const b = await recordOne(core, { type: 'practice', anchors: ['dws_acc'], body: 'rule two', basis: 'b' }, 's2')
@@ -336,8 +269,8 @@ describe('recordMemories — deterministic NOOP vs cross-session re-record', () 
 
 describe('recordMemories — contradicts (ADR-0027 R3/R5)', () => {
   it('the four checks: exists, not wrong, not self-overlapping with supersedes', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     const x = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'no amplification', valid_from: '2026-09-15', valid_until: '2026-10-15' }, 's1')
     // (1) nonexistent id
     const r1 = await core.recordMemories([{ type: 'observation', anchors: ['dws_acc'], body: 'y', valid_from: '2026-09-15', valid_until: '2026-10-15', contradicts: ['mem-20260101-bbbbbbbb'] }], { session: 's2', agent: 'a' })
@@ -362,8 +295,8 @@ describe('recordMemories — contradicts (ADR-0027 R3/R5)', () => {
   })
 
   it('superseding a CONTESTED entry as wrong without basis rejects; with basis it lands (ADR-0027 R5)', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     const x = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'no amplification', valid_from: '2026-09-15', valid_until: '2026-10-15' }, 's1')
     await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: '3x amplification', valid_from: '2026-09-01', valid_until: '2026-09-30', contradicts: [x.id] }, 's2')
     const rejected = await core.recordMemories([{
@@ -388,8 +321,8 @@ describe('recordMemories — contradicts (ADR-0027 R3/R5)', () => {
 
 describe('MemoryAnchorIndex — stat-only refresh, parse-only-what-moved', () => {
   it('re-parses nothing when no file moved, parses exactly the moved/new files otherwise', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     const a = await recordOne(core, { type: 'caveat', anchors: ['dws_acc'], body: 'one' }, 's1')
     const b = await recordOne(core, { type: 'caveat', anchors: ['dim_shop'], body: 'two' }, 's1')
     const index = memoryAnchorIndexFor(root)
@@ -425,8 +358,8 @@ describe('MemoryAnchorIndex — stat-only refresh, parse-only-what-moved', () =>
 
 describe('countMemoriesOnEdges', () => {
   it('counts still-visible entries anchored on the dying edge, and 0 without memories', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     expect(core.countMemoriesOnEdges([{ from: 'table:dws_acc', type: 'joins', to: 'table:dim_shop' }])).toBe(0)
     await recordOne(core, { type: 'caveat', anchors: ['table:dws_acc -joins-> table:dim_shop'], body: 'join pitfall' }, 's1')
     await recordOne(core, { type: 'caveat', anchors: ['table:dws_acc'], body: 'table-level, not the edge' }, 's1')
@@ -461,8 +394,8 @@ function reStampRecordedAt(id: string, at: string): void {
 
 describe('checkReplicatedEvidence — the ③ server-side guard (ADR-0021 R6/R7 + ADR-0027 R6)', () => {
   it('two counting entries from distinct sessions on distinct UTC days verify', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     const a = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'join 后行数 877。', valid_from: '2026-10-01', valid_until: '2026-10-01' }, 'session-a')
     const b = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'join 后行数 877。', valid_from: '2026-10-02', valid_until: '2026-10-02' }, 'session-b')
     reStampRecordedAt(a.id, '2026-10-01T09:00:00.000Z')
@@ -472,8 +405,8 @@ describe('checkReplicatedEvidence — the ③ server-side guard (ADR-0021 R6/R7 
   })
 
   it('same-session citations reject naming the two ids; same-day citations reject naming the shared day', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     const a = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'first', valid_from: '2026-10-01', valid_until: '2026-10-01' }, 'session-a')
     const b = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'second', valid_from: '2026-10-02', valid_until: '2026-10-02' }, 'session-a')
     expect(b.id).not.toBe(a.id) // distinct bodies: no deterministic NOOP
@@ -499,8 +432,8 @@ describe('checkReplicatedEvidence — the ③ server-side guard (ADR-0021 R6/R7 
   })
 
   it('a wrong-superseded citation does not count — it drops, and the survivors must still be ≥2', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     const a = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'first', valid_from: '2026-10-01', valid_until: '2026-10-01' }, 'session-a')
     const b = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'second', valid_from: '2026-10-02', valid_until: '2026-10-02' }, 'session-b')
     const doomed = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'third', valid_from: '2026-10-03', valid_until: '2026-10-03' }, 'session-c')
@@ -520,8 +453,8 @@ describe('checkReplicatedEvidence — the ③ server-side guard (ADR-0021 R6/R7 
   })
 
   it('an incident citation rejects outright (ADR-0021 R7 — incidents never promote)', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     const a = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'x', valid_from: '2026-10-01', valid_until: '2026-10-01' }, 'session-a')
     const inc = await recordOne(core, { type: 'incident', anchors: ['dws_acc'], body: '上游未产出。', valid_from: '2026-10-02', valid_until: '2026-10-02' }, 'session-b')
     const check = core.checkReplicatedEvidence([a.id, inc.id])
@@ -530,8 +463,8 @@ describe('checkReplicatedEvidence — the ③ server-side guard (ADR-0021 R6/R7 
   })
 
   it('a contested citation rejects naming the pair and the adjudication remedy (ADR-0027 R6)', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     const x = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'no amplification', valid_from: '2026-09-15', valid_until: '2026-10-15' }, 'session-a')
     const y = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: '3x amplification', valid_from: '2026-09-01', valid_until: '2026-09-30', contradicts: [x.id] }, 'session-b')
     const other = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'x', valid_from: '2026-10-01', valid_until: '2026-10-01' }, 'session-c')
@@ -550,8 +483,8 @@ describe('checkReplicatedEvidence — the ③ server-side guard (ADR-0021 R6/R7 
 
 describe('appendPromotionBackpointers — the same-commit `promoted` append (ADR-0023 R6)', () => {
   it('appends {to, at, session} onto each cited file, leaving every other field untouched', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root, true)
+    const core = newMemoryCore(root)
     const a = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'join 后行数 877。', valid_from: '2026-10-01', valid_until: '2026-10-01' }, 'session-a')
     const b = await recordOne(core, { type: 'practice', anchors: ['concept:payment'], body: '口径。', basis: 'basis' }, 'session-b')
     reStampRecordedAt(a.id, '2026-10-01T09:00:00.000Z')

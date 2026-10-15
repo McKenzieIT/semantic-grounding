@@ -33,11 +33,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { dumpYaml, SemanticGroundingCore, type Tier2Recorder } from '../src/index.ts'
+import { dumpYaml, SemanticGroundingCore } from '../src/index.ts'
 import type { MemoryDraft, MemoryViewEntry } from '../src/memory.ts'
 import { fixtureTable } from './enrichment-fixtures.ts'
-
-const noopRecorder: Tier2Recorder = { recordTier2Write: async () => 'noop-log-id' }
+import { fullCorpus, newMemoryCore, writeAccTable, writePaymentConcept, writeShopDim } from './memory-fixtures.ts'
 
 let root: string
 beforeEach(() => {
@@ -51,56 +50,6 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })
 
-/** The E3-card table (a DWS whose `ch_id` column carries the「2渠」黑话). */
-function writeAccTable(): void {
-  writeFileSync(join(root, 'tables', 'dws_acc.yaml'), dumpYaml(fixtureTable({
-    table_name: 'dws_acc',
-    kind: 'dws',
-    columns: [
-      { name: 'ch_id', type: 'string', comment: '渠道id,又叫 2渠', role: 'dimension' },
-      { name: 'ch_type', type: 'string', comment: '渠道,又叫 1渠', role: 'dimension' },
-      { name: 'pay_amt', type: 'decimal', comment: '充值金额', role: 'measure' },
-    ],
-    dimension_refs: [{ dim_table: 'dim_shop', derivation: '', join_keys: [{ dws_column: 'ch_id', dim_column: 'shop_id' }] }],
-    domains: ['payment'],
-  })), 'utf8')
-}
-
-function writeShopDim(): void {
-  writeFileSync(join(root, 'tables', 'dim_shop.yaml'), dumpYaml(fixtureTable({
-    table_name: 'dim_shop',
-    kind: 'dim',
-    columns: [{ name: 'shop_id', type: 'string', comment: '渠道id', role: 'dimension' }],
-    primary_key: ['shop_id'],
-    label_columns: ['shop_id'],
-  })), 'utf8')
-}
-
-function writePaymentConcept(): void {
-  writeFileSync(join(root, 'concepts', 'payment.yaml'), dumpYaml({
-    name: 'payment',
-    description: '付费经济',
-    alt_labels: ['大R', '高付费'],
-    properties: {},
-    related_refs: [],
-    suppressed_alt_labels: [],
-    suppressed_related_refs: [],
-  }), 'utf8')
-}
-
-function fullCorpus(): void {
-  writeAccTable()
-  writeShopDim()
-  writePaymentConcept()
-}
-
-function newCore(): SemanticGroundingCore {
-  const core = new SemanticGroundingCore({ semanticRoot: root, scopeId: 'fixture', autoEnrich: false })
-  core.setTier2Recorder(noopRecorder)
-  return core
-}
-
-/** Record one entry and return its id (fail-loud on rejection). */
 async function recordOne(core: SemanticGroundingCore, draft: MemoryDraft, session = 's1'): Promise<string> {
   const res = await core.recordMemories([draft], { session, agent: 'test-agent' })
   if (!res.ok) throw new Error(`recordMemories rejected: ${res.error}`)
@@ -116,8 +65,8 @@ function shape(rows: readonly MemoryViewEntry[]): string[] {
 
 describe('readDefinitionMemories — the three seed cards (E3 / A3 / G3′)', () => {
   it('E3: the inference surfaces on dws_acc with the column fragment as its anchor', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root)
+    const core = newMemoryCore(root)
     const id = await recordOne(core, {
       type: 'inference',
       anchors: ['dws_acc', 'dws_acc#ch_id'],
@@ -139,8 +88,8 @@ describe('readDefinitionMemories — the three seed cards (E3 / A3 / G3′)', ()
   })
 
   it('A3: the practice surfaces on the concept, ranked ahead of lower types', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root)
+    const core = newMemoryCore(root)
     const practice = await recordOne(core, {
       type: 'practice',
       anchors: ['concept:payment'],
@@ -161,8 +110,8 @@ describe('readDefinitionMemories — the three seed cards (E3 / A3 / G3′)', ()
   })
 
   it('G3′: the incident surfaces in BOTH ends\' edge_memories with the edge anchor', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root)
+    const core = newMemoryCore(root)
     const id = await recordOne(core, {
       type: 'incident',
       anchors: ['table:dws_acc -joins-> table:dim_shop'],
@@ -194,8 +143,8 @@ describe('readDefinitionMemories — the data window\'s three states', () => {
   }
 
   it('inside the window: visible; outside: hidden; no window: visible', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root)
+    const core = newMemoryCore(root)
     const id = await incidentOnEdge(core)
     const at = (window: { from: string; to: string } | undefined) =>
       core.readDefinitionMemories('table:dws_acc', window !== undefined ? { data_window: window } : {}).edge_memories
@@ -206,8 +155,8 @@ describe('readDefinitionMemories — the data window\'s three states', () => {
   })
 
   it('an observation outside the window hides on the node site too', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root)
+    const core = newMemoryCore(root)
     await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: '九月实测', valid_from: '2026-09-01', valid_until: '2026-09-30' })
     expect(core.readDefinitionMemories('table:dws_acc', { data_window: { from: '2026-10-01', to: '2026-10-02' } }).memories).toEqual([])
     expect(core.readDefinitionMemories('table:dws_acc').memories).toHaveLength(1)
@@ -218,8 +167,8 @@ describe('readDefinitionMemories — the data window\'s three states', () => {
 
 describe('readDefinitionMemories — budget, ordering, truncation', () => {
   it('caps memories at 8, reports overflow per type, orders practice > incident > inference > observation', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root)
+    const core = newMemoryCore(root)
     for (let i = 0; i < 5; i++) {
       await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: `obs ${i}`, valid_from: `2026-09-0${i + 1}`, valid_until: `2026-09-0${i + 1}` }, `s-obs-${i}`)
     }
@@ -239,8 +188,8 @@ describe('readDefinitionMemories — budget, ordering, truncation', () => {
   })
 
   it('a caveat is always shown and never occupies budget', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root)
+    const core = newMemoryCore(root)
     for (let i = 0; i < 8; i++) {
       await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: `obs ${i}`, valid_from: '2026-09-01', valid_until: '2026-09-01' }, `s${i}`)
     }
@@ -255,9 +204,9 @@ describe('readDefinitionMemories — budget, ordering, truncation', () => {
   })
 
   it('the dim_server split: six join edges cannot crowd out the dimension\'s own memories', async () => {
-    writeShopDim()
-    writePaymentConcept()
-    const core = newCore()
+    writeShopDim(root)
+    writePaymentConcept(root)
+    const core = newMemoryCore(root)
     // Six DWS tables each joined to dim_shop, one incident per join edge
     // (caveats would bypass the budget — 恒展示不占预算 — so the cap needs a
     // budgeted type here).
@@ -282,8 +231,8 @@ describe('readDefinitionMemories — budget, ordering, truncation', () => {
   })
 
   it('readEdgeMemories caps at 3 per edge for the relation tools', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root)
+    const core = newMemoryCore(root)
     for (let i = 0; i < 4; i++) {
       await recordOne(core, { type: 'incident', anchors: ['table:dws_acc -joins-> table:dim_shop'], body: `坑 ${i}`, valid_from: `2026-10-0${i + 1}`, valid_until: `2026-10-0${i + 1}` }, `s${i}`)
     }
@@ -301,8 +250,8 @@ describe('readDefinitionMemories — budget, ordering, truncation', () => {
 
 describe('readDefinitionMemories — wrong / outdated / promoted', () => {
   it('wrong is permanently hidden; outdated hides without a window and shows when the window covers the old segment', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root)
+    const core = newMemoryCore(root)
     const old = await recordOne(core, { type: 'practice', anchors: ['dws_acc'], body: '旧口径:大R ≥ 328', basis: 'b', valid_from: '2026-07-01' }, 's1')
     const wrong = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: '错的观察', valid_from: '2026-09-01', valid_until: '2026-09-01' }, 's1')
     await recordOne(core, {
@@ -329,8 +278,8 @@ describe('readDefinitionMemories — wrong / outdated / promoted', () => {
   })
 
   it('a promoted entry folds: reference row, no body, no budget, not counted', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root)
+    const core = newMemoryCore(root)
     const promoted = await recordOne(core, { type: 'practice', anchors: ['dws_acc'], body: '已晋升口径', basis: '用户明说' })
     // The #136 promotion append, hand-placed the way the promotion path will write it.
     const { readFileSync, writeFileSync: wf } = await import('node:fs')
@@ -358,8 +307,8 @@ describe('readDefinitionMemories — wrong / outdated / promoted', () => {
 
 describe('readDefinitionMemories — contested companions', () => {
   it('contested_with is bidirectional; the companion travels over the cap, right behind its partner', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root)
+    const core = newMemoryCore(root)
     // Recency is staged so exactly ONE of the pair earns a budget slot: x is
     // the newest observation, y the oldest — without companion travel y would
     // be the first dropped.
@@ -384,8 +333,8 @@ describe('readDefinitionMemories — contested companions', () => {
   })
 
   it('a cross-anchor companion is pulled in with its own anchor, and counted (R6 + ADR-0027 R4)', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root)
+    const core = newMemoryCore(root)
     const here = await recordOne(core, { type: 'practice', anchors: ['dws_acc'], body: '口径 A', basis: 'b' }, 's1')
     const there = await recordOne(core, {
       type: 'practice', anchors: ['dim_shop'], body: '口径 B(相反)', basis: 'b',
@@ -403,8 +352,8 @@ describe('readDefinitionMemories — contested companions', () => {
   })
 
   it('wrong-hiding or outdated-hiding a partner dissolves the pair', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root)
+    const core = newMemoryCore(root)
     const x = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: '无放大', valid_from: '2026-09-15', valid_until: '2026-10-15' }, 's1')
     const y = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: '放大 3 倍', valid_from: '2026-09-01', valid_until: '2026-09-30', contradicts: [x] }, 's2')
     // Adjudicate: y loses with evidence (basis required, ADR-0027 R5).
@@ -446,8 +395,8 @@ describe('readDefinitionMemories — contested companions', () => {
 
 describe('readDefinitionMemories / readOrphanedMemories — dangling anchors', () => {
   it('a removed relation\'s entry stays on both ends with relation_missing; restoring the edge clears the mark', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root)
+    const core = newMemoryCore(root)
     const id = await recordOne(core, { type: 'caveat', anchors: ['table:dws_acc -joins-> table:dim_shop'], body: '该 join 在 shop_id=0 放大 3 倍' })
     // The edge dies the tool way: dws_acc loses its dimension_ref.
     writeFileSync(join(root, 'tables', 'dws_acc.yaml'), dumpYaml(fixtureTable({
@@ -469,15 +418,15 @@ describe('readDefinitionMemories / readOrphanedMemories — dangling anchors', (
       expect(view.edge_memories[0]?.anchor).toBe('table:dws_acc -joins-> table:dim_shop')
     }
     // Restoring the edge (the target back) restores the plain mount — 悬空读时现算.
-    writeAccTable()
+    writeAccTable(root)
     const restored = core.readDefinitionMemories('table:dim_shop')
     expect(restored.edge_memories[0]?.id).toBe(id)
     expect(restored.edge_memories[0]).not.toHaveProperty('relation_missing')
   })
 
   it('a deleted column surfaces as a downgraded row with column_missing', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root)
+    const core = newMemoryCore(root)
     const id = await recordOne(core, { type: 'caveat', anchors: ['dws_acc#pay_amt'], body: '该列曾有空值' })
     writeFileSync(join(root, 'tables', 'dws_acc.yaml'), dumpYaml(fixtureTable({
       table_name: 'dws_acc',
@@ -498,8 +447,8 @@ describe('readDefinitionMemories / readOrphanedMemories — dangling anchors', (
   })
 
   it('a multi-anchor entry with a live anchor displays normally — only the dangling anchor would mark (ADR-0026 R4)', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root)
+    const core = newMemoryCore(root)
     const id = await recordOne(core, { type: 'caveat', anchors: ['dws_acc', 'dws_acc#pay_amt'], body: '该表口径成立,该列曾有空值' })
     writeFileSync(join(root, 'tables', 'dws_acc.yaml'), dumpYaml(fixtureTable({
       table_name: 'dws_acc',
@@ -520,8 +469,8 @@ describe('readDefinitionMemories / readOrphanedMemories — dangling anchors', (
   })
 
   it('a deleted node yields orphaned_memories with definition_missing; edges with a surviving end hang there instead', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root)
+    const core = newMemoryCore(root)
     const onNode = await recordOne(core, { type: 'practice', anchors: ['table:dim_shop'], body: '维表口径', basis: '列注释' })
     const onEdge = await recordOne(core, { type: 'caveat', anchors: ['table:dws_acc -joins-> table:dim_shop'], body: 'join 坑' })
     rmSync(join(root, 'tables', 'dim_shop.yaml'))
@@ -536,7 +485,7 @@ describe('readDefinitionMemories / readOrphanedMemories — dangling anchors', (
     expect(survivor.edge_memories[0]?.relation_missing).toBe(true)
     expect(survivor.edge_memories[0]).not.toHaveProperty('definition_missing')
     // Restoring the file un-orphans: the normal mount comes back, marks gone.
-    writeShopDim()
+    writeShopDim(root)
     const restored = core.readDefinitionMemories('table:dim_shop')
     expect(restored.memories.map(r => r.id)).toEqual([onNode])
     expect(restored.memories[0]).not.toHaveProperty('definition_missing')
@@ -548,7 +497,7 @@ describe('readDefinitionMemories / readOrphanedMemories — dangling anchors', (
 
 describe('memoryCountsByNode + the zero-tax arm', () => {
   it('counts match the no-window mount per type, and metric nodes take exact anchors only', async () => {
-    fullCorpus()
+    fullCorpus(root)
     writeFileSync(join(root, 'tables', 'dws_acc.yaml'), dumpYaml(fixtureTable({
       table_name: 'dws_acc',
       kind: 'dws',
@@ -560,7 +509,7 @@ describe('memoryCountsByNode + the zero-tax arm', () => {
       dimension_refs: [{ dim_table: 'dim_shop', derivation: '', join_keys: [{ dws_column: 'ch_id', dim_column: 'shop_id' }] }],
       domains: ['payment'],
     })), 'utf8')
-    const core = newCore()
+    const core = newMemoryCore(root)
     await recordOne(core, { type: 'inference', anchors: ['dws_acc#ch_id'], body: '黑话', basis: '列注释' })
     await recordOne(core, { type: 'practice', anchors: ['dws_acc'], body: '口径', basis: 'b' })
     await recordOne(core, { type: 'caveat', anchors: ['table:dws_acc -joins-> table:dim_shop'], body: 'join 坑' })
@@ -575,8 +524,8 @@ describe('memoryCountsByNode + the zero-tax arm', () => {
   })
 
   it('an empty memory layer yields empty views everywhere (the substrate zero-tax arm)', async () => {
-    fullCorpus()
-    const core = newCore()
+    fullCorpus(root)
+    const core = newMemoryCore(root)
     expect(core.readDefinitionMemories('table:dws_acc')).toEqual({ memories: [], edge_memories: [] })
     expect(core.readOrphanedMemories('table:nope')).toEqual({ orphaned_memories: [] })
     expect(core.memoryCountsByNode(['table:dws_acc']).size).toBe(0)

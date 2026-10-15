@@ -727,7 +727,7 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
  * @param draft - the agent-submitted item.
  * @returns the first problem found, or undefined when the shape is legal.
  */
-export function validateMemoryDraftShape(draft: MemoryDraft): string | undefined {
+function validateMemoryDraftShape(draft: MemoryDraft): string | undefined {
   // Structural floor for direct (non-MCP) callers — the tool schema already
   // guarantees these on the wire, but this module's contract stands alone.
   if (!(MEMORY_TYPES as readonly string[]).includes(draft.type)) {

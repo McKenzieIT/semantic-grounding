@@ -173,7 +173,7 @@ export interface ServerConfig {
    * distinguishes sessions for the deterministic NOOP and the replicated-
    * evidence rule, and under stdio no host-tracked session exists to read, so
    * an unset value means the serving process generates one id for its own
-   * lifetime (`tools/memory.ts`'s lazy mint) — one process ≈ one serving
+   * lifetime (`tools/promotion.ts`'s lazy mint) — one process ≈ one serving
    * session. Tests and embedding hosts that need two distinguishable sessions
    * in one process set distinct values here.
    */

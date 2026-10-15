@@ -63,7 +63,7 @@ import type { PromotionEvidenceInput } from './shared.ts'
 let generatedProcessSession: string | undefined
 
 /** The process-lifetime session mint (see {@link promotionSession}). */
-export function processMemorySession(): string {
+function processMemorySession(): string {
   if (generatedProcessSession === undefined) {
     generatedProcessSession = `sg-${randomUUID()}`
   }
