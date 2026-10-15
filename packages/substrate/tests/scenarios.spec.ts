@@ -42,9 +42,6 @@ const VAR_PENDING = join(SCRATCH, 'var', 'pending_semantic')
 function readFix(name: string): string {
   return readFileSync(join(FIXTURES, name), 'utf8')
 }
-function readLayerFile(rel: string): string {
-  return readFileSync(join(LAYER, rel), 'utf8')
-}
 function resetLayer(): void {
   rmSync(LAYER, { recursive: true, force: true })
   mkdirSync(join(LAYER, 'tables'), { recursive: true })

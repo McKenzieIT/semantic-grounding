@@ -151,13 +151,9 @@ export {
   enrichAllEventsAltLabels,
   enrichAllEvents,
 } from './enrichment/event-adapter.ts'
+// #160 后残面复核：六个类型 re-export（MergeContext/SweepOpts/SweepPrepare/
+// SweepTarget/ListedTarget/EnrichmentWriteOutcome）全仓零消费——家族文件直连
+// './types.ts'——死名删（同 #160 语法）；sweepEnrichment 与 EnrichmentKindAdapter
+// 留：sweep.spec 经本面消费（c602434 勘误实证）。
 export { sweepEnrichment } from './enrichment/sweep.ts'
-export {
-  type EnrichmentKindAdapter,
-  type MergeContext,
-  type SweepOpts,
-  type SweepPrepare,
-  type SweepTarget,
-  type ListedTarget,
-  type EnrichmentWriteOutcome,
-} from './enrichment/types.ts'
+export { type EnrichmentKindAdapter } from './enrichment/types.ts'

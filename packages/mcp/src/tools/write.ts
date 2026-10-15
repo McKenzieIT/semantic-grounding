@@ -22,20 +22,16 @@ import type { McpServer, ServerContext } from '@modelcontextprotocol/server'
 import { EventDefinitionSchema, TableDefinitionSchema, dumpYaml, writeEventYaml, writeTable } from '@semantic-grounding/substrate'
 import { z } from 'zod'
 import type { ScopeBinding } from '../binding.ts'
-import { DefinitionAlreadyExistsError, DefinitionNotFoundError, DefinitionValidationError, isSubstrateNotFound } from '../errors.ts'
+import { DefinitionAlreadyExistsError, DefinitionNotFoundError, DefinitionValidationError, UnsupportedUpdateFieldError, isSubstrateNotFound } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { assertScopeMatch, auditedWrite, toolSuccess, writeReceipt } from './audited.ts'
 import {
   CREATE_COMMON_FIELDS,
-  CONCEPT_ARRAY_REF_REDIRECT,
   ConceptCreatePayloadSchema,
   ConceptFieldsSchema,
-  EVENT_ARRAY_REF_REDIRECT,
   EventFieldsSchema,
-  TABLE_ARRAY_REF_REDIRECT,
   TableFieldsSchema,
   UPDATE_COMMON_FIELDS,
-  assertNoRedirectedFields,
   loadWritable,
   type ToolFamily,
 } from './shared.ts'
@@ -172,6 +168,59 @@ const UpdateDefinitionInputSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('event'), name: z.string().min(1), fields: EventFieldsSchema, ...UPDATE_COMMON_FIELDS }),
   z.object({ kind: z.literal('concept'), name: z.string().min(1), fields: ConceptFieldsSchema, ...UPDATE_COMMON_FIELDS }),
 ])
+
+// ── The update path's array-reference redirect apparatus (ADR-0005 ruling 4) ───────
+// (moved from `tools/shared.ts` 2026-10-15 — same one-consumer rule as #145/#161:
+// the `update_definition` handler below is this apparatus's one consumer. #161
+// moved that handler's `assertUpdateOk` twin out and left these behind.)
+
+/** Array-reference field → the item-level tool pair that maintains it (ADR-0005 ruling 4's redirect), for tables. The `suppressed_*` keys ride the same verbs (#38 / ADR-0010): a veto is born by remove and lifted by add, never written as a bare field. */
+const TABLE_ARRAY_REF_REDIRECT: Readonly<Record<string, string>> = {
+  alt_labels: 'add_alias / remove_alias',
+  dimension_refs: 'add_relation / remove_relation',
+  suppressed_alt_labels: 'add_alias / remove_alias (vetoes are born by remove_*, lifted by add_* — never hand-written)',
+  suppressed_dimension_refs: 'add_relation / remove_relation (vetoes are born by remove_*, lifted by add_* — never hand-written)',
+}
+/** Array-reference field → the item-level tool pair that maintains it, for events. */
+const EVENT_ARRAY_REF_REDIRECT: Readonly<Record<string, string>> = {
+  alt_labels: 'add_alias / remove_alias',
+  external_refs: 'add_relation / remove_relation',
+  suppressed_alt_labels: 'add_alias / remove_alias (vetoes are born by remove_*, lifted by add_* — never hand-written)',
+  suppressed_external_refs: 'add_relation / remove_relation (vetoes are born by remove_*, lifted by add_* — never hand-written)',
+}
+/** Array-reference field → the item-level tool pair that maintains it, for concepts
+ * (ADR-0012 #46 R3 伴生点 1). Concepts have no dimension_refs/external_refs — their
+ * declared edges live in `related_refs`, maintained by the same relation pair with a
+ * `target_kind`-carrying shape (Q4(b)). */
+const CONCEPT_ARRAY_REF_REDIRECT: Readonly<Record<string, string>> = {
+  alt_labels: 'add_alias / remove_alias',
+  related_refs: 'add_relation / remove_relation (concept-side edges: {target_kind, name})',
+  suppressed_alt_labels: 'add_alias / remove_alias (vetoes are born by remove_*, lifted by add_* — never hand-written)',
+  suppressed_related_refs: 'add_relation / remove_relation (vetoes are born by remove_*, lifted by add_* — never hand-written)',
+}
+
+/**
+ * Reject an array-reference field, pointing at the item-level tool that maintains it.
+ *
+ * This is the handler-side half of `update_definition`'s bounded `fields` schema: the
+ * schema itself (built by `tools/shared.ts`'s `updatableFieldsSchema`) deliberately
+ * leaves `alt_labels` / `dimension_refs` / `external_refs` in as ordinarily-typed
+ * optional fields — rejecting them in zod would only produce a generic "unrecognized
+ * key" message, with no way to attach the redirect ADR-0005 ruling 4 asks for.
+ * @param fields - the already-parsed `fields` object (whichever keys the caller sent survive here).
+ * @param redirect - the kind's array-reference redirect map ({@link TABLE_ARRAY_REF_REDIRECT} / {@link EVENT_ARRAY_REF_REDIRECT}).
+ * @throws UnsupportedUpdateFieldError naming the first rejected field found and its replacement tool(s).
+ */
+function assertNoRedirectedFields(fields: Readonly<Record<string, unknown>>, redirect: Readonly<Record<string, string>>): void {
+  for (const [field, tools] of Object.entries(redirect)) {
+    if (field in fields) {
+      throw new UnsupportedUpdateFieldError(
+        `update_definition does not accept "${field}": it is an array-reference field maintained item-by-item (ADR-0005 ruling 4) — use ${tools} instead`,
+        { field, use_instead: tools },
+      )
+    }
+  }
+}
 
 // ── The update path's field-apply trio (#161 / C16) ─────────────────────────────────
 // (#161: moved from `tools/audited.ts` (`applyFieldUpdate`) and `tools/shared.ts`
