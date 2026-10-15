@@ -13,9 +13,12 @@
  * half: the `sg-mcp` executable, its config surface, and the stdio server that carries
  * them, registering no tools of its own.
  * [#20](https://github.com/McKenzieIT/semantic-grounding/issues/20) appends ADR-0005's
- * fifteen intent tools (`src/tools/`) to `TOOL_REGISTRARS`, and
- * [#21](https://github.com/McKenzieIT/semantic-grounding/issues/21) (the three
- * enrichment tools and `beginBatch`, ADR-0006) appends the rest the same way.
+ * intent tools (the families `src/tools/` derives into `INTENT_TOOL_FAMILIES`) to
+ * `TOOL_REGISTRARS`, and
+ * [#21](https://github.com/McKenzieIT/semantic-grounding/issues/21) (ADR-0006's
+ * enrichment family) appends the rest the same way. #21 also landed the recorder's
+ * `beginBatch` audited-batch window (ADR-0004 ruling 3) — a recorder method, not a
+ * registered tool.
  *
  * Every tool handler's failures flow through the server's chokepoint wrap
  * (`server.ts`'s `epochWrapped`, #120/C5), which pipes a rejected handler

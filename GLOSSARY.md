@@ -469,7 +469,7 @@ ADR-0002's extension-point basis). Landed in
 Under the MCP management surface the write paths appear as **intent tools** (ADR-0005):
 definition-level `create_definition` / `update_definition`, entry-level `add_alias` /
 `remove_alias` / `add_relation` / `remove_relation`, and the Tier-1 suggestion quartet
-(`submit` / `list` / `get` / `discard_suggestion`) — thin wrappers that compile onto the
+(`submit_suggestion` / `list_suggestions` / `get_suggestion` / `discard_suggestion`) — thin wrappers that compile onto the
 functions in this table and do their read-modify-write inside the corpus lock. The
 raw-edit row never appears as a tool: `create_definition` routes through the primitives
 with a recorder passed on every call (ADR-0004 ruling 2's constraint). Implemented in

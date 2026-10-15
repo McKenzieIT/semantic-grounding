@@ -82,7 +82,7 @@ import { TOOL_REGISTRARS } from './tools/index.ts'
 import { toToolErrorResult } from './errors.ts'
 // ADR-0015's MCP-side entry: the epoch itself lives in the substrate
 // (`read-epoch.ts`, reached through the barrel's `SemanticGroundingCore`
-// static — the barrel's 36-name allow-list is untouched). Value import.
+// static — the barrel's name-level allow-list (ADR-0003) is untouched). Value import.
 import { SemanticGroundingCore } from '@semantic-grounding/substrate'
 
 /**
