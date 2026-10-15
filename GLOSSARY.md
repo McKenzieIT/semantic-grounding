@@ -63,6 +63,16 @@ An alternative surface name for a definition. Aliases are the primary bridge bet
 the language users actually use (Chinese, English, jargon, legacy names) and the
 definition's canonical identity. Aliases feed the BM25 retrieval projection.
 
+### term concept (术语概念)
+
+A [concept](#kind) whose job is to say what a piece of business jargon means in the
+data: "2渠" is the 二级渠道, and it lives in the column `ch_id`. It carries the jargon as
+an [alias](#alias) and names the column, and stops there: it does not list the tables
+that have the column, because any table with that column qualifies and finding them is a
+search, not a fact to maintain. Jargon at different levels of a hierarchy is separate
+term concepts (一级渠道 and 二级渠道), linked child to parent. Avoid *column alias*: the
+jargon belongs to the business, not to one column of one table.
+
 ### corpus
 
 A scoped collection of definitions and relations — the unit the substrate operates
