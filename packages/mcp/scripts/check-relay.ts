@@ -646,19 +646,9 @@ async function runScenario(scenario: RelayScenario, opts: Options, repoHead: str
     console.log(`[relay]   X63 scope ${X63_SCOPE_ID} at ${sandbox.corpusRoot}; G3′ target table: ${g3Target}`)
   }
   try {
-    // ── A leg (the write) ──────────────────────────────────────────────────────
-    const promptA = g3Target !== undefined ? withG3Target(scenario.promptA, g3Target) : scenario.promptA
-    const aArgs = scenario.harnessA === 'claude'
-      ? claudeArgs(sandbox.mcpA, promptA, opts.tight, process.env['SG_RELAY_CLAUDE_MODEL'])
-      : qodercliArgs(sandbox.mcpA, promptA)
-    console.log(`[relay]   A leg (${scenario.harnessA}) writing…`)
-    const aRun = await runHost(scenario.harnessA, aArgs, sandbox.dir, join(sandbox.outDir, 'A.jsonl'), opts.timeoutMs)
-    if (!aRun.ok) throw new Error(`A leg failed: ${aRun.error ?? 'unknown'}`)
-    const l0 = judgeL0(scenario, sandbox.corpusRoot, sandbox.baseline, g3Target)
-    console.log(`[relay]   L0 (commit+trailers on the corpus git): ${l0.pass ? 'PASS' : `FAIL — ${l0.error}`}`)
-    for (const c of l0.commits) console.log(`[relay]     ${c.sha.slice(0, 7)} ${c.subject}`)
-
     // ── E3 control (ADR-0028 R4) ───────────────────────────────────────────────
+    // Runs BEFORE the A leg: its premise is the concept-free corpus, and the
+    // sandbox is only guaranteed concept-free before A writes into it.
     let control: ScenarioResult['control']
     if (scenario.controlPrompt !== undefined) {
       const question = scenario.questions[0]
@@ -674,6 +664,18 @@ async function runScenario(scenario: RelayScenario, opts: Options, repoHead: str
       control = { runs: opts.controlRuns, passed, valid: passed === 0 }
       if (passed > 0) console.log(`[relay]   control INVALID: ${passed}/${opts.controlRuns} passed pre-promotion — 换题 per ADR-0028 R4`)
     }
+
+    // ── A leg (the write) ──────────────────────────────────────────────────────
+    const promptA = g3Target !== undefined ? withG3Target(scenario.promptA, g3Target) : scenario.promptA
+    const aArgs = scenario.harnessA === 'claude'
+      ? claudeArgs(sandbox.mcpA, promptA, opts.tight, process.env['SG_RELAY_CLAUDE_MODEL'])
+      : qodercliArgs(sandbox.mcpA, promptA)
+    console.log(`[relay]   A leg (${scenario.harnessA}) writing…`)
+    const aRun = await runHost(scenario.harnessA, aArgs, sandbox.dir, join(sandbox.outDir, 'A.jsonl'), opts.timeoutMs)
+    if (!aRun.ok) throw new Error(`A leg failed: ${aRun.error ?? 'unknown'}`)
+    const l0 = judgeL0(scenario, sandbox.corpusRoot, sandbox.baseline, g3Target)
+    console.log(`[relay]   L0 (commit+trailers on the corpus git): ${l0.pass ? 'PASS' : `FAIL — ${l0.error}`}`)
+    for (const c of l0.commits) console.log(`[relay]     ${c.sha.slice(0, 7)} ${c.subject}`)
 
     // ── B legs (N runs × questions) ────────────────────────────────────────────
     const verdicts: RunVerdict[] = []
