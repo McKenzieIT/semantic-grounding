@@ -18,8 +18,9 @@
  * implementation shared with the write-side `checkExpectedVersion` instead of a
  * parallel copy that had already forked on hand-renamed event files.
  *
- * Nothing here registers a tool — see `read.ts` / `write.ts` / `items.ts` /
- * `suggestions.ts` for the registrars that import from this module. The one thing
+ * Nothing here registers a tool — for the registrars, see the tool-family files
+ * importing from this module (derived, not enumerated: a fixed name list drifts
+ * as families come and go — this one had already drifted to 4-of-9, #172). The one thing
  * added since (#115 / C3) is type-only: the `ToolFamily` descriptor-card interface
  * every family file's `X_TOOL_FAMILY` binds through, so each family keeps owning its
  * names and its registrar while `index.ts` composes the cards.

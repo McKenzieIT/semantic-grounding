@@ -7,7 +7,7 @@
 
 ## Context
 
-2026-10-13 [#79](https://github.com/McKenzieIT/semantic-grounding/issues/79) 裁决 semantic-grounding 独立发展、不再以 dsh 兼容为约束（ADR-0016 已按该前提落事件文件名迁移）。同日双轴巡检（[docs/architecture-review-2026-10-13.md](../../architecture-review-2026-10-13.md) §S1）实证：dsh 姿态面集群六块的 ADR 保留理由原文都是「为 dsh 保留」，而 mcp 生产面（src + scripts）对它们 rg 亲验**零消费**——客户已不存在，代码/测试/barrel 名单/GLOSSARY 词条仍在全额维护（合计约 1200-1500 行 + 公共面收缩）。[#82](https://github.com/McKenzieIT/semantic-grounding/issues/82) 同日三轮 grilling 确认前提总纲与六项裁决；map #88 五张线性票执行（#83 `abef1d2` / #84 `3561278` / #85 `ba66229` / #86 `294a1aa`，均 2026-10-13 合入 main），本 ADR 随关图票 #87 直接 accepted 落盘。
+2026-10-13 [#79](https://github.com/McKenzieIT/semantic-grounding/issues/79) 裁决 semantic-grounding 独立发展、不再以 dsh 兼容为约束（ADR-0016 已按该前提落事件文件名迁移）。同日双轴巡检（首轮巡检报告已随 5d9b653 收束删除，全文 `git show 2913c26:docs/architecture-review-2026-10-13.md` 可回查，§S1）实证：dsh 姿态面集群六块的 ADR 保留理由原文都是「为 dsh 保留」，而 mcp 生产面（src + scripts）对它们 rg 亲验**零消费**——客户已不存在，代码/测试/barrel 名单/GLOSSARY 词条仍在全额维护（合计约 1200-1500 行 + 公共面收缩）。[#82](https://github.com/McKenzieIT/semantic-grounding/issues/82) 同日三轮 grilling 确认前提总纲与六项裁决；map #88 五张线性票执行（#83 `abef1d2` / #84 `3561278` / #85 `ba66229` / #86 `294a1aa`，均 2026-10-13 合入 main），本 ADR 随关图票 #87 直接 accepted 落盘。
 
 ## Decision
 
@@ -50,5 +50,5 @@
 
 - 源票：[#82](https://github.com/McKenzieIT/semantic-grounding/issues/82)（票面即规范：前提总纲、六项裁决、工作清单、边界、验收全文存目，随 map #88 关闭）
 - 执行：map [#88](https://github.com/McKenzieIT/semantic-grounding/issues/88) + #83/#84/#85/#86（代码票）/ #87（本 ADR + 十张 Update + GLOSSARY + 终局验收）
-- 巡检证据：[docs/architecture-review-2026-10-13.md](../../architecture-review-2026-10-13.md) §S1（防重查存档）
+- 巡检证据：首轮巡检报告全文 `git show 2913c26:docs/architecture-review-2026-10-13.md` 可回查（§S1，防重查存档；报告本体已随 5d9b653 收束删除）
 - 先例：ADR-0016（同日独立发展前提的首个裁决——事件文件名迁移而非适配）
