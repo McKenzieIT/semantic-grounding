@@ -349,7 +349,7 @@ async function main(): Promise<void> {
       const search = await call(client, 'search_definitions', { query: 'order' })
       const hits = search['hits'] as Array<{ id: string; score: number }>
       assert.ok(hits !== undefined && hits.length > 0, 'search finds something for "order"')
-      assert.equal(hits[0]?.id, 'dws_order', 'the exact-substring bonus ranks dws_order first')
+      assert.equal(hits[0]?.id, 'table:dws_order', 'the exact-substring bonus ranks dws_order first')
 
       assert.match(await baselineOf(client, 'table', 'dws_order'), SHA256, 'get_definition returns the fingerprint (since #108, every definition write receipt does too)')
       const def = await definitionOf(client, 'table', 'dws_order')
@@ -465,7 +465,7 @@ async function main(): Promise<void> {
       const path = await call(client, 'get_join_path', { from: 'dws_order', to: 'dim_shop' })
       assert.equal(path['found'], true, 'the derived join is now walkable')
       const walked = path['path'] as string[]
-      assert.ok(walked.includes('dws_order') && walked.includes('dim_shop'), `join path spans both ends: ${JSON.stringify(walked)}`)
+      assert.ok(walked.includes('table:dws_order') && walked.includes('table:dim_shop'), `join path spans both ends: ${JSON.stringify(walked)}`)
       const related = await call(client, 'get_relations', { target: 'dws_order' })
       assert.ok(((related['relations'] as unknown[])).length > 0, 'dws_order has relations now')
       const payFlow = await definitionOf(client, 'table', 'dws_pay_flow')
@@ -526,7 +526,7 @@ async function main(): Promise<void> {
         'per-row verdicts in input order (#107 Q5)',
       )
       const resolved = await call(client, 'resolve_alias', { term: '订单宽表' })
-      assert.ok(((resolved['node_ids'] as string[]) ?? []).includes('dws_order'), 'the 问数 scenario now resolves its alias')
+      assert.ok(((resolved['node_ids'] as string[]) ?? []).includes('table:dws_order'), 'the 问数 scenario now resolves its alias')
 
       // #107 Q7 invariant ②: the receipt's version IS the next write's
       // baseline — no get_definition between the writes; the loop closes on
@@ -866,7 +866,7 @@ async function main(): Promise<void> {
       const relatedFromConcept = await call(client, 'get_relations', { target: 'concept:订单生命周期' })
       const relEdges = relatedFromConcept['relations'] as Array<{ type: string; targetId: string }>
       assert.ok(relEdges.some(r => r.type === 'related_to' && r.targetId === 'concept:渠道'), 'get_relations walks the concept→concept edge')
-      assert.ok(relEdges.some(r => r.type === 'related_to' && r.targetId === 'dws_order'), 'get_relations walks the table→concept edge too (bare table id, no prefix)')
+      assert.ok(relEdges.some(r => r.type === 'related_to' && r.targetId === 'table:dws_order'), 'get_relations walks the table→concept edge too (now table:-prefixed, ADR-0023 R4)')
 
       // get_join_path's BFS only ever walks `joins`-type edges (relation-graph.ts) —
       // a concept's own edges project as `related_to` (CL-2's taxonomy layer, not a

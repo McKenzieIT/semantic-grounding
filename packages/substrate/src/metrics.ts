@@ -91,6 +91,9 @@ export function splitMetricName(name: string): { host: string; key: string } | n
  * planner retains its Type B disambiguation signal (M1c: restores signal lost
  * when metrics were flattened to standalone YAMLs).
  * @param source - the table/event name the metric was extracted from.
+ * @param hostKind - the host's kind (`table` or `event`) — used only to prefix
+ *  the `derived_from` relation's target with the host's graph-node id
+ *  (ADR-0023 R4); `source` itself and `computation.metadata.source` stay bare.
  * @param key - the metric key in the source's `metrics:` record.
  * @param def - the inline metric definition (expression + description + caliber_variants).
  * @param domains - the source's domains, copied onto the metric.
@@ -98,6 +101,7 @@ export function splitMetricName(name: string): { host: string; key: string } | n
  */
 export function toMetricDefinition(
   source: string,
+  hostKind: 'table' | 'event',
   key: string,
   def: MetricDef,
   domains: readonly string[],
@@ -122,7 +126,7 @@ export function toMetricDefinition(
     relations: [
       {
         type: 'derived_from',
-        target: source,
+        target: `${hostKind}:${source}`,
         on: '',
         description: `机械提取自 ${source} 的 metrics 块（key=${key}）`,
       },
@@ -141,7 +145,7 @@ export function projectMetricCorpusItem(def: MetricDefinition): { id: string; de
   if (def.computation.metadata.aggregation) parts.push(def.computation.metadata.aggregation)
   if (def.computation.metadata.field) parts.push(def.computation.metadata.field)
   return {
-    id: def.name,
+    id: `metric:${def.name}`,
     ...(parts.length > 0 ? { description: parts.join(' ') } : {}),
     payload: def,
   }
@@ -169,7 +173,7 @@ export function deriveMetricRelations(def: MetricDefinition): { type: 'joins' | 
 export function extractMetricsFromTable(def: TableDefinition): MetricDefinition[] {
   const out: MetricDefinition[] = []
   for (const [key, mdef] of Object.entries(def.metrics)) {
-    out.push(toMetricDefinition(def.table_name, key, mdef, def.domains))
+    out.push(toMetricDefinition(def.table_name, 'table', key, mdef, def.domains))
   }
   return out
 }
@@ -183,7 +187,7 @@ export function extractMetricsFromTable(def: TableDefinition): MetricDefinition[
 export function extractMetricsFromEvent(def: EventDefinition): MetricDefinition[] {
   const out: MetricDefinition[] = []
   for (const [key, mdef] of Object.entries(def.metrics)) {
-    out.push(toMetricDefinition(def.name, key, mdef, def.domains))
+    out.push(toMetricDefinition(def.name, 'event', key, mdef, def.domains))
   }
   return out
 }
@@ -235,7 +239,7 @@ export function loadMetricDefinitions(semanticLayer: string): MetricDefinition[]
  */
 export function metricGraphNode(def: MetricDefinition): GraphNodeProjection {
   return {
-    id: def.name,
+    id: `metric:${def.name}`,
     kind: 'metric',
     label: def.name,
     domains: [...def.domains],

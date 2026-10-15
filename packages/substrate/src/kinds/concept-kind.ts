@@ -61,7 +61,7 @@ export const conceptKindPlugin: DataSourceKindPlugin<ConceptDefinition> = {
     for (const ref of def.related_refs) {
       out.push({
         type: 'related_to' as const,
-        target: ref.target_kind === 'concept' ? `concept:${ref.target}` : ref.target,
+        target: ref.target_kind === 'concept' ? `concept:${ref.target}` : `table:${ref.target}`,
         ...(ref.derivation ? { description: ref.derivation } : {}),
       })
     }

@@ -60,14 +60,14 @@ describe('search_definitions (wired)', () => {
     h = await buildIntentToolHarness()
     const res = await h.client.callTool('search_definitions', { query: 'order' })
     const body = toolJson(res) as { hits: Array<{ id: string }> }
-    expect(body.hits.map(x => x.id)).toContain('dws_order')
+    expect(body.hits.map(x => x.id)).toContain('table:dws_order')
   })
 
   it('restricts to the given kinds', async () => {
     h = await buildIntentToolHarness()
     const res = await h.client.callTool('search_definitions', { query: 'dws_order', kinds: ['event'] })
     const body = toolJson(res) as { hits: Array<{ id: string }> }
-    expect(body.hits.map(x => x.id)).not.toContain('dws_order')
+    expect(body.hits.map(x => x.id)).not.toContain('table:dws_order')
   })
 
   // #117: the kinds filter folds storage kinds (dws/dim → table) — asserted by
@@ -78,7 +78,7 @@ describe('search_definitions (wired)', () => {
     h = await buildIntentToolHarness()
     const res = await h.client.callTool('search_definitions', { query: 'o', kinds: ['table'] })
     const body = toolJson(res) as { hits: Array<{ id: string }> }
-    expect(body.hits.map(x => x.id).sort()).toEqual(['dim_shop', 'dws_order'])
+    expect(body.hits.map(x => x.id).sort()).toEqual(['table:dim_shop', 'table:dws_order'])
   })
 
   it("kinds:['metric'] still finds derived metrics — pass-through kinds unaffected by the fold (#117)", async () => {
@@ -86,7 +86,7 @@ describe('search_definitions (wired)', () => {
     await addGmvMetric(h)
     const res = await h.client.callTool('search_definitions', { query: 'gmv', kinds: ['metric'] })
     const body = toolJson(res) as { hits: Array<{ id: string }> }
-    expect(body.hits.map(x => x.id)).toContain('dws_order__gmv')
+    expect(body.hits.map(x => x.id)).toContain('metric:dws_order__gmv')
   })
 
   it('caps results at top_k', async () => {
@@ -181,9 +181,12 @@ describe('get_join_path / get_relations / resolve_alias', () => {
       expected_version: (toolJson(await h.client.callTool('get_definition', { kind: 'table', name: 'dws_order' })) as { version: string }).version,
     })
     const res = await h.client.callTool('get_join_path', { from: 'dws_order', to: 'dim_shop' })
-    const body = toolJson(res) as { found: boolean; path: string[] | null }
+    const body = toolJson(res) as { from: string; to: string; found: boolean; path: string[] | null }
     expect(body.found).toBe(true)
-    expect(body.path).toEqual(['dws_order', 'dim_shop'])
+    expect(body.path).toEqual(['table:dws_order', 'table:dim_shop'])
+    // bare input (above), `<kind>:`-prefixed output (ADR-0023 R4)
+    expect(body.from).toBe('table:dws_order')
+    expect(body.to).toBe('table:dim_shop')
   })
 
   it('get_join_path reports found:false (not an error) for an unreachable pair', async () => {
@@ -207,8 +210,9 @@ describe('get_join_path / get_relations / resolve_alias', () => {
       expected_version: (toolJson(await h.client.callTool('get_definition', { kind: 'table', name: 'dws_order' })) as { version: string }).version,
     })
     const res = await h.client.callTool('get_relations', { target: 'dws_order', type: 'joins' })
-    const body = toolJson(res) as { relations: Array<{ targetId: string; type: string }> }
-    expect(body.relations.some(r => r.targetId === 'dim_shop' && r.type === 'joins')).toBe(true)
+    const body = toolJson(res) as { target: string; relations: Array<{ targetId: string; type: string }> }
+    expect(body.target).toBe('table:dws_order')
+    expect(body.relations.some(r => r.targetId === 'table:dim_shop' && r.type === 'joins')).toBe(true)
   })
 
   it('get_relations returns an empty list (not an error) for an unrelated node', async () => {
@@ -233,7 +237,7 @@ describe('get_join_path / get_relations / resolve_alias', () => {
     })
     const res = await h.client.callTool('resolve_alias', { term: '订单宽表' })
     const body = toolJson(res) as { node_ids: string[] }
-    expect(body.node_ids).toContain('dws_order')
+    expect(body.node_ids).toContain('table:dws_order')
   })
 
   it('resolve_alias returns an empty list (not an error) for an unknown term', async () => {
@@ -318,10 +322,10 @@ describe('list_definitions (wired — #105, the inventory index)', () => {
     expect(body.truncated).toBe(false)
     expect(body.definitions.map(r => [r.kind, r.id])).toEqual([
       ['concept', 'concept:sales'],
-      ['dim', 'dim_shop'],
-      ['dws', 'dws_order'],
-      ['event', 'pay_success'],
-      ['metric', 'dws_order__gmv'],
+      ['dim', 'table:dim_shop'],
+      ['dws', 'table:dws_order'],
+      ['event', 'event:pay_success'],
+      ['metric', 'metric:dws_order__gmv'],
     ])
     // The index/detail split, pinned on the wire: an index row is the four fields
     // only — no description (that is get_definition's to give), no version
@@ -332,7 +336,7 @@ describe('list_definitions (wired — #105, the inventory index)', () => {
   it('kinds:["table"] returns the tables — the filter folds dws/dim, the rows do not', async () => {
     h = await buildIntentToolHarness()
     const body = toolJson(await h.client.callTool('list_definitions', { kinds: ['table'] })) as { total: number; definitions: Array<{ id: string; kind: string }> }
-    expect(body.definitions.map(r => r.id).sort()).toEqual(['dim_shop', 'dws_order'])
+    expect(body.definitions.map(r => r.id).sort()).toEqual(['table:dim_shop', 'table:dws_order'])
     expect(body.total).toBe(2)
   })
 
@@ -340,7 +344,7 @@ describe('list_definitions (wired — #105, the inventory index)', () => {
     h = await buildIntentToolHarness()
     await addGmvMetric(h)
     const body = toolJson(await h.client.callTool('list_definitions', { kinds: ['metric'] })) as { total: number; definitions: Array<{ id: string; kind: string }> }
-    expect(body.definitions.map(r => [r.kind, r.id])).toEqual([['metric', 'dws_order__gmv']])
+    expect(body.definitions.map(r => [r.kind, r.id])).toEqual([['metric', 'metric:dws_order__gmv']])
     expect(body.total).toBe(1)
   })
 

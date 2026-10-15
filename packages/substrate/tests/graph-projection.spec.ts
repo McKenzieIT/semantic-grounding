@@ -164,14 +164,14 @@ describe('a kind declaring a built-in storage dir (I7)', () => {
     // It never receives the table definition, so it mints no node for it.
     expect(nodes.filter(node => node.kind === 'widget').map(node => node.id)).toEqual(['widget:widget-a'])
     // The built-in table kind still owns the table.
-    expect(nodes.find(node => node.id === 'orders')?.kind).toBe('dws')
+    expect(nodes.find(node => node.id === 'table:orders')?.kind).toBe('dws')
   })
 
   it('indexes that kind in the full retrieval corpus under its own id', () => {
     const { svc } = seedSharedTablesDir()
     const ids = svc.loadRetrievalCorpusAll().map(item => item.id)
     expect(ids).toContain('widget:widget-a')
-    expect(ids).toContain('orders')
+    expect(ids).toContain('table:orders')
   })
 })
 
@@ -279,9 +279,9 @@ describe('skipping derived nodes the caller discards (I4)', () => {
   it('projects derived nodes by default and omits them when not requested', () => {
     const svc = seedTableWithMetric()
     const withDerived = svc.projectGraphNodes().map(node => node.id)
-    expect(withDerived).toContain('orders')
-    expect(withDerived).toContain('orders__total')
-    expect(svc.projectGraphNodes({ includeDerived: false }).map(node => node.id)).toEqual(['orders'])
+    expect(withDerived).toContain('table:orders')
+    expect(withDerived).toContain('metric:orders__total')
+    expect(svc.projectGraphNodes({ includeDerived: false }).map(node => node.id)).toEqual(['table:orders'])
   })
 
   it('never asks a kind to derive nodes the caller will discard', () => {

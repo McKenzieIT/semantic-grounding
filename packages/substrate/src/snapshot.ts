@@ -126,12 +126,12 @@ export class DefinitionSnapshot {
     const table = this.loadTableDefinition(host)
     if (table !== null) {
       const m = table.metrics[key]
-      if (m !== undefined) return toMetricDefinition(host, key, m, table.domains)
+      if (m !== undefined) return toMetricDefinition(host, 'table', key, m, table.domains)
     }
     const event = this.loadEventDefinition(host)
     if (event !== null) {
       const m = event.metrics[key]
-      if (m !== undefined) return toMetricDefinition(host, key, m, event.domains)
+      if (m !== undefined) return toMetricDefinition(host, 'event', key, m, event.domains)
     }
     return null
   }

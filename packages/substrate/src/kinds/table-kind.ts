@@ -36,7 +36,7 @@ export const tableKindPlugin: DataSourceKindPlugin<TableDefinition> = {
     }
     for (const s of def.alt_labels) parts.push(s)
     return {
-      id: def.table_name,
+      id: `table:${def.table_name}`,
       ...(parts.length > 0 ? { description: parts.join(' ') } : {}),
       payload: def,
     }
@@ -44,8 +44,9 @@ export const tableKindPlugin: DataSourceKindPlugin<TableDefinition> = {
 
   toGraphNode(def): GraphNodeProjection {
     // A table's graph kind is its storage kind (`dws`/`dim`/…), carried open so
-    // a new table kind needs no gateway change.
-    return { id: def.table_name, kind: def.kind, label: def.table_name, domains: [...def.domains] }
+    // a new table kind needs no gateway change. The node id uses the
+    // *definition* kind (`table:`), not the storage kind, per ADR-0023 R4.
+    return { id: `table:${def.table_name}`, kind: def.kind, label: def.table_name, domains: [...def.domains] }
   },
 
   relations(def): RelationDef[] {
@@ -62,7 +63,7 @@ export const tableKindPlugin: DataSourceKindPlugin<TableDefinition> = {
       if (!hasAlternatives) {
         out.push({
           type: 'joins' as const,
-          target: ref.dim_table,
+          target: `table:${ref.dim_table}`,
           on: ref.join_keys.map(k => `${k.dws_column} = ${k.dim_column}`).join(' AND '),
           ...(ref.derivation ? { description: ref.derivation } : {}),
         })
@@ -91,7 +92,7 @@ export const tableKindPlugin: DataSourceKindPlugin<TableDefinition> = {
         for (const combo of combos) {
           out.push({
             type: 'joins' as const,
-            target: ref.dim_table,
+            target: `table:${ref.dim_table}`,
             on: combo.map(k => `${k.dws_column} = ${k.dim_column}`).join(' AND '),
             ...(ref.derivation ? { description: ref.derivation } : {}),
           })

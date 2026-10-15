@@ -74,7 +74,7 @@ test('eventKindPlugin — toCorpusItem enriches with params + alt_labels from de
   const defWithAliases = { ...EVENT_DEF, alt_labels: ['上线', '登录'] }
   const item = eventKindPlugin.toCorpusItem(defWithAliases)
   expect(item).not.toBeNull()
-  expect(item!.id).toBe('role.online')
+  expect(item!.id).toBe('event:role.online')
   expect(item!.description).toContain('玩家上线')
   expect(item!.description).toContain('role_id')
   expect(item!.description).toContain('角色id')
@@ -84,7 +84,7 @@ test('eventKindPlugin — toCorpusItem enriches with params + alt_labels from de
 
 test('eventKindPlugin — toCorpusItem works without alt_labels (no aliases injected)', () => {
   const item = eventKindPlugin.toCorpusItem(EVENT_DEF)
-  expect(item!.id).toBe('role.online')
+  expect(item!.id).toBe('event:role.online')
   expect(item!.description).toContain('role_id')
   expect(item!.description).not.toContain('登录')
 })
@@ -107,7 +107,7 @@ test('eventKindPlugin — relations maps external_refs with G2 types', () => {
   expect(rels).toHaveLength(1)
   expect(rels[0]).toBeDefined()
   expect(rels[0]!.type).toBe('joins')
-  expect(rels[0]!.target).toBe('dim_charm_info')
+  expect(rels[0]!.target).toBe('table:dim_charm_info')
   expect(rels[0]!.on).toBe('charm_id = charm_id')
   expect(rels[0]!.description).toBe('via charm')
 })
@@ -127,7 +127,7 @@ test('tableKindPlugin — getId from raw Record', () => {
 test('tableKindPlugin — toCorpusItem indexes name + comment + columns (A3)', () => {
   const item = tableKindPlugin.toCorpusItem(DWS_DEF)
   expect(item).not.toBeNull()
-  expect(item!.id).toBe('dws_pay_order_di')
+  expect(item!.id).toBe('table:dws_pay_order_di')
   expect(item!.description).toContain('dws_pay_order_di')
 })
 
@@ -144,7 +144,7 @@ test('tableKindPlugin — relations maps dimension_refs with G2 type', () => {
   expect(rels).toHaveLength(1)
   expect(rels[0]).toBeDefined()
   expect(rels[0]!.type).toBe('joins')
-  expect(rels[0]!.target).toBe('dim_charm_info')
+  expect(rels[0]!.target).toBe('table:dim_charm_info')
   expect(rels[0]!.on).toBe('charm_id = charm_id')
 })
 
@@ -171,7 +171,7 @@ test('MetricDefinitionSchema — parses metric definition', () => {
 test('projectMetricCorpusItem — produces retrievable item', () => {
   const item = projectMetricCorpusItem(METRIC_DEF)
   expect(item).not.toBeNull()
-  expect(item.id).toBe('DAU')
+  expect(item.id).toBe('metric:DAU')
   expect(item.description).toContain('日活跃用户数')
   expect(item.description).toContain('count_distinct')
 })

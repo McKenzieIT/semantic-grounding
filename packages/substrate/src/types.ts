@@ -57,33 +57,6 @@ export function canonicalizeType(raw: string): string {
 const canonType = () => z.string().default('').transform(canonicalizeType)
 
 // ── Sub-models (all _Loose => .passthrough()) ───────────────────────────
-/** Zod schema for a table/event confirmation record (status + confirmed_by + confirmed_at); mirrors RBI Confirmation. */
-export const ConfirmationSchema = z.object({
-  status: z.string().default('draft'),
-  confirmed_by: z.string().default(''),
-  confirmed_at: z.string().default(''),
-}).loose()
-/** Inferred type of {@link ConfirmationSchema} (status + confirmed_by + confirmed_at). */
-export type Confirmation = z.infer<typeof ConfirmationSchema>
-
-/** Zod schema for a coverage report (scenarios + limitations + status); mirrors RBI CoverageDef. */
-export const CoverageDefSchema = z.object({
-  scenarios: z.array(z.string()).default([]),
-  limitations: z.array(z.string()).default([]),
-  coverage_status: z.string().default('draft'),
-}).loose()
-/** Inferred type of {@link CoverageDefSchema} (scenarios + limitations + coverage_status). */
-export type CoverageDef = z.infer<typeof CoverageDefSchema>
-
-/** Zod schema for a supersession record (an upstream table this one replaces + when/advantage); mirrors RBI SupersedesDef. */
-export const SupersedesDefSchema = z.object({
-  source: z.string(),
-  when: z.string().default(''),
-  advantage: z.string().default(''),
-}).loose()
-/** Inferred type of {@link SupersedesDefSchema} (source + when + advantage). */
-export type SupersedesDef = z.infer<typeof SupersedesDefSchema>
-
 /** Zod schema for a single event parameter field (canonicalized type + description); mirrors RBI ParamField. */
 export const ParamFieldSchema = z.object({
   type: canonType(),
@@ -221,8 +194,6 @@ export const EventDefinitionSchema = z.object({
   // what enrichment rounds may re-assert; they are never projected into retrieval.
   suppressed_alt_labels: z.array(z.string()).default([]),
   suppressed_external_refs: z.array(z.string()).default([]),
-  confirmation: ConfirmationSchema.default({ status: 'draft', confirmed_by: '', confirmed_at: '' }),
-  coverage: CoverageDefSchema.nullable().default(null),
 }).loose()
 /** Inferred type of {@link EventDefinitionSchema} (the parsed event-definition shape). */
 export type EventDefinition = z.infer<typeof EventDefinitionSchema>
@@ -278,9 +249,6 @@ export const TableDefinitionSchema = z.object({
   columns: z.array(ColumnDefSchema).default([]),
   metrics: z.record(z.string(), MetricDefSchema).default({}),
   partitions: z.array(PartitionDefSchema).default([]),
-  confirmation: ConfirmationSchema.default({ status: 'draft', confirmed_by: '', confirmed_at: '' }),
-  coverage: CoverageDefSchema.nullable().default(null),
-  supersedes: z.array(SupersedesDefSchema).default([]),
   disambiguation: TableTermDefaultsSchema.nullable().default(null),
   kind: z.enum(['dws', 'dim']).default('dws'),
   primary_key: z.array(z.string()).default([]),

@@ -38,7 +38,7 @@ const DWS: TableDefinition = fixtureTable({
 test('A3a — tableKindPlugin.toCorpusItem indexes name + description + columns (no longer null)', () => {
   const item = tableKindPlugin.toCorpusItem(DWS)
   expect(item).not.toBeNull()
-  expect(item!.id).toBe('dws_pay_order_di')
+  expect(item!.id).toBe('table:dws_pay_order_di')
   expect(item!.description).toContain('充值订单汇总')
   expect(item!.description).toContain('server_id')
 })

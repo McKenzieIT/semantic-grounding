@@ -101,7 +101,7 @@ describe('extractMetricsFromTable', () => {
     const t = table({ metrics: { pay_amt_sum: mdef('SUM(pay_amt)') } })
     const m = extractMetricsFromTable(t)[0]!
     expect(m.relations).toHaveLength(1)
-    expect(m.relations[0]!).toMatchObject({ type: 'derived_from', target: 'dws_pay_order_di' })
+    expect(m.relations[0]!).toMatchObject({ type: 'derived_from', target: 'table:dws_pay_order_di' })
     expect(m.relations[0]!.description).toContain('dws_pay_order_di')
   })
 
@@ -121,7 +121,7 @@ describe('extractMetricsFromTable', () => {
     const dim = table({ table_name: 'dim_charm_info', kind: 'dim', primary_key: ['charm_id'], label_columns: ['charm_name'], metrics: { row_count: mdef('COUNT(*)', '行数') } })
     const m = extractMetricsFromTable(dim)[0]!
     expect(m.name).toBe('dim_charm_info__row_count')
-    expect(m.relations[0]!).toMatchObject({ type: 'derived_from', target: 'dim_charm_info' })
+    expect(m.relations[0]!).toMatchObject({ type: 'derived_from', target: 'table:dim_charm_info' })
   })
 })
 

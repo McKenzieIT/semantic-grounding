@@ -187,4 +187,19 @@ export class RelationGraph {
   getAliases(nodeId: string): string[] {
     return this.nodeAliases.get(nodeId) ?? []
   }
+
+  /**
+   * Whether a node id has an adjacency entry — participates in at least one
+   * relation, as source or target (`build` only populates `adj` for ids that
+   * appear in some `RelationDef`). Used by the read-tool face (ADR-0023 R4)
+   * to probe candidate `<kind>:<name>` prefixes for a bare input id; the two
+   * callers (`get_join_path`/`get_relations`) already treat an isolated
+   * existing node and a nonexistent one identically (both yield an empty
+   * result), so this is the exact existence check their semantics need.
+   * @param nodeId - nodeId
+   * @returns the result
+   */
+  hasNode(nodeId: string): boolean {
+    return this.adj.has(nodeId)
+  }
 }

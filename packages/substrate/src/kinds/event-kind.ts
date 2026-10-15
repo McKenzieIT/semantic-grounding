@@ -39,7 +39,7 @@ export const eventKindPlugin: DataSourceKindPlugin<EventDefinition> = {
     }
     for (const s of def.alt_labels) parts.push(s)
     return {
-      id: def.name,
+      id: `event:${def.name}`,
       ...(parts.length > 0 ? { description: parts.join(' ') } : {}),
       ...(Object.keys(def.metrics).length > 0 ? { metrics: def.metrics } : {}),
       payload: def,
@@ -47,14 +47,14 @@ export const eventKindPlugin: DataSourceKindPlugin<EventDefinition> = {
   },
 
   toGraphNode(def): GraphNodeProjection {
-    return { id: def.name, kind: 'event', label: def.name, domains: [...def.domains] }
+    return { id: `event:${def.name}`, kind: 'event', label: def.name, domains: [...def.domains] }
   },
 
   relations(def): RelationDef[] {
     if (def.external_refs.length === 0) return []
     return def.external_refs.map(ref => ({
       type: 'joins' as const,
-      target: ref.dim_table,
+      target: `table:${ref.dim_table}`,
       on: ref.join_keys
         .map(k => `${k.dws_column} = ${k.dim_column}`)
         .join(' AND '),

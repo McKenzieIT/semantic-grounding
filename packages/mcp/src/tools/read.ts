@@ -11,7 +11,7 @@
  * @module tools/read
  */
 import type { McpServer } from '@modelcontextprotocol/server'
-import type { GraphNodeProjection, SemanticGroundingCore } from '@semantic-grounding/substrate'
+import type { GraphNodeProjection, RelationGraph, SemanticGroundingCore } from '@semantic-grounding/substrate'
 import { z } from 'zod'
 import { DefinitionNotFoundError } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
@@ -247,11 +247,42 @@ function registerGetDefinition(server: McpServer, deps: ServerDeps): void {
   )
 }
 
+// ── node-id resolution (shared: get_join_path, get_relations) ──────────────────────
+
+/** The four kind prefixes a graph node id can carry (ADR-0023 R4). */
+const NODE_ID_KIND_PREFIXES = ['table', 'event', 'concept', 'metric'] as const
+
+/** Matches an already-prefixed node id (`^[a-z]+:`). */
+const PREFIXED_NODE_ID = /^[a-z]+:/
+
+/**
+ * Resolve a possibly-bare node id to its prefixed form, so `get_join_path`/
+ * `get_relations` keep accepting the pre-ADR-0023 convention (a bare
+ * `table_name`/event name/concept name) alongside the canonical
+ * `<kind>:<name>` form. An already-prefixed id passes through unchanged.
+ * For a bare id, tries each kind prefix in a fixed order
+ * (table → event → concept → metric) and returns the first one the live
+ * graph has an adjacency entry for; an id that resolves under no prefix
+ * passes through unchanged too, so the existing not-found/empty-result path
+ * downstream is unaffected.
+ * @param graph - the active corpus's relation graph.
+ * @param rawId - the caller-supplied id, bare or prefixed.
+ * @returns the resolved id — use it for both the graph lookup and the echoed response field, so output ids always carry a `kind:` prefix.
+ */
+function resolveNodeId(graph: RelationGraph, rawId: string): string {
+  if (PREFIXED_NODE_ID.test(rawId)) return rawId
+  for (const kind of NODE_ID_KIND_PREFIXES) {
+    const candidate = `${kind}:${rawId}`
+    if (graph.hasNode(candidate)) return candidate
+  }
+  return rawId
+}
+
 // ── get_join_path ────────────────────────────────────────────────────────────────────
 
 const GetJoinPathInputSchema = z.object({
-  from: z.string().min(1).describe('Source node id (a table_name, event name, or `concept:<name>`).'),
-  to: z.string().min(1).describe('Target node id.'),
+  from: z.string().min(1).describe('Source node id — `<kind>:<name>` (e.g. `table:dws_order`, `concept:gmv`); a bare name is also accepted and resolved against table/event/concept/metric in that order.'),
+  to: z.string().min(1).describe('Target node id — same form as `from`.'),
 })
 
 /** Registers `get_join_path`. */
@@ -260,14 +291,17 @@ function registerGetJoinPath(server: McpServer, deps: ServerDeps): void {
     'get_join_path',
     {
       title: 'Find a join path',
-      description: 'BFS shortest path over `joins`-type relations (undirected — every edge is walked both ways, so from/to may be swapped) between two node ids; `related_to` and other non-joins types never participate. Returns `path: null` when unreachable — not an error.',
+      description: 'BFS shortest path over `joins`-type relations (undirected — every edge is walked both ways, so from/to may be swapped) between two node ids; `related_to` and other non-joins types never participate. Accepts a bare name or a `<kind>:<name>` id on input; `from`/`to`/`path` in the response always carry the resolved `<kind>:<name>` form. Returns `path: null` when unreachable — not an error.',
       inputSchema: GetJoinPathInputSchema,
       annotations: { readOnlyHint: true },
     },
     async (input) => {
       const snap = deps.bindings.requireSnapshot()
-      const path = snap.core.getRelationGraph().findJoinPath(input.from, input.to)
-      return toolSuccess({ scope: scopeStamp(snap), from: input.from, to: input.to, found: path !== null, path })
+      const graph = snap.core.getRelationGraph()
+      const from = resolveNodeId(graph, input.from)
+      const to = resolveNodeId(graph, input.to)
+      const path = graph.findJoinPath(from, to)
+      return toolSuccess({ scope: scopeStamp(snap), from, to, found: path !== null, path })
     },
   )
 }
@@ -275,7 +309,7 @@ function registerGetJoinPath(server: McpServer, deps: ServerDeps): void {
 // ── get_relations ────────────────────────────────────────────────────────────────────
 
 const GetRelationsInputSchema = z.object({
-  target: z.string().min(1).describe('Node id to list relations from (a table_name, event name, or `concept:<name>`).'),
+  target: z.string().min(1).describe('Node id to list relations from — `<kind>:<name>` (e.g. `table:dws_order`, `concept:gmv`); a bare name is also accepted and resolved against table/event/concept/metric in that order.'),
   type: z.string().min(1).optional().describe('Restrict to this relation type (an open vocabulary — `joins`/`derived_from`/`related_to` or a kind-declared type); omit for all types.'),
 })
 
@@ -285,14 +319,16 @@ function registerGetRelations(server: McpServer, deps: ServerDeps): void {
     'get_relations',
     {
       title: 'List direct relations',
-      description: 'Direct relation-graph edges from one node, optionally filtered by type. Returns an empty list for an unknown or unrelated node — not an error.',
+      description: 'Direct relation-graph edges from one node, optionally filtered by type. Accepts a bare name or a `<kind>:<name>` id on input; `target` in the response always carries the resolved `<kind>:<name>` form. Returns an empty list for an unknown or unrelated node — not an error.',
       inputSchema: GetRelationsInputSchema,
       annotations: { readOnlyHint: true },
     },
     async (input) => {
       const snap = deps.bindings.requireSnapshot()
-      const relations = snap.core.getRelationGraph().getRelated(input.target, input.type)
-      return toolSuccess({ scope: scopeStamp(snap), target: input.target, relations })
+      const graph = snap.core.getRelationGraph()
+      const target = resolveNodeId(graph, input.target)
+      const relations = graph.getRelated(target, input.type)
+      return toolSuccess({ scope: scopeStamp(snap), target, relations })
     },
   )
 }

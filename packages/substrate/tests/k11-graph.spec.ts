@@ -15,6 +15,7 @@ import { TableDefinitionSchema, type TableDefinition } from '../src/types.ts'
 import { loadTables } from '../src/io.ts'
 import { loadMetricDefinitions, deriveMetricRelations } from '../src/metrics.ts'
 import type { RelationDef } from '../src/registry.ts'
+import { SemanticGroundingCore } from '../src/index.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SEED = join(HERE, './fixtures/k11')
@@ -70,4 +71,16 @@ test('K11 graph: combined tables+metrics build with both relation types', () => 
   expect(sampleMetric).toBeDefined()
   const derived = g.getDerived(sampleMetric!.sourceId)
   expect(derived.length).toBeGreaterThan(0)
+})
+
+test('K11 graph: every projected node id carries its kind prefix (ADR-0023 R4)', () => {
+  const core = new SemanticGroundingCore({ semanticRoot: SEED, scopeId: 'k11-id-prefix-check' })
+  const nodes = core.projectGraphNodes({ includeDerived: true })
+  // Real corpus, all four readable kinds (table/event/concept + derived metric) —
+  // a regression here means some kind plugin's toGraphNode/metric derivation
+  // minted a bare id instead of its `<kind>:` form (ADR-0023 R4).
+  expect(nodes.length).toBeGreaterThan(0)
+  for (const node of nodes) {
+    expect(node.id).toMatch(/^[a-z]+:/)
+  }
 })

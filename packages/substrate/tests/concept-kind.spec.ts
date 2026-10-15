@@ -139,13 +139,13 @@ test('conceptKindPlugin — relations projects a concept→concept related_ref w
   ])
 })
 
-test('conceptKindPlugin — relations projects a concept→table related_ref with the bare table name', () => {
+test('conceptKindPlugin — relations projects a concept→table related_ref with a table:-prefixed target', () => {
   const def = ConceptDefinitionSchema.parse({
     name: '付费经济',
     related_refs: [{ target_kind: 'table', target: 'dws_pay' }],
   })
   expect(conceptKindPlugin.relations(def)).toEqual([
-    { type: 'related_to', target: 'dws_pay' },
+    { type: 'related_to', target: 'table:dws_pay' },
   ])
 })
 
@@ -169,7 +169,7 @@ test('conceptKindPlugin — relations projects every declared edge in a multi-ed
   })
   expect(conceptKindPlugin.relations(def)).toEqual([
     { type: 'related_to', target: 'concept:用户生命周期' },
-    { type: 'related_to', target: 'dws_pay' },
+    { type: 'related_to', target: 'table:dws_pay' },
   ])
 })
 

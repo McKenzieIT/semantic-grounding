@@ -366,8 +366,8 @@ test('CL-2 D2 — dangling domain ref does NOT throw; valid assets still build; 
     const g = svc.getRelationGraph()
     // Valid domain 'pay' still gets its bidirectional related_to edge.
     const payEdges = g.getRelated('concept:pay', 'related_to')
-    expect(payEdges.some(e => e.targetId === 'dws_order')).toBe(true)
-    expect(g.getRelated('dws_order', 'related_to').some(e => e.targetId === 'concept:pay')).toBe(true)
+    expect(payEdges.some(e => e.targetId === 'table:dws_order')).toBe(true)
+    expect(g.getRelated('table:dws_order', 'related_to').some(e => e.targetId === 'concept:pay')).toBe(true)
     // The dangling 'ghost' concept node is NOT built (edge skipped).
     expect(g.getRelated('concept:ghost', 'related_to')).toEqual([])
     // The dangling ref is reported via the health-check surface.
