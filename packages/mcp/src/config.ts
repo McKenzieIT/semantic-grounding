@@ -166,6 +166,18 @@ export interface ServerConfig {
    * embedding hosts, not operators.
    */
   readonly scratchRunsToKeep?: number
+  /**
+   * The session id `record_memory` stamps into every entry's server-written
+   * `recorded.session` (ADR-0023 R5) and the audit window's `X-SG-Session`
+   * trailer. No flag/env var — same posture as `guidanceThreshold`: the value
+   * distinguishes sessions for the deterministic NOOP and the replicated-
+   * evidence rule, and under stdio no host-tracked session exists to read, so
+   * an unset value means the serving process generates one id for its own
+   * lifetime (`tools/memory.ts`'s lazy mint) — one process ≈ one serving
+   * session. Tests and embedding hosts that need two distinguishable sessions
+   * in one process set distinct values here.
+   */
+  readonly sessionId?: string
 }
 
 /**

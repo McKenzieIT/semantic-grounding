@@ -166,6 +166,11 @@ export interface IntentToolHarnessOptions {
   readonly massUpdateRatio?: MassUpdateRatioThresholds
   /** Scratch-home GC retention override (default: `scratch.ts`'s 3, ADR-0020). */
   readonly scratchRunsToKeep?: number
+  /** The session id `record_memory` stamps into `recorded.session` (default:
+   * the serving process's lazily-minted one — same process, same session). Set
+   * distinct values to rehearse cross-session behavior (the NOOP rule's
+   * "different session" arm, ADR-0023 R9) inside one test process. */
+  readonly sessionId?: string
 }
 
 /** One built harness. */
@@ -207,6 +212,7 @@ export async function buildIntentToolHarness(opts: IntentToolHarnessOptions = {}
       ...opts.massUpdateWarnThreshold !== undefined ? { massUpdateWarnThreshold: opts.massUpdateWarnThreshold } : {},
       ...opts.massUpdateRatio !== undefined ? { massUpdateRatio: opts.massUpdateRatio } : {},
       ...opts.scratchRunsToKeep !== undefined ? { scratchRunsToKeep: opts.scratchRunsToKeep } : {},
+      ...opts.sessionId !== undefined ? { sessionId: opts.sessionId } : {},
     },
   })
   const { registry, bindings } = built

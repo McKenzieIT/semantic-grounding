@@ -114,7 +114,18 @@ import { tableKindPlugin } from './kinds/table-kind.ts'
 import { conceptKindPlugin } from './kinds/concept-kind.ts'
 import { RelationGraph, type NodeAliasData } from './relation-graph.ts'
 import { toMetricDefinition, splitMetricName } from './metrics.ts'
-import { loadEvents, loadTables, loadConcepts, loadRawDir, loadConceptDefinition as loadConceptDefinitionFromLayer, writeConceptYaml as writeConceptYamlFromLayer, updateConceptMeta as updateConceptMetaFromLayer, type WriteConceptYamlResult } from './io.ts'
+import { loadEvents, loadTables, loadConcepts, loadRawDir, loadConceptDefinition as loadConceptDefinitionFromLayer, writeConceptYaml as writeConceptYamlFromLayer, updateConceptMeta as updateConceptMetaFromLayer, writeMemoryYaml as writeMemoryYamlFromLayer, type WriteConceptYamlResult } from './io.ts'
+// ADR-0023 / #152: the data-memory layer's write orchestration + incremental
+// anchor index (memory.ts, off-barrel internal module — the same split as
+// item-write.ts; the Core methods below are the public route, so the barrel's
+// ADR-0003 name list does not grow).
+import {
+  recordMemoryBatch,
+  countMemoriesOnEdges as countMemoriesOnEdgesForRoot,
+  type MemoryDraft,
+  type MemoryEdgeAnchor,
+  type RecordMemoriesResult,
+} from './memory.ts'
 import { DefinitionSnapshot, captureSnapshot } from './snapshot.ts'
 import { buildExcludeColumns } from './io.ts'
 import type { SchemaProvider } from './schema-provider.ts'
@@ -1478,6 +1489,79 @@ export class SemanticGroundingCore {
   // The four item forwards' `applyUpdate` seam — `applyItemUpdate` bound to
   // this Core once, instead of four eta-expanded copies of the same closure (#147).
   private readonly applyItemUpdateSeam: ApplyItemUpdate = (k, n, u, v) => this.applyItemUpdate(k, n, u, v)
+
+  // ── Data-memory write + anchor-index reads (ADR-0023 / #152) ───────────
+  //
+  // The `record_memory` tool's domain half and the ADR-0026 `dangling_memories`
+  // counter's substrate half. Ritual lives in ./memory.ts (off-barrel internal
+  // module); these forwards keep the public method names, the same split the
+  // item methods above take. The write path rides io.ts's `writeMemoryYaml`
+  // (`writeDefinitionFile`'s audited create-family seam), so each call's
+  // entries record through this core's Tier-2 recorder and an open
+  // `beginBatch` at the MCP layer folds them into ADR-0023 R1's one commit.
+
+  /**
+   * Record a batch of data-memory entries (ADR-0023 R9 + ADR-0026 R6 +
+   * ADR-0027 R3/R5's write-side halves): whole-batch validation first (any
+   * invalid item rejects the batch — `{ok:false}` naming the 1-based
+   * `item_index`, nothing written), then per item the deterministic NOOP match
+   * (same session + type + anchor set + normalized body), the still-valid
+   * same-anchor same-type neighbors for the receipt, and the writes
+   * themselves as new `memory/<id>.yaml` files (append-only; `supersedes` on
+   * the NEW entry is how an update is expressed).
+   *
+   * Anchor existence is checked at write time against the current graph —
+   * nodes (bare names tolerated on input, canonical `<kind>:<名>` on output),
+   * column fragments (`table:x#col`, column must exist), and edges in the
+   * canonical logical direction. `supersedes` references are checked for
+   * existence only, never for the referenced entry's own anchors (ADR-0026
+   * R6 — superseding a dangling entry is the sanctioned way to retire it).
+   * `contradicts` carries ADR-0027 R3's four checks, and superseding a
+   * contested entry as `wrong` requires `basis` (ADR-0027 R5).
+   *
+   * No `expected_version` anywhere: memory files are create-only and take no
+   * part in definition fingerprints.
+   * @param items - the agent-submitted entries, in input order.
+   * @param opts - the server-written provenance (ADR-0023 R5): the session id
+   *   and agent id `recorded` carries — never agent-supplied.
+   * @returns per-item rows (`recorded` / `idempotent`, id, neighbors), or the
+   *   first invalid item's rejection.
+   */
+  async recordMemories(
+    items: readonly MemoryDraft[],
+    opts: { readonly session: string; readonly agent: string },
+  ): Promise<RecordMemoriesResult> {
+    return recordMemoryBatch(this.semanticRoot, items, {
+      session: opts.session,
+      agent: opts.agent,
+      write: async (id, entry) => {
+        const res = await writeMemoryYamlFromLayer(this.semanticRoot, id, entry, {
+          recorder: this.recorder(),
+          scope_id: this.scopeId,
+        })
+        // The write primitive has no validation of its own — reaching the
+        // `{ok:false}` branch means the seam itself refused (a server bug, not
+        // a caller mistake), so it throws rather than half-landing a batch.
+        if (!res.ok) throw new Error(`memory write rejected for ${id}: ${res.error}`)
+      },
+    })
+  }
+
+  /**
+   * Count the still-visible memory entries anchored on any of `edges` — the
+   * substrate half of ADR-0026 R5's `dangling_memories` receipts (the three
+   * edge-removal sites at the MCP layer build the dying canonical edge
+   * triples and read this counter). Stat-refreshes the process-resident
+   * anchor index first (ADR-0023 R1), so another process's writes count.
+   * @param edges - canonical edge triples: `from`/`to` are prefixed node ids,
+   *   `type` the relation kind (`joins` / `related_to` / …).
+   * @returns the number of distinct, non-wrong-hidden entries anchored on at
+   *   least one of the edges (0 when the memory dir is absent or empty — the
+   *   caller keeps the key absent so no-memory receipts stay byte-identical).
+   */
+  countMemoriesOnEdges(edges: readonly MemoryEdgeAnchor[]): number {
+    return countMemoriesOnEdgesForRoot(this.semanticRoot, edges)
+  }
 
   /**
    * Internal: dispatch `updateTableMeta` / `updateEventMeta` /

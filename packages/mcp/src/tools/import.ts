@@ -157,6 +157,11 @@ export interface ImportItemResult {
    * concept rows whose payload carried item-verb keys, a receipt of how many
    * were stripped and ignored (ADR-0019 R3) — `ignored N item-verb keys`. */
   readonly detail?: string
+  /** On `updated` table rows whose overwrite dropped `dimension_refs`,
+   * ADR-0026 R5's reminder: how many memory entries were anchored on the dying
+   * join edges (key absent at 0 — a memory-free corpus keeps the receipt
+   * byte-identical). */
+  readonly dangling_memories?: number
 }
 
 /** The counts block every result summary carries (R4). */
@@ -179,6 +184,10 @@ interface StagedItem {
   /** Concepts only: how many of the three item-verb keys the raw payload
    * carried (stripped by the schema, receipted by the verdict row, ADR-0019 R3). */
   readonly ignoredItemVerbKeys?: number
+  /** Tables only (ADR-0026 R5): the `dim_table`s this overwrite DROPS from the
+   * existing `dimension_refs` — the dying join edges the post-write pass counts
+   * dangling memories over. Absent when nothing is dropped (the common case). */
+  readonly droppedDims?: readonly string[]
 }
 
 /** Compact a zod error into one verdict-`detail` line: first issue's path + message. */
@@ -354,6 +363,20 @@ function ratioSubjectNote(findings: readonly RatioGuardFinding[]): string {
 }
 
 /**
+ * The `dim_table`s an `updated` table's incoming payload DROPS relative to the
+ * pre-write definition (ADR-0026 R5's import arm): the dying join edges, as
+ * distinct names — the post-write pass builds `table:<name> -joins->
+ * table:<dim>` triples over exactly these.
+ */
+function droppedDimensionTables(
+  existing: z.infer<typeof TableDefinitionSchema>,
+  incoming: z.infer<typeof TableDefinitionSchema>,
+): readonly string[] {
+  const next = new Set(incoming.dimension_refs.map(r => r.dim_table))
+  return [...new Set(existing.dimension_refs.map(r => r.dim_table))].filter(dim => !next.has(dim))
+}
+
+/**
  * Registers `import_definitions`.
  *
  * A commit-class write tool: `scope_id` asserted at entry (ADR-0011), one
@@ -398,6 +421,14 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
 
         const existing = loadWritable(snap.core, parsed.kind, name)
         const payload = parsed.kind === 'table' ? parsed.table : parsed.kind === 'event' ? parsed.event : parsed.concept
+        // ADR-0026 R5's import arm, input half: an `updated` TABLE overwrite
+        // that drops `dimension_refs` kills join edges memories may be
+        // anchored on — capture which dims disappear while the pre-write
+        // definition is in hand (events' external_refs are not covered by
+        // the ADR's letter; dangling still surfaces at read time, #154).
+        const droppedDims = parsed.kind === 'table' && existing !== null
+          ? droppedDimensionTables(existing as z.infer<typeof TableDefinitionSchema>, parsed.table)
+          : undefined
         // Concepts only: how many item-verb keys the schema stripped (R3's
         // receipt — the row tells the caller the keys were seen and ignored).
         const ignored = parsed.kind === 'concept' ? ignoredItemVerbKeyCount(item.definition) : 0
@@ -415,6 +446,7 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
           verdict: existing === null ? 'created' : 'updated',
           ...parsed.kind === 'table' ? { table: parsed.table } : parsed.kind === 'event' ? { event: parsed.event } : { concept: parsed.concept },
           ...ignored > 0 ? { ignoredItemVerbKeys: ignored } : {},
+          ...droppedDims !== undefined && droppedDims.length > 0 ? { droppedDims } : {},
         })
       }
 
@@ -555,6 +587,22 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
       // domain failure must not let the counts claim a write that did not land.
       const summary: ImportSummary = { created: countVerdict(results, 'created'), updated: countVerdict(results, 'updated'), skipped: countVerdict(results, 'skipped'), errors: countVerdict(results, 'error') }
       results.sort((a, b) => a.index - b.index)
+
+      // ADR-0026 R5's import arm, output half: for each landed `updated` table
+      // whose overwrite dropped `dimension_refs`, count the memory entries
+      // anchored on the dying join edges (process-resident anchor index,
+      // ADR-0023 R1). Key absent at 0 — a memory-free corpus keeps this
+      // receipt byte-identical, and the count is a reminder, never a block.
+      for (const item of staged) {
+        if (item.verdict !== 'updated' || item.droppedDims === undefined) continue
+        const n = snap.core.countMemoriesOnEdges(
+          item.droppedDims.map(dim => ({ from: `table:${item.name}`, type: 'joins', to: `table:${dim}` })),
+        )
+        if (n === 0) continue
+        const i = results.findIndex(r => r.index === item.index)
+        const row = i >= 0 ? results[i] : undefined
+        if (row !== undefined) results[i] = { ...row, dangling_memories: n }
+      }
 
       // No top-level `version`: one batch spans many files, so the
       // fingerprint rides each row — the envelope's `import` writePath

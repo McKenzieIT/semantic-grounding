@@ -1203,6 +1203,49 @@ export async function writeConceptYaml(
   const target = join(semanticLayer, 'concepts', `${name}.yaml`)
   return writeDefinitionFile(semanticLayer, target, data, tier2, { verb: 'write_concept_yaml', subject: { concept_name: name } })
 }
+// ── Memory write primitive (ADR-0023 / #152) ─────────────────────────────────
+// The data-memory layer's create primitive: `memory/<id>.yaml`, one file per
+// entry, append-only (updates are new entries via `supersedes` — never an
+// overwrite). Rides the SAME create-family seam (`writeDefinitionFile`) as the
+// three definition kinds, so the audited arm inherits ADR-0004 ruling 1's
+// snapshot-and-rollback and ruling 3's `beginBatch` absorption for free — #61's
+// "ride the seam, never copy the ceremony" rule, applied to the fourth storage
+// family. Validation is the caller's (memory.ts's own schema — this primitive
+// is the raw-edit half exactly like `writeEventYaml`'s relationship to event
+// schemas). Off the public barrel (ADR-0003): the Core class's `recordMemories`
+// is the public route, same as the item-write forwards.
+/**
+ * Result of writing one memory entry: `{ ok: true, path, version }` on success
+ * (`version` — the written file's sha256 fingerprint, #108's write-receipt
+ * convention), or `{ ok: false, error }` from the write seam (unreachable for
+ * a pre-validated entry — kept for the family's uniform face).
+ */
+export type WriteMemoryYamlResult = { ok: true; path: string; version: string } | { ok: false; error: string }
+/**
+ * Atomically write one memory entry to `memory/<id>.yaml`, invalidating caches
+ * on success — `writeTable`/`writeConceptYaml`'s exact shape applied to the
+ * memory layout. Passing `tier2` takes the audited write-and-record path
+ * (`record_memory` verb over a `memory_id` subject); inside an open
+ * `beginBatch` the per-file record is absorbed and the batch's `end()` makes
+ * the one commit ADR-0023 R1 asks for (one write call = one commit).
+ * Exclusive-create is the CALLER's loop (memory.ts re-mints on collision) —
+ * like `writeTable`, this primitive itself overwrites whatever is at the path.
+ * @param semanticLayer - the semantic-layer directory path.
+ * @param id - the entry id (becomes `<id>.yaml`; well-formedness was checked upstream).
+ * @param data - the parsed entry payload (serialized with the module's YAML dumper).
+ * @param tier2 - optional Tier-2 options; present selects the audited half.
+ * @returns `{ ok: true, path, version }` or `{ ok: false, error }`.
+ */
+export async function writeMemoryYaml(
+  semanticLayer: string,
+  id: string,
+  data: unknown,
+  tier2?: Tier2Opts,
+): Promise<WriteMemoryYamlResult> {
+  const target = join(semanticLayer, 'memory', `${id}.yaml`)
+  return writeDefinitionFile(semanticLayer, target, data, tier2, { verb: 'record_memory', subject: { memory_id: id } })
+}
+
 /**
  * The concepts entry of the update family's five-point descriptor (C10):
  * fixed `concepts/<name>.yaml` layout, `Concept` error labels,

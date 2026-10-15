@@ -170,7 +170,7 @@ function registerRemoveRelation(server: McpServer, deps: ServerDeps): void {
     'remove_relation',
     {
       title: 'Remove relations (machine-derived ones are vetoed)',
-      description: 'Remove exactly-matching relations from a table, event, or concept, read-modify-write inside the corpus lock — one locked write for the whole same-target batch. Two shapes, one per call: joins (dim_table + join_keys) or concept-side edges ({target_kind, name}); the Core refuses a mix. Concept-edge removals write the home concept (a table subject\'s concept-target edge lives on the TARGET concept — expected_version is that concept\'s fingerprint) and have no enrichment rounds, so their `reasserted` is always false. Join removals route by the stored entry\'s origin (#37 §1): deleting a machine-derived ref (origin deterministic/llm) records a persistent suppression for that dim_table — enrichment rounds will never re-derive the join; deleting a curated ref (origin manual/absent: hand-added or agent-asserted) is a pure content correction, and if the deterministic round CAN re-derive that join it comes back in the same call (`reasserted: true`) — remove it again and THAT removal vetoes it. Per-item verdicts in `results` with three facts: `outcome` (`removed` / `absent` / `idempotent`), `suppressed` (did THIS call record the veto), and `reasserted`. Removing an absent relation records the veto (ensure-absent: pre-veto a DIM you know is noise). Adding the dim_table back (add_relation) lifts the veto.',
+      description: 'Remove exactly-matching relations from a table, event, or concept, read-modify-write inside the corpus lock — one locked write for the whole same-target batch. Two shapes, one per call: joins (dim_table + join_keys) or concept-side edges ({target_kind, name}); the Core refuses a mix. Concept-edge removals write the home concept (a table subject\'s concept-target edge lives on the TARGET concept — expected_version is that concept\'s fingerprint) and have no enrichment rounds, so their `reasserted` is always false. Join removals route by the stored entry\'s origin (#37 §1): deleting a machine-derived ref (origin deterministic/llm) records a persistent suppression for that dim_table — enrichment rounds will never re-derive the join; deleting a curated ref (origin manual/absent: hand-added or agent-asserted) is a pure content correction, and if the deterministic round CAN re-derive that join it comes back in the same call (`reasserted: true`) — remove it again and THAT removal vetoes it. Per-item verdicts in `results` with three facts: `outcome` (`removed` / `absent` / `idempotent`), `suppressed` (did THIS call record the veto), and `reasserted`. Removing an absent relation records the veto (ensure-absent: pre-veto a DIM you know is noise). A `removed` row whose edge still carries memory entries reports `dangling_memories: N` — those entries lost their anchor target (ADR-0026 R5: a reminder, never a block; the entries stay, dangling is computed at read time). Adding the dim_table back (add_relation) lifts the veto.',
       inputSchema: RemoveRelationInputSchema,
     },
     async (input, ctx: ServerContext) => {
@@ -182,14 +182,61 @@ function registerRemoveRelation(server: McpServer, deps: ServerDeps): void {
         { tool: 'remove_relation', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
         () => snap.core.removeRelations(input.kind, input.name, input.relations, input.expected_version),
       ).catch((e: unknown) => notFoundAsCoded(e, input.kind, input.name))
+      // ADR-0026 R5: every REMOVED edge's verdict row reports how many memory
+      // entries were anchored on it (`dangling_memories`, key absent at 0 — a
+      // memory-free corpus keeps this receipt byte-identical). Computed
+      // post-write against the process-resident anchor index (ADR-0023 R1).
+      const edges = removedRelationEdges(input.kind, input.name, input.relations)
+      const results = res.value.results.map((row, i) => {
+        if (row.outcome !== 'removed') return row
+        const edge = edges[i]
+        if (edge === undefined) return row
+        const dangling = snap.core.countMemoriesOnEdges([edge])
+        return dangling > 0 ? { ...row, dangling_memories: dangling } : row
+      })
       return toolSuccess(await writeReceipt(snap, deps, res, {
         tool: 'remove_relation',
         writePath: input.kind,
         version: res.value.version,
-        domain: { results: res.value.results },
+        domain: { results },
       }))
     },
   )
+}
+
+/**
+ * The canonical edge each `remove_relation` input relation names, aligned with
+ * the verdict rows the Core returns (row i ↔ relation i for join batches and
+ * concept-subject edge batches; a table subject's whole edge batch collapses
+ * to the ONE stored edge, matching the Core's single verdict row). The triple
+ * spelling mirrors the anchor grammar's canonical logical direction
+ * (ADR-0023 R4): asset→dim for joins, home-concept→target for declared edges.
+ * @param kind - the batch's subject kind.
+ * @param name - the subject table/event/concept name.
+ * @param relations - the batch's input relations, in order.
+ * @returns one canonical edge triple per verdict row (empty for an empty batch).
+ */
+function removedRelationEdges(
+  kind: 'table' | 'event' | 'concept',
+  name: string,
+  relations: ReadonlyArray<{ readonly target_kind?: 'table' | 'concept'; readonly dim_table?: string; readonly name?: string }>,
+): ReadonlyArray<{ readonly from: string; readonly type: string; readonly to: string }> {
+  const isEdgeBatch = relations[0]?.target_kind !== undefined
+  if (!isEdgeBatch) {
+    const from = kind === 'table' ? `table:${name}` : `event:${name}`
+    return relations.map(rel => ({ from, type: 'joins', to: `table:${rel.dim_table}` }))
+  }
+  if (kind === 'concept') {
+    return relations.map(rel => ({
+      from: `concept:${name}`,
+      type: 'related_to',
+      to: rel.target_kind === 'concept' ? `concept:${rel.name}` : `table:${rel.name}`,
+    }))
+  }
+  // A table subject's edge batch names ONE target concept (the Core's
+  // split-the-call rule) and lands as ONE stored edge — one row, one triple.
+  const target = relations[0]?.name
+  return target === undefined ? [] : [{ from: `concept:${target}`, type: 'related_to', to: `table:${name}` }]
 }
 
 /** Registers all four item-level tools. */

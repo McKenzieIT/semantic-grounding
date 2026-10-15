@@ -308,7 +308,7 @@ function registerUpdateDefinition(server: McpServer, deps: ServerDeps): void {
     'update_definition',
     {
       title: 'Update a definition',
-      description: 'Shallow-merge scalar/object fields onto an existing table, event, or concept. Rejects identity fields (table_name/name/kind) and array-reference fields — tables/events: alt_labels/dimension_refs/external_refs; concepts: alt_labels/related_refs — use add_alias/remove_alias/add_relation/remove_relation for those. Concept fields: description, pref_label, properties (free-form entity attributes); a table mounts a concept via fields.domains. Table/event `metrics` merges as one whole block: shallow-merge is per top-level field, so changing a single metric means re-sending the entire `metrics` map (metrics have no per-key merge). Requires expected_version (from get_definition); a stale baseline is rejected for re-read-and-retry.',
+      description: 'Shallow-merge scalar/object fields onto an existing table, event, or concept. Rejects identity fields (table_name/name/kind) and array-reference fields — tables/events: alt_labels/dimension_refs/external_refs; concepts: alt_labels/related_refs — use add_alias/remove_alias/add_relation/remove_relation for those. Concept fields: description, pref_label, properties (free-form entity attributes); a table mounts a concept via fields.domains. Table/event `metrics` merges as one whole block: shallow-merge is per top-level field, so changing a single metric means re-sending the entire `metrics` map (metrics have no per-key merge). Requires expected_version (from get_definition); a stale baseline is rejected for re-read-and-retry. Changing fields.domains unmounts the definition from the dropped concepts; memory entries anchored on those dying membership edges are reported as `dangling_memories: N` in the receipt (ADR-0026 R5: a reminder, never a block).',
       inputSchema: UpdateDefinitionInputSchema,
     },
     async (input, ctx: ServerContext) => {
@@ -318,6 +318,17 @@ function registerUpdateDefinition(server: McpServer, deps: ServerDeps): void {
         input.fields,
         input.kind === 'table' ? TABLE_ARRAY_REF_REDIRECT : input.kind === 'event' ? EVENT_ARRAY_REF_REDIRECT : CONCEPT_ARRAY_REF_REDIRECT,
       )
+      // ADR-0026 R5's `update_definition` arm: when this call changes
+      // `domains`, read the pre-write membership set here (a concurrent edit
+      // would fail the write's own expected_version check, so this read cannot
+      // silently describe the wrong baseline) — after the write lands, the
+      // dropped concepts' membership edges are the dying anchors. Concept
+      // subjects never reach this arm: their `fields` schema has no `domains`.
+      let oldDomains: readonly string[] | undefined
+      if (input.kind !== 'concept' && input.fields.domains !== undefined) {
+        const prior = loadWritable(snap.core, input.kind, input.name) as { readonly domains?: readonly string[] } | null
+        oldDomains = prior?.domains ?? []
+      }
       const res = await auditedWrite(
         snap,
         ctx,
@@ -325,6 +336,19 @@ function registerUpdateDefinition(server: McpServer, deps: ServerDeps): void {
         () => applyFieldUpdate(snap, input.kind, input.name, input.fields, input.expected_version),
       )
       assertUpdateOk(res.value, input.kind, input.name)
+      // The dropped-concept membership edges: `concept:<domain> -related_to->
+      // <node>`, the graph build's canonical group→member direction. Key stays
+      // absent at 0 so a memory-free corpus keeps this receipt byte-identical.
+      let danglingMemories: number | undefined
+      if (oldDomains !== undefined) {
+        const newDomains = input.fields.domains as readonly string[]
+        const dropped = oldDomains.filter(d => !newDomains.includes(d))
+        if (dropped.length > 0) {
+          const node = input.kind === 'table' ? `table:${input.name}` : `event:${input.name}`
+          const n = snap.core.countMemoriesOnEdges(dropped.map(d => ({ from: `concept:${d}`, type: 'related_to', to: node })))
+          if (n > 0) danglingMemories = n
+        }
+      }
       return toolSuccess(await writeReceipt(snap, deps, res, {
         tool: 'update_definition',
         // `enrichment_health` rides the writePath asymmetry `writeReceipt`
@@ -334,6 +358,7 @@ function registerUpdateDefinition(server: McpServer, deps: ServerDeps): void {
         // only mirror whatever an earlier table write left behind).
         writePath: input.kind,
         ...res.value.ok ? { version: res.value.version } : {},
+        domain: { ...danglingMemories !== undefined ? { dangling_memories: danglingMemories } : {} },
       }))
     },
   )

@@ -177,6 +177,8 @@ export const INTENT_TOOL_ERROR_CODES = {
   suggestion_not_found: -31023,
   /** The merged document failed re-validation against the kind's full definition schema. */
   validation_failed: -31024,
+  /** A `record_memory` batch was rejected whole — one item failed validation; nothing was written (#152 / ADR-0023 R9). */
+  memory_invalid: -31025,
 } as const
 
 /** The union of codes this module allocates for the intent tool surface. */
@@ -443,6 +445,29 @@ export class DefinitionValidationError extends SgApplicationError {
    */
   constructor(message: string, data?: Readonly<Record<string, unknown>>) {
     super(INTENT_TOOL_ERROR_CODES.validation_failed, message, { ...data !== undefined ? { data } : {} })
+  }
+}
+
+/**
+ * A `record_memory` batch was rejected whole (ADR-0023 R9's 整批原子): at least one
+ * item failed validation — a per-type required field is missing/forbidden, an anchor
+ * (node, column, or edge) does not exist in the current graph, a `supersedes` /
+ * `contradicts` id does not exist, a `contradicts` id is wrong-hidden or overlaps
+ * `supersedes`, or a contested-`wrong` supersede came without `basis` (ADR-0027 R5).
+ * Nothing was written.
+ *
+ * Constructed from the Core's non-throwing `{ok:false, error, item_index}` result at
+ * the tool boundary — the same split {@link DefinitionValidationError} takes for the
+ * definition kinds. `data.item_index` is 1-based (the receipt names which entry of the
+ * submitted batch to fix); not retryable by re-reading — the remedy is a corrected batch.
+ */
+export class MemoryRecordError extends SgApplicationError {
+  /**
+   * @param message - the substrate's rejection message (names the item and the rule).
+   * @param data - structured detail: `item_index` (1-based).
+   */
+  constructor(message: string, data?: Readonly<Record<string, unknown>>) {
+    super(INTENT_TOOL_ERROR_CODES.memory_invalid, message, { ...data !== undefined ? { data } : {} })
   }
 }
 

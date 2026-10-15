@@ -77,6 +77,14 @@ export interface AuditIntent {
   readonly derivation: Derivation
   /** The caller's own confidence, 0–1. */
   readonly confidence: number
+  /**
+   * Per-call session id, when the calling tool has one to state — the audit
+   * window's `X-SG-Session` trailer. Only `record_memory` passes one today
+   * (#152: its `recorded.session` and the trailer must name the same session,
+   * so the NOOP rule and the replicated-evidence rule read one identity);
+   * every other tool leaves it absent exactly as before.
+   */
+  readonly sessionId?: string
 }
 
 // ── Per-call `clientInfo` (ADR-0005's 2026-10-09 addendum, second falsified premise) ─
@@ -245,7 +253,7 @@ export function scopeStamp(snap: ScopeBinding): Readonly<{ id: string; root: str
  */
 function enrichmentHealthAfter(
   snap: ScopeBinding,
-  writePath: 'table' | 'event' | 'concept' | 'create' | 'round' | 'import',
+  writePath: 'table' | 'event' | 'concept' | 'create' | 'round' | 'import' | 'memory',
 ): readonly EnrichmentHealthEntry[] | undefined {
   if (writePath !== 'table' && writePath !== 'round') return undefined
   return snap.core.getEnrichmentHealth()
@@ -280,8 +288,9 @@ export interface WriteReceiptOpts {
    * (meta-update family) and `'round'` report; `'event'`/`'concept'` have no
    * hook, and `'create'`/`'import'` compile to the raw create primitives,
    * which have none — for all four the key stays absent rather than
-   * misattributing an earlier table write's residue. */
-  readonly writePath: 'table' | 'event' | 'concept' | 'create' | 'round' | 'import'
+   * misattributing an earlier table write's residue. `'memory'` (record_memory,
+   * #152) writes no definition and runs no hook either. */
+  readonly writePath: 'table' | 'event' | 'concept' | 'create' | 'round' | 'import' | 'memory'
   /** The write receipt's fingerprint (#107 Q2/Q3): the sha256 of the file
    * this write touched, as the whole write left it (post-hook for tables).
    * Absent for the non-definition write paths (`round`) and for the import

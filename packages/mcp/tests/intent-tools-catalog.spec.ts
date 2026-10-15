@@ -4,7 +4,7 @@
  * plus ADR-0006/0008's four enrichment tools
  * plus ADR-0011's six scope tools (#72's deregister is the sixth of them)
  * plus #63's playbook tool plus ADR-0013's import tool
- * plus #101's scratch-home tool, twenty-nine total
+ * plus #101's scratch-home tool plus #152's memory write, thirty total
  * today. ADR-0005's own Verification
  * section asks for exactly this ("门禁脚本断言：十五个工具名与 input/output schema
  * 快照"); ADR-0006/0008 inherited the same ask, and the e2e gate's header defers
@@ -21,7 +21,7 @@
  * the default registrars (production's `TOOL_REGISTRARS`), and this file asserts the
  * live `tools/list` equals `TOOL_NAMES` — a tool registered without its name constant
  * (or vice versa) fails here rather than shipping two different surfaces. The
- * `toHaveLength(29)` line is a deliberate speed bump: growing the surface must change
+ * `toHaveLength(30)` line is a deliberate speed bump: growing the surface must change
  * this line and show up in the diff.
  *
  * @see docs/adr/0005-mcp-tool-surface.md
@@ -30,6 +30,7 @@
  * @see docs/adr/0008-enrichment-work-response-sizing.md
  * @see docs/adr/0014-initialization-phase-model.md (the playbook tool, #63)
  * @see docs/adr/0013-batch-definition-import.md (the import tool, #68)
+ * @see docs/adr/0023-memory-storage-shape-and-node-ids.md (record_memory, #152)
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { TOOL_NAMES } from '../src/tools/index.ts'
@@ -65,13 +66,13 @@ function byName(tools: readonly ListedTool[], name: string): ListedTool {
   return found
 }
 
-describe('the twenty-nine names', () => {
-  it('registers exactly ADR-0005\'s sixteen + ADR-0006/0008\'s four + ADR-0011\'s six + #63\'s playbook + ADR-0013\'s import + #101\'s scratch home, reconciled against TOOL_NAMES', async () => {
+describe('the thirty names', () => {
+  it('registers exactly ADR-0005\'s sixteen + ADR-0006/0008\'s four + ADR-0011\'s six + #63\'s playbook + ADR-0013\'s import + #101\'s scratch home + #152\'s memory write, reconciled against TOOL_NAMES', async () => {
     const tools = await listTools()
     expect(tools.map(t => t.name).sort()).toEqual([...TOOL_NAMES].sort())
     // Deliberate hard count, not TOOL_NAMES.length: growing the surface must
     // edit this line, so the change is visible in the diff for review.
-    expect(tools).toHaveLength(29)
+    expect(tools).toHaveLength(30)
   })
 
   // #132: a top-level `oneOf` input schema (what `z.discriminatedUnion` compiles
@@ -98,7 +99,7 @@ describe('the twenty-nine names', () => {
     ]))
   })
 
-  it('names every write tool ADR-0005 ruling 2 lists', async () => {
+  it('names every write tool ADR-0005 ruling 2 lists (+ #152\'s memory write)', async () => {
     const tools = await listTools()
     const names = tools.map(t => t.name)
     expect(names).toEqual(expect.arrayContaining([
@@ -106,6 +107,7 @@ describe('the twenty-nine names', () => {
       'add_alias', 'remove_alias', 'add_relation', 'remove_relation',
       'submit_suggestion', 'list_suggestions', 'get_suggestion', 'discard_suggestion',
       'import_definitions',
+      'record_memory',
     ]))
   })
 })
@@ -423,6 +425,48 @@ describe('playbook tool schema — ADR-0014 / #63 (R10: scope_id required)', () 
     expect(tool.inputSchema.required).toEqual(['scope_id'])
     expect(Object.keys(tool.inputSchema.properties ?? {}).sort()).toEqual(['scope_id'])
     expect(tool.annotations?.readOnlyHint).toBe(true)
+  })
+})
+
+describe('record_memory — ADR-0023 R9 / #152 (+ ADR-0027 regimen)', () => {
+  it('is a top-level object with a shared memories array (#132: no top-level oneOf — the type dispatch is runtime)', async () => {
+    const tool = byName(await listTools(), 'record_memory')
+    // The #132 guard's whole point for the NEW write tool: hosts that drop
+    // oneOf-only schemas must see this surface. The per-type required-field
+    // dispatch happens in the substrate at runtime — never as a schema union.
+    expect(tool.inputSchema.properties).toBeDefined()
+    expect(tool.inputSchema.oneOf).toBeUndefined()
+    expect(tool.inputSchema.anyOf).toBeUndefined()
+    expect(tool.inputSchema.required?.slice().sort()).toEqual(['confidence', 'derivation', 'memories', 'scope_id', 'summary'])
+    // R9: no expected_version anywhere — memory files are create-only and
+    // take no part in definition fingerprints.
+    expect(tool.inputSchema.properties).not.toHaveProperty('expected_version')
+    expect(tool.inputSchema.additionalProperties).toBe(false)
+  })
+
+  it('declares the five types and the full field union on each item (per-type rules are runtime)', async () => {
+    const tool = byName(await listTools(), 'record_memory')
+    const items = tool.inputSchema.properties?.['memories'] as { minItems?: number; items?: { properties?: Record<string, unknown> } }
+    expect(items.minItems).toBe(1)
+    const item = items.items?.properties ?? {}
+    const type = item['type'] as { enum?: readonly string[] }
+    expect(type.enum?.slice().sort()).toEqual(['caveat', 'incident', 'inference', 'observation', 'practice'])
+    for (const key of ['anchors', 'body', 'basis', 'valid_from', 'valid_until', 'supersedes', 'contradicts']) {
+      expect(item).toHaveProperty(key)
+    }
+  })
+
+  it('carries the ADR-0027 judgment-regimen trunk in its description (单一来源渲染之一)', async () => {
+    const tool = byName(await listTools(), 'record_memory')
+    const description = tool.description ?? ''
+    // The regimen's load-bearing spine, asserted at the wording level an
+    // agent dispatches on: replication vs supersede vs contradicts, and the
+    // evidence rules (ADR-0027 R2 ①).
+    expect(description).toContain('replication evidence')
+    expect(description).toContain('outdated')
+    expect(description).toContain('wrong')
+    expect(description).toContain('contradicts')
+    expect(description).toContain('basis')
   })
 })
 
