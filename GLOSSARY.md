@@ -212,6 +212,14 @@ held, until the newer one took over — "大R ≥ 328" for last quarter is still
 口径 for last quarter) or **wrong** (it never held, so it is never shown again and never
 counts as evidence).
 
+Two memories that are both still in force but reach opposite conclusions are
+**contested** (有争议). Only the agents that use SG decide that two memories disagree,
+never SG itself; the later writer says so explicitly when it writes, and from then on
+the two are always shown together and neither can count as evidence for repeated
+observation until one is shown, with stated evidence, to be wrong. Two observations
+over windows that do not overlap are not contested: the data changed. Avoid
+*conflict* (also used for concurrent-write collisions) and *disputed*.
+
 ### anchor (锚点)
 
 The identity a [memory](#memory-数据-memory) is pinned to: a [definition](#definition),

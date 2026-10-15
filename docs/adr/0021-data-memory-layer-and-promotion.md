@@ -73,3 +73,8 @@ SG 今天只有一种存储单位 —— definition（`table` / `event` / `conce
 
 - **R6 对已验证查询按类型收窄**：晋升为 `query` 只认 ① source 与 ② user-stated，③ replicated 拒写——口径是被
   约定的，不是被观测的；两个 agent 自选一致只留作 practice memory。其余晋升目标仍认三类。
+
+## Update 2026-10-15（ADR-0027 / #158）
+
+- **R6 ③ 再收窄**：被引用的 memory 处于争议中（带仍有效的 `contested_with`）时 replicated 晋升拒写；① source /
+  ② user-stated 不受影响。「结论相同」仍由引用方 agent 判断，服务端不从正文判断相反或相同。

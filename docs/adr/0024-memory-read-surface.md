@@ -45,3 +45,8 @@ ADR-0023 定了存储与锚点。没定挂在哪几个工具、挂多少、按�
 - **R5 推广**：边锚点目标已不存在的条目照常进 `edge_memories`、带 `relation_missing: true`；`get_definition`
   对已不存在的定义仍报 `definition_not_found`，错误 data 附 `orphaned_memories`（每条 `definition_missing: true`，
   R3/R4 规则照用）。
+
+## Update 2026-10-15（ADR-0027 / #158）
+
+- **R4 伙伴随行**：有争议的条目带 `contested_with`，一方进预算则伙伴强制随行（可超 8 / 5 / 3、跨锚点也拉进），
+  可见性仍按 R3；R6 `memory_counts` 计入随行伙伴。**R7 不变**：读时指引写在 `get_definition` 工具描述里，不用 `_guidance`。
