@@ -152,6 +152,8 @@ barrel 面合计：DERIVATIONS（册上原件）+ 新三名 → S2 开票时 **2
 
 > **收束注记（2026-10-15）**：处方三票全部落地——#160 `d66a13a` / #161 `582cb39` / #162 `ebf0e99`（subagent worktree 三路并行、主会话串行合入；终态基线 typecheck 双包 0 / substrate **449**〔#160 删 1 直测〕/ mcp 437+1skip / e2e 22〔banner 29〕，合入态亲跑）。两处本报告证据/口径勘误随落地入档（C15 `sweepEnrichment` 收编面消费实证留存、C16 广告面 +2 description 键对齐 commit-class 口径，见各节首注记）。唯 S2 补遗四件待用户另 effort 开票时并入（barrel 27→23 票面声明）。
 
+> **残件复核批（2026-10-15，#163 `55003ee`）**：code-simplifier 双 subagent 对三日审计窗口（`e6607fa..c602434`，99 文件 +6580/−5292）做「收后残件」全量复核——#160 漏网类型半区（enrichment.ts 六死类型 re-export 删；sweepEnrichment 勘误边界守住）/ #161 漏网孪生（`assertNoRedirectedFields`+三 `*_ARRAY_REF_REDIRECT` 迁 write.ts，「shared = 跨家族」契约归真）/ #122 孤儿 helper `readLayerFile` 删；主会话中央核验拦 subagent 两笔越线（误删 sweepEnrichment、utf8 顺手改）；四门禁亲跑四绿逐字对基线。报告项三件未动待另裁：registry.ts:172 `toExecutableRule?`（barrel 面需 ADR-0003 修订）/ mcp shared.ts 头注 9 文件枚举（#162 遗留）/ ADR-0017 :10/:53 死链。
+
 **本轮不开结构图**——无 Strong 级结构候选，两轮收割后巡检轴的 ROI 已让位于 KG/memory 票线（map #125，frontier #151 → #152 → #136/#154 → #155：图节点 id 统一、memory 存储+record_memory、晋升 trailer、读面挂载、已验证查询，ADR-0021..0026 全部已裁待落地）。处方三票，全部 standalone 体例：
 
 1. **C15 + C16 两票**（可 subagent worktree 并行，照 #144–#149 体例）：验收全按 rg 单点 + 既有 spec 零改动全绿 + 公开面零变化（C15 barrel 缺席断言原样过 / C16 广告面零 diff 亲验口径）；C15 带 substrate 基线下修声明，C16 带 ADR-0012 锚点 Update 注记。
@@ -171,4 +173,4 @@ barrel 面合计：DERIVATIONS（册上原件）+ 新三名 → S2 开票时 **2
 
 ---
 
-*证据均带 file:line，锚 `main b5c86df` 已提交树。Strong 与 Worth exploring 级发现全部经主会话 rg 亲验（含一次证伪、一次口径修正）；S6-7/S6-8 与 Speculative 三件为子代理证据 + 主会话抽核。四门禁 2026-10-15 当日亲跑全绿（substrate 450〔28 文件〕/ mcp 437+1skip〔27 文件〕/ e2e 22〔banner 29〕/ typecheck 双包 0），与 CLAUDE.md 基线节一致。第二轮报告已随本轮删除（审计收官，全文 `git show b5c86df:docs/architecture-review-2026-10-14.md` 可回查）。*
+*证据均带 file:line，锚 `main b5c86df` 已提交树。Strong 与 Worth exploring 级发现全部经主会话 rg 亲验（含一次证伪、一次口径修正）；S6-7/S6-8 与 Speculative 三件为子代理证据 + 主会话抽核。四门禁当日亲跑全绿，四数字与 CLAUDE.md 对账见文首基线；第二轮报告已随本轮删除，回查方式见文首。*
