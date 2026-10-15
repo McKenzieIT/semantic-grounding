@@ -43,7 +43,9 @@ Issue 追踪在 GitHub（McKenzieIT/semantic-grounding），通过 `gh` CLI 操�
 
 ### 当前基线
 
-2026-10-15 起（#151 后）：**typecheck 双包 0 / substrate 450 / mcp 437+1skip（亲跑实测另见 import-definitions.spec.ts 2 个 ADR-0018 守卫超时，与 #151 无关、在 main 上同样复现，疑为环境计时抖动）**（#149 删 `assertScopeIdShape` 10 直测 447→437；#160 删 combined describe 1 直测 450→449；#151 新增 k11-graph.spec.ts 全量节点前缀断言 1 直测 449→450，mcp 测试条数不变）**/ e2e 22 / catalog spec 29 工具断言（文件 35 测）/ barrel 27+default / 工具面 29**。门禁数字漂移时以当日亲跑为准并勘误本节。
+2026-10-15 起（#151 + map #164 落地批后）：**typecheck 双包 0 / substrate 431 / mcp 432+1skip**（沿革：#149 删 `assertScopeIdShape` 10 直测 447→437；#160 删 combined describe 1 直测 450→449；#151 新增 k11-graph.spec.ts 全量节点前缀断言 1 直测 449→450；map #164 落地批——#169 mcp 删并 437→432、#173 substrate 删并 450→437〔C13 多条目 fetch 混批景亲验 parity 未盖留件〕、#174 read-count-probe 删并 −6 至 431；mcp 旁注：import-definitions.spec.ts 2 个 ADR-0018 守卫偶发超时亲跑实证，疑环境计时抖动，与 map #164 关图留观签名同款）**/ e2e 22 / catalog spec 29 工具断言（文件 35 测）/ barrel 27+default / 工具面 29**。门禁数字漂移时以当日亲跑为准并勘误本节。
+
+**分层门禁（map #164 · #168 Q6 定形）**：票内层 = 改动包及其下游 + typecheck 双包；合入 / 关图 / 收尾层 = 四门禁全量（typecheck 双包 / substrate / mcp / e2e）；e2e 仅合入层跑，不进迭代圈。
 
 ### 环境坑
 

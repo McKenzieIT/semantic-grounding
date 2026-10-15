@@ -144,7 +144,7 @@ test('D5 — each core instance carries its own recorder', async () => {
 // byte-identical rollback); the io-level paths rolled back correctly only by
 // courtesy of the ceremony being re-copied faithfully. #61 folded them all
 // into io.ts's `auditedFileWrite` seam; this block pins every wiring the seam
-  // has (two call sites since the sync-write chain's removal, S1.4) — the
+// has (two call sites since the sync-write chain's removal, S1.4) — the
 // recorder raise propagates and disk ends at its pre-write state, on both
 // restore branches (create ⇒ the file is gone; update ⇒ the bytes are
 // byte-identical, hand-written comment included) across the table/event/concept
