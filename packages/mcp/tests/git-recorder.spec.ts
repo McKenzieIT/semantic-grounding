@@ -33,7 +33,7 @@ import { createFixtureCorpus, fixtureGit, type FixtureCorpus } from './helpers/f
 let fixture: FixtureCorpus
 
 beforeEach(() => {
-  fixture = createFixtureCorpus()
+  fixture = createFixtureCorpus({ freshGit: true }) // #174 4a: 绝对 commit 列表断言 —— 模板拷贝共享 baseline hash，须本仓独建
 })
 afterEach(() => fixture.cleanup())
 
@@ -419,7 +419,7 @@ describe('on-write enrichment residue gets its own deterministic commit', () => 
   })
 
   it('makes no derived commit when the hook finds nothing', async () => {
-    const noDim = createFixtureCorpus({ withDim: false })
+    const noDim = createFixtureCorpus({ withDim: false, freshGit: true })
     const saved = fixture
     fixture = noDim
     try {

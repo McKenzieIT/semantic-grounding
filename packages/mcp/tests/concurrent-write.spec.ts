@@ -31,7 +31,7 @@ const WORKER = join(dirname(fileURLToPath(import.meta.url)), 'helpers', 'concurr
 let fixture: FixtureCorpus
 
 beforeEach(() => {
-  fixture = createFixtureCorpus()
+  fixture = createFixtureCorpus({ freshGit: true }) // #174 4a: 真进程争锁 —— 维持现建不走模板
 })
 afterEach(() => fixture.cleanup())
 

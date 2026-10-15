@@ -1,5 +1,5 @@
 /**
- * A small git-backed corpus, built from scratch per test.
+ * A small git-backed corpus, built per test from a per-worker template (#174 4a).
  *
  * #19 asks for this as a reusable artifact: "产出物可复用为端到端门禁的 fixture 底座" —
  * the end-to-end gate (map #12's Not-yet-specified item) needs a corpus small enough to
@@ -23,7 +23,7 @@
  * @module tests/helpers/fixture-corpus
  */
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { dumpYaml, loadTables } from '@semantic-grounding/substrate'
@@ -94,6 +94,16 @@ export interface FixtureCorpusOptions {
   readonly git?: boolean
   /** Commit the baseline after `git init` (default true). False leaves an unborn HEAD. */
   readonly baselineCommit?: boolean
+  /**
+   * Build the git layer from scratch (init + configs + baseline commit, ~8
+   * spawns) instead of copying the per-worker template (#174 4a). For the
+   * specs whose assertions are coupled to the build itself: `git-recorder.spec.ts`
+   * pins absolute commit lists — a template's baseline commit is shared by every
+   * corpus copied from it, so history-identity assertions need a git layer that
+   * belongs to this corpus alone — and `concurrent-write.spec.ts` races real
+   * processes against the corpus lock. Default false (template copy).
+   */
+  readonly freshGit?: boolean
 }
 
 /** A built fixture corpus. */
@@ -144,17 +154,12 @@ export function commitExternalEdit(fixture: FixtureCorpus, tableName: string, ch
 }
 
 /**
- * Create a fixture corpus in a fresh temp directory.
- * @param opts - see {@link FixtureCorpusOptions}.
- * @returns the corpus root and a cleanup function.
+ * Write the corpus working tree (config, tables, events) — no git.
+ * @param root - the corpus root (existing directory).
+ * @param withDim - include the joinable DIM table.
+ * @param withEvents - include the joinable event.
  */
-export function createFixtureCorpus(opts: FixtureCorpusOptions = {}): FixtureCorpus {
-  const withDim = opts.withDim ?? true
-  const withEvents = opts.withEvents ?? false
-  const wantGit = opts.git ?? true
-  const wantBaseline = opts.baselineCommit ?? true
-
-  const root = mkdtempSync(join(tmpdir(), 'sg-corpus-'))
+function writeCorpusFiles(root: string, withDim: boolean, withEvents: boolean): void {
   mkdirSync(join(root, 'tables'), { recursive: true })
   // Events live one domain-directory deep (`loadEvents` iterates domain dirs), the
   // same shape `packages/substrate/tests/enrichment-work.spec.ts` writes.
@@ -207,26 +212,91 @@ export function createFixtureCorpus(opts: FixtureCorpusOptions = {}): FixtureCor
       'utf8',
     )
   }
+}
 
-  if (wantGit) {
-    fixtureGit(['init', '--quiet', '--initial-branch=main', '.'], root)
-    // Repository-local identity: these tests must pass on a machine with no global git
-    // config. It is also the human-write identity the audit history contrasts against,
-    // which is why the recorder passes author/committer per invocation instead of
-    // touching this config (see `git/identity.ts`).
-    fixtureGit(['config', 'user.name', 'Fixture Human'], root)
-    fixtureGit(['config', 'user.email', 'human@fixture.local'], root)
-    fixtureGit(['config', 'commit.gpgsign', 'false'], root)
-    // Hermetic line endings alongside the hermetic identity: Git-for-Windows defaults
-    // `core.autocrlf=true` globally, and its smudge/clean filters make byte-exact
-    // rollback and recovery-content assertions machine-dependent. A repo-local `false`
-    // pins LF pass-through for every git call in this repo — the recorder's and
-    // posture's own invocations included, since they read .git/config too (#81).
-    fixtureGit(['config', 'core.autocrlf', 'false'], root)
-    if (wantBaseline) {
-      fixtureGit(['add', '-A'], root)
-      fixtureGit(['commit', '--quiet', '-m', 'corpus baseline'], root)
-    }
+/**
+ * Init the fixture's git layer: repository-local identity, hermetic line
+ * endings, gc off, optional baseline commit.
+ * @param root - the corpus root (working tree already written).
+ * @param baselineCommit - land `add -A` + commit, or leave an unborn HEAD.
+ */
+function initFixtureGit(root: string, baselineCommit: boolean): void {
+  fixtureGit(['init', '--quiet', '--initial-branch=main', '.'], root)
+  // Repository-local identity: these tests must pass on a machine with no global git
+  // config. It is also the human-write identity the audit history contrasts against,
+  // which is why the recorder passes author/committer per invocation instead of
+  // touching this config (see `git/identity.ts`).
+  fixtureGit(['config', 'user.name', 'Fixture Human'], root)
+  fixtureGit(['config', 'user.email', 'human@fixture.local'], root)
+  fixtureGit(['config', 'commit.gpgsign', 'false'], root)
+  // Hermetic line endings alongside the hermetic identity: Git-for-Windows defaults
+  // `core.autocrlf=true` globally, and its smudge/clean filters make byte-exact
+  // rollback and recovery-content assertions machine-dependent. A repo-local `false`
+  // pins LF pass-through for every git call in this repo — the recorder's and
+  // posture's own invocations included, since they read .git/config too (#81).
+  fixtureGit(['config', 'core.autocrlf', 'false'], root)
+  // #174 4a: auto-gc off. Every fixture repo sees dozens of add/commit invocations
+  // across a suite run (the recorder's among them), and each is a fresh chance for
+  // git to fork a `maintenance run --auto` child that no-ops — #167 measured 525
+  // such wasted spawns on the mcp suite. A repo-local `0` pins that off for every
+  // git call that reads this repo's config, template copies included (the config
+  // travels with the copy).
+  fixtureGit(['config', 'gc.auto', '0'], root)
+  if (baselineCommit) {
+    fixtureGit(['add', '-A'], root)
+    fixtureGit(['commit', '--quiet', '-m', 'corpus baseline'], root)
+  }
+}
+
+/**
+ * Per-worker git-corpus templates (#174 4a): the 8-spawn build recipe (init +
+ * 5 configs + add + commit, ~118ms) runs once per corpus shape per worker;
+ * every corpus after that is an `fs.cpSync` of its template (~15.6ms measured
+ * in #167, 7.6× cheaper). Keyed by shape, because the baseline commit's tree
+ * differs per shape. Template copies share the template's baseline commit
+ * hash — harmless to every spec that reasons about relative history (commit
+ * counts, subjects, ordering), which is why the two that reason about
+ * absolute history pay the `freshGit` tax instead.
+ */
+const gitCorpusTemplates = new Map<string, string>()
+
+function gitCorpusTemplate(withDim: boolean, withEvents: boolean, baselineCommit: boolean): string {
+  const key = `${withDim}|${withEvents}|${baselineCommit}`
+  const cached = gitCorpusTemplates.get(key)
+  if (cached !== undefined) return cached
+
+  const dir = mkdtempSync(join(tmpdir(), 'sg-corpus-template-'))
+  writeCorpusFiles(dir, withDim, withEvents)
+  initFixtureGit(dir, baselineCommit)
+  gitCorpusTemplates.set(key, dir)
+  // Best-effort cleanup when the worker exits; a leaked template directory is
+  // a few KB in the OS tempdir, never a correctness concern.
+  process.on('exit', () => rmSync(dir, { recursive: true, force: true }))
+  return dir
+}
+
+/**
+ * Create a fixture corpus in a fresh temp directory.
+ * @param opts - see {@link FixtureCorpusOptions}.
+ * @returns the corpus root and a cleanup function.
+ */
+export function createFixtureCorpus(opts: FixtureCorpusOptions = {}): FixtureCorpus {
+  const withDim = opts.withDim ?? true
+  const withEvents = opts.withEvents ?? false
+  const wantGit = opts.git ?? true
+  const wantBaseline = opts.baselineCommit ?? true
+  const wantFreshGit = opts.freshGit ?? false
+
+  const root = mkdtempSync(join(tmpdir(), 'sg-corpus-'))
+  if (wantGit && !wantFreshGit) {
+    // The fast path: one directory copy carries working tree AND the
+    // pre-initialized git layer (identity/autocrlf/gc configs + baseline
+    // commit included). Git repos are relocatable — nothing inside .git
+    // points back at the template's path.
+    cpSync(gitCorpusTemplate(withDim, withEvents, wantBaseline), root, { recursive: true })
+  } else {
+    writeCorpusFiles(root, withDim, withEvents)
+    if (wantGit) initFixtureGit(root, wantBaseline)
   }
 
   return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) }

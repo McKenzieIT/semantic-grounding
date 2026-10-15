@@ -9,11 +9,17 @@ import { defineConfig } from 'vitest/config'
  *
  * Timeouts are raised from vitest's 5s default: this suite builds a real git repository
  * per test and the cross-process cases spawn four writers that queue on the corpus lock.
+ *
+ * maxWorkers 8 (#174 4e): the default (all cores, 16 here) over-subscribes — measured on
+ * this suite: wall clock flat while tests-CPU drops ~25% at 8 workers on a 16-core box,
+ * because the suite's own git spawns serialize in the OS anyway and extra workers only
+ * add scheduler churn and memory.
  */
 export default defineConfig({
   test: {
     include: ['tests/**/*.spec.ts'],
     testTimeout: 30_000,
     hookTimeout: 30_000,
+    maxWorkers: 8,
   },
 })

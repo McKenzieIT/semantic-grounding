@@ -25,7 +25,7 @@
     "build": "tsdown",
     "pretypecheck": "pnpm --filter @semantic-grounding/substrate run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "pretest": "pnpm --filter @semantic-grounding/substrate run build",
+    "pretest": "node scripts/build-substrate-if-changed.mjs",
     "test": "vitest run",
     "e2e": "node scripts/check-e2e-loop.ts"
   },

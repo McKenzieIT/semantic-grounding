@@ -21,25 +21,33 @@
  * targets. A regression to the ADR-0016 pathology class (262× broad-scan)
  * fails these just as loudly.
  *
+ * ## #174 slimming — the scale is the signal
+ *
+ * #174 deleted the measurements whose bandwidth truth already lives elsewhere
+ * (paths 1-3: read-epoch.spec:82-146 pins them exactly in and out of an epoch,
+ * stronger than the >0 bounds here; the k11 sanity block: k11-seed.spec:36-44)
+ * and moved path 5, the run_enrichment pipeline rehearsal, to a ~1/3 mirror
+ * subset of k11 — pipeline cost is near-linear in corpus size, and path 5's
+ * assertions are ratio-shaped against the subset's OWN full-corpus size, so
+ * the 20× ADR-0016 band means exactly what it meant on full k11. Everything
+ * else stays FULL k11: the probe's yardstick is the signal, and shrinking the
+ * measured paths themselves would gut the probe's reason to exist.
+ *
  * @module tests/read-count-probe
  */
 import { describe, it, expect, beforeAll } from 'vitest'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { _resetReadYamlCount, _getReadYamlCount } from '../src/io-probes.ts'
 import {
-  loadTables,
-  loadEvents,
   loadTableDefinition,
   loadEventDefinition,
   loadConfig,
   writeEventYaml,
   definitionVersion,
 } from '../src/io.ts'
-import { assertKnownFilterNames } from '../src/enrichment.ts'
-import { listEnrichmentWorkItems, fetchEnrichmentPrompts } from '../src/enrichment-work.ts'
 import { SemanticGroundingCore } from '../src/index.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -66,22 +74,55 @@ const K11_EVENTS_LOADED = 445
 const K11_EVENT_READS = 446
 const K11_CONCEPTS = 10
 
-// Known table names from the k11 fixture (for assertKnownFilterNames test)
-const KNOWN_TABLE_NAMES = [
-  'dws_10000251_univ_role_act_di',
-  'dws_10000251_acc_summary_df',
-  'dws_10000251_acc_summary_di',
-  'dws_10000251_active_code_info',
-  'dws_10000251_algo_role_act_pay_df',
-  'dim_10000251_auto_event_cfg_info',
-  'dim_10000251_auto_pvp_rank_info',
-  'dim_10000251_autobi_conf2_od',
-  'dim_10000251_business_analysis_recharge',
-  'dim_10000251_card_pool_info',
-]
-
 /** One full-corpus parse = one loadTables + one loadEvents call (in readYaml count). */
 const ONE_FULL_CORPUS = K11_TABLES + K11_EVENT_READS
+
+/**
+ * Build a ~1/3 mirror subset of the k11 fixture into `dst` (#174 4c).
+ *
+ * Path 5's pipelines are near-linear in corpus size, so a third of the
+ * mirror-shaped fixture rehearses them at a third of the cost. The mirror is
+ * preserved exactly — same directories, same file shapes, `_index.yaml`
+ * manifests kept (inert on read, kept so the write path finds them), every
+ * third file of each sorted listing taken. The returned counts are the
+ * subset's OWN kind-corpus sizes, so ratio assertions phrased against them
+ * carry the same relative strength they carried on full k11.
+ * @param dst - an existing empty directory.
+ * @returns the number of table files copied and the number of event readYaml
+ * attempts the subset will cost (non-index event YAMLs copied — the one
+ * malformed file included if selected, since readYaml fires before the
+ * lenient parse skip).
+ */
+function copyK11Third(dst: string): { tables: number; eventReads: number } {
+  cpSync(join(K11, 'config.yaml'), join(dst, 'config.yaml'))
+  cpSync(join(K11, 'domains.yaml'), join(dst, 'domains.yaml'))
+
+  mkdirSync(join(dst, 'tables'), { recursive: true })
+  const selectedTables = readdirSync(join(K11, 'tables')).filter(f => f.endsWith('.yaml')).sort().filter((_, i) => i % 3 === 0)
+  for (const f of selectedTables) {
+    cpSync(join(K11, 'tables', f), join(dst, 'tables', f))
+  }
+
+  let eventReads = 0
+  mkdirSync(join(dst, 'events'), { recursive: true })
+  for (const domain of readdirSync(join(K11, 'events')).sort()) {
+    mkdirSync(join(dst, 'events', domain), { recursive: true })
+    const files = readdirSync(join(K11, 'events', domain)).filter(f => f.endsWith('.yaml')).sort()
+    for (const [i, f] of files.entries()) {
+      if (f === '_index.yaml') {
+        cpSync(join(K11, 'events', domain, f), join(dst, 'events', domain, f))
+        continue
+      }
+      if (i % 3 === 0) {
+        cpSync(join(K11, 'events', domain, f), join(dst, 'events', domain, f))
+        eventReads++
+      }
+    }
+  }
+
+  cpSync(join(K11, 'concepts'), join(dst, 'concepts'), { recursive: true })
+  return { tables: selectedTables.length, eventReads }
+}
 
 /**
  * Run a measurement: reset counter, execute fn, return the count.
@@ -102,83 +143,13 @@ async function measureAsync(fn: () => Promise<void>): Promise<number> {
   return _getReadYamlCount()
 }
 
-/** Results accumulator — printed in the afterAll-style summary at the end. */
+/** Results accumulator. #174 (C3) removed the zero-assertion summary printer that used to consume it; the per-test record() calls stay as a structured ledger (each test also console.logs its own measurement inline). */
 const results: Array<{ path: string; count: number; fullCorpusEquiv: string; notes: string }> = []
 
 function record(path: string, count: number, notes: string): void {
   const equiv = (count / ONE_FULL_CORPUS).toFixed(2)
   results.push({ path, count, fullCorpusEquiv: `${equiv}×`, notes })
 }
-
-// ── Sanity: verify the fixture loads correctly ────────────────────────────
-
-describe('k11 fixture sanity', () => {
-  it('loads 321 tables and 445 events', () => {
-    const tables = loadTables(K11)
-    const events = loadEvents(K11)
-    expect(tables).toHaveLength(K11_TABLES)
-    expect(events).toHaveLength(K11_EVENTS_LOADED)
-  })
-})
-
-// ── Path 1: get_enrichment_work (full listing) ────────────────────────────
-
-describe('path 1: get_enrichment_work (full listing)', () => {
-  it('measures YAML parse count for listEnrichmentWorkItems({})', () => {
-    const count = measure(() => {
-      listEnrichmentWorkItems(K11, {})
-    })
-    record(
-      'get_enrichment_work (full)',
-      count,
-      `assertKnownFilterNames({}) skips both dims (0 reads) + buildDimInventory (loadTables=${K11_TABLES}) + loadTables (${K11_TABLES}) + loadEvents (${K11_EVENT_READS})`,
-    )
-    // Expected: buildDimInventory(321) + loadTables(321) + loadEvents(445) = 1087
-    console.log(`  [probe] get_enrichment_work (full): ${count} YAML reads (${(count / ONE_FULL_CORPUS).toFixed(2)}× full corpus)`)
-    expect(count).toBeGreaterThan(0)
-  })
-})
-
-// ── Path 2: get_enrichment_prompts (~5 work_ids) ─────────────────────────
-
-describe('path 2: get_enrichment_prompts', () => {
-  it('measures YAML parse count for ~5 work_ids', () => {
-    // First, get some real work_ids from a listing (use a broader filter to ensure enough items)
-    _resetReadYamlCount()
-    const listing = listEnrichmentWorkItems(K11, {})
-    // Take the first 5 work_ids (mix of table and event, relation and alt_labels)
-    const workIds = listing.work.slice(0, 5).map(w => w.work_id)
-
-    const count = measure(() => {
-      fetchEnrichmentPrompts(K11, workIds)
-    })
-    record(
-      `get_enrichment_prompts (${workIds.length} items)`,
-      count,
-      `each table work_id calls loadTables(${K11_TABLES}); each event work_id calls loadEvents(${K11_EVENT_READS}); relation items also trigger buildDimInventory (loadTables, lazy-once)`,
-    )
-    console.log(`  [probe] get_enrichment_prompts (${workIds.length} items): ${count} YAML reads (${(count / ONE_FULL_CORPUS).toFixed(2)}× full corpus)`)
-    expect(count).toBeGreaterThan(0)
-  })
-})
-
-// ── Path 3: assertKnownFilterNames (~10 known table names) ────────────────
-
-describe('path 3: assertKnownFilterNames', () => {
-  it('measures YAML parse count for 10 known table names', () => {
-    const count = measure(() => {
-      assertKnownFilterNames(K11, { tables: KNOWN_TABLE_NAMES })
-    })
-    record(
-      'assertKnownFilterNames (10 tables)',
-      count,
-      `new Set(loadTables(...)) INSIDE .filter() predicate — N names × loadTables(${K11_TABLES}) reads`,
-    )
-    // Expected: 10 × 321 = 3210 (the loadTables is inside the .filter() predicate)
-    console.log(`  [probe] assertKnownFilterNames (10 tables): ${count} YAML reads (${(count / ONE_FULL_CORPUS).toFixed(2)}× full corpus)`)
-    expect(count).toBeGreaterThan(0)
-  })
-})
 
 // ── Path 4: get_definition (single table) ────────────────────────────────
 
@@ -224,9 +195,12 @@ describe('path 4: get_definition (single table)', () => {
 
 describe('path 5: run_enrichment (one full invocation)', () => {
   it('measures YAML parse count for discoverRelations (table relations sweep only)', async () => {
-    // Copy k11 to tmpdir so writes don't modify the fixture
+    // A ~1/3 mirror subset of k11 in a tmpdir (#174 4c): writes don't modify
+    // the fixture, and the pipeline's near-linear cost doesn't dominate the
+    // file. Ratios below are against the SUBSET's own one-corpus size.
     const tmp = mkdtempSync(join(tmpdir(), 'sg-probe-'))
-    cpSync(K11, tmp, { recursive: true })
+    const sub = copyK11Third(tmp)
+    const oneCorpus = sub.tables + sub.eventReads
     try {
       const core = new SemanticGroundingCore({ semanticRoot: tmp, scopeId: 'probe' })
 
@@ -234,12 +208,11 @@ describe('path 5: run_enrichment (one full invocation)', () => {
         await core.discoverRelations({})
       })
       record(
-        'run_enrichment: discoverRelations (tables only)',
+        'run_enrichment: discoverRelations (tables only, 1/3 subset)',
         count,
-        `prepare: buildDimInventory(loadTables=${K11_TABLES}) + list: loadTables(${K11_TABLES}); no LLM round`,
+        `prepare: buildDimInventory(loadTables=${sub.tables}) + list: loadTables(${sub.tables}); no LLM round`,
       )
-      // Expected: 321 + 321 = 642
-      console.log(`  [probe] discoverRelations (tables only): ${count} YAML reads (${(count / ONE_FULL_CORPUS).toFixed(2)}× full corpus)`)
+      console.log(`  [probe] discoverRelations (tables only, 1/3 subset): ${count} YAML reads (${(count / oneCorpus).toFixed(2)}× subset corpus)`)
       expect(count).toBeGreaterThan(0)
     } finally {
       rmSync(tmp, { recursive: true, force: true })
@@ -248,7 +221,8 @@ describe('path 5: run_enrichment (one full invocation)', () => {
 
   it('measures YAML parse count for full run_enrichment equivalent (all 4 pipelines)', async () => {
     const tmp = mkdtempSync(join(tmpdir(), 'sg-probe-full-'))
-    cpSync(K11, tmp, { recursive: true })
+    const sub = copyK11Third(tmp)
+    const oneCorpus = sub.tables + sub.eventReads
     try {
       const core = new SemanticGroundingCore({ semanticRoot: tmp, scopeId: 'probe' })
 
@@ -266,16 +240,18 @@ describe('path 5: run_enrichment (one full invocation)', () => {
       const count = _getReadYamlCount()
       console.log(`    [diag] after discoverAltLabels: ${count} reads (cumulative)`)
       record(
-        'run_enrichment (full: relations + event-relations + alt_labels)',
+        'run_enrichment (full: relations + event-relations + alt_labels, 1/3 subset)',
         count,
-        `discoverRelations(${afterRel}) + discoverEventRelations(+${afterEvtRel - afterRel}) + discoverAltLabels(+${count - afterEvtRel}). ADR-0016 (#80): findEventPath fast-path now hits on filename=name — pre-migration this was ~100371 reads in each of discoverEventRelations/discoverAltLabels (99% broad-scan), a 262.56× corpus baseline.`,
+        `discoverRelations(${afterRel}) + discoverEventRelations(+${afterEvtRel - afterRel}) + discoverAltLabels(+${count - afterEvtRel}). ADR-0016 (#80): findEventPath fast-path now hits on filename=name — pre-migration the broad-scan pathology measured ~100371 reads per sweep on full k11, a 262.56× CORPUS ratio; ratios are scale-free, so the same guard trips on the subset.`,
       )
-      console.log(`  [probe] run_enrichment (full): ${count} YAML reads (${(count / ONE_FULL_CORPUS).toFixed(2)}× full corpus, vs 262.56× pre-ADR-0016 baseline)`)
+      console.log(`  [probe] run_enrichment (full, 1/3 subset): ${count} YAML reads (${(count / oneCorpus).toFixed(2)}× subset corpus, vs 262.56× pre-ADR-0016 baseline)`)
       // ADR-0016 regression guard: the pathology this fixed was a full
       // broad-scan of the event tree on every write (262.56× corpus). 20×
       // leaves headroom for unrelated cost growth while still failing loudly
-      // if findEventPath's fast path stops hitting.
-      expect(count).toBeLessThan(20 * ONE_FULL_CORPUS)
+      // if findEventPath's fast path stops hitting. #174 4c: the band is the
+      // subset's own one-corpus size (tables + event reads actually copied),
+      // so its relative strength is exactly the full-k11 band's.
+      expect(count).toBeLessThan(20 * oneCorpus)
     } finally {
       rmSync(tmp, { recursive: true, force: true })
     }
@@ -331,25 +307,25 @@ describe('path 6: graph/search paths', () => {
     )
     console.log(`  [probe] search_definitions (cold): ${count} YAML reads (${(count / ONE_FULL_CORPUS).toFixed(2)}× full corpus)`)
     expect(count).toBeGreaterThan(0)
-  })
 
-  it('measures YAML parse count for search_definitions with warm graph cache', () => {
-    const core = new SemanticGroundingCore({ semanticRoot: K11, scopeId: 'probe' })
-    // Warm the graph cache
+    // Warm leg (#174 C12, folded in from what was its own test with a fresh
+    // core instance): the cold leg above already filled the graph cache via
+    // projectGraphNodes → getRelationGraph, so this explicit warm call is the
+    // free 0-read proof of that. The property being measured: a warm GRAPH
+    // cache does not help — projectGraphNodes and loadRetrievalCorpusAll
+    // re-read their inputs every call regardless.
     core.getRelationGraph()
-    _resetReadYamlCount()
-    // Now measure just the search call (graph cache warm, but loadRetrievalCorpusAll is NOT cached)
-    const count = measure(() => {
+    const warm = measure(() => {
       core.projectGraphNodes({ includeDerived: true })
       core.loadRetrievalCorpusAll()
     })
     record(
       'search_definitions (graph cache warm)',
-      count,
+      warm,
       `graph cached (0 reads for getRelationGraph), BUT projectGraphNodes is UNCACHED (777 reads) + loadRetrievalCorpusAll also uncached (777 reads) = 1554 regardless`,
     )
-    console.log(`  [probe] search_definitions (warm graph): ${count} YAML reads (${(count / ONE_FULL_CORPUS).toFixed(2)}× full corpus)`)
-    expect(count).toBeGreaterThan(0)
+    console.log(`  [probe] search_definitions (warm graph): ${warm} YAML reads (${(warm / ONE_FULL_CORPUS).toFixed(2)}× full corpus)`)
+    expect(warm).toBeGreaterThan(0)
   })
 })
 
@@ -390,37 +366,5 @@ describe('path 7: write-path fast-path hit (ADR-0016)', () => {
     )
     console.log(`  [probe] definitionVersion(event, fast-path hit): ${count} YAML reads`)
     expect(count).toBeLessThanOrEqual(2)
-  })
-})
-
-// ── Summary ──────────────────────────────────────────────────────────────
-
-describe('probe summary', () => {
-  it('prints the results table', () => {
-    console.log('\n═══ READ-COUNT PROBE RESULTS ═══')
-    console.log(`Fixture: k11 (${K11_TABLES} tables, ${K11_EVENTS_LOADED} events loaded / ${K11_EVENT_READS} reads, ${K11_CONCEPTS} concepts)`)
-    console.log(`One full-corpus parse = ${ONE_FULL_CORPUS} YAML reads\n`)
-    console.log('Path'.padEnd(55) + 'Reads'.padStart(8) + 'Corpus×'.padStart(10) + '  Notes')
-    console.log('─'.repeat(120))
-    for (const r of results) {
-      console.log(
-        r.path.padEnd(55) +
-        String(r.count).padStart(8) +
-        r.fullCorpusEquiv.padStart(10) +
-        '  ' + r.notes,
-      )
-    }
-    console.log('─'.repeat(120))
-
-    // Classify each path
-    for (const r of results) {
-      const ratio = r.count / ONE_FULL_CORPUS
-      let severity: string
-      if (r.count <= 2) severity = 'NEGLIGIBLE'
-      else if (ratio <= 2) severity = 'MODERATE'
-      else severity = 'PATHOLOGICAL'
-      console.log(`  ${severity.padEnd(14)} ${r.path}: ${r.count} reads (${r.fullCorpusEquiv} corpus)`)
-    }
-    console.log('')
   })
 })
