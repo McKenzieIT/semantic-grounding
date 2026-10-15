@@ -291,10 +291,7 @@ export class BindingStore {
       binding = { scopeId: entry.id, semanticRoot: entry.semanticRoot, core, recorder }
     } catch (e) {
       if (e instanceof PostureRefusedError || e instanceof ScopeNotFoundError) throw e
-      throw new ScopeUnloadableError(
-        `scope "${entry.id}" passed posture but its corpus would not load (${e instanceof Error ? e.message : String(e)})`,
-        { scope_id: entry.id, semantic_root: entry.semanticRoot },
-      )
+      throw scopeUnloadableError(entry, e)
     }
     this.cache.set(entry.id, binding)
     return binding
@@ -314,11 +311,26 @@ function scopeCountsOrThrow(entry: ScopeEntry): ScopeCounts {
       concepts: loadConcepts(layer).length,
     }
   } catch (e) {
-    throw new ScopeUnloadableError(
-      `scope "${entry.id}" passed posture but its corpus would not load (${e instanceof Error ? e.message : String(e)})`,
-      { scope_id: entry.id, semantic_root: entry.semanticRoot },
-    )
+    throw scopeUnloadableError(entry, e)
   }
+}
+
+/**
+ * The one `scope_unloadable` both switch-time failure surfaces throw — core/recorder
+ * construction ({@link BindingStore}'s `bindingFor`) and the definition loads
+ * (`scopeCountsOrThrow`) — so "posture passed but the corpus would not load" has one
+ * message and one detail payload in one place. Register-time
+ * {@link assertScopeLoadable} deliberately keeps its own message and its own throw
+ * (#137: single definition, single call).
+ * @param entry - the scope that passed posture.
+ * @param e - the underlying load failure.
+ * @returns the error for the caller to throw.
+ */
+function scopeUnloadableError(entry: ScopeEntry, e: unknown): ScopeUnloadableError {
+  return new ScopeUnloadableError(
+    `scope "${entry.id}" passed posture but its corpus would not load (${e instanceof Error ? e.message : String(e)})`,
+    { scope_id: entry.id, semantic_root: entry.semanticRoot },
+  )
 }
 
 /**

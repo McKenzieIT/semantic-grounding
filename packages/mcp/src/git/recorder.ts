@@ -130,10 +130,6 @@ export interface AuditContext {
    * `commitContext` prefers it over the (normally absent) configured value.
    */
   readonly clientName?: string
-  /** Files in this commit — batch callers only (#21). */
-  readonly files?: number
-  /** Enrichment rounds folded into this commit — batch callers only (#21). */
-  readonly rounds?: number
 }
 
 /** What one `recordTier2Write` did. */
@@ -516,8 +512,6 @@ export class GitTier2Recorder implements Tier2Recorder {
       ...clientName !== undefined ? { clientName } : {},
       ...scopeId !== undefined ? { scopeId } : {},
       ...sessionId !== undefined ? { sessionId } : {},
-      ...ctx.files !== undefined ? { files: ctx.files } : {},
-      ...ctx.rounds !== undefined ? { rounds: ctx.rounds } : {},
     }
   }
 
