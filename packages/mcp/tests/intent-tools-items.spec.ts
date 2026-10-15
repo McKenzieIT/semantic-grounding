@@ -8,7 +8,9 @@
  * file pins only what the MCP wire adds on top:
  *
  * - Response shape: `commit`, `changed`, `enrichment_health`, `results`/`unsuppressed`.
- * - Error mapping: `DefinitionNotFoundError` → `-31021`, `StaleBaselineError` → coded stale.
+ * - Error mapping: delegated to the write-family representative (#169/C8) — every
+ *   commit-class tool rides the same chokepoint error wrap, so the coded wire
+ *   contract needs no per-file twin here.
  * - Schema validation: Zod rejects empty arrays at the door.
  * - `update_definition` policy: `suppressed_*` fields rejected with redirect to item tools.
  *
@@ -97,35 +99,6 @@ describe('item tools — wire shape', () => {
     const def = h.core.loadTableDefinition('dws_order')
     expect(def?.dimension_refs.find(r => r.dim_table === 'dim_shop')).toBeUndefined()
     expect(def?.suppressed_dimension_refs).toContain('dim_shop')
-  })
-})
-
-// ── Error mapping ────────────────────────────────────────────────────────
-
-describe('item tools — error mapping', () => {
-  it('DefinitionNotFoundError → -31021 on the wire for a missing table', async () => {
-    h = await buildIntentToolHarness()
-    const res = await h.client.callTool('add_alias', { scope_id: 'fixture',
-      kind: 'table', name: 'nope', labels: ['x'],
-      ...tier2('x', 0.9), expected_version: 'f'.repeat(64),
-    })
-    expect(res.result?.['isError']).toBe(true)
-    const body = toolJson(res)
-    expect(body['code']).toBe(-31021)
-    expect(body['name']).toBe('DefinitionNotFoundError')
-  })
-
-  it('StaleBaselineError → coded stale baseline error on the wire', async () => {
-    h = await buildIntentToolHarness()
-    const res = await h.client.callTool('add_alias', { scope_id: 'fixture',
-      kind: 'table', name: 'dws_order', labels: ['x'],
-      ...tier2('x', 0.9), expected_version: 'a'.repeat(64),
-    })
-    expect(res.result?.['isError']).toBe(true)
-    const body = toolJson(res)
-    expect(body['code']).toBe(-31002)
-    expect(body['name']).toBe('StaleBaselineRejection')
-    expect(body['retryable']).toBe(true)
   })
 })
 

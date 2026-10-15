@@ -51,8 +51,8 @@ describe('dependencies stay external', () => {
   it.each([
     ['@semantic-grounding/substrate', 'SemanticGroundingCore'],
     ['@modelcontextprotocol/server', 'McpServer'],
-    // #20 + #21: this package's own tools (ADR-0005's fifteen in `tools/`, ADR-0006's
-    // three in `tools/enrichment.ts`) build real `inputSchema`s (zod objects), so zod
+    // #20 + #21: this package's own tools — every tool file under `tools/`, the
+    // enrichment family included — build real `inputSchema`s (zod objects), so zod
     // joined `dependencies` for a legitimate first-party reason — not just a transitive
     // one through the SDK or the substrate. It stays external for the same reason the
     // other two do; tsdown's default externalize-`dependencies` treatment needs no

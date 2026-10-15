@@ -123,15 +123,6 @@ describe('get_definition — ADR-0005 ruling 6', () => {
     expect(body.changed).toBe(true)
   })
 
-  it('errors with definition_not_found (-31021) for an unknown table', async () => {
-    h = await buildIntentToolHarness()
-    const res = await h.client.callTool('get_definition', { kind: 'table', name: 'nope' })
-    expect(res.result?.['isError']).toBe(true)
-    const body = toolJson(res)
-    expect(body['code']).toBe(-31021)
-    expect(body['name']).toBe('DefinitionNotFoundError')
-  })
-
   it('loads a concept with a version fingerprint', async () => {
     h = await buildIntentToolHarness()
     // The fixture ships no concepts/ dir — create one directly, matching the convention

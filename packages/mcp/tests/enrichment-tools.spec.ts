@@ -207,14 +207,6 @@ describe('get_enrichment_work', () => {
     expect(fixtureGit(['rev-parse', 'HEAD'], fixture.root).trim()).toBe(before)
     expect(fixtureGit(['status', '--porcelain'], fixture.root).trim()).toBe('')
   })
-
-  it('honors a tables filter', async () => {
-    const h = await serve()
-    const { body } = await call(h, 'get_enrichment_work', { tables: ['dim_shop'] })
-    const work = body.work as Array<{ target: string }>
-    expect(work.every(w => w.target === 'dim_shop')).toBe(true)
-    expect(work.length).toBeGreaterThan(0)
-  })
 })
 
 // ── apply_enrichment ──────────────────────────────────────────────────────

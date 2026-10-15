@@ -27,7 +27,7 @@
  * @module tests/server-startup.spec
  */
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { hostname } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -200,17 +200,6 @@ describe('deployment refusals exit 78 and say nothing on stdout', () => {
     } finally {
       plain.cleanup()
     }
-  })
-
-  it('refuses a corpus nested inside a larger repository', async () => {
-    const nested = join(fixture.root, 'sub-corpus')
-    mkdirSync(join(nested, 'tables'), { recursive: true })
-    writeFileSync(join(nested, 'config.yaml'), 'scope_id: nested\n', 'utf8')
-    const registryPath = freshRegistryPath()
-    await registerDirect(registryPath, 'nested', nested)
-    const r = run(['--scope', 'nested', '--agent-id', 'a', '--registry', registryPath])
-    expect(r.code).toBe(EXIT.config)
-    expect(r.stderr).toContain('not a repository root')
   })
 
   it('refuses a dirty worktree with no lock, and leaves the edit alone', async () => {

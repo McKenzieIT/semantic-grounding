@@ -4,6 +4,10 @@
  * `enrichment_health` inlined, and the preserve-filter regression (an origin-omitted
  * tool write survives a subsequent `discoverRelations` / `enrichAll*` pass).
  *
+ * Also the write family's wire-error representative (#169/C8): every registered
+ * tool rides the same chokepoint error wrap, so the coded wire contract is pinned
+ * once here on the write side rather than per tool file.
+ *
  * @see docs/adr/0005-mcp-tool-surface.md
  */
 import { afterEach, describe, expect, it } from 'vitest'
