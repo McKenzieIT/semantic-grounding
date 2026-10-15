@@ -27,7 +27,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "pretest": "node scripts/build-substrate-if-changed.mjs",
     "test": "vitest run",
-    "e2e": "node scripts/check-e2e-loop.ts"
+    "e2e": "node scripts/check-e2e-loop.ts",
+    "relay": "node scripts/check-relay.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.3.1",

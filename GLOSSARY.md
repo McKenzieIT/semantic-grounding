@@ -785,6 +785,18 @@ no real LLM needed (ADR-0006 ruling 7's gate dividend). The half it cannot cover
 real agent: which era the host opens in, tool-surface friction, write-delete loops.
 That is the dogfood's job, recorded in `docs/mcp-dogfood.md`.
 
+Since #157 it also carries the **relay contract stubs** (#156's ruling): the three relay
+cards' deterministic halves — the per-card L0 trailer table (E3 promotion commit carries
+only `X-SG-Evidence: source`; A3/G3′ memory commits only `X-SG-Session`), ADR-0028 R4's
+pre-promotion control, the `X-SG-Memory`+`promoted` combo (`create_verified_query`
+citing `memory_ids`), and a replay of B's **frozen MCP request sequence**
+(`packages/mcp/fixtures/relay/<id>.json`, deposited by the first real run) asserted by
+keyword hits, never response-body snapshots — live only once that fixture exists, skipped
+with a notice before (the #81 skipIf shape). The real relay — external LLMs,
+nondeterminism, ≥4/5 pass rates — stays opt-in (`pnpm relay`,
+`packages/mcp/scripts/check-relay.ts`) with its host-side runbook in
+`docs/relay-hitl.md`.
+
 ---
 
 *If a term you want to use is not here, add it. If a term here conflicts with an

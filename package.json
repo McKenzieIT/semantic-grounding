@@ -10,7 +10,8 @@
     "test": "pnpm -r run test",
     "negation-test": "pnpm --filter @semantic-grounding/substrate run negation-test",
     "acceptance": "pnpm --filter @semantic-grounding/substrate run acceptance",
-    "e2e": "pnpm --filter @semantic-grounding/mcp run e2e"
+    "e2e": "pnpm --filter @semantic-grounding/mcp run e2e",
+    "relay": "pnpm --filter @semantic-grounding/mcp run relay"
   },
   "pnpm": {
     "autoInstallPeers": false

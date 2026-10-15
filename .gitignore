@@ -6,3 +6,7 @@ lib/
 *.tsbuildinfo
 *.tgz
 coverage/
+# Relay run artifacts (#157): the frozen fixtures (<id>.json) ARE committed (the
+# e2e gate's Phase 8 replay leg reads them); the per-run results are
+# paste-into-ticket material, not repo state.
+packages/mcp/fixtures/relay/*-result.json

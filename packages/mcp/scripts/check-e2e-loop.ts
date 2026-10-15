@@ -71,7 +71,7 @@
  */
 import { spawn } from 'node:child_process'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -83,6 +83,7 @@ import { ScopeRegistryFile } from '../src/scope-registry.ts'
 import { buildServer, freshFixtureRegistry, tier2 } from '../tests/helpers/intent-tools-harness.ts'
 import { commitExternalEdit, createFixtureCorpus, fixtureGit, fixtureTable, type FixtureCorpus } from '../tests/helpers/fixture-corpus.ts'
 import { connectInProcess, toolJson, toolOutcome, type InProcessClient } from '../tests/helpers/inprocess-client.ts'
+import { K11_RELAY_SCOPE_ID, relayScenario } from './relay-scenarios.ts'
 
 /** The writing agent this gate declares at startup — the commit author (ADR-0004 ruling 9). */
 const AGENT_ID = 'e2e-gate-agent'
@@ -1209,6 +1210,261 @@ async function main(): Promise<void> {
       stdin.end()
       const code: number = await new Promise(resolve => child.on('exit', resolve))
       assert.equal(code, 0, 'sg-mcp exits cleanly when the client closes stdin')
+    }
+
+    // ── Phase 8 — relay contract stubs (#157 / #156's ruling) ─────────────────────
+    // The REAL relay is opt-in (`pnpm relay`, scripts/check-relay.ts): external
+    // LLM services, nondeterminism, and per-run cost are exactly what #129 ruled
+    // out of the four gates. What IS gate-worthy is the deterministic half of the
+    // three cards, replayed here as contract stubs on a k11-fixture-copy probe
+    // (#128 P1's carrier, the same corpus shape the real E3/A3 legs ride):
+    //
+    // - **L0 per #156's per-card table** — E3: the promotion commit carries ONLY
+    //   `X-SG-Evidence: source` (the CLI-visible write path #159 ruled for the A
+    //   leg: import_definitions + add_alias + add_relation — never
+    //   create_definition, invisible in Claude Code per #132); A3/G3′: the
+    //   `record_memory` commit carries ONLY `X-SG-Session`, no promotion.
+    // - **ADR-0028 R4's 对照组**, deterministic half: pre-promotion, "2渠" does not
+    //   RESOLVE (the tables remain findable via column comments — the ADR's own
+    //   measured baseline); post-promotion it resolves to the term concept.
+    // - **The #156-known-gap combo** (#155 left the exact tool for it):
+    //   `create_verified_query` with `evidence: user-stated` + `memory_ids` builds
+    //   the one trailer pair none of the three cards triggers — `X-SG-Memory` +
+    //   the same-commit `promoted` back-pointer.
+    // - **G3′'s contract**: an incident memory with a closed window surfaces only
+    //   through an intersecting `data_window` (ADR-0024 R3) — stubbed on this
+    //   hermetic corpus; the real G3′ rides X63/qodercli, whose frozen fixture the
+    //   replay leg below can only acknowledge (a hermetic gate cannot reach X63).
+    // - **Frozen replay** (#156: B's recorded MCP request sequence, keyword-
+    //   asserted — never response-body snapshots): live only after the first real
+    //   `pnpm relay` run deposits `fixtures/relay/<id>.json`; until then it skips
+    //   with a notice (#81's skipIf shape for a not-yet-materialized input).
+    step('relay contract stubs: E3/A3/G3′ L0, the X-SG-Memory+promoted combo, frozen replay (live only after a real relay run)')
+    {
+      // The probe's own world: k11 fixture copy (git layer + local identity +
+      // hermetic line endings, the fixture-corpus recipe), own throwaway registry,
+      // own boot — the main flow's `active`/`client`/`root` are never touched.
+      const relayStubDir = mkdtempSync(join(tmpdir(), 'sg-relay-stub-'))
+      const relayCorpus = join(relayStubDir, 'corpus')
+      cpSync(fileURLToPath(new URL('../../substrate/tests/fixtures/k11/', import.meta.url)), relayCorpus, { recursive: true })
+      fixtureGit(['init', '--quiet', '--initial-branch=main', '.'], relayCorpus)
+      fixtureGit(['config', 'user.name', 'relay-stub-human'], relayCorpus)
+      fixtureGit(['config', 'user.email', 'relay-stub@fixture.local'], relayCorpus)
+      fixtureGit(['config', 'commit.gpgsign', 'false'], relayCorpus)
+      fixtureGit(['config', 'core.autocrlf', 'false'], relayCorpus)
+      fixtureGit(['config', 'gc.auto', '0'], relayCorpus)
+      fixtureGit(['add', '-A'], relayCorpus)
+      fixtureGit(['commit', '--quiet', '-m', 'relay stub: k11 fixture baseline'], relayCorpus)
+      const relayRegistryDir = mkdtempSync(join(tmpdir(), 'sg-relay-stub-reg-'))
+      const relayRegistryPath = join(relayRegistryDir, 'scopes.yaml')
+      let relayActive: Boot | undefined
+      try {
+        const relayRegistry = new ScopeRegistryFile(relayRegistryPath)
+        await relayRegistry.register({ id: K11_RELAY_SCOPE_ID, semanticRoot: relayCorpus, name: K11_RELAY_SCOPE_ID, registeredBy: AGENT_ID })
+        relayActive = await boot({ registryPath: relayRegistryPath, scopeId: K11_RELAY_SCOPE_ID, agentId: 'relay-stub-agent' })
+        const rc = relayActive.client
+        const trailers = relayActive.trailersOf
+
+        // (0) 对照组, deterministic half (ADR-0028 R4).
+        {
+          const preAlias = await call(rc, 'resolve_alias', { term: '2渠' })
+          assert.deepEqual(preAlias['node_ids'], [], 'control: pre-promotion, "2渠" does not resolve')
+          const preSearch = await call(rc, 'search_definitions', { query: '2渠' })
+          const preHits = preSearch['hits'] as Array<{ id: string }>
+          assert.ok(preHits.length > 0, 'control: the tables are still findable via column comments (ADR-0028 R4\'s own baseline measurement)')
+          assert.ok(!preHits.some(h => h.id === 'concept:二级渠道'), 'control: no term concept exists yet')
+        }
+
+        // (1) E3 A-stub: the promotion, on the CLI-visible write path.
+        {
+          const imported = await call(rc, 'import_definitions', {
+            scope_id: K11_RELAY_SCOPE_ID,
+            items: [
+              { kind: 'concept', definition: { name: '一级渠道', description: '渠道一级分类,对应列 ch_type。', properties: { column: 'ch_type', recent_column: 'ch_type_lst' } } },
+              { kind: 'concept', definition: { name: '二级渠道', description: '渠道二级分类,隶属一级渠道,对应列 ch_id。', properties: { column: 'ch_id', recent_column: 'ch_id_lst', parent: '一级渠道', parent_column: 'ch_type' } } },
+            ],
+            summary: 'E3 晋升:列注释黑话 → 术语概念',
+            derivation: 'agent',
+            confidence: 0.9,
+            evidence: { kind: 'source', source: 'dws_10000251_acc_summary_df 的 ch_type/ch_id 列注释(渠道,又叫1渠 / 渠道id,又叫2渠)' },
+          })
+          assert.equal(imported['changed'], true)
+          assert.deepEqual((imported['summary'] as Record<string, unknown>), { created: 2, updated: 0, skipped: 0, errors: 0 })
+          const t = await trailers(fieldString(imported, 'commit'))
+          assert.equal(t['Evidence'], 'source', 'E3 L0 (#156 per-card table): the promotion commit carries X-SG-Evidence: source')
+          assert.ok((t['Evidence-Source'] ?? '').includes('ch_id'), 'the 出处 trailer names the ch_id column comment (ADR-0021 R6)')
+          assert.equal(t['Memory'], undefined, 'E3 L0: no X-SG-Memory — deterministic direct promotion, nothing cited')
+          assert.equal(t['Session'], undefined, 'E3 L0: no X-SG-Session — this card rides evidence alone')
+
+          for (const [name, alias] of [['一级渠道', '1渠'], ['二级渠道', '2渠']] as const) {
+            const added = await call(rc, 'add_alias', {
+              scope_id: K11_RELAY_SCOPE_ID, kind: 'concept', name, labels: [alias],
+              expected_version: await baselineOf(rc, 'concept', name),
+              ...tier2(`E3:概念别名「${alias}」`, 0.9),
+            })
+            assert.equal(added['changed'], true)
+            assert.equal((await trailers(fieldString(added, 'commit')))['Evidence'], undefined, 'the ordinary alias write carries no evidence trailer')
+          }
+          const edge = await call(rc, 'add_relation', {
+            scope_id: K11_RELAY_SCOPE_ID, kind: 'concept', name: '二级渠道',
+            relations: [{ target_kind: 'concept', name: '一级渠道' }],
+            expected_version: await baselineOf(rc, 'concept', '二级渠道'),
+            ...tier2('E3:二级渠道 隶属一级渠道(1:N),下钻按 ch_type, ch_id 分组', 0.9),
+          })
+          assert.equal(edge['changed'], true)
+
+          // Post-promotion read path — the exact input the real B's L1/L2 ride.
+          const resolved = await call(rc, 'resolve_alias', { term: '2渠' })
+          assert.deepEqual(resolved['node_ids'], ['concept:二级渠道'], 'the jargon now resolves to the term concept')
+          const secondary = await definitionOf(rc, 'concept', '二级渠道')
+          assert.deepEqual(secondary['alt_labels'], ['2渠'])
+          assert.deepEqual(secondary['properties'], { column: 'ch_id', recent_column: 'ch_id_lst', parent: '一级渠道', parent_column: 'ch_type' })
+          const rel = await call(rc, 'get_relations', { target: 'concept:二级渠道' })
+          const relEdges = rel['relations'] as Array<{ type: string; targetId: string }>
+          assert.ok(relEdges.some(r => r.type === 'related_to' && r.targetId === 'concept:一级渠道'), 'the 二级→一级 related_to edge walks')
+        }
+
+        // (2) A3 A-stub: the practice memory — X-SG-Session only, never promoted.
+        const memId: string = await (async () => {
+          const recorded = await call(rc, 'record_memory', {
+            scope_id: K11_RELAY_SCOPE_ID,
+            memories: [{
+              type: 'practice',
+              anchors: ['concept:付费经济'],
+              body: '大R 口径:累计付费 ≥ 500 元(2026-10 业务口述,未书面确认)。',
+              basis: '业务方在会话中口述',
+            }],
+            summary: 'A3:记录大R 口径 practice',
+            derivation: 'agent',
+            confidence: 0.8,
+          })
+          assert.equal(recorded['changed'], true)
+          const t = await trailers(fieldString(recorded, 'commit'))
+          assert.equal(t['Tool'], 'record_memory')
+          assert.equal(typeof t['Session'], 'string', 'A3 L0 (#156 per-card table): the memory commit carries X-SG-Session')
+          assert.equal(t['Evidence'], undefined, 'A3 L0: no X-SG-Evidence — 本次不升')
+          assert.equal(t['Memory'], undefined, 'A3 L0: no X-SG-Memory')
+          const row = (recorded['results'] as Array<{ id?: string }>)[0]
+          assert.ok(row?.id !== undefined, 'the receipt names the recorded memory id')
+          const entry = readFileSync(join(relayCorpus, 'memory', `${row.id}.yaml`), 'utf8')
+          assert.ok(entry.includes('type: practice') && entry.includes('500'), 'the practice memory landed with the 口径')
+          assert.ok(!entry.includes('promoted'), 'A3: no promoted back-pointer yet (待人确认)')
+          // B's read contract: the 口径 mounts on the concept's definition.
+          const paying = await call(rc, 'get_definition', { kind: 'concept', name: '付费经济' })
+          const mounted = paying['memories'] as Array<{ id?: string; body?: string }>
+          assert.ok(mounted?.some(m => m.id === row.id && String(m.body).includes('500')), 'get_definition mounts the practice with its body — the exact surface B reads')
+          return row.id
+        })()
+
+        // (3) The #156-known-gap combo (#155's pointer): user-stated promotion
+        // citing the practice — X-SG-Memory + `promoted` in ONE commit, the pair
+        // none of the three cards triggers on its own.
+        {
+          const before = commitCount(relayCorpus)
+          const promoted = await call(rc, 'create_verified_query', {
+            scope_id: K11_RELAY_SCOPE_ID,
+            name: 'big_r_retention',
+            question: '大R 留存',
+            alt_questions: ['高付费用户留存'],
+            sql: 'select ds, count(distinct account_id) as retained from dws_10000251_acc_summary_df where pay_amt >= ${pay_threshold} and ds >= ${start_ds} and ds < ${end_ds} group by ds',
+            uses: ['concept:付费经济'],
+            description: '大R = 累计付费 ≥ 500 元(2026-10 业务口述口径)',
+            evidence: 'user-stated',
+            memory_ids: [memId],
+            ...tier2('A3 晋升:大R 留存口径(业务口述)', 0.9),
+          })
+          assert.equal(promoted['changed'], true)
+          const t = await trailers(fieldString(promoted, 'commit'))
+          assert.equal(t['Evidence'], 'user-stated', 'the promotion declares its evidence kind')
+          assert.equal(t['Memory'], memId, 'X-SG-Memory names the cited practice (#155 relaxed the gate to "memories cited")')
+          assert.equal(commitCount(relayCorpus), before + 1, 'the query write AND the back-pointer appends land in ONE commit (ADR-0023 R6)')
+          const entry = readFileSync(join(relayCorpus, 'memory', `${memId}.yaml`), 'utf8')
+          assert.ok(entry.includes('promoted') && entry.includes('query:big_r_retention'), 'the cited practice gained its promoted back-pointer')
+          // The read mounts: the concept carries the query forward-list and the
+          // FOLDED practice row (no body, promoted: true — ADR-0024 R3).
+          const payingAfter = await call(rc, 'get_definition', { kind: 'concept', name: '付费经济' })
+          assert.deepEqual(payingAfter['verified_queries'], [{ id: 'query:big_r_retention', question: '大R 留存' }], 'verified_queries mounts on the used concept')
+          const folded = (payingAfter['memories'] as Array<Record<string, unknown>>).find(m => m['id'] === memId)
+          assert.equal(folded?.['promoted'], true, 'the practice row folds to a promoted reference')
+          assert.ok(folded !== undefined && !('body' in folded), 'a folded row carries no body')
+          const qDef = await call(rc, 'get_definition', { kind: 'query', name: 'big_r_retention' })
+          assert.equal(((qDef['definition'] as Record<string, unknown>)['question']), '大R 留存', 'get_definition(kind:query) returns the full text')
+        }
+
+        // (4) G3′ contract stub: the bounded incident + the window semantics.
+        {
+          const incident = await call(rc, 'record_memory', {
+            scope_id: K11_RELAY_SCOPE_ID,
+            memories: [{
+              type: 'incident',
+              anchors: ['table:dws_10000251_univ_acc_churn_di'],
+              body: '2026-10-10 上游未产出,当日分区为空、账号流失指标偏低;跨期对比须排除或标注该日。',
+              valid_from: '2026-10-10',
+              valid_until: '2026-10-10',
+            }],
+            summary: 'G3′:记录一次上游未产出事故',
+            derivation: 'agent',
+            confidence: 0.9,
+          })
+          assert.equal(incident['changed'], true)
+          const t = await trailers(fieldString(incident, 'commit'))
+          assert.equal(typeof t['Session'], 'string', 'G3′ L0 (#156 per-card table): the incident commit carries X-SG-Session')
+          assert.equal(t['Evidence'], undefined, 'G3′ L0: no X-SG-Evidence — 永不升')
+          assert.equal(t['Memory'], undefined, 'G3′ L0: no X-SG-Memory')
+          const row = (incident['results'] as Array<{ id?: string }>)[0]
+          assert.ok(row?.id !== undefined)
+          assert.ok(!readFileSync(join(relayCorpus, 'memory', `${row.id}.yaml`), 'utf8').includes('promoted'), 'G3′: incidents never promote')
+          // In-window: the incident surfaces; out-window: hidden (ADR-0024 R3 — the
+          // one card that proves the validity window actually changes behaviour).
+          const inWindow = await call(rc, 'get_definition', { kind: 'table', name: 'dws_10000251_univ_acc_churn_di', data_window: { from: '2026-10-09', to: '2026-10-12' } })
+          const incRows = (inWindow['memories'] as Array<{ id?: string; type?: string; body?: string }>) ?? []
+          assert.ok(incRows.some(m => m.id === row.id && m.type === 'incident' && String(m.body).includes('未产出')), 'an intersecting data_window surfaces the incident')
+          const outWindow = await call(rc, 'get_definition', { kind: 'table', name: 'dws_10000251_univ_acc_churn_di', data_window: { from: '2026-09-01', to: '2026-09-30' } })
+          const outRows = (outWindow['memories'] as Array<{ id?: string }> | undefined) ?? []
+          assert.ok(!outRows.some(m => m.id === row.id), 'a disjoint data_window hides the incident — G3′\'s out-of-window behaviour, deterministic half')
+        }
+
+        // (5) Frozen replay (#156): replay B's recorded MCP request sequence
+        // against this corpus and keyword-assert the responses. The recorded
+        // scope_id is K11_RELAY_SCOPE_ID in the real driver too (relay-scenarios'
+        // shared constant), so the fixtures replay verbatim.
+        {
+          const fixtureDir = fileURLToPath(new URL('../fixtures/relay/', import.meta.url))
+          for (const id of ['e3', 'a3', 'g3'] as const) {
+            const path = join(fixtureDir, `${id}.json`)
+            if (!existsSync(path)) {
+              console.log(`[e2e]   relay replay ${id}: fixture absent — skipping (goes live when the first real "pnpm relay" run deposits fixtures/relay/${id}.json, #156)`)
+              continue
+            }
+            const fixture = JSON.parse(readFileSync(path, 'utf8')) as {
+              readonly corpus: string
+              readonly requests: ReadonlyArray<{ readonly name: string; readonly arguments: Record<string, unknown> }>
+            }
+            if (fixture.corpus !== 'k11-copy') {
+              console.log(`[e2e]   relay replay ${id}: corpus ${fixture.corpus} is not reachable hermetically (the real X63 corpus) — its L0/window contract is pinned by the stubs above`)
+              continue
+            }
+            const scenario = relayScenario(id)
+            const texts: string[] = []
+            for (const req of fixture.requests) {
+              const response = await rc.callTool(req.name, req.arguments, { name: CLIENT_NAME })
+              texts.push(JSON.stringify(toolOutcome(response).body))
+            }
+            assert.ok(fixture.requests.length > 0, 'a recorded fixture carries at least one request')
+            const all = texts.join('\n')
+            for (const kw of scenario.replayKeywords) {
+              assert.ok(all.includes(kw), `relay replay ${id}: keyword "${kw}" no longer surfaces in B's recorded request sequence — the tool-face contract the relay relied on has regressed (#156: keyword hits, never body snapshots)`)
+            }
+            console.log(`[e2e]   relay replay ${id}: ${fixture.requests.length} frozen requests replayed, ${scenario.replayKeywords.length} keyword(s) hit`)
+          }
+        }
+
+        assert.equal(fixtureGit(['status', '--porcelain'], relayCorpus).trim(), '', 'the relay stub corpus ends clean')
+      } finally {
+        await relayActive?.shutdown()
+        rmSync(relayStubDir, { recursive: true, force: true })
+        rmSync(relayRegistryDir, { recursive: true, force: true })
+      }
     }
 
     assert.equal(fixtureGit(['status', '--porcelain'], root).trim(), '', 'the corpus tree ends clean — every write committed, nothing swept')
