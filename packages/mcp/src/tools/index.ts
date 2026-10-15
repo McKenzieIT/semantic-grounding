@@ -25,6 +25,7 @@ import { IMPORT_TOOL_FAMILY } from './import.ts'
 import { ITEM_TOOL_FAMILY } from './items.ts'
 import { MEMORY_TOOL_FAMILY } from './memory.ts'
 import { PLAYBOOK_TOOL_FAMILY } from './playbook.ts'
+import { QUERY_TOOL_FAMILY } from './query.ts'
 import { READ_TOOL_FAMILY } from './read.ts'
 import { SCOPE_TOOL_FAMILY } from './scope.ts'
 import { SCRATCH_TOOL_FAMILY } from './scratch.ts'
@@ -44,12 +45,13 @@ export const INTENT_TOOL_FAMILIES = [
 ] as const
 
 /**
- * Every family the default surface serves: the four intent families plus the six
+ * Every family the default surface serves: the four intent families plus the seven
  * that followed — ADR-0006/0008's enrichment tools (#21), ADR-0011's scope
  * management plus #72's deregister (#51), #63's initialization playbook, ADR-0013's
- * bulk import (#68), ADR-0020's scratch home (#101), and ADR-0023's memory write
- * (#152). #51, #63, #68, #101 and #152 each merged a family in under this same
- * rule: the composition grew by one import and one slot, no hand-list anywhere.
+ * bulk import (#68), ADR-0020's scratch home (#101), ADR-0023's memory write
+ * (#152), and ADR-0025's verified-query pair (#155). #51, #63, #68, #101, #152
+ * and #155 each merged a family in under this same rule: the composition grew by
+ * one import and one slot, no hand-list anywhere.
  */
 export const TOOL_FAMILIES = [
   ...INTENT_TOOL_FAMILIES,
@@ -59,6 +61,7 @@ export const TOOL_FAMILIES = [
   IMPORT_TOOL_FAMILY,
   SCRATCH_TOOL_FAMILY,
   MEMORY_TOOL_FAMILY,
+  QUERY_TOOL_FAMILY,
 ] as const
 
 /**

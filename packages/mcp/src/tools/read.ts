@@ -73,7 +73,7 @@ function nodeMemoryMount(view: ReturnType<SemanticGroundingCore['readDefinitionM
  * `definition_missing: true`) and the message names how many remain. */
 function throwDefinitionNotFound(
   core: SemanticGroundingCore,
-  kind: 'table' | 'event' | 'concept' | 'metric',
+  kind: 'table' | 'event' | 'concept' | 'metric' | 'query',
   name: string,
   dataWindow: { readonly from: string; readonly to: string } | undefined,
 ): never {
@@ -243,7 +243,7 @@ function registerSearchDefinitions(server: McpServer, deps: ServerDeps): void {
     'search_definitions',
     {
       title: 'Search definitions',
-      description: 'Rank tables, events, concepts and metrics against a free-text query (names, aliases, descriptions). Does not return a version fingerprint — summaries are not a write precondition (ADR-0005 ruling 6); call get_definition for that. Each hit carries memory_counts — how many memory entries (by type) get_definition would surface anchored on that definition (wrong/outdated-old/promoted excluded); follow the count into get_definition before writing SQL or a definition.',
+      description: 'Rank tables, events, concepts, metrics and verified queries against a free-text query (names, aliases, descriptions; a query is indexed by its question, 同问异说 and description — never its SQL, ADR-0025 R6①). Does not return a version fingerprint — summaries are not a write precondition (ADR-0005 ruling 6); call get_definition for that. Each hit carries memory_counts — how many memory entries (by type) get_definition would surface anchored on that definition (wrong/outdated-old/promoted excluded); follow the count into get_definition before writing SQL or a definition.',
       inputSchema: SearchInputSchema,
       annotations: { readOnlyHint: true },
     },
@@ -278,7 +278,7 @@ function registerGetDefinition(server: McpServer, deps: ServerDeps): void {
     'get_definition',
     {
       title: 'Get one definition',
-      description: 'Load one table, event, concept or metric by name. Returns the sha256 content fingerprint as `version` for table/event/concept (pass it back as `expected_version` on a later write); metrics have no backing file and carry no version. Also surfaces the memory layer: `memories` (≤8, anchored on this definition or its columns; caveats always shown; promoted entries folded) and `edge_memories` (≤5, anchored on relations this definition takes part in — join pitfalls survive even a removed relation, marked relation_missing), ordered practice > incident > inference > observation, newest first within type. Pass data_window when the question involves specific dates. ' + MEMORY_READ_NOTE,
+      description: 'Load one table, event, concept, metric or verified query by name. Returns the sha256 content fingerprint as `version` for table/event/concept/query (pass it back as `expected_version` on a later write); metrics have no backing file and carry no version. Also surfaces the memory layer: `memories` (≤8, anchored on this definition or its columns; caveats always shown; promoted entries folded) and `edge_memories` (≤5, anchored on relations this definition takes part in — join pitfalls survive even a removed relation, marked relation_missing), ordered practice > incident > inference > observation, newest first within type. A table or concept also carries `verified_queries` (≤5, {id, question}) — the verified queries whose `uses` anchor on it, the agreed 口径 before you write your own SQL (ADR-0025 R6②); kind:\'query\' returns the full question/SQL/uses with the same memory mount. Pass data_window when the question involves specific dates. ' + MEMORY_READ_NOTE,
       inputSchema: GetDefinitionInputSchema,
       annotations: { readOnlyHint: true },
     },
@@ -296,9 +296,15 @@ function registerGetDefinition(server: McpServer, deps: ServerDeps): void {
       if (input.kind === 'table') {
         const res = core.loadTableDefinitionWithVersion(input.name)
         if (res === null) throwDefinitionNotFound(core, 'table', input.name, dataWindow)
+        // ADR-0025 R6②: the verified queries whose `uses` touch this table,
+        // scanned forward (the table YAML holds no back-link — changing a
+        // query never changes this file's fingerprint). Zero-tax: the key
+        // stays absent when no query uses the table.
+        const verifiedQueries = core.verifiedQueriesFor(`table:${input.name}`)
         return toolSuccess({
           scope: scopeStamp(snap), kind: 'table', name: input.name, definition: res.definition, version: res.version,
           ...nodeMemoryMount(core.readDefinitionMemories('table:' + input.name, windowOpts)),
+          ...verifiedQueries.length > 0 ? { verified_queries: verifiedQueries } : {},
         })
       }
       if (input.kind === 'event') {
@@ -312,9 +318,26 @@ function registerGetDefinition(server: McpServer, deps: ServerDeps): void {
       if (input.kind === 'concept') {
         const res = core.loadConceptDefinitionWithVersion(input.name)
         if (res === null) throwDefinitionNotFound(core, 'concept', input.name, dataWindow)
+        // ADR-0025 R6②'s concept arm, same forward scan as the table's.
+        const verifiedQueries = core.verifiedQueriesFor(`concept:${input.name}`)
         return toolSuccess({
           scope: scopeStamp(snap), kind: 'concept', name: input.name, definition: res.definition, version: res.version,
           ...nodeMemoryMount(core.readDefinitionMemories('concept:' + input.name, windowOpts)),
+          ...verifiedQueries.length > 0 ? { verified_queries: verifiedQueries } : {},
+        })
+      }
+      if (input.kind === 'query') {
+        // ADR-0025 R6③: the query's full text (question / alt_questions /
+        // sql / uses / description) + version + the ADR-0024 memory mount —
+        // `readDefinitionMemories` is the same projection every other node
+        // kind takes (a query is a graph node, R1), so a practice anchored on
+        // `query:<名>` folds here once promoted, and the orphan path below
+        // keeps a deleted query's memories readable (ADR-0026 R3).
+        const res = core.loadQueryDefinitionWithVersion(input.name)
+        if (res === null) throwDefinitionNotFound(core, 'query', input.name, dataWindow)
+        return toolSuccess({
+          scope: scopeStamp(snap), kind: 'query', name: input.name, definition: res.definition, version: res.version,
+          ...nodeMemoryMount(core.readDefinitionMemories('query:' + input.name, windowOpts)),
         })
       }
       // kind === 'metric': derived from a host table/event's inline `metrics:` block,
@@ -573,7 +596,7 @@ function registerListDefinitions(server: McpServer, deps: ServerDeps): void {
     'list_definitions',
     {
       title: 'List definitions (inventory index)',
-      description: 'Enumerate every definition in the active scope as a compact inventory index — one row {id, kind, label, domains} each, in deterministic kind-then-id order (an inventory order for audit comparability, not a search ranking), derived metrics included. Rows carry no description on purpose — an index stays cheap while a description per row would inflate a large corpus by an order of magnitude (ADR-0008\'s index/detail split); fetch a row\'s description via get_definition. Capped at 1000 rows with total and truncated alongside. Narrow with kinds (table/event/concept/metric; omit for every kind). Read-only; makes no commit.',
+      description: 'Enumerate every definition in the active scope as a compact inventory index — one row {id, kind, label, domains} each, in deterministic kind-then-id order (an inventory order for audit comparability, not a search ranking), derived metrics and verified queries included. Rows carry no description on purpose — an index stays cheap while a description per row would inflate a large corpus by an order of magnitude (ADR-0008\'s index/detail split); fetch a row\'s description via get_definition. Capped at 1000 rows with total and truncated alongside. Narrow with kinds (table/event/concept/metric/query; omit for every kind). Read-only; makes no commit.',
       inputSchema: ListDefinitionsInputSchema,
       annotations: { readOnlyHint: true },
     },

@@ -112,9 +112,15 @@ import { DataSourceRegistry, type CorpusItem, type GraphNodeProjection } from '.
 import { eventKindPlugin } from './kinds/event-kind.ts'
 import { tableKindPlugin } from './kinds/table-kind.ts'
 import { conceptKindPlugin } from './kinds/concept-kind.ts'
+// ADR-0025 / #155: the verified-query kind — registered like the other
+// built-ins (a graph node with no relations), but deliberately NOT re-exported
+// from this barrel: the ticket's constraint is zero new barrel names (the
+// Core-method axis below is the public route), unlike the three built-ins a
+// host composes a custom registry *with*.
+import { queryKindPlugin } from './kinds/query-kind.ts'
 import { RelationGraph, type NodeAliasData } from './relation-graph.ts'
 import { toMetricDefinition, splitMetricName } from './metrics.ts'
-import { loadEvents, loadTables, loadConcepts, loadRawDir, loadConceptDefinition as loadConceptDefinitionFromLayer, writeConceptYaml as writeConceptYamlFromLayer, updateConceptMeta as updateConceptMetaFromLayer, writeMemoryYaml as writeMemoryYamlFromLayer, type WriteConceptYamlResult } from './io.ts'
+import { loadEvents, loadTables, loadConcepts, loadRawDir, loadConceptDefinition as loadConceptDefinitionFromLayer, writeConceptYaml as writeConceptYamlFromLayer, updateConceptMeta as updateConceptMetaFromLayer, writeMemoryYaml as writeMemoryYamlFromLayer, writeQueryYaml as writeQueryYamlFromLayer, type WriteConceptYamlResult } from './io.ts'
 // ADR-0023 / #152: the data-memory layer's write orchestration + incremental
 // anchor index (memory.ts, off-barrel internal module — the same split as
 // item-write.ts; the Core methods below are the public route, so the barrel's
@@ -143,6 +149,17 @@ import {
 import { DefinitionSnapshot, captureSnapshot } from './snapshot.ts'
 import { buildExcludeColumns } from './io.ts'
 import type { SchemaProvider } from './schema-provider.ts'
+// ADR-0025 / #155: the verified query's write orchestration + read-side
+// `verified_queries` mount (query.ts, off-barrel internal module — the same
+// split memory.ts takes; the Core methods below are the public route).
+import {
+  loadQueryDefinition as loadQueryDefinitionForRoot,
+  prepareVerifiedQuery,
+  missingMemoryIds,
+  verifiedQueriesForNode,
+  type VerifiedQueryDraft,
+} from './query.ts'
+import type { QueryDefinition } from './types.ts'
 
 // ── logic exports (substrate; consumers + tests use directly) ───────────
 // v0.1 name-level allow-list (ADR-0003): every name below carries recorded
@@ -428,7 +445,7 @@ export class SemanticGroundingCore {
       this.graphCache = undefined
       this.graphVersion = -1
     }))
-    for (const p of [eventKindPlugin, tableKindPlugin, conceptKindPlugin]) {
+    for (const p of [eventKindPlugin, tableKindPlugin, conceptKindPlugin, queryKindPlugin]) {
       this.disposers.push(this.registry.register(p))
     }
   }
@@ -1150,6 +1167,38 @@ export class SemanticGroundingCore {
   }
 
   /**
+   * Load a validated verified-query definition by name from the substrate
+   * (ADR-0025 R1: `queries/<name>.yaml`, one file per query). The
+   * `get_definition(kind:'query')` tool's load half.
+   * @param name - the query `name` key to match.
+   * @returns the parsed `QueryDefinition`, or null when no query matches.
+   */
+  loadQueryDefinition(name: string): QueryDefinition | null {
+    return loadQueryDefinitionForRoot(this.semanticRoot, name)
+  }
+
+  /**
+   * {@link loadQueryDefinition}'s fingerprint-carrying half (ADR-0004 ruling
+   * 8's read side for the query kind): the sha256 of `queries/<name>.yaml`,
+   * the exact file `update_verified_query`'s `expected_version` checks —
+   * one implementation serves both sides of the contract. A changed query
+   * changes THIS fingerprint only: `uses` is a forward reference and no
+   * table/event/concept YAML holds a back-link (「改查询不改表指纹」,
+   * ADR-0025 R6②).
+   * @param name - the query `name` key to match.
+   * @returns the parsed definition and its `version` fingerprint, or null when no query matches.
+   */
+  loadQueryDefinitionWithVersion(name: string): { readonly definition: QueryDefinition; readonly version: string } | null {
+    const definition = this.loadQueryDefinition(name)
+    if (definition === null) return null
+    const version = definitionVersion(this.semanticRoot, 'query', name)
+    if (version === null) {
+      throw new Error(`query "${name}" loaded but its backing file could not be resolved under queries/ (non-conventional filename?)`)
+    }
+    return { definition, version }
+  }
+
+  /**
    * Build an enriched retrieval corpus from the substrate — each event's
    * `alt_labels` (SKOS aliases) + `params_fields` packed into the indexed
    * `description`. The `corpusVariant` config selects slices: 'params+term'
@@ -1705,12 +1754,79 @@ export class SemanticGroundingCore {
           recorder: this.recorder(),
           scope_id: this.scopeId,
         })
-        // Same contract as `recordMemories`'s seam: the primitive has no
+        // Same contract as `recordMemories`' seam: the primitive has no
         // validation of its own, so a refusal here is this server's bug —
         // throw and let the open batch abort rather than half-land.
         if (!res.ok) throw new Error(`promotion back-pointer append rejected for ${id}: ${res.error}`)
       },
     })
+  }
+
+  // ── Verified-query write + read mount (ADR-0025 / #155) ───────────────────
+  //
+  // The `create_/update_verified_query` tool pair's domain half and the
+  // `verified_queries` forward-reference mount's substrate half. Ritual lives
+  // in ./query.ts (off-barrel internal module, the same split the memory
+  // methods above take); these forwards keep the public method names.
+
+  /**
+   * Land one verified query (ADR-0025 R1/R2/R6/R7): canonicalize the draft's
+   * `uses` through the memory layer's anchor machinery (every use must EXIST
+   * at write time — nodes, column fragments, edges in canonical direction;
+   * bare names tolerated, ambiguous bare names refused), validate any cited
+   * `memoryIds` (existence only — the ③ replicated guard is deliberately not
+   * run here; the tool door refuses replicated outright, and a ①/② citation
+   * needs no ≥2-distinct-session proof), then write `queries/<name>.yaml`
+   * through io.ts's audited create-family seam. Validation happens inside
+   * the caller's audit window (the corpus lock holds), before the first
+   * write — a refusal leaves nothing staged.
+   *
+   * `expectedVersion` is the update verb's baseline (the sha256
+   * `loadQueryDefinitionWithVersion` reported); a mismatch throws
+   * `StaleBaselineError` from the seam. The same-commit `promoted`
+   * back-pointer append onto the cited memories is the MCP layer's
+   * orchestration (`withAuditedBatch` + `appendPromotionBackpointers`), the
+   * exact #136 mechanism — this method's `memoryIds` validation is what
+   * guarantees that append cannot hit a missing file.
+   * @param draft - the agent-submitted query (bare-or-prefixed `uses`).
+   * @param opts - `expectedVersion` (update) and `memoryIds` (citation).
+   * @returns `{ok: true, version}` (the written file's sha256, #108), or the
+   *   first rejection with nothing written.
+   */
+  async writeVerifiedQuery(
+    draft: VerifiedQueryDraft,
+    opts: { readonly expectedVersion?: string; readonly memoryIds?: readonly string[] } = {},
+  ): Promise<{ readonly ok: true; readonly version: string } | { readonly ok: false; readonly error: string }> {
+    const prepared = prepareVerifiedQuery(this.semanticRoot, draft)
+    if (!prepared.ok) return prepared
+    if (opts.memoryIds !== undefined && opts.memoryIds.length > 0) {
+      const missing = missingMemoryIds(this.semanticRoot, opts.memoryIds)
+      if (missing.length > 0) {
+        return { ok: false, error: `memory_ids cite entries that do not exist: ${missing.join(', ')}` }
+      }
+    }
+    const res = await writeQueryYamlFromLayer(this.semanticRoot, draft.name, prepared.definition, {}, {
+      recorder: this.recorder(),
+      scope_id: this.scopeId,
+      ...opts.expectedVersion !== undefined ? { expected_version: opts.expectedVersion } : {},
+    })
+    return res.ok ? { ok: true, version: res.version } : { ok: false, error: res.error }
+  }
+
+  /**
+   * The `verified_queries` mount ADR-0025 R6② rules for `get_definition` on a
+   * table or concept: the queries whose canonical `uses` touch `nodeId` (the
+   * node itself, a column fragment of it, or an edge anchored on it as either
+   * endpoint), scanned from `queries/` at read time — the fact layer stores
+   * zero back-links, which is exactly why changing a query never changes a
+   * table's fingerprint. Id-ascending, capped at 5 (the ruled ≤5; a code
+   * constant, same stance as the memory budgets). Zero-tax: no queries means
+   * `[]`, and the caller keeps the key absent.
+   * @param nodeId - the canonical node id (`table:<名>` / `concept:<名>`).
+   * @returns `{id, question}` rows, ≤5.
+   */
+  verifiedQueriesFor(nodeId: string): ReadonlyArray<{ readonly id: string; readonly question: string }> {
+    return verifiedQueriesForNode(this.semanticRoot, nodeId)
   }
 
   /**

@@ -18,8 +18,12 @@
  *
  * A promotion write (ADR-0021 R5/R6, #136) appends its evidence block —
  * `X-SG-Evidence: source|user-stated|replicated`, `X-SG-Evidence-Source`
- * (source only, the 出处), `X-SG-Memory` (replicated only, space-joined ids) —
- * after `X-SG-Session`; every other write's trailer set is unchanged.
+ * (source only, the 出处), `X-SG-Memory` (whenever memories are cited,
+ * space-joined ids) — after `X-SG-Session`; every other write's trailer set
+ * is unchanged. Citation under ①/② is the verified-query pair's shape
+ * (#155 / ADR-0025 R7: `memory_ids` rides `X-SG-Memory` with the practice
+ * entries it promotes FROM); the five #136 tools still cite memories only
+ * on a replication, so their trailer sets are byte-identical.
  *
  * Subject is `<tool>(<target>): <summary>` — the tool name is the audit verb, which is
  * why ADR-0005 treats renaming a tool as rewriting the history's semantics. Everything
@@ -81,8 +85,11 @@ export interface PromotionEvidence {
    * DDL / column comment / documentation / code, named concretely. Rides the
    * `X-SG-Evidence-Source` trailer. */
   readonly source?: string | undefined
-  /** The memory ids a replication rests on (required iff `kind` is
-   * `replicated`): one space-joined `X-SG-Memory` trailer. */
+  /** The memory ids a citation rests on: one space-joined `X-SG-Memory`
+   * trailer. Required iff `kind` is `replicated` (the #136 tools, whose
+   * schema restricts `memories` to that kind); the verified-query pair
+   * (#155 / ADR-0025 R7) cites its practice memories under ①/② — there the
+   * citation, not the evidence kind, decides the trailer. */
   readonly memories?: readonly string[] | undefined
 }
 
@@ -205,16 +212,22 @@ export function buildTrailers(ctx: CommitContext): string[] {
   // carries the kind, `X-SG-Evidence-Source` the 出处 a `source` promotion
   // must name (R6「trailer 写明出处」— its own line so the kind stays a single
   // machine-readable token), and `X-SG-Memory` the space-joined ids a
-  // replication cites (R4's `<id…>`). Optional and promotion-only: the
-  // trailer set for every other write is byte-identical to before, which is
-  // why `TRAILER_SCHEMA_VERSION` stays 1 — git-native trailer parsing ignores
-  // unknown keys, so the additive companions change no reader.
+  // citation names (R4's `<id…>`). #155 relaxed the third gate from
+  // replicated-only to "memories cited": the verified-query pair cites its
+  // practice memories under ①/② (replicated is refused at its tool door), so
+  // the citation — not the evidence kind — decides the trailer; for the five
+  // #136 tools nothing changes (their schema restricts `memories` to
+  // replicated, so their trailer sets stay byte-identical). Optional and
+  // promotion-only: the trailer set for every other write is byte-identical
+  // to before, which is why `TRAILER_SCHEMA_VERSION` stays 1 — git-native
+  // trailer parsing ignores unknown keys, so the additive companions change
+  // no reader.
   if (ctx.evidence !== undefined) {
     lines.push(`${TRAILER_PREFIX}Evidence: ${ctx.evidence.kind}`)
     if (ctx.evidence.kind === 'source' && ctx.evidence.source !== undefined && ctx.evidence.source.trim() !== '') {
       lines.push(`${TRAILER_PREFIX}Evidence-Source: ${oneLine(ctx.evidence.source, MAX_TRAILER_CHARS)}`)
     }
-    if (ctx.evidence.kind === 'replicated' && ctx.evidence.memories !== undefined && ctx.evidence.memories.length > 0) {
+    if (ctx.evidence.memories !== undefined && ctx.evidence.memories.length > 0) {
       lines.push(`${TRAILER_PREFIX}Memory: ${ctx.evidence.memories.map(m => oneLine(m, 64)).join(' ')}`)
     }
   }

@@ -136,24 +136,33 @@ function kgPhase(count: number, threshold: number): GuidancePhase {
  * classification knowledge's single home (#144): a concept node's `kind` is
  * the fixed literal `'concept'` (`kinds/concept-kind.ts`), an event's is
  * `'event'`, and a table's is its own open storage kind (`dim`/`dws`,
- * `kinds/table-kind.ts`), so tables fall out by elimination. Exported because
- * two projections need different groupings of the same corpus fact: this
- * module's {@link layerCounts} (DW = tables + events vs KG = concepts) and
- * `tools/import.ts`'s ratio guard (ADR-0019 R6), whose denominator is
- * per-kind. `import.ts`'s own count used to be a by-elimination second copy;
+ * `kinds/table-kind.ts`), so tables fall out by elimination — everything
+ * else named. #155 adds the fourth named kind: a verified query's `kind` is
+ * the fixed literal `'query'` (`kinds/query-kind.ts`), counted under its own
+ * key and deliberately NOT folded into DW (a query is an analysis-口径
+ * artifact, not a text-to-SQL grounding asset — letting it fall out by
+ * elimination would inflate the DW count `_guidance`/the playbook/scope
+ * counts read). Exported because two projections need different groupings of
+ * the same corpus fact: this module's {@link layerCounts} (DW = tables +
+ * events vs KG = concepts) and `tools/import.ts`'s ratio guard (ADR-0019 R6),
+ * whose denominator is per-kind (its `updated` buckets never carry `query` —
+ * `import_definitions` takes no query items — so the extra key is inert
+ * there). `import.ts`'s own count used to be a by-elimination second copy;
  * the trick is documented once, here.
  */
-export function countNodesByKind(snap: ScopeBinding): Readonly<Record<'table' | 'event' | 'concept', number>> {
+export function countNodesByKind(snap: ScopeBinding): Readonly<Record<'table' | 'event' | 'concept' | 'query', number>> {
   const nodes = snap.core.projectGraphNodes({ includeDerived: false })
   let tables = 0
   let events = 0
   let concepts = 0
+  let queries = 0
   for (const node of nodes) {
     if (node.kind === 'concept') concepts += 1
     else if (node.kind === 'event') events += 1
+    else if (node.kind === 'query') queries += 1
     else tables += 1
   }
-  return { table: tables, event: events, concept: concepts }
+  return { table: tables, event: events, concept: concepts, query: queries }
 }
 
 /** DW count (tables + events) and KG count (concepts) — a two-line projection

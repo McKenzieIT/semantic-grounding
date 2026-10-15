@@ -262,17 +262,21 @@ export function scopeStamp(snap: ScopeBinding): Readonly<{ id: string; root: str
  */
 function enrichmentHealthAfter(
   snap: ScopeBinding,
-  writePath: 'table' | 'event' | 'concept' | 'create' | 'round' | 'import' | 'memory',
+  writePath: 'table' | 'event' | 'concept' | 'create' | 'round' | 'import' | 'memory' | 'query',
 ): readonly EnrichmentHealthEntry[] | undefined {
   if (writePath !== 'table' && writePath !== 'round') return undefined
   return snap.core.getEnrichmentHealth()
 }
 
 /**
- * The tools whose write responses carry `_guidance` — #55/#56's model, an
- * explicit list rather than a rule, so membership is a named fact a test can
- * pin (the two enrichment verbs are deliberately absent: their callers are
- * mid-round, not seeding a scope). Exported for that membership test alone.
+ * The tools whose write responses carry the PHASE-MODEL `_guidance` —
+ * #55/#56's model, an explicit list rather than a rule, so membership is a
+ * named fact a test can pin (the two enrichment verbs are deliberately
+ * absent: their callers are mid-round, not seeding a scope; the
+ * verified-query pair is absent too — ADR-0025 R7 rules its receipts carry
+ * their OWN one-sentence `_guidance`, the practice-memory pointer, rendered
+ * through `opts.domain`, which is collision-free exactly because the pair
+ * never enters this gate). Exported for that membership test alone.
  */
 export const GUIDANCE_TOOL_NAMES = [
   'create_definition',
@@ -298,8 +302,10 @@ export interface WriteReceiptOpts {
    * hook, and `'create'`/`'import'` compile to the raw create primitives,
    * which have none — for all four the key stays absent rather than
    * misattributing an earlier table write's residue. `'memory'` (record_memory,
-   * #152) writes no definition and runs no hook either. */
-  readonly writePath: 'table' | 'event' | 'concept' | 'create' | 'round' | 'import' | 'memory'
+   * #152) writes no definition and runs no hook either; `'query'`
+   * (create_/update_verified_query, #155) likewise — queries have no
+   * enrichment rounds. */
+  readonly writePath: 'table' | 'event' | 'concept' | 'create' | 'round' | 'import' | 'memory' | 'query'
   /** The write receipt's fingerprint (#107 Q2/Q3): the sha256 of the file
    * this write touched, as the whole write left it (post-hook for tables).
    * Absent for the non-definition write paths (`round`) and for the import
@@ -308,7 +314,11 @@ export interface WriteReceiptOpts {
   /** The calling tool's own response keys, tail-spread after the envelope
    * (`results`, `summary`, …). Envelope keys win: a domain key colliding
    * with `scope`/`commit`/`changed`/`version`/`enrichment_health`/
-   * `_guidance` is a caller bug, not an override. */
+   * `_guidance` is a caller bug, not an override. One sanctioned exception:
+   * the verified-query pair's own one-sentence `_guidance` (ADR-0025 R7)
+   * rides the domain keys — the pair is not in `GUIDANCE_TOOL_NAMES`, so the
+   * envelope's phase-model `_guidance` is never produced for it and the
+   * domain key is the only `_guidance` the receipt carries. */
   readonly domain?: Readonly<Record<string, unknown>>
 }
 

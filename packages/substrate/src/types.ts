@@ -276,6 +276,39 @@ export const TableDefinitionSchema = z.object({
 /** Inferred type of {@link TableDefinitionSchema} (the parsed table-definition shape). */
 export type TableDefinition = z.infer<typeof TableDefinitionSchema>
 
+// ── QueryDefinition (已验证查询, ADR-0025 / #155) ─────────────────────────
+/**
+ * Zod schema for a verified-query definition (ADR-0025 R1/R2): a business
+ * question paired with the SQL that answers it — the SQL IS the body (the
+ * 正本 lives here, unlike ETL code whose original stays elsewhere and only a
+ * code reference is stored), and partition dates are parameterized
+ * (`${start_ds}`), never literals — the write tool refuses a literal
+ * (ADR-0025 R2; the tool face enforces it, the stored schema tolerates a
+ * hand-written file the way every definition schema does).
+ *
+ * `uses` (R6) is the query's forward reference into the fact layer: ≥1
+ * ADR-0023 anchor (node `table:x`, column fragment `table:x#col`, or an edge
+ * in canonical direction) DECLARED by the writer — SG never parses the SQL to
+ * derive it — and existence-checked at write time by the same
+ * `canonicalizeAnchor` machinery `record_memory` uses. Bare names are
+ * tolerated on input and stored canonical (prefixed). The table/event YAML
+ * holds zero back-links: "which queries use me" is a read-side scan
+ * (`verified_queries` on `get_definition`), so changing a query never changes
+ * a table's fingerprint. No `verified_by/at` fields (R4): being a `query`
+ * node IS the claim of verification; who/when/why is the promotion commit's
+ * (`X-SG-Evidence` / `X-SG-Session` / `X-SG-Memory` trailers).
+ */
+export const QueryDefinitionSchema = z.object({
+  name: z.string().min(1),
+  question: z.string().min(1),
+  alt_questions: z.array(z.string()).default([]),
+  sql: z.string().min(1),
+  uses: z.array(z.string()).min(1),
+  description: z.string().default(''),
+}).loose()
+/** Inferred type of {@link QueryDefinitionSchema} (the parsed verified-query shape). */
+export type QueryDefinition = z.infer<typeof QueryDefinitionSchema>
+
 // ── TableMeta (the schema-dict shape DataSourceConnector returns; not a
 //    semantic definition, but the input to sync-write). Mirrors
 //    rbi-semantic/sync.py:TableMeta + connectors/base.py:TableMeta. ─────────

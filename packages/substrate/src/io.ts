@@ -35,6 +35,7 @@ import {
   EventDefinitionSchema,
   TableDefinitionSchema,
   ConceptDefinitionSchema,
+  QueryDefinitionSchema,
   type EventDefinition,
   type TableDefinition,
   type ConceptDefinition,
@@ -673,12 +674,14 @@ function checkExpectedVersion(target: string, expectedVersion: string | undefine
  *   null means "not found" or a loud internal inconsistency (a definition that
  *   loads while its file does not resolve is the latter).
  */
-export function definitionVersion(semanticLayer: string, kind: 'table' | 'event' | 'concept', name: string): string | null {
+export function definitionVersion(semanticLayer: string, kind: 'table' | 'event' | 'concept' | 'query', name: string): string | null {
   const target = kind === 'table'
     ? join(semanticLayer, 'tables', `${name}.yaml`)
     : kind === 'concept'
       ? join(semanticLayer, 'concepts', `${name}.yaml`)
-      : findEventPath(semanticLayer, name)
+      : kind === 'query'
+        ? join(semanticLayer, 'queries', `${name}.yaml`)
+        : findEventPath(semanticLayer, name)
   if (target === null || !existsSync(target)) return null
   return sha256Hex(readFileSync(target, 'utf-8'))
 }
@@ -1244,6 +1247,55 @@ export async function writeMemoryYaml(
 ): Promise<WriteMemoryYamlResult> {
   const target = join(semanticLayer, 'memory', `${id}.yaml`)
   return writeDefinitionFile(semanticLayer, target, data, tier2, { verb: 'record_memory', subject: { memory_id: id } })
+}
+
+// ── Verified-query write primitive (ADR-0025 / #155) ────────────────────────
+// The query kind's create primitive: `queries/<name>.yaml`, one file per query.
+// Rides the SAME create-family seam (`writeDefinitionFile`) as the definition
+// kinds and memory, so the audited arm inherits ADR-0004 ruling 1's
+// snapshot-and-rollback, ruling 8's `expected_version` staleness check (the
+// update verb's baseline — the fingerprint axis ADR-0019 R7 names), and ruling
+// 3's `beginBatch` absorption. The query-specific domain validation (canonical
+// `uses` existence via the anchor universe, cited memory ids) is the caller's
+// (query.ts's `prepareVerifiedQuery`/`missingMemoryIds` — the Core's
+// `writeVerifiedQuery` is the public route), exactly like `writeMemoryYaml`'s
+// relationship to memory.ts's schema. Off the public barrel (ADR-0003).
+/**
+ * Result of writing one verified query: `{ ok: true, path, version }` on
+ * success (`version` — the written file's sha256 fingerprint, #108's
+ * write-receipt convention), or `{ ok: false, error }` when the payload fails
+ * `QueryDefinitionSchema` validation.
+ */
+export type WriteQueryYamlResult = { ok: true; path: string; version: string } | { ok: false; error: string }
+/**
+ * Validate-then-atomically-write one verified-query YAML
+ * (`queries/<name>.yaml`), invalidating caches on success — `writeTable` /
+ * `writeConceptYaml`'s exact shape applied to the query layout. The
+ * `create_verified_query` / `update_verified_query` tool pair compiles here:
+ * create passes no `expected_version` (baseline-free by construction), update
+ * passes the `get_definition(kind:'query')` fingerprint (a mismatch throws
+ * `StaleBaselineError` inside the seam). Like `writeTable`, this primitive
+ * itself overwrites — existence is the tool handler's pre-check.
+ * @param semanticLayer - the semantic-layer directory path.
+ * @param name - the query `name` (becomes the `<name>.yaml` filename).
+ * @param data - the query payload; validated against `QueryDefinitionSchema` unless skipped.
+ * @param opts - `{ skipValidation: true }` skips schema validation (for pre-validated generators).
+ * @param tier2 - optional Tier-2 options; present selects the audited half.
+ * @returns `{ ok: true, path, version }` or `{ ok: false, error }`.
+ */
+export async function writeQueryYaml(
+  semanticLayer: string,
+  name: string,
+  data: unknown,
+  opts: { skipValidation?: boolean } = {},
+  tier2?: Tier2Opts,
+): Promise<WriteQueryYamlResult> {
+  if (!opts.skipValidation) {
+    const r = QueryDefinitionSchema.safeParse(data)
+    if (!r.success) return { ok: false, error: `Query validation failed: ${r.error.message}` }
+  }
+  const target = join(semanticLayer, 'queries', `${name}.yaml`)
+  return writeDefinitionFile(semanticLayer, target, data, tier2, { verb: 'write_query_yaml', subject: { query_name: name } })
 }
 
 /**

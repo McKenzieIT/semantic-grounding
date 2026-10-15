@@ -48,7 +48,8 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
-import { loadConcepts, loadEvents, loadTables } from './io.ts'
+import { loadConcepts, loadEvents, loadRawDir, loadTables } from './io.ts'
+import { QueryDefinitionSchema } from './types.ts'
 
 // ── Types ────────────────────────────────────────────────────────────────────────
 
@@ -514,8 +515,10 @@ export function memoryAnchorIndexFor(root: string): MemoryAnchorIndex {
 
 // ── The anchor universe (write-time existence checks, ADR-0023 R4) ───────────────
 
-/** Node-id prefixes the builtin kinds mint (`<kind>:<名>`, ADR-0023 R4). */
-const NODE_PREFIXES: readonly string[] = ['table:', 'event:', 'concept:', 'metric:']
+/** Node-id prefixes the builtin kinds mint (`<kind>:<名>`, ADR-0023 R4). The
+ * verified-query kind (#155 / ADR-0025 R1) mints `query:` — a memory may
+ * anchor on a query the same way it anchors on any graph node. */
+const NODE_PREFIXES: readonly string[] = ['table:', 'event:', 'concept:', 'metric:', 'query:']
 
 /**
  * Everything a write-time anchor check needs, derived per call from the same
@@ -632,6 +635,16 @@ export function buildAnchorUniverse(root: string): AnchorUniverse {
       if (conceptNames.has(d)) edges.add(`concept:${d} -related_to-> ${node}`)
     }
   }
+  // Verified queries (#155 / ADR-0025 R1): graph nodes like any other kind, so
+  // a memory may anchor on `query:<名>`. They contribute no columns and no
+  // edges — a query's `uses` are its own forward anchors, validated on the
+  // query write path (query.ts), never graph adjacency.
+  for (const raw of loadRawDir(root, 'queries')) {
+    const r = QueryDefinitionSchema.safeParse(raw)
+    if (r.success && r.data !== undefined && typeof r.data.name === 'string') {
+      nodes.add(`query:${r.data.name}`)
+    }
+  }
   return { nodes, columns, edges }
 }
 
@@ -650,8 +663,10 @@ function resolveNode(raw: string, universe: AnchorUniverse): { readonly node: st
 }
 
 /** The edge anchor's exact grammar: `<起点id> -<类型>-> <终点id>` (spaces around
- * the bracketed type, ADR-0023 R4's literal spelling). */
-const EDGE_ANCHOR_PATTERN = /^(\S+)\s+-(\S+)->\s+(\S+)$/
+ * the bracketed type, ADR-0023 R4's literal spelling). Exported for query.ts,
+ * whose read-side `verified_queries` mount parses stored `uses` edge anchors
+ * with the same grammar. */
+export const EDGE_ANCHOR_PATTERN = /^(\S+)\s+-(\S+)->\s+(\S+)$/
 
 /**
  * Canonicalize one anchor spelling against the universe (ADR-0023 R4): node /

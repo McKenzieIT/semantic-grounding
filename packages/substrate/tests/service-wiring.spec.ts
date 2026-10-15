@@ -118,14 +118,14 @@ describe('M1 virtual metric projection', () => {
 // what owes "my fiber unloading calls core.dispose()". Recorded as a slice 4
 // pointer; it is not a core behaviour any more.
 describe('W27 owned-disposer registration', () => {
-  it('registers the three built-in kinds on construction', () => {
+  it('registers the four built-in kinds on construction (+ query, ADR-0025/#155)', () => {
     const svc = new SemanticGroundingCore({ semanticRoot: '' })
-    expect(svc.getRegistry().allKinds().sort()).toEqual(['concept', 'event', 'table'])
+    expect(svc.getRegistry().allKinds().sort()).toEqual(['concept', 'event', 'query', 'table'])
   })
 
   it('withdraws the built-in kinds on dispose()', () => {
     const svc = new SemanticGroundingCore({ semanticRoot: '' })
-    expect(svc.getRegistry().allKinds().sort()).toEqual(['concept', 'event', 'table'])
+    expect(svc.getRegistry().allKinds().sort()).toEqual(['concept', 'event', 'query', 'table'])
     svc.dispose()
     expect(svc.getRegistry().allKinds()).toEqual([])
   })

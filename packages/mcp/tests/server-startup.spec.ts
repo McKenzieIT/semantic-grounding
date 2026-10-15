@@ -252,14 +252,14 @@ describe('deployment refusals exit 78 and say nothing on stdout', () => {
 // #63's initialization dashboard,
 // IMPORT_TOOL_NAMES is ADR-0013's bulk import (#68), #105's `list_definitions` made
 // ADR-0005's reads six (#112), SCRATCH_TOOL_NAMES is
-// ADR-0020's scratch home (#101), and MEMORY_TOOL_NAMES is ADR-0023's memory write
-// (#152) — thirty
-// default-registrar tools in total. None of the tools/list-only
+// ADR-0020's scratch home (#101), MEMORY_TOOL_NAMES is ADR-0023's memory write
+// (#152), and QUERY_TOOL_NAMES is ADR-0025's verified-query pair (#155) —
+// thirty-two default-registrar tools in total. None of the tools/list-only
 // tests below need an active scope bound: every tool registers unconditionally, and
 // only a definition-tool *call* without one would answer no_active_scope.
 
 describe('serving', () => {
-  it('answers a 2026-07-28 tools/list with all thirty default-registrar tools, in the revision\'s result shape', () => {
+  it('answers a 2026-07-28 tools/list with all thirty-two default-registrar tools, in the revision\'s result shape', () => {
     const r = run(['--agent-id', 'analyst-bot', '--registry', freshRegistryPath()], { input: modernToolsList() })
     expect(r.code).toBe(EXIT.ok)
 
@@ -350,7 +350,7 @@ describe('serving', () => {
     const out = responses(r.stdout)
     expect(out).toHaveLength(2)
     expect((out[0]?.['result'] as Record<string, unknown>)?.['protocolVersion']).toBe('2025-11-25')
-    // Same default-registrar tool set as the modern-era test above (all thirty).
+    // Same default-registrar tool set as the modern-era test above (all thirty-two).
     const legacyTools = (out[1]?.['result'] as Record<string, unknown>)?.['tools'] as Array<{ name: string }> | undefined
     expect(legacyTools?.map(t => t.name).sort()).toEqual([...ALL_DEFAULT_TOOL_NAMES].sort())
     // No `-32601`: the regression this guards is reusing one McpServer across the

@@ -4,7 +4,8 @@
  * plus ADR-0006/0008's four enrichment tools
  * plus ADR-0011's six scope tools (#72's deregister is the sixth of them)
  * plus #63's playbook tool plus ADR-0013's import tool
- * plus #101's scratch-home tool plus #152's memory write, thirty total
+ * plus #101's scratch-home tool plus #152's memory write
+ * plus #155's verified-query pair, thirty-two total
  * today. ADR-0005's own Verification
  * section asks for exactly this ("门禁脚本断言：十五个工具名与 input/output schema
  * 快照"); ADR-0006/0008 inherited the same ask, and the e2e gate's header defers
@@ -21,7 +22,7 @@
  * the default registrars (production's `TOOL_REGISTRARS`), and this file asserts the
  * live `tools/list` equals `TOOL_NAMES` — a tool registered without its name constant
  * (or vice versa) fails here rather than shipping two different surfaces. The
- * `toHaveLength(30)` line is a deliberate speed bump: growing the surface must change
+ * `toHaveLength(32)` line is a deliberate speed bump: growing the surface must change
  * this line and show up in the diff.
  *
  * @see docs/adr/0005-mcp-tool-surface.md
@@ -31,6 +32,7 @@
  * @see docs/adr/0014-initialization-phase-model.md (the playbook tool, #63)
  * @see docs/adr/0013-batch-definition-import.md (the import tool, #68)
  * @see docs/adr/0023-memory-storage-shape-and-node-ids.md (record_memory, #152)
+ * @see docs/adr/0025-verified-query-shape-and-promotion.md (the verified-query pair, #155)
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { TOOL_NAMES } from '../src/tools/index.ts'
@@ -66,13 +68,13 @@ function byName(tools: readonly ListedTool[], name: string): ListedTool {
   return found
 }
 
-describe('the thirty names', () => {
-  it('registers exactly ADR-0005\'s sixteen + ADR-0006/0008\'s four + ADR-0011\'s six + #63\'s playbook + ADR-0013\'s import + #101\'s scratch home + #152\'s memory write, reconciled against TOOL_NAMES', async () => {
+describe('the thirty-two names', () => {
+  it('registers exactly ADR-0005\'s sixteen + ADR-0006/0008\'s four + ADR-0011\'s six + #63\'s playbook + ADR-0013\'s import + #101\'s scratch home + #152\'s memory write + #155\'s verified-query pair, reconciled against TOOL_NAMES', async () => {
     const tools = await listTools()
     expect(tools.map(t => t.name).sort()).toEqual([...TOOL_NAMES].sort())
     // Deliberate hard count, not TOOL_NAMES.length: growing the surface must
     // edit this line, so the change is visible in the diff for review.
-    expect(tools).toHaveLength(30)
+    expect(tools).toHaveLength(32)
   })
 
   // #132: a top-level `oneOf` input schema (what `z.discriminatedUnion` compiles
@@ -99,7 +101,7 @@ describe('the thirty names', () => {
     ]))
   })
 
-  it('names every write tool ADR-0005 ruling 2 lists (+ #152\'s memory write)', async () => {
+  it('names every write tool ADR-0005 ruling 2 lists (+ #152\'s memory write + #155\'s verified-query pair)', async () => {
     const tools = await listTools()
     const names = tools.map(t => t.name)
     expect(names).toEqual(expect.arrayContaining([
@@ -108,6 +110,7 @@ describe('the thirty names', () => {
       'submit_suggestion', 'list_suggestions', 'get_suggestion', 'discard_suggestion',
       'import_definitions',
       'record_memory',
+      'create_verified_query', 'update_verified_query',
     ]))
   })
 })
@@ -163,11 +166,11 @@ describe('read tool schemas', () => {
     expect(tool.inputSchema.properties).toHaveProperty('kinds')
   })
 
-  it('get_definition requires kind + name, with the four readable kinds', async () => {
+  it('get_definition requires kind + name, with the five readable kinds (+ query, ADR-0025 R6③)', async () => {
     const tool = byName(await listTools(), 'get_definition')
     expect(tool.inputSchema.required?.slice().sort()).toEqual(['kind', 'name'])
     const kindSchema = tool.inputSchema.properties?.['kind'] as { enum?: readonly string[] }
-    expect(kindSchema.enum?.slice().sort()).toEqual(['concept', 'event', 'metric', 'table'])
+    expect(kindSchema.enum?.slice().sort()).toEqual(['concept', 'event', 'metric', 'query', 'table'])
   })
 
   it('get_join_path requires from + to', async () => {
@@ -202,13 +205,13 @@ describe('read tool schemas', () => {
     expect(search.inputSchema.properties).not.toHaveProperty('data_window')
   })
 
-  it('list_definitions takes only the optional kinds narrowing — the four readable kinds, nothing required (#105 ruling 1)', async () => {
+  it('list_definitions takes only the optional kinds narrowing — the five readable kinds (+ query), nothing required (#105 ruling 1)', async () => {
     const tool = byName(await listTools(), 'list_definitions')
     expect(tool.inputSchema.required).toBeUndefined() // zod omits the key when nothing is required
     expect(Object.keys(tool.inputSchema.properties ?? {}).sort()).toEqual(['kinds'])
     const kinds = tool.inputSchema.properties?.['kinds'] as { type?: string; items?: { enum?: readonly string[] } }
     expect(kinds.type).toBe('array')
-    expect(kinds.items?.enum?.slice().sort()).toEqual(['concept', 'event', 'metric', 'table'])
+    expect(kinds.items?.enum?.slice().sort()).toEqual(['concept', 'event', 'metric', 'query', 'table'])
     expect(tool.annotations?.readOnlyHint).toBe(true)
   })
 })
@@ -483,6 +486,46 @@ describe('record_memory — ADR-0023 R9 / #152 (+ ADR-0027 regimen)', () => {
     expect(description).toContain('wrong')
     expect(description).toContain('contradicts')
     expect(description).toContain('basis')
+  })
+})
+
+describe('verified-query pair — ADR-0025 R7 / #155', () => {
+  it('create_verified_query is a top-level object (no oneOf — the #132 guard covers it) with the flat payload + evidence + the create-class common block', async () => {
+    const tool = byName(await listTools(), 'create_verified_query')
+    expect(tool.inputSchema.properties).toBeDefined()
+    expect(tool.inputSchema.oneOf).toBeUndefined()
+    expect(tool.inputSchema.anyOf).toBeUndefined()
+    expect(tool.inputSchema.required?.slice().sort()).toEqual(
+      ['confidence', 'derivation', 'evidence', 'name', 'question', 'scope_id', 'sql', 'summary', 'uses'].sort(),
+    )
+    // ADR-0025 R7: baseline-free create.
+    expect(tool.inputSchema.properties).not.toHaveProperty('expected_version')
+    expect(tool.inputSchema.additionalProperties).toBe(false)
+    // R2's parameterization rule and R3's narrowed evidence are load-bearing
+    // description/schema prose an agent dispatches on.
+    expect(tool.description).toContain('${start_ds}')
+    expect(tool.description).toContain('replicated')
+  })
+
+  it('update_verified_query adds the required expected_version over the same flat shape (full-payload replace)', async () => {
+    const tool = byName(await listTools(), 'update_verified_query')
+    expect(tool.inputSchema.required?.slice().sort()).toEqual(
+      ['confidence', 'derivation', 'evidence', 'expected_version', 'name', 'question', 'scope_id', 'sql', 'summary', 'uses'].sort(),
+    )
+    expect(tool.inputSchema.oneOf).toBeUndefined()
+    expect(tool.inputSchema.additionalProperties).toBe(false)
+  })
+
+  it('declares evidence ∈ {source, user-stated, replicated} — replicated present in the enum so its refusal can point at record_memory', async () => {
+    const tool = byName(await listTools(), 'create_verified_query')
+    const evidence = tool.inputSchema.properties?.['evidence'] as { enum?: readonly string[] }
+    expect(evidence.enum?.slice().sort()).toEqual(['replicated', 'source', 'user-stated'])
+    const uses = tool.inputSchema.properties?.['uses'] as { minItems?: number }
+    expect(uses.minItems).toBe(1)
+    for (const key of ['evidence_source', 'memory_ids', 'alt_questions', 'description']) {
+      expect(tool.inputSchema.required ?? []).not.toContain(key)
+      expect(tool.inputSchema.properties).toHaveProperty(key)
+    }
   })
 })
 

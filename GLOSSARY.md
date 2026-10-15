@@ -212,7 +212,7 @@ number never is), **caveat** (the range a fact was *not* verified over; never pr
 superseded when the gap is re-verified, always shown alongside the fact it qualifies),
 **inference** (an unverified judgement plus its basis; promoted once verified),
 **practice** (an adopted 口径 or workaround; promoted as a verified query or metric
-definition once a human states it), **incident** (a time-bounded event with a validity
+definition once a human states it or a source fixes it), **incident** (a time-bounded event with a validity
 window; never promoted, hidden when it falls outside the [data window](#data-window-查询时间窗) being asked about). Avoid *note*, *lesson* and *observation*
 as synonyms for memory — the last is one of its types.
 
@@ -282,8 +282,13 @@ happening to choose the same 口径 does not make it verified — a 口径 is ag
 observed. Being a verified query *is* the claim of verification; who verified it and
 when is answered by its commit, never by a field on it. Its query text is the original,
 not a copy of something kept elsewhere, and is written for any period rather than for
-the one it was first run on. Avoid *saved query* (implies a personal bookmark, not an
-agreed 口径).
+the one it was first run on. It lives as its own kind of definition (one file per query,
+node id `query:<名>`), carries its `uses` — the definitions and columns it runs over —
+as forward [anchors](#anchor-锚点) the writer declares (never something SG parses out
+of the SQL), and the definitions it uses store no link back, so editing a query never
+touches their fingerprints; search finds it by its question and rephrasings, and a used
+definition's detail view lists it. Avoid *saved query* (implies a personal bookmark, not
+an agreed 口径).
 
 ### code reference (代码指针)
 

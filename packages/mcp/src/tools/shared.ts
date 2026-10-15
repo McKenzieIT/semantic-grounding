@@ -187,8 +187,13 @@ export const PROMOTION_EVIDENCE_FIELD = { evidence: PromotionEvidenceSchema.opti
  */
 export const WritableKindSchema = z.enum(['table', 'event', 'concept'])
 
-/** The four kinds `get_definition` / `search_definitions` may read — every registered built-in kind. */
-export const ReadableKindSchema = z.enum(['table', 'event', 'concept', 'metric'])
+/**
+ * The kinds `get_definition` / `search_definitions` may read — every
+ * registered built-in kind. #155 (ADR-0025 R6①) adds the verified query: a
+ * `query` is a graph node like the others (searchable by question /
+ * alt_questions / description), read via `get_definition(kind:'query')`.
+ */
+export const ReadableKindSchema = z.enum(['table', 'event', 'concept', 'metric', 'query'])
 
 /**
  * The kinds `add_alias` / `remove_alias` accept (ADR-0012 #46 R3's 枚举拆分:

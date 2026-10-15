@@ -49,3 +49,43 @@ ADR-0022 R4 定分析先行，首个新事实形状 = 已验证查询（A3：「
 - 写口：`replicated` 拒写、`source` 缺出处拒写、分区日期字面量拒写、`uses` 悬空拒写、update 版本不符 `stale_baseline`。
 - 读面：search 命中；宽表 `get_definition` 带 `verified_queries`；改查询不改表指纹；无查询时各工具返回字节不变（零税）。
 - A3 正路：practice memory → 晋升 → `promoted` 回指 → 读面折叠该 memory。
+
+## Update 2026-10-16（#155 落地——漏裁处的最小合理形状）
+
+R1–R7 的实现补裁（ADR 漏裁处，记最小合理形状；先例 ADR-0023 的三个 Update）：
+
+- **分区日期字面量的检测口径（R2 只裁了「拒写」，未裁什么算字面量）**：SQL 文本里
+  出现的**日期形状字面量**——引号内或裸写（单双引号都认）、`YYYYMMDD`（ds 分区拼法）
+  或 `YYYY-MM-DD`、且日历上可信（年 1900–2100、月 01–12、日 01–31）——即拒写；
+  检测在工具面 zod 层（写口即口径执行点），`${start_ds}` 式占位符不含日期形状、天然
+  通过；`12345678` 这类非日期的 8 位数（阈值）不误伤。检测函数单一来源在
+  `tools/query.ts`（`findPartitionDateLiterals`），substrate 存储侧 schema 不重复该规则
+  （手写文件与既有 definition schema 同等宽容）。
+- **`_guidance` 的渲染通道（R7 只裁「回执带一句」，未裁与 #55 相位模型 `_guidance`
+  的关系）**：七个人肉列名的播种工具集（`GUIDANCE_TOOL_NAMES`）不扩——相位模型度量
+  DW/KG 播种进度，与已验证查询无关；本对回执的一句指引（practice 指路）走写回执信封
+  的 domain 键。因本对永不进相位门，domain 键与信封 `_guidance` 不存在实际冲突——
+  ADR-0024 R7 否决的「一字段两种语义」针对的是读工具与 memory 提示，此处是 R7 明裁
+  的写回执句子，渲染在同一键上以免宿主开第二通道。
+- **`X-SG-Memory` 的渲染条件（R6/#136 原文「replicated 的引用走 X-SG-Memory」）**：
+  渲染条件由「kind=replicated」放宽为「引用了 memory」——本对的 `memory_ids` 在 ①/②
+  下引用（③ 已在工具门口拒掉，走不到这）。五个 #136 工具的 schema 本就把 `memories`
+  限定在 replicated，其 trailer 集逐字不变。
+- **`memory_ids` 的校验面（R7 未裁 ①/② 引用的机器核验）**：只验存在性（substrate
+  `writeVerifiedQuery` 首写前）——不走 #136 复现守卫（≥2 异会话异日是对 ③ 的证据
+  要求，不是对 practice 出身的溯源要求）；wrong 隐藏条目不剔除（回指追加无害：
+  wrong 条目在任何读面本就永久隐藏）。
+- **update 的语义（R7 未裁 update 是全量替换还是字段覆盖）**：与 create 同一形状、
+  全量替换 + `expected_version`（`queries/<name>.yaml` 走 io.ts create 家族审计 seam，
+  seam 自带基线校验）；不引入 `update_definition` 的 fields 覆盖装置。
+- **`uses` 的存储与现查形状（R6 未裁存储拼写与匹配面）**：写入时经 #152 锚点机器
+  规范化（裸名兼容入参、规范前缀输出、存在性含列、悬空/歧义拒写），存规范形；
+  `verified_queries` 现查按「节点本体 / 列片段（锚在父定义）/ 边（两端都挂，边
+  memory 先例）」三种匹配面，id 升序、cap 5 为代码常量。手写 YAML 里的裸 `uses` 不在
+  现查中解析（写路径恒存规范形）。
+- **query 节点在图层的位置（R1「是图节点」的边界）**：投影/搜索索引/`list_definitions`
+  清单照常参与；关系图为**零邻接**（`relations()` 恒空——uses 是锚不是边，查询永不
+  出现在 `get_join_path`/`get_relations`）；`resolve_alias` 因 schema 无
+  `pref_label`/`alt_labels` 天然不返回；guidance/占比守卫的按 kind 计数把 `query`
+  单列（`countNodesByKind` 增 `query` 键、不折入 DW——口径制品不是 text-to-SQL 资产，
+  排除法计数若不单列会污染 `_guidance`/playbook/scope 计数）。
