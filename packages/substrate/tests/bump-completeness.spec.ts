@@ -8,9 +8,9 @@
  * missing bump would silently serve stale data from the cache indefinitely.
  *
  * Audit result (2026-10-13): all 7 public write primitives route through
- * `auditedFileWrite` (io.ts:707), which calls `invalidateCaches` at line 717
- * (after successful write) and 722 (after recorder-failure rollback). So the
- * invariant holds by construction — this spec pins it.
+ * the `auditedFileWrite` seam in `io.ts`, which calls `invalidateCaches`
+ * both after the successful write and after the recorder-failure rollback.
+ * So the invariant holds by construction — this spec pins it.
  *
  * @module bump-completeness (test-only; not on barrel)
  */

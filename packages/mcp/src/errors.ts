@@ -605,8 +605,8 @@ export function toToolErrorResult(error: unknown): CallToolResult {
  * same condition two ways — a thrown plain `Error` (the Core's item-write
  * methods) and a non-throwing `{ok:false, error}` result string
  * (`updateTableMeta` & co) — so the adapters below and `assertUpdateOk`
- * (`tools/shared.ts`) both route through this predicate rather than each
- * spelling the prefixes out.
+ * (`tools/write.ts`, since #161) both route through this predicate rather
+ * than each spelling the prefixes out.
  */
 const SUBSTRATE_NOT_FOUND_PREFIXES: readonly string[] = ['Table not found', 'Event not found', 'Concept not found']
 

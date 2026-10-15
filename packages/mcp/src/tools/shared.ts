@@ -1,10 +1,15 @@
 /**
  * Shared pieces for ADR-0005's intent families: the common Tier-2 parameter
- * block and the `update_definition` bounded-fields schema builder. Every member
- * here is cross-family by contract — the two single-family members this module
- * briefly carried moved out to their consumers (#145): the per-call `clientInfo`
- * reader to `tools/audited.ts` (its one caller), the Tier-1 pending-queue path
- * to `tools/suggestions.ts` (its one family).
+ * block, the schema vocabulary (kinds, relation shapes, the bounded `fields`
+ * builders), and the cross-family seams (definition loading). Members whose
+ * one consumer is a single tool file belong in that file — the ones briefly
+ * mis-homed here moved out to their consumers (#145: the per-call `clientInfo`
+ * reader to `tools/audited.ts`, the Tier-1 pending-queue path to
+ * `tools/suggestions.ts`; #161: the update path's apply/assert trio
+ * `applyFieldUpdate`/`ApplyResult`/`assertUpdateOk` to `tools/write.ts` — and
+ * that handler's array-reference redirect apparatus (`assertNoRedirectedFields`
+ * + the three `*_ARRAY_REF_REDIRECT` maps) followed it in 2026-10-15's residue
+ * pass; `update_definition`'s handler is both groups' one consumer).
  *
  * The `version` fingerprint helpers this module used to carry
  * (fingerprintTable/Concept/Event, findEventDomain) are retired: the read side of
@@ -13,8 +18,9 @@
  * implementation shared with the write-side `checkExpectedVersion` instead of a
  * parallel copy that had already forked on hand-renamed event files.
  *
- * Nothing here registers a tool — see `read.ts` / `write.ts` / `items.ts` /
- * `suggestions.ts` for the registrars that import from this module. The one thing
+ * Nothing here registers a tool — for the registrars, see the tool-family files
+ * importing from this module (derived, not enumerated: a fixed name list drifts
+ * as families come and go — this one had already drifted to 4-of-9, #172). The one thing
  * added since (#115 / C3) is type-only: the `ToolFamily` descriptor-card interface
  * every family file's `X_TOOL_FAMILY` binds through, so each family keeps owning its
  * names and its registrar while `index.ts` composes the cards.
@@ -23,7 +29,6 @@
  */
 import { ConceptDefinitionSchema, EventDefinitionSchema, TableDefinitionSchema, type ConceptDefinition, type EventDefinition, type SemanticGroundingCore, type TableDefinition } from '@semantic-grounding/substrate'
 import { z } from 'zod'
-import { DefinitionNotFoundError, DefinitionValidationError, UnsupportedUpdateFieldError, isSubstrateNotFound } from '../errors.ts'
 import { SCOPE_ID_PATTERN } from '../scope-registry.ts'
 import type { ToolRegistrar } from '../server.ts'
 
@@ -294,7 +299,8 @@ function withoutDefault(schema: z.ZodType): z.ZodType {
  * adequate — there is no tool to redirect a rename to), while array-reference keys stay
  * *in* this schema (so zod accepts them) and are caught one level up, in the handler,
  * which is the only place that can attach the "use this tool instead" steer ruling 4
- * asks for (see {@link assertNoRedirectedFields}).
+ * asks for (see `tools/write.ts`'s `assertNoRedirectedFields`, since the 2026-10-15
+ * residue pass).
  * @param shape - the kind's full definition schema's `.shape` (`TableDefinitionSchema.shape` / `EventDefinitionSchema.shape`).
  * @param omitKeys - identity field name(s) to exclude entirely.
  * @returns a `.strict()` object schema: every other field, optional, default-stripped.
@@ -320,31 +326,6 @@ const EVENT_IDENTITY_FIELDS = new Set(['name'])
 export const TableFieldsSchema = updatableFieldsSchema(TableDefinitionSchema.shape, TABLE_IDENTITY_FIELDS)
 /** `update_definition(kind: 'event', ...)`'s bounded `fields` schema. */
 export const EventFieldsSchema = updatableFieldsSchema(EventDefinitionSchema.shape, EVENT_IDENTITY_FIELDS)
-
-/** Array-reference field → the item-level tool pair that maintains it (ADR-0005 ruling 4's redirect), for tables. The `suppressed_*` keys ride the same verbs (#38 / ADR-0010): a veto is born by remove and lifted by add, never written as a bare field. */
-export const TABLE_ARRAY_REF_REDIRECT: Readonly<Record<string, string>> = {
-  alt_labels: 'add_alias / remove_alias',
-  dimension_refs: 'add_relation / remove_relation',
-  suppressed_alt_labels: 'add_alias / remove_alias (vetoes are born by remove_*, lifted by add_* — never hand-written)',
-  suppressed_dimension_refs: 'add_relation / remove_relation (vetoes are born by remove_*, lifted by add_* — never hand-written)',
-}
-/** Array-reference field → the item-level tool pair that maintains it, for events. */
-export const EVENT_ARRAY_REF_REDIRECT: Readonly<Record<string, string>> = {
-  alt_labels: 'add_alias / remove_alias',
-  external_refs: 'add_relation / remove_relation',
-  suppressed_alt_labels: 'add_alias / remove_alias (vetoes are born by remove_*, lifted by add_* — never hand-written)',
-  suppressed_external_refs: 'add_relation / remove_relation (vetoes are born by remove_*, lifted by add_* — never hand-written)',
-}
-/** Array-reference field → the item-level tool pair that maintains it, for concepts
- * (ADR-0012 #46 R3 伴生点 1). Concepts have no dimension_refs/external_refs — their
- * declared edges live in `related_refs`, maintained by the same relation pair with a
- * `target_kind`-carrying shape (Q4(b)). */
-export const CONCEPT_ARRAY_REF_REDIRECT: Readonly<Record<string, string>> = {
-  alt_labels: 'add_alias / remove_alias',
-  related_refs: 'add_relation / remove_relation (concept-side edges: {target_kind, name})',
-  suppressed_alt_labels: 'add_alias / remove_alias (vetoes are born by remove_*, lifted by add_* — never hand-written)',
-  suppressed_related_refs: 'add_relation / remove_relation (vetoes are born by remove_*, lifted by add_* — never hand-written)',
-}
 
 // ── `create_definition(kind:'concept')`'s payload + `update_definition`'s fields ─────
 
@@ -405,62 +386,3 @@ const CONCEPT_IDENTITY_FIELDS = new Set(['name'])
  * keys the handler redirects (`alt_labels`, `related_refs`, `suppressed_*`).
  */
 export const ConceptFieldsSchema = updatableFieldsSchema(ConceptDefinitionSchema.shape, CONCEPT_IDENTITY_FIELDS)
-
-/**
- * Reject an array-reference field, pointing at the item-level tool that maintains it.
- *
- * This is the handler-side half of `update_definition`'s bounded `fields` schema: the
- * schema itself (built by {@link updatableFieldsSchema}) deliberately leaves
- * `alt_labels` / `dimension_refs` / `external_refs` in as ordinarily-typed optional
- * fields — rejecting them in zod would only produce a generic "unrecognized key"
- * message, with no way to attach the redirect ADR-0005 ruling 4 asks for.
- * @param fields - the already-parsed `fields` object (whichever keys the caller sent survive here).
- * @param redirect - the kind's array-reference redirect map ({@link TABLE_ARRAY_REF_REDIRECT} / {@link EVENT_ARRAY_REF_REDIRECT}).
- * @throws UnsupportedUpdateFieldError naming the first rejected field found and its replacement tool(s).
- */
-export function assertNoRedirectedFields(fields: Readonly<Record<string, unknown>>, redirect: Readonly<Record<string, string>>): void {
-  for (const [field, tools] of Object.entries(redirect)) {
-    if (field in fields) {
-      throw new UnsupportedUpdateFieldError(
-        `update_definition does not accept "${field}": it is an array-reference field maintained item-by-item (ADR-0005 ruling 4) — use ${tools} instead`,
-        { field, use_instead: tools },
-      )
-    }
-  }
-}
-
-// ── Discriminating `updateTableMeta` / `updateEventMeta`'s non-throwing failure ─────
-
-/** The one non-throwing write-result shape. The `update*Meta` family resolves
- * `{ok:true}` bare; the item-overlay apply path (`applyFieldUpdate`) resolves the
- * same shape plus the written file's `version` fingerprint (#108) — hence the
- * optional key: present on every apply result, absent on every meta-update result. */
-export type ApplyResult = { readonly ok: true; readonly version?: string } | { readonly ok: false; readonly error: string }
-
-/**
- * Turn `updateTableMeta` / `updateEventMeta` / `updateConceptMeta`'s
- * non-throwing `{ok:false, error}` into the right coded error — the substrate
- * reports two genuinely different conditions through that one string field,
- * and ADR-0005 ruling 8 asks both to be discriminable.
- *
- * The not-found half of the discrimination is not spelled here: the three
- * message prefixes live in one place, `isSubstrateNotFound` (`errors.ts`'s
- * substrate→coded adapter family, #120/C5), shared with the thrown-error
- * adapter the item tools use — two hand-copied `startsWith` ladders used to
- * carry the same knowledge in parallel.
- * @param result - whatever `core.updateTableMeta` / `core.updateEventMeta` / `core.updateConceptMeta` resolved to.
- * @param kind - which kind was being updated (for the error's structured `data`).
- * @param name - the table_name / event / concept name being updated.
- * @throws DefinitionNotFoundError when the substrate's message is a not-found
- *   report (the target vanished between this tool's own checks and the
- *   lock-protected write — see `write.ts` / `items.ts`).
- * @throws DefinitionValidationError for every other failure message (the merged
- *   document failed the kind's full schema).
- */
-export function assertUpdateOk(result: ApplyResult, kind: 'table' | 'event' | 'concept', name: string): void {
-  if (result.ok) return
-  if (isSubstrateNotFound(result.error)) {
-    throw new DefinitionNotFoundError(result.error, { kind, name })
-  }
-  throw new DefinitionValidationError(result.error, { kind, name })
-}

@@ -1,6 +1,6 @@
 /**
  * K11 semantic-layer seed smoke test — validates that the seed at
- * `examples/k11-semantic-layer/` loads correctly through the semantic-layer
+ * `tests/fixtures/k11/` loads correctly through the semantic-layer
  * loaders. Catches drift between the seed YAML and the loader contracts.
  *
  * Run: `npx vitest run packages/substrate/tests/k11-seed.spec.ts`

@@ -2,7 +2,7 @@
  * `get_initialization_playbook` — #63 landing #55's R3/R7/R10/R13 on top of the
  * phase model #56 already shipped (`tools/guidance.ts`).
  *
- * Three groups, in acceptance order:
+ * Four groups, in acceptance order:
  *
  * 1. **The reuse contract** (#55's "接口不变" pin, restated in #63's 硬性复用
  *    约束): for the same corpus state, `layers.dw.phase`/`layers.kg.phase` equal
@@ -19,6 +19,9 @@
  *    scope_registration → seeding → backfill → llm_supplement → mature, with the
  *    entry/exit conditions of the R6 table as the inputs, and the R3
  *    recommended-action table + R2 coverage indicators asserted at each stop.
+ * 4. **R7 shape sanity** — the response's own shape beyond the phases: the
+ *    scope stamp, every R7 field (per-layer `coverage`/`recommended_action`
+ *    keys, phases drawn from the five-name set), and the summary's key set.
  */
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

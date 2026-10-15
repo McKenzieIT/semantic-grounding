@@ -210,3 +210,11 @@ kinds 插件面整删，索引面唯一落点为 `toCorpusItem`。〕
   而非直接覆盖）。
 - 本次 Update 不改写上方原始 Decision 表（R3 行按 #46 当时的裁决逐字保留作历史记录），
   仅记录后续票对该行的 supersede——与 ADR-0005 的四段既有 Update 同构。
+
+## Update 2026-10-15 — #161：update 路径三件套迁 `write.ts`（锚点注记）
+
+本文 Consequences 与 References 两处以 file:line 引用的 `applyFieldUpdate`（原
+`audited.ts:161`）与 `assertUpdateOk`（原 `shared.ts:331`，连同 `ApplyResult`）已随
+[#161](https://github.com/McKenzieIT/semantic-grounding/issues/161)（巡检第三轮 C16）迁至
+`packages/mcp/src/tools/write.ts`——`update_definition` 的单消费者文件。上文行号按落笔
+时历史记录保留不动，符号现址以 `write.ts` 内检索为准。

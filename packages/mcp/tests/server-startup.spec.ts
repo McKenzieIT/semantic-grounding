@@ -17,7 +17,7 @@
  * the unit level in `startup-posture.spec.ts` and is deliberately not re-tested here. What
  * is tested here is that the entry *surfaces* a refusal and a recovery correctly — now at
  * the three binding moments ADR-0011 moved posture to (`--scope`'s eager bind here;
- * `register_scope`/`switch_scope` are `tools/scope.ts`'s own future coverage). Every test
+ * `register_scope`/`switch_scope` are `tools/scope.ts`'s own coverage). Every test
  * below registers its scope **directly through `ScopeRegistryFile`**, not through the
  * `register_scope` tool — the registry's own `register()` runs no posture or load check
  * (that is deliberately the *tool's* job, per the registry module's own header), which is

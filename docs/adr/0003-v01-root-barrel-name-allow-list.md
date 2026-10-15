@@ -190,3 +190,23 @@ audited write-and-record 仪式收进单一 `auditedFileWrite` seam，并归一�
 - **acceptance 执行器**：`EXPECTED_RUNTIME_NAMES` 现为 **27 + default** deepEqual；
   must-absent 补上述整删/收编名（随各票同 commit 原子落地）。本 ADR 的 67 名表与后续各
   Update 的计数均为历史存档；现行名单以 acceptance 脚本为准。
+
+## Update 2026-10-15 — #171：`DataSourceKindPlugin.toExecutableRule?` 死可选字段退役
+
+kind 扩展点宿主接口 `DataSourceKindPlugin` 的可选字段
+`toExecutableRule?(def: T): string | null`（G2 指标插件时代成员；实现随 M1b 移除
+MetricPlugin 时下线，字段按其 JSDoc 自述「retained as optional interface for
+backward-compat」保留至今）退役删除。[#171](https://github.com/McKenzieIT/semantic-grounding/issues/171)
+（#163 审计残件清理批报告项）全仓实证：rg（src/tests/scripts/docs）唯一定义点、
+**零实现零调用**，其余命中均为文档叙述——向后兼容保留期的服务对象经查不存在
+（substrate 未上 registry、tarball 直装，ADR-0017 后公共面唯一消费者 = mcp 及将来
+第一方 CLI，均未实现该字段），保留期结束。
+
+- **名单不动**：本 ADR 白名单是名级——类型名 `DataSourceKindPlugin` 在 barrel
+  （`src/index.ts` type re-export）与上文 kind 扩展点行均保留，删的只是接口内一个
+  死可选成员。acceptance 名单（27 + default）与 must-stay 断言零改动，亲跑通过。
+- **公共 plugin 契约形状变化**照仓库规矩记于此：`.d.ts` 形状收缩，但零消费者
+  （四门禁亲跑对基线逐字不动：typecheck 双包 0 / substrate 449 / mcp 437+1skip /
+  e2e 22）。
+- 巡检 2026-10-15 :110 行曾将 S2 `loadDomains` 与本件并提——#163 复核已分家：
+  `loadDomains` 有 k11-seed.spec.ts 活消费，**活件不动**，不在本 Update 范围。

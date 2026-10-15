@@ -86,7 +86,7 @@
 import { z } from 'zod'
 import { assertKnownFilterNames } from '@semantic-grounding/substrate'
 import { unknownFilterNamesAsCoded } from '../errors.ts'
-import { ScopeIdSchema, type ToolFamily } from './shared.ts'
+import { ConfidenceSchema, ScopeIdSchema, SummarySchema, type ToolFamily } from './shared.ts'
 import type { ToolRegistrar } from '../server.ts'
 import { assertScopeMatch, auditedWrite, scopeStamp, toolSuccess, withAuditedBatch, writeReceipt } from './audited.ts'
 
@@ -234,8 +234,8 @@ export const registerEnrichmentTools: ToolRegistrar = (server, deps) => {
           work_id: z.string().min(1),
           text: z.string(),
         })).min(1),
-        summary: z.string().min(1).max(100),
-        confidence: z.number().min(0).max(1),
+        summary: SummarySchema,
+        confidence: ConfidenceSchema,
       }),
     },
     async (args, extra) => {

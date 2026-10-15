@@ -1,7 +1,9 @@
 # Tests
 
-Ported from `deepseek-harness-da/packages/data/semantic-layer/tests/` (20 spec
-files, 269 tests). Run with `pnpm test` (vitest).
+Ported from `deepseek-harness-da/packages/data/semantic-layer/tests/` (the
+suite has grown since the port — the live counts are whatever `pnpm test`
+reports; the gate baseline lives in `CLAUDE.md`'s 当前基线 section). Run with
+`pnpm test` (vitest).
 
 ## k11 fixture (`tests/fixtures/k11/`)
 
