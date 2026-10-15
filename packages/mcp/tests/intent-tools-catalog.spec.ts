@@ -186,6 +186,22 @@ describe('read tool schemas', () => {
     expect(tool.inputSchema.required).toEqual(['term'])
   })
 
+  // ADR-0024 R2 (#154): the optional business-date window rides exactly the
+  // three detail tools whose visibility regime consumes it — search's counts
+  // are ruled to the no-window regime, and the index/alias pair mounts
+  // nothing at all (R1).
+  it('data_window is optional on get_definition / get_join_path / get_relations, absent from search_definitions (ADR-0024 R2)', async () => {
+    const tools = await listTools()
+    for (const name of ['get_definition', 'get_join_path', 'get_relations']) {
+      const tool = byName(tools, name)
+      expect(tool.inputSchema.properties, name).toHaveProperty('data_window')
+      expect(tool.inputSchema.required ?? [], name).not.toContain('data_window')
+      expect(tool.description, name).toMatch(/specific dates/)
+    }
+    const search = byName(tools, 'search_definitions')
+    expect(search.inputSchema.properties).not.toHaveProperty('data_window')
+  })
+
   it('list_definitions takes only the optional kinds narrowing — the four readable kinds, nothing required (#105 ruling 1)', async () => {
     const tool = byName(await listTools(), 'list_definitions')
     expect(tool.inputSchema.required).toBeUndefined() // zod omits the key when nothing is required

@@ -8,6 +8,17 @@
  * every `ToolRegistrar` must satisfy (`server.ts`'s module doc): the corpus reads happen
  * per call, inside each handler, never while `registerTool` itself runs.
  *
+ * ## The memory mount (ADR-0024 / #154)
+ *
+ * Four of the six ride memories on their existing results — zero-tax keys, absent
+ * byte-for-byte when the corpus holds no memory: `get_definition` mounts `memories` /
+ * `edge_memories` (8 / 5 independent budgets), `get_join_path` / `get_relations` mount
+ * ≤3 per returned edge, `search_definitions` carries per-hit `memory_counts`.
+ * `resolve_alias` / `list_definitions` mount nothing (ADR-0024 R1). Three tools take
+ * the optional `data_window` (R2); the substrate's view composition owns every
+ * visibility / budget / ordering / contested-companion rule — this file only spreads
+ * the results.
+ *
  * @module tools/read
  */
 import type { McpServer } from '@modelcontextprotocol/server'
@@ -16,6 +27,7 @@ import { z } from 'zod'
 import { DefinitionNotFoundError } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { scopeStamp, toolSuccess } from './audited.ts'
+import { MEMORY_READ_NOTE } from './memory.ts'
 import { ReadableKindSchema, type ToolFamily } from './shared.ts'
 
 /** The six read tool names — ADR-0005 ruling 6's five in listing order, then #105's `list_definitions` (read face five→six, 2026-10-14 Update). */
@@ -27,6 +39,62 @@ export const READ_TOOL_NAMES = [
   'resolve_alias',
   'list_definitions',
 ] as const
+
+// ── The memory mount's shared pieces (ADR-0024 / #154) ─────────────────────────────
+
+/** A ds-granularity business date (the axis `valid_from`/`valid_until` use). */
+const DS_DATE = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * ADR-0024 R2's optional query window — top-level object properties only
+ * (#132's guard applies to every schema here): the business-date stretch the
+ * QUESTION is about, never today's date. `search_definitions` deliberately
+ * takes none (R2: counts are the no-window regime).
+ */
+const DataWindowSchema = z.object({
+  from: z.string().regex(DS_DATE).describe('Window start (YYYY-MM-DD, inclusive).'),
+  to: z.string().regex(DS_DATE).describe('Window end (YYYY-MM-DD, inclusive).'),
+}).describe('The business-date window (ds granularity) the question is about. Pass it when the question involves specific dates: incidents/observations outside the window hide, and an outdated predecessor whose old segment the window covers shows alongside its successor. Without a window nothing time-bounded hides; newest first.')
+
+/** Spread a node view's mounts onto a `get_definition` payload — every key
+ * absent when empty (ADR-0024 R1's zero-tax rule, byte-identical responses). */
+function nodeMemoryMount(view: ReturnType<SemanticGroundingCore['readDefinitionMemories']>): Record<string, unknown> {
+  return {
+    ...view.memories.length > 0 ? { memories: view.memories } : {},
+    ...view.memories_truncated !== undefined ? { memories_truncated: view.memories_truncated } : {},
+    ...view.edge_memories.length > 0 ? { edge_memories: view.edge_memories } : {},
+    ...view.edge_memories_truncated !== undefined ? { edge_memories_truncated: view.edge_memories_truncated } : {},
+  }
+}
+
+/** The not-found throw, taught about orphans (ADR-0026 R3): same code and
+ * `{kind, name}` payload as before when nothing is anchored on the missing
+ * definition; otherwise the error data carries `orphaned_memories` (every row
+ * `definition_missing: true`) and the message names how many remain. */
+function throwDefinitionNotFound(
+  core: SemanticGroundingCore,
+  kind: 'table' | 'event' | 'concept' | 'metric',
+  name: string,
+  dataWindow: { readonly from: string; readonly to: string } | undefined,
+): never {
+  const view = core.readOrphanedMemories(`${kind}:${name}`, dataWindow !== undefined ? { data_window: dataWindow } : {})
+  const truncated = view.orphaned_memories_truncated !== undefined
+    ? Object.values(view.orphaned_memories_truncated).reduce((a, b) => a + b, 0)
+    : 0
+  const total = view.orphaned_memories.length + truncated
+  if (total === 0) {
+    throw new DefinitionNotFoundError(`no ${kind} named "${name}"`, { kind, name })
+  }
+  throw new DefinitionNotFoundError(
+    `no ${kind} named "${name}" — 该定义已不存在,仍有 ${total} 条 memory 锚在它上面`,
+    {
+      kind,
+      name,
+      orphaned_memories: view.orphaned_memories,
+      ...view.orphaned_memories_truncated !== undefined ? { orphaned_memories_truncated: view.orphaned_memories_truncated } : {},
+    },
+  )
+}
 
 // ── search_definitions ───────────────────────────────────────────────────────────────
 
@@ -175,7 +243,7 @@ function registerSearchDefinitions(server: McpServer, deps: ServerDeps): void {
     'search_definitions',
     {
       title: 'Search definitions',
-      description: 'Rank tables, events, concepts and metrics against a free-text query (names, aliases, descriptions). Does not return a version fingerprint — summaries are not a write precondition (ADR-0005 ruling 6); call get_definition for that.',
+      description: 'Rank tables, events, concepts and metrics against a free-text query (names, aliases, descriptions). Does not return a version fingerprint — summaries are not a write precondition (ADR-0005 ruling 6); call get_definition for that. Each hit carries memory_counts — how many memory entries (by type) get_definition would surface anchored on that definition (wrong/outdated-old/promoted excluded); follow the count into get_definition before writing SQL or a definition.',
       inputSchema: SearchInputSchema,
       annotations: { readOnlyHint: true },
     },
@@ -183,7 +251,13 @@ function registerSearchDefinitions(server: McpServer, deps: ServerDeps): void {
       const snap = deps.bindings.requireSnapshot()
       const kindFilter = input.kinds !== undefined ? new Set<string>(input.kinds) : undefined
       const candidates = buildCandidates(snap.core).filter(c => kindFilter === undefined || kindFilter.has(foldTableStorageKind(c.kind)))
-      const hits = rankDefinitions(input.query, candidates, input.top_k ?? 10)
+      const ranked = rankDefinitions(input.query, candidates, input.top_k ?? 10)
+      // ADR-0024 R6's mount: per-hit per-type counts of the no-window
+      // visible set — an empty memory layer leaves every hit untouched.
+      const counts = snap.core.memoryCountsByNode(ranked.map(h => h.id))
+      const hits = counts.size === 0
+        ? ranked
+        : ranked.map(h => counts.has(h.id) ? { ...h, memory_counts: counts.get(h.id) } : h)
       return toolSuccess({ scope: scopeStamp(snap), hits })
     },
   )
@@ -194,20 +268,25 @@ function registerSearchDefinitions(server: McpServer, deps: ServerDeps): void {
 const GetDefinitionInputSchema = z.object({
   kind: ReadableKindSchema,
   name: z.string().min(1),
+  data_window: DataWindowSchema.optional(),
 })
 
-/** Registers `get_definition` — the only read tool that returns the `version` fingerprint. */
+/** Registers `get_definition` — the memory layer's main mount (ADR-0024 R1)
+ * and the only read tool that returns the `version` fingerprint. */
 function registerGetDefinition(server: McpServer, deps: ServerDeps): void {
   server.registerTool(
     'get_definition',
     {
       title: 'Get one definition',
-      description: 'Load one table, event, concept or metric by name. Returns the sha256 content fingerprint as `version` for table/event/concept (pass it back as `expected_version` on a later write); metrics have no backing file and carry no version.',
+      description: 'Load one table, event, concept or metric by name. Returns the sha256 content fingerprint as `version` for table/event/concept (pass it back as `expected_version` on a later write); metrics have no backing file and carry no version. Also surfaces the memory layer: `memories` (≤8, anchored on this definition or its columns; caveats always shown; promoted entries folded) and `edge_memories` (≤5, anchored on relations this definition takes part in — join pitfalls survive even a removed relation, marked relation_missing), ordered practice > incident > inference > observation, newest first within type. Pass data_window when the question involves specific dates. ' + MEMORY_READ_NOTE,
       inputSchema: GetDefinitionInputSchema,
       annotations: { readOnlyHint: true },
     },
     async (input) => {
       const snap = deps.bindings.requireSnapshot()
+      const core = snap.core
+      const dataWindow = input.data_window
+      const windowOpts = dataWindow !== undefined ? { data_window: dataWindow } : {}
       // One fingerprint implementation for both sides of ADR-0004 ruling 8's
       // contract: each Core method resolves the very file the corresponding
       // write path's staleness check hashes (the MCP layer's former parallel
@@ -215,34 +294,38 @@ function registerGetDefinition(server: McpServer, deps: ServerDeps): void {
       // `loadEvents` scan to locate one event's domain — is retired with
       // this switch, and with it the hand-renamed-event-file ENOENT fork).
       if (input.kind === 'table') {
-        const res = snap.core.loadTableDefinitionWithVersion(input.name)
-        if (res === null) {
-          throw new DefinitionNotFoundError(`no table named "${input.name}"`, { kind: 'table', name: input.name })
-        }
-        return toolSuccess({ scope: scopeStamp(snap), kind: 'table', name: input.name, definition: res.definition, version: res.version })
+        const res = core.loadTableDefinitionWithVersion(input.name)
+        if (res === null) throwDefinitionNotFound(core, 'table', input.name, dataWindow)
+        return toolSuccess({
+          scope: scopeStamp(snap), kind: 'table', name: input.name, definition: res.definition, version: res.version,
+          ...nodeMemoryMount(core.readDefinitionMemories('table:' + input.name, windowOpts)),
+        })
       }
       if (input.kind === 'event') {
-        const res = snap.core.loadEventDefinitionWithVersion(input.name)
-        if (res === null) {
-          throw new DefinitionNotFoundError(`no event named "${input.name}"`, { kind: 'event', name: input.name })
-        }
-        return toolSuccess({ scope: scopeStamp(snap), kind: 'event', name: input.name, definition: res.definition, version: res.version })
+        const res = core.loadEventDefinitionWithVersion(input.name)
+        if (res === null) throwDefinitionNotFound(core, 'event', input.name, dataWindow)
+        return toolSuccess({
+          scope: scopeStamp(snap), kind: 'event', name: input.name, definition: res.definition, version: res.version,
+          ...nodeMemoryMount(core.readDefinitionMemories('event:' + input.name, windowOpts)),
+        })
       }
       if (input.kind === 'concept') {
-        const res = snap.core.loadConceptDefinitionWithVersion(input.name)
-        if (res === null) {
-          throw new DefinitionNotFoundError(`no concept named "${input.name}"`, { kind: 'concept', name: input.name })
-        }
-        return toolSuccess({ scope: scopeStamp(snap), kind: 'concept', name: input.name, definition: res.definition, version: res.version })
+        const res = core.loadConceptDefinitionWithVersion(input.name)
+        if (res === null) throwDefinitionNotFound(core, 'concept', input.name, dataWindow)
+        return toolSuccess({
+          scope: scopeStamp(snap), kind: 'concept', name: input.name, definition: res.definition, version: res.version,
+          ...nodeMemoryMount(core.readDefinitionMemories('concept:' + input.name, windowOpts)),
+        })
       }
       // kind === 'metric': derived from a host table/event's inline `metrics:` block,
       // not a standalone file (metrics.ts / GLOSSARY § definition) — there is no raw
       // byte artifact to fingerprint, and no write tool ever needs one for a metric.
-      const definition = snap.core.loadMetricDefinition(input.name)
-      if (definition === null) {
-        throw new DefinitionNotFoundError(`no metric named "${input.name}"`, { kind: 'metric', name: input.name })
-      }
-      return toolSuccess({ scope: scopeStamp(snap), kind: 'metric', name: input.name, definition })
+      const definition = core.loadMetricDefinition(input.name)
+      if (definition === null) throwDefinitionNotFound(core, 'metric', input.name, dataWindow)
+      return toolSuccess({
+        scope: scopeStamp(snap), kind: 'metric', name: input.name, definition,
+        ...nodeMemoryMount(core.readDefinitionMemories('metric:' + input.name, windowOpts)),
+      })
     },
   )
 }
@@ -283,6 +366,7 @@ function resolveNodeId(graph: RelationGraph, rawId: string): string {
 const GetJoinPathInputSchema = z.object({
   from: z.string().min(1).describe('Source node id — `<kind>:<name>` (e.g. `table:dws_order`, `concept:gmv`); a bare name is also accepted and resolved against table/event/concept/metric in that order.'),
   to: z.string().min(1).describe('Target node id — same form as `from`.'),
+  data_window: DataWindowSchema.optional(),
 })
 
 /** Registers `get_join_path`. */
@@ -291,7 +375,7 @@ function registerGetJoinPath(server: McpServer, deps: ServerDeps): void {
     'get_join_path',
     {
       title: 'Find a join path',
-      description: 'BFS shortest path over `joins`-type relations (undirected — every edge is walked both ways, so from/to may be swapped) between two node ids; `related_to` and other non-joins types never participate. Accepts a bare name or a `<kind>:<name>` id on input; `from`/`to`/`path` in the response always carry the resolved `<kind>:<name>` form. Returns `path: null` when unreachable — not an error.',
+      description: 'BFS shortest path over `joins`-type relations (undirected — every edge is walked both ways, so from/to may be swapped) between two node ids; `related_to` and other non-joins types never participate. Accepts a bare name or a `<kind>:<name>` id on input; `from`/`to`/`path` in the response always carry the resolved `<kind>:<name>` form. Returns `path: null` when unreachable — not an error. Each path edge also surfaces its anchored memories (`edge_memories`, ≤3 per edge, the full anchor naming the edge) — join pitfalls ride the path itself; pass data_window when the question involves specific dates.',
       inputSchema: GetJoinPathInputSchema,
       annotations: { readOnlyHint: true },
     },
@@ -301,7 +385,26 @@ function registerGetJoinPath(server: McpServer, deps: ServerDeps): void {
       const from = resolveNodeId(graph, input.from)
       const to = resolveNodeId(graph, input.to)
       const path = graph.findJoinPath(from, to)
-      return toolSuccess({ scope: scopeStamp(snap), from, to, found: path !== null, path })
+      // ADR-0024 R1: ≤3 memories per walked edge. Dangling edge anchors never
+      // reach here (the path only contains live graph edges), so no
+      // relation_missing can arise — that marking is get_definition's.
+      let mount: Record<string, unknown> = {}
+      if (path !== null && path.length > 1) {
+        const pairs = path.slice(0, -1).map((node, i) => ({ a: node, b: path![i + 1] as string, type: 'joins' }))
+        const views = snap.core.readEdgeMemories(pairs, input.data_window !== undefined ? { data_window: input.data_window } : {})
+        const entries = views.flatMap(v => v.entries)
+        if (entries.length > 0) {
+          const overflow = new Map<string, number>()
+          for (const v of views) {
+            for (const [type, n] of Object.entries(v.truncated ?? {})) overflow.set(type, (overflow.get(type) ?? 0) + n)
+          }
+          mount = {
+            edge_memories: entries,
+            ...overflow.size > 0 ? { edge_memories_truncated: Object.fromEntries([...overflow.entries()].sort(([a], [b]) => a < b ? -1 : 1)) } : {},
+          }
+        }
+      }
+      return toolSuccess({ scope: scopeStamp(snap), from, to, found: path !== null, path, ...mount })
     },
   )
 }
@@ -311,6 +414,7 @@ function registerGetJoinPath(server: McpServer, deps: ServerDeps): void {
 const GetRelationsInputSchema = z.object({
   target: z.string().min(1).describe('Node id to list relations from — `<kind>:<name>` (e.g. `table:dws_order`, `concept:gmv`); a bare name is also accepted and resolved against table/event/concept/metric in that order.'),
   type: z.string().min(1).optional().describe('Restrict to this relation type (an open vocabulary — `joins`/`derived_from`/`related_to` or a kind-declared type); omit for all types.'),
+  data_window: DataWindowSchema.optional(),
 })
 
 /** Registers `get_relations`. */
@@ -319,7 +423,7 @@ function registerGetRelations(server: McpServer, deps: ServerDeps): void {
     'get_relations',
     {
       title: 'List direct relations',
-      description: 'Direct relation-graph edges from one node, optionally filtered by type. Accepts a bare name or a `<kind>:<name>` id on input; `target` in the response always carries the resolved `<kind>:<name>` form. Returns an empty list for an unknown or unrelated node — not an error.',
+      description: 'Direct relation-graph edges from one node, optionally filtered by type. Accepts a bare name or a `<kind>:<name>` id on input; `target` in the response always carries the resolved `<kind>:<name>` form. Returns an empty list for an unknown or unrelated node — not an error. Each listed relation also surfaces its anchored memories (`memories`, ≤3 per edge, the full anchor naming the edge); pass data_window when the question involves specific dates.',
       inputSchema: GetRelationsInputSchema,
       annotations: { readOnlyHint: true },
     },
@@ -328,7 +432,23 @@ function registerGetRelations(server: McpServer, deps: ServerDeps): void {
       const graph = snap.core.getRelationGraph()
       const target = resolveNodeId(graph, input.target)
       const relations = graph.getRelated(target, input.type)
-      return toolSuccess({ scope: scopeStamp(snap), target, relations })
+      // ADR-0024 R1: ≤3 memories per listed edge, zero-tax per row. Like the
+      // join path, only live graph edges are listed — relation_missing is
+      // get_definition's edge_memories marking, never this list's.
+      const views = snap.core.readEdgeMemories(
+        relations.map(r => ({ a: target, b: r.targetId, type: r.type })),
+        input.data_window !== undefined ? { data_window: input.data_window } : {},
+      )
+      const rows = relations.map((r, i) => {
+        const view = views[i]
+        if (view === undefined || view.entries.length === 0) return r
+        return {
+          ...r,
+          memories: view.entries,
+          ...view.truncated !== undefined ? { memories_truncated: view.truncated } : {},
+        }
+      })
+      return toolSuccess({ scope: scopeStamp(snap), target, relations: rows })
     },
   )
 }

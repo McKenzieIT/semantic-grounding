@@ -24,10 +24,10 @@
  * ## The judgment regimen is a module, not prose (ADR-0027 R2)
  *
  * `MEMORY_JUDGMENT_REGIMEN` / {@link neighborJudgmentGuidance} /
- * {@link MEMORY_SUPERSEDE_NOTE} are the single source the tool description, the
- * receipt's per-neighbor guidance, and (#154, when it lands) `get_definition`'s
- * read-side note all render from — the server never judges "contrary" itself;
- * it teaches the judging agent.
+ * {@link MEMORY_SUPERSEDE_NOTE} / {@link MEMORY_READ_NOTE} are the single
+ * source the tool description, the receipt's per-neighbor guidance, and
+ * `get_definition`'s read-side note (#154) all render from — the server never
+ * judges "contrary" itself; it teaches the judging agent.
  *
  * @module tools/memory
  */
@@ -77,6 +77,14 @@ export function neighborJudgmentGuidance(id: string): string {
  * inlined only when at least one row saw a neighbor, zero-tax absent otherwise.
  */
 export const MEMORY_SUPERSEDE_NOTE = 'if this write is actually an update, re-issue it with supersedes referencing the entry it replaces (the neighbors above are the candidates)'
+
+/**
+ * The read-time note (ADR-0027 R2 ③ + R4): one sentence `get_definition`'s
+ * description appends, rendered from the same regimen module as the write
+ * side's — no second source. The server never adjudicates a contested pair;
+ * it teaches the reading agent not to take one side silently.
+ */
+export const MEMORY_READ_NOTE = 'Entries carrying contested_with are undecided disagreements between still-valid memories — do not take one side silently: present the differing sides (window / 口径 / filter) together to the user, or adjudicate per the record_memory regimen.'
 
 // ── The session identity (the mint lives in tools/promotion.ts since #136) ──────
 

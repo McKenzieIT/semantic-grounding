@@ -289,6 +289,11 @@ export class MemoryAnchorIndex {
   private readonly idsByAnchor = new Map<string, Set<string>>()
   /** Entries superseded with `wrong` — permanently hidden (ADR-0023 R2). */
   private readonly wrongHidden = new Set<string>()
+  /** Entries superseded with `outdated` by a still-visible successor — hidden
+   * without a query window, shown when the window covers the old segment
+   * (ADR-0024 R3). A declaration from a wrong-hidden superseder does not count:
+   * a retracted entry cannot keep its predecessor out. */
+  private readonly outdatedHidden = new Set<string>()
   /** Live `contradicts` pairs, both directions (ADR-0027 R4's 双向现算). */
   private readonly contestedWith = new Map<string, Set<string>>()
 
@@ -346,6 +351,7 @@ export class MemoryAnchorIndex {
     this.byId.clear()
     this.idsByAnchor.clear()
     this.wrongHidden.clear()
+    this.outdatedHidden.clear()
     this.contestedWith.clear()
     for (const { entry } of this.stamps.values()) {
       if (entry === null) continue
@@ -358,6 +364,15 @@ export class MemoryAnchorIndex {
     for (const entry of this.byId.values()) {
       for (const s of entry.supersedes ?? []) {
         if (s.reason === 'wrong') this.wrongHidden.add(s.id)
+      }
+    }
+    for (const entry of this.byId.values()) {
+      // An outdated supersession only holds while its declaring successor is
+      // itself visible — wrong-hiding the successor retracts the claim, and
+      // the predecessor comes back (the read regime re-checks windows on top).
+      if (this.wrongHidden.has(entry.id)) continue
+      for (const s of entry.supersedes ?? []) {
+        if (s.reason === 'outdated') this.outdatedHidden.add(s.id)
       }
     }
     for (const entry of this.byId.values()) {
@@ -398,9 +413,39 @@ export class MemoryAnchorIndex {
     return this.byId.get(id)
   }
 
+  /** How many parsed entries the index currently holds — the read surface's
+   * zero-tax gate (an empty memory dir skips every per-call universe build). */
+  size(): number {
+    return this.byId.size
+  }
+
   /** Is this id permanently hidden (superseded `wrong`)? */
   isWrongHidden(id: string): boolean {
     return this.wrongHidden.has(id)
+  }
+
+  /** Is this id superseded `outdated` by a still-visible successor (hidden
+   * without a window, shown when the query window covers its old segment)? */
+  isOutdatedHidden(id: string): boolean {
+    return this.outdatedHidden.has(id)
+  }
+
+  /** Every distinct anchor string some cached entry carries — the site
+   * enumerations (dead column fragments, dead edges) read this, since the
+   * anchor universe can only enumerate what is ALIVE. */
+  allAnchors(): string[] {
+    return [...this.idsByAnchor.keys()]
+  }
+
+  /** The edge anchors (`<a> -<type-> <b>`) in which `node` names either
+   * endpoint — live or dangling; existence is the caller's universe check. */
+  edgeAnchorsTouching(node: string): string[] {
+    const out: string[] = []
+    for (const anchor of this.idsByAnchor.keys()) {
+      if (!EDGE_ANCHOR_PATTERN.test(anchor)) continue
+      if (anchor.startsWith(`${node} `) || anchor.endsWith(` ${node}`)) out.push(anchor)
+    }
+    return out
   }
 
   /** The entry's live contested partners (ADR-0027 R4's `contested_with`). */
@@ -1006,4 +1051,523 @@ export async function appendMemoryPromotions(
     await opts.write(id, entry)
   }
   // The anchor index re-stats on next use; nothing to do here (the #152 pattern).
+}
+
+// ── The read surface (ADR-0024 R1–R7 / #154 + ADR-0026 R2–R4 + ADR-0027 R4) ──────
+
+/**
+ * The query's business-date window (ADR-0024 R2, ds granularity): `from`/`to`
+ * are inclusive YYYY-MM-DD bounds of the data the QUESTION is about — never
+ * "today", never the ask date.
+ */
+export interface MemoryDataWindow {
+  readonly from: string
+  readonly to: string
+}
+
+/** One surfaced memory entry — the row every mounted read returns. `body` is
+ * the full stored body (ADR-0024 R4: budgets count entries, never truncate
+ * text); a promoted entry instead surfaces folded (`promoted: true`, no body,
+ * no budget, not counted — R3). `anchor` is the site anchor verbatim (R5):
+ * column fragments stay `table:x#col`, edges stay `<起点id> -<类型-> <终点id>`,
+ * and a cross-anchor contested partner carries its OWN anchor (ADR-0027 R4). */
+export interface MemoryViewEntry {
+  readonly id: string
+  readonly type: MemoryType
+  readonly anchor: string
+  /** The full stored body (R4: budgets count entries, never truncate text).
+   * Absent exactly on folded promoted rows — reference only. */
+  readonly body?: string
+  readonly valid_from?: string
+  readonly valid_until?: string
+  readonly basis?: string
+  readonly contested_with?: readonly string[]
+  readonly column_missing?: true
+  readonly relation_missing?: true
+  readonly definition_missing?: true
+  readonly promoted?: true
+}
+
+/** Per-type counts of visible budgeted entries that did not fit the budget
+ * (ADR-0024 R4) — only non-zero types, absent when nothing was dropped. */
+export type MemoryTruncatedCounts = Readonly<Record<string, number>>
+
+/** `get_definition`'s mounted view (ADR-0024 R1): the node's own memories
+ * (node + column anchors) and the touching edges' memories, two independent
+ * budgets (8 / 5 — R4's `dim_server` split: a heavily-joined dimension's edge
+ * notes cannot crowd out its own 口径). */
+export interface NodeMemoriesView {
+  readonly memories: readonly MemoryViewEntry[]
+  readonly memories_truncated?: MemoryTruncatedCounts
+  readonly edge_memories: readonly MemoryViewEntry[]
+  readonly edge_memories_truncated?: MemoryTruncatedCounts
+}
+
+/** The not-found path's orphan list (ADR-0026 R3): entries anchored on a
+ * definition that no longer exists, each `definition_missing: true`. */
+export interface OrphanedMemoriesView {
+  readonly orphaned_memories: readonly MemoryViewEntry[]
+  readonly orphaned_memories_truncated?: MemoryTruncatedCounts
+}
+
+/** One relation-tool edge's mounted view (`get_join_path` / `get_relations`
+ * rows, budget 3 per edge). */
+export interface EdgeMemoriesView {
+  readonly entries: readonly MemoryViewEntry[]
+  readonly truncated?: MemoryTruncatedCounts
+}
+
+/** One unordered edge reference for the relation tools: `a`/`b` are resolved
+ * node ids; the canonical anchor spelling is whichever direction the index
+ * holds (the graph is walked undirected, anchors are directional). */
+export interface MemoryEdgePair {
+  readonly a: string
+  readonly b: string
+  readonly type: string
+}
+
+/**
+ * The read budgets — code constants, not config (ADR-0024 R4, on
+ * `LIST_DEFINITIONS_CAP`'s precedent): response sizing is a contract.
+ */
+export const MEMORY_NODE_BUDGET = 8
+export const MEMORY_EDGE_BUDGET = 5
+export const MEMORY_RELATION_BUDGET = 3
+
+/** Display order within a mounted list (ADR-0024 R4): caveat first (always
+ * shown, budget-free — ADR-0021 R8), then the budgeted priority
+ * practice > incident > inference > observation. */
+const READ_TYPE_ORDER: Readonly<Record<MemoryType, number>> = {
+  caveat: 0,
+  practice: 1,
+  incident: 2,
+  inference: 3,
+  observation: 4,
+}
+
+/** The one visibility regime input the composition needs beyond the index. */
+interface ReadRegime {
+  readonly index: MemoryAnchorIndex
+  readonly window: MemoryDataWindow | undefined
+}
+
+/** Do the entry's validity bounds and the query window intersect? Missing
+ * bounds are open; YYYY-MM-DD strings compare correctly as code units. */
+function segmentsIntersect(from: string | undefined, until: string | undefined, w: MemoryDataWindow): boolean {
+  if (until !== undefined && until < w.from) return false
+  if (from !== undefined && from > w.to) return false
+  return true
+}
+
+/**
+ * One entry's visibility under the regime (ADR-0024 R3, revised ADR-0021 R9):
+ * `hidden` (wrong — excluded before this is even called; or filtered by the
+ * window; or an outdated predecessor with no covering window), `folded`
+ * (promoted non-empty: always shown as a reference, never budgeted or
+ * counted), or `budgeted` (occupies the cap).
+ */
+function visibilityOf(entry: MemoryEntry, regime: ReadRegime): 'hidden' | 'budgeted' | 'folded' {
+  if ((entry.promoted?.length ?? 0) > 0) return 'folded'
+  const outdated = regime.index.isOutdatedHidden(entry.id)
+  const { window } = regime
+  if (window === undefined) return outdated ? 'hidden' : 'budgeted'
+  // With a window: incident/observation must intersect it; an outdated
+  // predecessor shows when the window reaches into its old segment
+  // (跨期对比 — the old 口径 is the right one for the old period).
+  if (outdated) return segmentsIntersect(entry.valid_from, entry.valid_until, window) ? 'budgeted' : 'hidden'
+  if (entry.type === 'incident' || entry.type === 'observation') {
+    return segmentsIntersect(entry.valid_from, entry.valid_until, window) ? 'budgeted' : 'hidden'
+  }
+  return 'budgeted'
+}
+
+/** The entry's contested partners that are themselves visible in this regime
+ * (ADR-0027 R4: a partner hidden by wrong or by outdated-in-this-regime
+ * dissolves the pair; a partner outside the data window is not pulled). */
+function liveContestedOf(entry: MemoryEntry, regime: ReadRegime): readonly MemoryEntry[] {
+  const out: MemoryEntry[] = []
+  for (const id of regime.index.contestedWithOf(entry.id)) {
+    const partner = regime.index.get(id)
+    if (partner === undefined) continue
+    if (visibilityOf(partner, regime) === 'hidden') continue
+    out.push(partner)
+  }
+  return out
+}
+
+/** Sort key half: recency is `valid_until` (missing → `valid_from`), else the
+ * recorded date — the "when was this true OF" axis, falling back to "when was
+ * it written" (ADR-0024 R4). YYYY-MM-DD vs an ISO date's day prefix compare
+ * correctly as code units. */
+function recencyKeyOf(entry: MemoryEntry): string {
+  return entry.valid_until ?? entry.valid_from ?? entry.recorded.at.slice(0, 10)
+}
+
+/** The mounted lists' order: type priority, then recency new→old, then a
+ * deterministic id tiebreak. */
+function compareForDisplay(a: MemoryEntry, b: MemoryEntry): number {
+  const pa = READ_TYPE_ORDER[a.type]
+  const pb = READ_TYPE_ORDER[b.type]
+  if (pa !== pb) return pa - pb
+  const ra = recencyKeyOf(a)
+  const rb = recencyKeyOf(b)
+  if (ra !== rb) return ra < rb ? 1 : -1
+  const aa = a.recorded.at
+  const ab = b.recorded.at
+  if (aa !== ab) return aa < ab ? 1 : -1
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+}
+
+/** What one mounting site knows about itself: the anchors that bind entries
+ * to it, whether a given anchor's target is still alive (drives `column_missing` /
+ * `relation_missing` and the live-anchor preference), the budget, and whether
+ * every row is by construction dangling (the orphan list). */
+interface MountSite {
+  readonly anchors: ReadonlySet<string>
+  readonly isLive: (anchor: string) => boolean
+  readonly cap: number
+  readonly definitionMissing?: boolean
+}
+
+/** The anchor an entry surfaces with at this site (ADR-0024 R5): among the
+ * entry's anchors that bind to the site, prefer a LIVE column fragment (most
+ * specific, R5's own example shape), then any live anchor, then dead ones —
+ * stored order within a tier. A pulled contested partner that matches no site
+ * anchor carries its own first anchor (ADR-0027 R4's 跨锚点 rule). */
+function siteAnchorFor(entry: MemoryEntry, site: MountSite): string {
+  const matching = entry.anchors.filter(a => site.anchors.has(a))
+  if (matching.length === 0) return entry.anchors[0] ?? ''
+  const isColumn = (a: string): boolean => a.includes('#')
+  const tier = (a: string): number => {
+    const live = site.isLive(a)
+    if (live && isColumn(a)) return 0
+    if (live) return 1
+    if (isColumn(a)) return 2
+    return 3
+  }
+  let best = matching[0] as string
+  let bestTier = tier(best)
+  for (const a of matching.slice(1)) {
+    const t = tier(a)
+    if (t < bestTier) {
+      best = a
+      bestTier = t
+    }
+  }
+  return best
+}
+
+/** One composed site's result: the shown rows plus the per-type overflow. */
+interface SiteComposition {
+  readonly shown: readonly MemoryViewEntry[]
+  readonly truncated: MemoryTruncatedCounts | undefined
+}
+
+/** Render one shown entry as its row (zero-tax key discipline: optional keys
+ * are spread only when they apply). */
+function viewEntryOf(
+  entry: MemoryEntry,
+  anchor: string,
+  site: MountSite,
+  contested: readonly string[],
+): MemoryViewEntry {
+  const folded = (entry.promoted?.length ?? 0) > 0
+  const deadColumn = anchor.includes('#') && !site.isLive(anchor)
+  const deadEdge = EDGE_ANCHOR_PATTERN.test(anchor) && !site.isLive(anchor)
+  return {
+    id: entry.id,
+    type: entry.type,
+    anchor,
+    ...folded ? { promoted: true as const } : { body: entry.body },
+    ...entry.valid_from !== undefined ? { valid_from: entry.valid_from } : {},
+    ...entry.valid_until !== undefined ? { valid_until: entry.valid_until } : {},
+    ...entry.basis !== undefined ? { basis: entry.basis } : {},
+    ...contested.length > 0 ? { contested_with: contested } : {},
+    ...deadColumn ? { column_missing: true as const } : {},
+    ...deadEdge ? { relation_missing: true as const } : {},
+    ...site.definitionMissing === true ? { definition_missing: true as const } : {},
+  }
+}
+
+/**
+ * Compose one mounting site (ADR-0024 R3/R4 + ADR-0027 R4):
+ *
+ * 1. filter candidates to the regime's visibility — wrong never reaches here
+ *    (the index queries already exclude it), promoted entries fold outside the
+ *    budget, caveats are always shown and never budgeted;
+ * 2. order by type priority then recency; caveat rows ride ahead of the
+ *    budgeted seeds without consuming cap slots;
+ * 3. contested companions travel (伙伴随行): every SHOWN entry pulls its
+ *    visible partners immediately after itself, transitively — companions may
+ *    exceed the cap, and nothing beyond the cap is dropped while one of its
+ *    shown entries contests it, so a pair is never split by truncation;
+ * 4. everything visible-and-budgeted that did not surface is reported per
+ *    type in `truncated`.
+ *
+ * @param candidates - still-valid entries anchored on ≥1 site anchor
+ *   (wrong-hidden already excluded, deduplicated).
+ * @param regime - the index + query window.
+ * @param site - the site's anchors, liveness, budget, and orphan marking.
+ */
+function composeSite(
+  candidates: readonly MemoryEntry[],
+  regime: ReadRegime,
+  site: MountSite,
+): SiteComposition {
+  const visible = candidates.filter(e => visibilityOf(e, regime) !== 'hidden')
+  // Sorted once; caveat rows are part of the same order (READ_TYPE_ORDER 0)
+  // but never consume budget slots.
+  const ordered = [...visible].sort(compareForDisplay)
+  const caveats = ordered.filter(e => e.type === 'caveat')
+  const budgeted = ordered.filter(e => e.type !== 'caveat' && visibilityOf(e, regime) === 'budgeted')
+  const folded = ordered.filter(e => visibilityOf(e, regime) === 'folded')
+
+  const shownEntries: MemoryEntry[] = []
+  const shownIds = new Set<string>()
+  // Seeds: the budgeted head, plus every caveat and folded row (both ride
+  // outside the cap but are "shown", so their partners travel).
+  const seeds = [...budgeted.slice(0, site.cap), ...caveats, ...folded]
+  // 伙伴紧随排名高者: walk the seed order, emitting each seed then its
+  // not-yet-shown partners (and recursively theirs — a partner being shown
+  // pulls in turn). Caveats lead the display order, so re-walk `ordered` for
+  // seed sequencing: every ordered entry that is a seed emits first-come.
+  const isSeed = new Set(seeds.map(e => e.id))
+  const emit = (entry: MemoryEntry): void => {
+    if (shownIds.has(entry.id)) return
+    shownIds.add(entry.id)
+    shownEntries.push(entry)
+  }
+  for (const entry of ordered) {
+    if (!isSeed.has(entry.id)) continue
+    emit(entry)
+    // Pull this entry's partners right behind it (breadth-first closure).
+    const queue = [...liveContestedOf(entry, regime)]
+    while (queue.length > 0) {
+      const partner = queue.shift() as MemoryEntry
+      if (shownIds.has(partner.id)) continue
+      emit(partner)
+      queue.push(...liveContestedOf(partner, regime))
+    }
+  }
+
+  const shown = shownEntries.map(entry => viewEntryOf(
+    entry,
+    siteAnchorFor(entry, site),
+    site,
+    liveContestedOf(entry, regime).map(p => p.id),
+  ))
+  // Overflow = visible budgeted entries that did not surface — companions
+  // pulled over the cap are shown, so they are NOT overflow (ADR-0027 R4).
+  const overflow = new Map<string, number>()
+  for (const e of budgeted) {
+    if (shownIds.has(e.id)) continue
+    overflow.set(e.type, (overflow.get(e.type) ?? 0) + 1)
+  }
+  return {
+    shown,
+    truncated: overflow.size > 0 ? Object.fromEntries([...overflow.entries()].sort(([a], [b]) => a < b ? -1 : 1)) : undefined,
+  }
+}
+
+/** The empty view — the zero-tax arm every caller spreads conditionally. */
+const EMPTY_NODE_VIEW: NodeMemoriesView = { memories: [], edge_memories: [] }
+
+/**
+ * Is one edge anchor's relation currently walkable — declared in the anchor
+ * universe AND both endpoint nodes alive? The universe mirrors the graph's
+ * declarations (a `dimension_refs` entry survives its target file's deletion),
+ * but ADR-0026 R2's `relation_missing` marks exactly the entries whose edge
+ * target no longer exists, so the read side demands both halves.
+ */
+function edgeIsLive(universe: AnchorUniverse, anchor: string): boolean {
+  if (!universe.edges.has(anchor)) return false
+  const m = EDGE_ANCHOR_PATTERN.exec(anchor)
+  if (m === null) return false
+  return universe.nodes.has(m[1] as string) && universe.nodes.has(m[3] as string)
+}
+
+/** The query options every read-surface entry point takes. */
+export interface MemoryReadOptions {
+  readonly data_window?: MemoryDataWindow | undefined
+}
+
+/**
+ * `get_definition`'s mount (ADR-0024 R1): the node's own memories (node +
+ * column anchors, `metric:` nodes exact — no host-table bleed, no columns) and
+ * every touching edge's memories (live or dangling — ADR-0026 R2), two
+ * independent budgets. Empty when the corpus holds no memory at all.
+ * @param root - the corpus root.
+ * @param nodeId - the canonical `<kind>:<名>` node id.
+ * @param opts - the query window.
+ */
+export function readNodeMemoriesView(root: string, nodeId: string, opts: MemoryReadOptions = {}): NodeMemoriesView {
+  const index = memoryAnchorIndexFor(root)
+  index.refresh(root)
+  if (index.size() === 0) return EMPTY_NODE_VIEW
+  const universe = buildAnchorUniverse(root)
+  const regime: ReadRegime = { index, window: opts.data_window }
+  const isLiveNodeAnchor = (anchor: string): boolean => {
+    const hashAt = anchor.indexOf('#')
+    if (hashAt > 0) {
+      const cols = universe.columns.get(anchor.slice(0, hashAt))
+      return cols !== undefined && cols.has(anchor.slice(hashAt + 1))
+    }
+    if (EDGE_ANCHOR_PATTERN.test(anchor)) return edgeIsLive(universe, anchor)
+    return universe.nodes.has(anchor)
+  }
+
+  // The node site: the node itself, its live columns, and the column
+  // fragments the index still remembers (their columns may be gone — those
+  // surface with column_missing, ADR-0024 R5's 降级 arm).
+  const nodeAnchors = new Set<string>([nodeId])
+  const columnPrefix = `${nodeId}#`
+  for (const anchor of index.allAnchors()) {
+    if (anchor.startsWith(columnPrefix)) nodeAnchors.add(anchor)
+  }
+  const columns = universe.columns.get(nodeId)
+  if (columns !== undefined) for (const col of columns) nodeAnchors.add(`${nodeId}#${col}`)
+  const nodeSite = composeSite(index.validEntriesAnchoredOnAny([...nodeAnchors]), regime, {
+    anchors: nodeAnchors,
+    isLive: isLiveNodeAnchor,
+    cap: MEMORY_NODE_BUDGET,
+  })
+
+  // The edge site: every index edge anchor touching the node — including
+  // dangling ones (ADR-0026 R2: a removed relation's memories stay on both
+  // ends, marked; a fully-missing edge with one surviving end hangs there).
+  // Metric nodes take no edges (ADR-0024 R1).
+  let edgeSite: SiteComposition = { shown: [], truncated: undefined }
+  if (!nodeId.startsWith('metric:')) {
+    const touching = index.edgeAnchorsTouching(nodeId)
+    if (touching.length > 0) {
+      edgeSite = composeSite(index.validEntriesAnchoredOnAny(touching), regime, {
+        anchors: new Set(touching),
+        isLive: isLiveNodeAnchor,
+        cap: MEMORY_EDGE_BUDGET,
+      })
+    }
+  }
+
+  return {
+    memories: nodeSite.shown,
+    ...nodeSite.truncated !== undefined ? { memories_truncated: nodeSite.truncated } : {},
+    edge_memories: edgeSite.shown,
+    ...edgeSite.truncated !== undefined ? { edge_memories_truncated: edgeSite.truncated } : {},
+  }
+}
+
+/**
+ * The not-found path's orphan list (ADR-0026 R3): entries anchored on a
+ * definition that no longer exists — the node itself, its column fragments
+ * (all dead now), and edges whose OTHER endpoint is dead too (an edge with a
+ * surviving end hangs there instead, R2). Visibility / budget / ordering
+ * follow the node mount's rules; every row carries `definition_missing: true`.
+ * @param root - the corpus root.
+ * @param nodeId - the canonical node id the caller could not load.
+ * @param opts - the query window.
+ */
+export function readOrphanedMemoriesView(root: string, nodeId: string, opts: MemoryReadOptions = {}): OrphanedMemoriesView {
+  const index = memoryAnchorIndexFor(root)
+  index.refresh(root)
+  if (index.size() === 0) return { orphaned_memories: [] }
+  const universe = buildAnchorUniverse(root)
+  const regime: ReadRegime = { index, window: opts.data_window }
+  const anchors = new Set<string>([nodeId])
+  const columnPrefix = `${nodeId}#`
+  for (const anchor of index.allAnchors()) {
+    if (anchor.startsWith(columnPrefix)) anchors.add(anchor)
+  }
+  // Dead-both-ends edges only: with a surviving far end the entry hangs there.
+  for (const anchor of index.edgeAnchorsTouching(nodeId)) {
+    const m = EDGE_ANCHOR_PATTERN.exec(anchor)
+    if (m === null) continue
+    const other = m[1] === nodeId ? m[3] : m[1]
+    if (!universe.nodes.has(other as string)) anchors.add(anchor)
+  }
+  const site = composeSite(index.validEntriesAnchoredOnAny([...anchors]), regime, {
+    anchors,
+    isLive: () => false,
+    cap: MEMORY_NODE_BUDGET,
+    definitionMissing: true,
+  })
+  return {
+    orphaned_memories: site.shown,
+    ...site.truncated !== undefined ? { orphaned_memories_truncated: site.truncated } : {},
+  }
+}
+
+/**
+ * `search_definitions`' per-hit counts (ADR-0024 R6 + ADR-0027 R4): per-type
+ * counts of the entries `get_definition` would show on the node in the
+ * NO-window regime — wrong / outdated-old-segment / folded-promoted excluded,
+ * caveats and traveling contested companions included — so「搜索见 3 条、
+ * 点进去见 3 条」. Counts the node's own site only (not edge memories: a
+ * different budget and list). Uncapped by design: beyond the budget the
+ * detail view says so with its own truncated counters.
+ * @param root - the corpus root.
+ * @param nodeIds - canonical node ids of the ranked hits.
+ * @returns per-node per-type counts; nodes with nothing to show are absent.
+ */
+export function memoryCountsByNode(root: string, nodeIds: readonly string[]): ReadonlyMap<string, Readonly<Record<string, number>>> {
+  const out = new Map<string, Readonly<Record<string, number>>>()
+  const index = memoryAnchorIndexFor(root)
+  index.refresh(root)
+  if (index.size() === 0 || nodeIds.length === 0) return out
+  const regime: ReadRegime = { index, window: undefined }
+  for (const nodeId of nodeIds) {
+    const anchors = new Set<string>([nodeId])
+    const columnPrefix = `${nodeId}#`
+    for (const anchor of index.allAnchors()) {
+      if (anchor.startsWith(columnPrefix)) anchors.add(anchor)
+    }
+    // cap = everything: counts want the full visible set, not the head.
+    const composed = composeSite(index.validEntriesAnchoredOnAny([...anchors]), regime, {
+      anchors,
+      isLive: () => true,
+      cap: Number.MAX_SAFE_INTEGER,
+    })
+    const counts = new Map<string, number>()
+    for (const entry of composed.shown) {
+      if (entry.promoted === true) continue
+      counts.set(entry.type, (counts.get(entry.type) ?? 0) + 1)
+    }
+    if (counts.size > 0) {
+      out.set(nodeId, Object.fromEntries([...counts.entries()].sort(([a], [b]) => a < b ? -1 : 1)))
+    }
+  }
+  return out
+}
+
+/**
+ * The relation tools' per-edge mount (ADR-0024 R1: ≤3 per edge): resolves the
+ * pair's canonical anchor spelling(s) from the index — the graph is walked
+ * undirected while anchors carry the graph's logical direction — and composes
+ * each edge's site. The edges themselves come from the live graph, so no
+ * `relation_missing` can arise here.
+ * @param root - the corpus root.
+ * @param pairs - the response's edges as unordered endpoint pairs + type.
+ * @param opts - the query window.
+ * @returns one view per input pair, input order.
+ */
+export function readEdgeMemoriesForPairs(
+  root: string,
+  pairs: readonly MemoryEdgePair[],
+  opts: MemoryReadOptions = {},
+): readonly EdgeMemoriesView[] {
+  const index = memoryAnchorIndexFor(root)
+  index.refresh(root)
+  if (index.size() === 0 || pairs.length === 0) return pairs.map(() => ({ entries: [] as const }))
+  const regime: ReadRegime = { index, window: opts.data_window }
+  return pairs.map(pair => {
+    const anchors = [`${pair.a} -${pair.type}-> ${pair.b}`, `${pair.b} -${pair.type}-> ${pair.a}`]
+    const site = composeSite(index.validEntriesAnchoredOnAny(anchors), regime, {
+      anchors: new Set(anchors),
+      isLive: () => true,
+      cap: MEMORY_RELATION_BUDGET,
+    })
+    return {
+      entries: site.shown,
+      ...site.truncated !== undefined ? { truncated: site.truncated } : {},
+    }
+  })
 }

@@ -118,15 +118,25 @@ import { loadEvents, loadTables, loadConcepts, loadRawDir, loadConceptDefinition
 // ADR-0023 / #152: the data-memory layer's write orchestration + incremental
 // anchor index (memory.ts, off-barrel internal module — the same split as
 // item-write.ts; the Core methods below are the public route, so the barrel's
-// ADR-0003 name list does not grow).
+// ADR-0003 name list does not grow). ADR-0024 / #154 adds the read surface's
+// projection (view composition) to the same module.
 import {
   recordMemoryBatch,
   countMemoriesOnEdges as countMemoriesOnEdgesForRoot,
   checkReplicatedEvidence as checkReplicatedEvidenceForRoot,
   appendMemoryPromotions,
+  readNodeMemoriesView,
+  readOrphanedMemoriesView,
+  memoryCountsByNode as memoryCountsByNodeForRoot,
+  readEdgeMemoriesForPairs,
   type MemoryDraft,
   type MemoryEdgeAnchor,
   type MemoryPromotionAppend,
+  type MemoryEdgePair,
+  type MemoryReadOptions,
+  type NodeMemoriesView,
+  type OrphanedMemoriesView,
+  type EdgeMemoriesView,
   type RecordMemoriesResult,
   type ReplicationCheckResult,
 } from './memory.ts'
@@ -1565,6 +1575,87 @@ export class SemanticGroundingCore {
    */
   countMemoriesOnEdges(edges: readonly MemoryEdgeAnchor[]): number {
     return countMemoriesOnEdgesForRoot(this.semanticRoot, edges)
+  }
+
+  // ── Data-memory read surface (ADR-0024 / #154 + ADR-0026 R2–R4 + ADR-0027 R4) ─
+  //
+  // Four thin forwards onto memory.ts's view composition (the same off-barrel
+  // split the write half takes). The MCP read tools are the consumers; the
+  // return types are structural — callers spread them, so the barrel's
+  // ADR-0003 name list does not grow.
+
+  /**
+   * `get_definition`'s memory mount (ADR-0024 R1): entries anchored on the
+   * node (its column fragments included; a `metric:` node takes exact-anchor
+   * entries only — no host-table bleed) under one budget (8), and entries
+   * anchored on any touching edge — live or dangling (ADR-0026 R2: a removed
+   * relation's memories stay on both ends, marked `relation_missing`) — under
+   * an independent budget (5, so a heavily-joined dimension's edge notes
+   * cannot crowd out its own 口径).
+   *
+   * Visibility (R3): wrong never; promoted folds (no body, no budget, not
+   * counted); caveats always shown, never budgeted; with `data_window`,
+   * incidents/observations must intersect it and outdated predecessors show
+   * when the window reaches their old segment; without it nothing
+   * time-bounded hides and recency orders. Ordering (R4): caveat, then
+   * practice > incident > inference > observation, recency within type.
+   * Contested companions travel (ADR-0027 R4): a shown entry's visible
+   * partners surface right behind it — over the cap if needed, cross-anchor
+   * included with their own `anchor` — and `contested_with` names them.
+   * Overflow reports per type in `*_truncated`.
+   *
+   * Zero-tax: an empty memory layer yields two empty lists — the caller keeps
+   * every key absent and the response stays byte-identical.
+   * @param nodeId - the canonical `<kind>:<名>` node id.
+   * @param opts - `data_window` (ds granularity) when the question involves
+   *   specific dates.
+   */
+  readDefinitionMemories(nodeId: string, opts: MemoryReadOptions = {}): NodeMemoriesView {
+    return readNodeMemoriesView(this.semanticRoot, nodeId, opts)
+  }
+
+  /**
+   * The not-found path's orphan list (ADR-0026 R3): for a definition that no
+   * longer exists, the entries still anchored on it — the node itself, its
+   * column fragments, and edges whose other endpoint is gone too (an edge
+   * with a surviving end hangs on that end, R2). Same visibility / budget /
+   * ordering rules as the live mount; every row carries
+   * `definition_missing: true`. Read-time only: nothing is written, and a
+   * target restored (the file back) restores the normal mount untouched.
+   * @param nodeId - the canonical node id the caller could not load.
+   * @param opts - `data_window`, as above.
+   */
+  readOrphanedMemories(nodeId: string, opts: MemoryReadOptions = {}): OrphanedMemoriesView {
+    return readOrphanedMemoriesView(this.semanticRoot, nodeId, opts)
+  }
+
+  /**
+   * `search_definitions`' per-hit counts (ADR-0024 R6): per-type counts of
+   * the entries `readDefinitionMemories` would show on each node in the
+   * no-window regime (wrong / outdated-old-segment / folded-promoted
+   * excluded; caveats and traveling contested companions included — ADR-0027
+   * R4), so the counts and the click-through agree. Uncapped: beyond the
+   * budget the detail view reports its own `*_truncated`.
+   * @param nodeIds - the canonical node ids of the ranked hits.
+   * @returns per-node per-type counts; nodes with nothing visible are absent.
+   */
+  memoryCountsByNode(nodeIds: readonly string[]): ReadonlyMap<string, Readonly<Record<string, number>>> {
+    return memoryCountsByNodeForRoot(this.semanticRoot, nodeIds)
+  }
+
+  /**
+   * The relation tools' per-edge mount (ADR-0024 R1: ≤3 per edge): one view
+   * per unordered endpoint pair, each composed under the same visibility and
+   * ordering rules. The edges come from the live graph, so no
+   * `relation_missing` arises here; dangling edge anchors surface only on
+   * `get_definition`'s `edge_memories`.
+   * @param pairs - the response's edges as `{a, b, type}` (a/b resolved ids).
+   * @param opts - `data_window`, as above.
+   * @returns one `{entries, [truncated]}` per pair, input order; entries each
+   *   carry the canonical-direction edge string as `anchor`.
+   */
+  readEdgeMemories(pairs: readonly MemoryEdgePair[], opts: MemoryReadOptions = {}): readonly EdgeMemoriesView[] {
+    return readEdgeMemoriesForPairs(this.semanticRoot, pairs, opts)
   }
 
   /**
