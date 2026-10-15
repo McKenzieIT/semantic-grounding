@@ -20,6 +20,11 @@
  * - the incremental index: stat-every-file, parse-only-what-moved, sees writes
  *   this process did not make (ADR-0023 R1).
  * - `countMemoriesOnEdges` (ADR-0026 R5's substrate half).
+ * - the replicated-promotion guard's every arm (#136 / ADR-0021 R6/R7 +
+ *   ADR-0027 R6): distinct-session distinct-day 正路, same-session / same-day /
+ *   wrong-excluded-too-few / incident / contested 拒路 — and the `promoted`
+ *   back-pointer append (ADR-0023 R6): append-only per file, server-stamped
+ *   `{to, at, session}`, visible to the anchor index.
  *
  * @see docs/adr/0023-memory-storage-shape-and-node-ids.md
  * @see docs/adr/0026-dangling-memory-anchors.md
@@ -436,5 +441,145 @@ describe('countMemoriesOnEdges', () => {
       supersedes: [{ id: targetId, reason: 'wrong' }],
     }, 's2')
     expect(core.countMemoriesOnEdges([{ from: 'table:dws_acc', type: 'joins', to: 'table:dim_shop' }])).toBe(0)
+  })
+})
+
+// ── The replicated-promotion guard + back-pointer append (#136) ─────────────
+
+/**
+ * Re-stamp one memory file's `recorded.at` — the test stand-in for "recorded
+ * on another UTC day" (`recorded.at` is server-written now, so a same-test
+ * second entry would share today's date). Plain fs, the same "another
+ * process's write" posture the index tests take.
+ */
+function reStampRecordedAt(id: string, at: string): void {
+  const entry = readMemoryYaml(id)
+  const recorded = entry.recorded as Record<string, unknown>
+  recorded.at = at
+  writeFileSync(join(root, 'memory', `${id}.yaml`), dumpYaml(entry), 'utf8')
+}
+
+describe('checkReplicatedEvidence — the ③ server-side guard (ADR-0021 R6/R7 + ADR-0027 R6)', () => {
+  it('two counting entries from distinct sessions on distinct UTC days verify', async () => {
+    fullCorpus()
+    const core = newCore()
+    const a = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'join 后行数 877。', valid_from: '2026-10-01', valid_until: '2026-10-01' }, 'session-a')
+    const b = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'join 后行数 877。', valid_from: '2026-10-02', valid_until: '2026-10-02' }, 'session-b')
+    reStampRecordedAt(a.id, '2026-10-01T09:00:00.000Z')
+    reStampRecordedAt(b.id, '2026-10-02T10:00:00.000Z')
+    const check = core.checkReplicatedEvidence([a.id, b.id])
+    expect(check).toEqual({ ok: true, effective: [a.id, b.id] })
+  })
+
+  it('same-session citations reject naming the two ids; same-day citations reject naming the shared day', async () => {
+    fullCorpus()
+    const core = newCore()
+    const a = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'first', valid_from: '2026-10-01', valid_until: '2026-10-01' }, 'session-a')
+    const b = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'second', valid_from: '2026-10-02', valid_until: '2026-10-02' }, 'session-a')
+    expect(b.id).not.toBe(a.id) // distinct bodies: no deterministic NOOP
+    reStampRecordedAt(b.id, '2026-10-02T10:00:00.000Z') // distinct day, SAME session
+    const sameSession = core.checkReplicatedEvidence([a.id, b.id])
+    expect(sameSession).toMatchObject({ ok: false, reason: 'same_session' })
+    if (!sameSession.ok) {
+      expect(sameSession.error).toContain(a.id)
+      expect(sameSession.error).toContain(b.id)
+    }
+
+    const c = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'third', valid_from: '2026-10-03', valid_until: '2026-10-03' }, 'session-c')
+    const d = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'fourth', valid_from: '2026-10-04', valid_until: '2026-10-04' }, 'session-d')
+    // Both re-stamped onto the SAME UTC day (different clocks, one calendar day).
+    reStampRecordedAt(c.id, '2026-10-05T01:00:00.000Z')
+    reStampRecordedAt(d.id, '2026-10-05T23:00:00.000Z')
+    const sameDay = core.checkReplicatedEvidence([c.id, d.id])
+    expect(sameDay).toMatchObject({ ok: false, reason: 'same_day' })
+    if (!sameDay.ok) {
+      expect(sameDay.error).toContain(c.id)
+      expect(sameDay.error).toContain('2026-10-05')
+    }
+  })
+
+  it('a wrong-superseded citation does not count — it drops, and the survivors must still be ≥2', async () => {
+    fullCorpus()
+    const core = newCore()
+    const a = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'first', valid_from: '2026-10-01', valid_until: '2026-10-01' }, 'session-a')
+    const b = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'second', valid_from: '2026-10-02', valid_until: '2026-10-02' }, 'session-b')
+    const doomed = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'third', valid_from: '2026-10-03', valid_until: '2026-10-03' }, 'session-c')
+    reStampRecordedAt(a.id, '2026-10-01T09:00:00.000Z')
+    reStampRecordedAt(b.id, '2026-10-02T09:00:00.000Z')
+    await recordOne(core, {
+      type: 'observation', anchors: ['dws_acc'], body: 'retraction', valid_from: '2026-10-04', valid_until: '2026-10-04',
+      supersedes: [{ id: doomed.id, reason: 'wrong' }],
+    }, 'session-d')
+    // Two counting + one wrong-hidden → ok, and the wrong one is NOT `effective`.
+    const okCheck = core.checkReplicatedEvidence([a.id, doomed.id, b.id])
+    expect(okCheck).toEqual({ ok: true, effective: [a.id, b.id] })
+    // One counting + one wrong-hidden → too_few, naming the excluded id.
+    const few = core.checkReplicatedEvidence([a.id, doomed.id])
+    expect(few).toMatchObject({ ok: false, reason: 'too_few' })
+    if (!few.ok) expect(few.error).toContain(doomed.id)
+  })
+
+  it('an incident citation rejects outright (ADR-0021 R7 — incidents never promote)', async () => {
+    fullCorpus()
+    const core = newCore()
+    const a = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'x', valid_from: '2026-10-01', valid_until: '2026-10-01' }, 'session-a')
+    const inc = await recordOne(core, { type: 'incident', anchors: ['dws_acc'], body: '上游未产出。', valid_from: '2026-10-02', valid_until: '2026-10-02' }, 'session-b')
+    const check = core.checkReplicatedEvidence([a.id, inc.id])
+    expect(check).toMatchObject({ ok: false, reason: 'incident' })
+    if (!check.ok) expect(check.error).toContain(inc.id)
+  })
+
+  it('a contested citation rejects naming the pair and the adjudication remedy (ADR-0027 R6)', async () => {
+    fullCorpus()
+    const core = newCore()
+    const x = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'no amplification', valid_from: '2026-09-15', valid_until: '2026-10-15' }, 'session-a')
+    const y = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: '3x amplification', valid_from: '2026-09-01', valid_until: '2026-09-30', contradicts: [x.id] }, 'session-b')
+    const other = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'x', valid_from: '2026-10-01', valid_until: '2026-10-01' }, 'session-c')
+    const check = core.checkReplicatedEvidence([x.id, other.id])
+    expect(check).toMatchObject({ ok: false, reason: 'contested' })
+    if (!check.ok) {
+      expect(check.error).toContain(x.id)
+      expect(check.error).toContain(y.id)
+      expect(check.error).toContain('adjudicate')
+    }
+    // ① source / ② user-stated are not this guard's business — only the
+    // citation goes through it, and the caller never reaches here without one.
+    expect(core.checkReplicatedEvidence(['mem-20260101-aaaaaaaa'])).toMatchObject({ ok: false, reason: 'not_found' })
+  })
+})
+
+describe('appendPromotionBackpointers — the same-commit `promoted` append (ADR-0023 R6)', () => {
+  it('appends {to, at, session} onto each cited file, leaving every other field untouched', async () => {
+    fullCorpus()
+    const core = newCore()
+    const a = await recordOne(core, { type: 'observation', anchors: ['dws_acc'], body: 'join 后行数 877。', valid_from: '2026-10-01', valid_until: '2026-10-01' }, 'session-a')
+    const b = await recordOne(core, { type: 'practice', anchors: ['concept:payment'], body: '口径。', basis: 'basis' }, 'session-b')
+    reStampRecordedAt(a.id, '2026-10-01T09:00:00.000Z')
+    reStampRecordedAt(b.id, '2026-10-02T09:00:00.000Z')
+    const check = core.checkReplicatedEvidence([a.id, b.id])
+    if (!check.ok) throw new Error(`guard rejected: ${check.error}`)
+    await core.appendPromotionBackpointers(
+      check.effective.flatMap(id => [id, id].map(() => ({ id, to: 'concept:payment' }))),
+      { session: 'session-promote' },
+    )
+    for (const id of [a.id, b.id]) {
+      const entry = readMemoryYaml(id)
+      const promoted = entry.promoted as ReadonlyArray<Record<string, unknown>>
+      expect(promoted).toHaveLength(1) // duplicate (id,to) pairs collapse per file
+      expect(promoted[0]).toMatchObject({ to: 'concept:payment', session: 'session-promote' })
+      expect(typeof promoted[0]?.at).toBe('string')
+      // Append-only: everything the entry was is still exactly what it was.
+      expect(entry.body).toBeDefined()
+      expect((entry.recorded as Record<string, unknown>).session).toBe(id === a.id ? 'session-a' : 'session-b')
+    }
+    // A second promotion to a different target appends, never replaces.
+    await core.appendPromotionBackpointers([{ id: a.id, to: 'table:dws_acc' }], { session: 'session-promote-2' })
+    const again = readMemoryYaml(a.id).promoted as ReadonlyArray<Record<string, unknown>>
+    expect(again).toHaveLength(2)
+    expect(again[1]).toMatchObject({ to: 'table:dws_acc', session: 'session-promote-2' })
+    // The anchor index sees the appended files on its next refresh.
+    const index = memoryAnchorIndexFor(root)
+    index.refresh(root)
+    expect((index.get(a.id)?.promoted as unknown[] | undefined)?.length).toBe(2)
   })
 })

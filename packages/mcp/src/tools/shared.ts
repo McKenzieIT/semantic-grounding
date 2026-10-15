@@ -118,6 +118,63 @@ export const UPDATE_COMMON_FIELDS = {
   expected_version: ExpectedVersionSchema,
 } as const
 
+// ── Promotion evidence (ADR-0021 R5–R7 / #136) ───────────────────────────────────
+
+/**
+ * The `evidence` block the five definition-write tools accept (#136,
+ * ADR-0021 R5/R6): what licenses this write as a promotion out of the memory
+ * layer. ① `source` (a deterministic source — DDL / column comment / doc /
+ * code — `source` required, naming it concretely) and ② `user-stated` (a
+ * human stated it in the conversation) may promote directly; ③ `replicated`
+ * must cite the memory ids it rests on (`memories` required) — the server
+ * verifies them before the write may land (≥2 counting, distinct sessions,
+ * distinct UTC days, no incidents, no live contested pairs) and appends the
+ * `promoted` back-pointer onto each cited entry in the same commit. The
+ * cross-kind rules live in one `superRefine` here rather than in five
+ * handlers; well-formedness of the ids themselves is the substrate guard's
+ * (the #152 precedent: `supersedes` ids are plain strings on the wire too).
+ *
+ * Deliberately NOT part of `CREATE_COMMON_FIELDS`: `record_memory` writes
+ * memory, not facts — a memory write is never a promotion, so it takes no
+ * `evidence`; removal and enrichment verbs likewise.
+ */
+export const PromotionEvidenceSchema = z.object({
+  kind: z.enum(['source', 'user-stated', 'replicated'])
+    .describe('What licenses this promotion (ADR-0021 R6): "source" = a deterministic source (DDL / column comment / documentation / code — pass `source` naming it); "user-stated" = a human stated it in the conversation; "replicated" = independent replication (pass `memories` citing the entries — the server verifies ≥2 counting, distinct sessions, distinct UTC days, no incidents, no contested entries before the write lands).'),
+  source: z.string().min(1).optional()
+    .describe('Required iff kind="source": where the deterministic source is, named concretely (e.g. "dws_x.ch_id 的列注释"). Rides the X-SG-Evidence-Source trailer.'),
+  memories: z.array(z.string().min(1)).min(1).optional()
+    .describe('Required iff kind="replicated": the memory ids (mem-<YYYYMMDD>-<8 base32>) this replication rests on. Rides the X-SG-Memory trailer; each counting entry gets a `promoted` back-pointer appended server-side in the same commit.'),
+}).strict()
+  .superRefine((v, ctx) => {
+    if (v.kind === 'source' && v.source === undefined) {
+      ctx.addIssue({ code: 'custom', message: 'kind "source" requires `source` — name where the deterministic source is (DDL / column comment / documentation / code)' })
+    }
+    if (v.kind !== 'source' && v.source !== undefined) {
+      ctx.addIssue({ code: 'custom', message: '`source` only applies to kind "source"' })
+    }
+    if (v.kind === 'replicated' && v.memories === undefined) {
+      ctx.addIssue({ code: 'custom', message: 'kind "replicated" requires `memories` citing the memory ids it rests on' })
+    }
+    if (v.kind !== 'replicated' && v.memories !== undefined) {
+      ctx.addIssue({ code: 'custom', message: '`memories` only applies to kind "replicated"' })
+    }
+  })
+  .describe('Declare this write a promotion (ADR-0021 R5): an ordinary Tier-2 write plus its evidence — the commit carries X-SG-Evidence (and X-SG-Memory for a replication). Omit it on ordinary writes.')
+
+/** Parsed shape of {@link PromotionEvidenceSchema}. */
+export type PromotionEvidenceInput = z.infer<typeof PromotionEvidenceSchema>
+
+/**
+ * The `evidence` field as the five definition-write tools spread into their
+ * input schemas — a field, not a whole common block, because it belongs to
+ * the promotion-capable verbs only (see {@link PromotionEvidenceSchema}'s
+ * doc). `.optional()` is load-bearing: ordinary writes omit `evidence`
+ * entirely, and the cross-kind `superRefine` only runs when the block is
+ * present.
+ */
+export const PROMOTION_EVIDENCE_FIELD = { evidence: PromotionEvidenceSchema.optional() } as const
+
 // ── Kind discriminants ───────────────────────────────────────────────────────────────
 
 /**

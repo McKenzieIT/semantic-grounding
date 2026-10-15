@@ -30,6 +30,13 @@
  *   NOOP (same session + type + anchor set + normalized body), still-valid
  *   neighbors for the receipt, then the writes themselves through the caller's
  *   audited seam (one `beginBatch` commit per call at the MCP layer).
+ * - **The replicated-promotion guard** (`checkReplicatedEvidence`) and the
+ *   `promoted` back-pointer append (`appendMemoryPromotions`): the server-side
+ *   halves of ADR-0021 R5–R7 (#136). The guard verifies what a ③ replication
+ *   citation must satisfy machine-checkably (existence, no incidents, no live
+ *   contested pairs, ≥2 counting after wrong-exclusion, distinct sessions,
+ *   distinct UTC days); the append is R2 append-only's one exception, written
+ *   only by the server, in the promoting write's own commit.
  *
  * Off the public barrel (ADR-0002/0003) — the same split as `item-write.ts` /
  * `enrichment-work.ts`: the Core class's `recordMemories` / `countMemoriesOnEdges`
@@ -84,7 +91,8 @@ export interface MemoryRecorded {
 }
 
 /** One stored memory entry (`memory/<id>.yaml`, parsed). `promoted` is the
- * #136 promotion append — read tolerantly here, never written by this module. */
+ * #136 promotion back-pointer — server-appended only (ADR-0023 R6), read
+ * tolerantly here. */
 export interface MemoryEntry {
   readonly id: string
   readonly type: MemoryType
@@ -833,4 +841,169 @@ export function countMemoriesOnEdges(root: string, edges: readonly MemoryEdgeAnc
   index.refresh(root)
   const anchors = edges.map(e => `${e.from} -${e.type}-> ${e.to}`)
   return index.validEntriesAnchoredOnAny(anchors).length
+}
+
+// ── The replicated-promotion guard + back-pointer append (#136) ──────────────────
+// ADR-0021 R5–R7 (as amended by ADR-0023 R5 and ADR-0027 R6): promotion is an
+// ordinary Tier-2 write declaring its evidence; the ③ replicated arm cites
+// memory ids and the SERVER verifies the replication before the write may
+// land, then appends the `promoted` back-pointer onto every cited entry in the
+// same commit (ADR-0023 R6 — the only sanctioned edit to a written memory
+// file, server-only). ① source / ② user-stated touch neither half: they are
+// decisive evidence on their own and cite nothing.
+
+/** Why a replicated-evidence citation was refused — each reason names its own
+ * remedy in the error text, so the calling agent can act on it. */
+export type ReplicationFailureReason = 'not_found' | 'incident' | 'contested' | 'too_few' | 'same_session' | 'same_day'
+
+/** `checkReplicatedEvidence`'s result: the counting (effective) cited ids on
+ * success, or the first refusal and its actionable message. */
+export type ReplicationCheckResult =
+  | { readonly ok: true; readonly effective: readonly string[] }
+  | { readonly ok: false; readonly reason: ReplicationFailureReason; readonly error: string }
+
+/**
+ * A cited `recorded.at`'s UTC day — the unit ADR-0021 R6's「不同日期」counts
+ * in. `recorded.at` is server-written ISO, so the parse always succeeds in
+ * practice; the raw-string fallback keeps a hand-edited file from throwing on
+ * a comparison that only needs day granularity.
+ */
+function utcDayOf(at: string): string {
+  const t = Date.parse(at)
+  return Number.isNaN(t) ? at.slice(0, 10) : new Date(t).toISOString().slice(0, 10)
+}
+
+/**
+ * The server-side replication guard (ADR-0021 R6 as revised by ADR-0023 R5,
+ * plus ADR-0021 R7's incident ban and ADR-0027 R6's contested ban) — the one
+ * check ③ replicated promotion does not take on trust:
+ *
+ * 1. every cited id must be a well-formed, existing memory;
+ * 2. no cited entry may be an `incident` (ADR-0021 R7 — incidents never
+ *    promote, whatever else cites them);
+ * 3. no cited entry may carry a still-live `contested_with` pair (ADR-0027
+ *    R6 — name the pair, tell the caller to adjudicate first; only the cited
+ *    entries are examined, never the whole anchor);
+ * 4. citations superseded `wrong` do not COUNT (ADR-0021's 2026-10-14 update)
+ *    — they are dropped, not rejected, and the survivors must still be ≥2;
+ * 5. the counting entries' `recorded.session` values must be pairwise
+ *    distinct, and their `recorded.at` UTC days pairwise distinct too.
+ *
+ * 「结论相同」stays the citing agent's judgment (ADR-0027 R1 — the server
+ * never reads bodies for meaning); this guard verifies only what is
+ * machine-checkable.
+ * @param root - the corpus root (the dir holding `memory/`).
+ * @param memoryIds - the cited memory ids, in citation order (duplicates collapse).
+ * @returns the counting ids, or the first refusal with its actionable message.
+ */
+export function checkReplicatedEvidence(root: string, memoryIds: readonly string[]): ReplicationCheckResult {
+  const index = memoryAnchorIndexFor(root)
+  index.refresh(root)
+  const cited = [...new Set(memoryIds)]
+  for (const id of cited) {
+    if (!isMemoryId(id)) {
+      return { ok: false, reason: 'not_found', error: `cited memory id "${id}" is not a well-formed memory id (mem-<YYYYMMDD>-<8 base32>) — copy the ids from the receipt or the memory files` }
+    }
+    const entry = index.get(id)
+    if (entry === undefined) {
+      return { ok: false, reason: 'not_found', error: `cited memory "${id}" does not exist in this corpus` }
+    }
+    if (entry.type === 'incident') {
+      return { ok: false, reason: 'incident', error: `cited memory "${id}" is an incident — incidents never promote (ADR-0021 R7); cite the observation/practice entries the conclusion rests on instead` }
+    }
+    const contested = index.contestedWithOf(id)
+    if (contested.length > 0) {
+      return { ok: false, reason: 'contested', error: `cited memory "${id}" is contested with ${contested.join(', ')} (still-live contradicts pair, ADR-0027 R6) — adjudicate first: supersede the loser as wrong with the required basis, then re-issue the promotion citing the survivor` }
+    }
+  }
+  const excluded = cited.filter(id => index.isWrongHidden(id))
+  const effective = cited.filter(id => !index.isWrongHidden(id))
+  if (effective.length < 2) {
+    return {
+      ok: false,
+      reason: 'too_few',
+      error: `replicated evidence needs at least 2 counting memories; ${excluded.length > 0 ? `of the cited ids ${excluded.join(', ')} ${excluded.length === 1 ? 'is' : 'are'} superseded wrong and never count, and ` : ''}only ${effective.length} ${effective.length === 1 ? 'counts' : 'count'} (ADR-0021 R6)`,
+    }
+  }
+  const bySession = new Map<string, string[]>()
+  const byDay = new Map<string, string[]>()
+  for (const id of effective) {
+    const entry = index.get(id)
+    if (entry === undefined) continue // unreachable: effective ⊆ cited, all resolved above
+    const sessionIds = bySession.get(entry.recorded.session) ?? []
+    sessionIds.push(id)
+    bySession.set(entry.recorded.session, sessionIds)
+    const day = utcDayOf(entry.recorded.at)
+    const dayIds = byDay.get(day) ?? []
+    dayIds.push(id)
+    byDay.set(day, dayIds)
+  }
+  for (const [session, ids] of bySession) {
+    if (ids.length > 1) {
+      return { ok: false, reason: 'same_session', error: `cited memories ${ids.join(', ')} were all recorded in one session ("${session}") — replication requires independent sessions (ADR-0021 R6); cite entries recorded by different sessions` }
+    }
+  }
+  for (const [day, ids] of byDay) {
+    if (ids.length > 1) {
+      return { ok: false, reason: 'same_day', error: `cited memories ${ids.join(', ')} were all recorded on the same UTC day (${day}) — replication requires different days (ADR-0021 R6)` }
+    }
+  }
+  return { ok: true, effective }
+}
+
+/** One promotion back-pointer target: the fact-layer object a replication
+ * promoted its conclusion into — `to` only ever names object identity
+ * (ADR-0021 R3), a canonical node id or edge string. */
+export interface MemoryPromotionAppend {
+  readonly id: string
+  readonly to: string
+}
+
+/**
+ * Append the `promoted` back-pointer onto the cited memory files
+ * (ADR-0023 R6 — R2 append-only's ONE exception, and the only write to an
+ * already-written memory file the server performs): each cited entry gains
+ * `{to, at, session}` per promotion target, in one read-append-write per file
+ * through the caller's audited seam — inside an open `beginBatch` the writes
+ * are absorbed, so the promotion commit carries both the fact-layer write and
+ * every back-pointer (the "same commit" the ruling asks for).
+ *
+ * The caller runs {@link checkReplicatedEvidence} first and passes its
+ * `effective` ids — a wrong-hidden citation gets no back-pointer (it did not
+ * count). Nothing is re-validated here; the ids were just verified.
+ * @param root - the corpus root (the dir holding `memory/`).
+ * @param appends - the (id, to) pairs to append, in order.
+ * @param opts - the promoting session (server-written) and the audited write seam.
+ */
+export async function appendMemoryPromotions(
+  root: string,
+  appends: readonly MemoryPromotionAppend[],
+  opts: { readonly session: string; readonly write: MemoryWriteSeam },
+): Promise<void> {
+  if (appends.length === 0) return
+  const at = new Date().toISOString()
+  const byId = new Map<string, string[]>()
+  for (const { id, to } of appends) {
+    const tos = byId.get(id) ?? []
+    tos.push(to)
+    byId.set(id, tos)
+  }
+  for (const [id, tos] of byId) {
+    const path = join(root, 'memory', `${id}.yaml`)
+    let raw: unknown
+    try {
+      raw = yaml.load(readFileSync(path, 'utf-8'))
+    } catch (e) {
+      throw new Error(`cannot read memory "${id}" to append its promotion back-pointer: ${(e as Error).message}`)
+    }
+    if (typeof raw !== 'object' || raw === null) {
+      throw new Error(`memory file "${id}.yaml" is not a YAML mapping; the promotion back-pointer cannot be appended`)
+    }
+    const entry = raw as Record<string, unknown>
+    const promoted = Array.isArray(entry.promoted) ? [...entry.promoted] : []
+    for (const to of [...new Set(tos)]) promoted.push({ to, at, session: opts.session })
+    entry.promoted = promoted
+    await opts.write(id, entry)
+  }
+  // The anchor index re-stats on next use; nothing to do here (the #152 pattern).
 }

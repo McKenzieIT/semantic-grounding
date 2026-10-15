@@ -78,7 +78,7 @@ import {
   requireAgentId,
   type GitIdentity,
 } from './identity.ts'
-import { buildCommitMessage, type CommitContext, type Derivation } from './message.ts'
+import { buildCommitMessage, type CommitContext, type Derivation, type PromotionEvidence } from './message.ts'
 import { dirtyEntries, resolveRepoPaths, type RepoPaths } from './posture.ts'
 
 /** Construction-time configuration, supplied by the server entry point (#22). */
@@ -119,6 +119,13 @@ export interface AuditContext {
   readonly confidence: number
   /** Per-call session id, overriding the configured one. */
   readonly sessionId?: string
+  /**
+   * Per-call promotion evidence (ADR-0021 R5/R6, #136): what licenses this
+   * write as a promotion — renders `X-SG-Evidence` (+ `X-SG-Evidence-Source`
+   * / `X-SG-Memory`). Passed by the five definition-write tools when their
+   * caller declares `evidence`; absent on every other write.
+   */
+  readonly evidence?: PromotionEvidence
   /**
    * Per-call client application name, overriding the configured one (#21, ADR-0005's
    * 2026-10-09 addendum). `GitRecorderConfig.clientName` is a construction-time value
@@ -512,6 +519,7 @@ export class GitTier2Recorder implements Tier2Recorder {
       ...clientName !== undefined ? { clientName } : {},
       ...scopeId !== undefined ? { scopeId } : {},
       ...sessionId !== undefined ? { sessionId } : {},
+      ...ctx.evidence !== undefined ? { evidence: ctx.evidence } : {},
     }
   }
 

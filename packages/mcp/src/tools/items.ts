@@ -26,10 +26,12 @@ import { z } from 'zod'
 import { notFoundAsCoded } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { assertScopeMatch, auditedWrite, toolSuccess, writeReceipt } from './audited.ts'
+import { PROMOTION_EVIDENCE_DESCRIPTION, evidenceForIntent, withPromotionWrite } from './promotion.ts'
 import {
   RelationRefInputSchema,
   UPDATE_COMMON_FIELDS,
   AliasKindSchema,
+  PROMOTION_EVIDENCE_FIELD,
   RelationSubjectKindSchema,
   type ToolFamily,
 } from './shared.ts'
@@ -46,6 +48,7 @@ const AddAliasInputSchema = z.object({
   name: z.string().min(1),
   labels: z.array(z.string().min(1)).min(1),
   ...UPDATE_COMMON_FIELDS,
+  ...PROMOTION_EVIDENCE_FIELD,
 })
 
 /** `remove_alias` input: same-target batch of labels (#37 §3 — the empty array is
@@ -67,6 +70,7 @@ const AddRelationInputSchema = z.object({
   name: z.string().min(1),
   relations: z.array(RelationRefInputSchema).min(1),
   ...UPDATE_COMMON_FIELDS,
+  ...PROMOTION_EVIDENCE_FIELD,
 })
 
 /** `remove_relation` input: same-target batch of relations (#37 §3). Breaking
@@ -86,7 +90,7 @@ function registerAddAlias(server: McpServer, deps: ServerDeps): void {
     'add_alias',
     {
       title: 'Add aliases (and lift their vetoes)',
-      description: 'Append alt_labels to a table, event, or concept, read-modify-write inside the corpus lock — one locked write (one commit) for the whole same-target batch. Adding back a suppressed label LIFTS its veto — removal is the veto, re-assertion is its mirror. Per-item verdicts in `results`: `outcome` (`added` = this call landed the label or lifted its veto, either is a real change; `idempotent` = already present and not vetoed, the only true no-op) and `unsuppressed` (did THIS call lift that key\'s veto — adding a vetoed word is `added` AND `unsuppressed: true`, one boolean, never a third outcome). A batch where every row is idempotent makes no commit (changed:false). The receipt\'s `version` is the written file\'s fingerprint — feed it straight back as the next write\'s expected_version.',
+      description: 'Append alt_labels to a table, event, or concept, read-modify-write inside the corpus lock — one locked write (one commit) for the whole same-target batch. Adding back a suppressed label LIFTS its veto — removal is the veto, re-assertion is its mirror. Per-item verdicts in `results`: `outcome` (`added` = this call landed the label or lifted its veto, either is a real change; `idempotent` = already present and not vetoed, the only true no-op) and `unsuppressed` (did THIS call lift that key\'s veto — adding a vetoed word is `added` AND `unsuppressed: true`, one boolean, never a third outcome). A batch where every row is idempotent makes no commit (changed:false). The receipt\'s `version` is the written file\'s fingerprint — feed it straight back as the next write\'s expected_version. ' + PROMOTION_EVIDENCE_DESCRIPTION,
       inputSchema: AddAliasInputSchema,
     },
     async (input, ctx: ServerContext) => {
@@ -95,8 +99,11 @@ function registerAddAlias(server: McpServer, deps: ServerDeps): void {
       const res = await auditedWrite(
         snap,
         ctx,
-        { tool: 'add_alias', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-        () => snap.core.addAliases(input.kind, input.name, input.labels, input.expected_version),
+        { tool: 'add_alias', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence, ...evidenceForIntent(input.evidence) },
+        // The promotion target is the SUBJECT definition (ADR-0023 R6's `to`
+        // reaches object identity only) — whatever the rows' idempotence,
+        // the object the conclusion was promoted into is this node.
+        () => withPromotionWrite(snap, deps, input.evidence, () => [`${input.kind}:${input.name}`], () => snap.core.addAliases(input.kind, input.name, input.labels, input.expected_version)),
       ).catch((e: unknown) => notFoundAsCoded(e, input.kind, input.name))
       return toolSuccess(await writeReceipt(snap, deps, res, {
         tool: 'add_alias',
@@ -142,7 +149,7 @@ function registerAddRelation(server: McpServer, deps: ServerDeps): void {
     'add_relation',
     {
       title: 'Add relations (one landing file per batch)',
-      description: 'Append relations to a table, event, or concept, read-modify-write inside the corpus lock — one locked write (one commit) for the whole same-target batch. Two shapes, one per call: a join (dim_table + join_keys) on a table/event subject, or a concept-side edge ({target_kind, name}) for the entity layer — concept→concept, concept→table, or table→concept (event subjects take joins only); the Core refuses a mix, and a table subject\'s edges must all name the SAME target concept — a batch spanning landing files is rejected whole with a split-the-call error. A concept-side edge lands on the concept\'s related_refs — for a table subject naming a concept target, that is the TARGET concept\'s file, so expected_version is that concept\'s fingerprint (from get_definition kind:"concept"); for a concept subject it is the subject\'s own. Omits origin and derivation on write — the appended ref is treated as curated (ADR-0005 rulings 9-10); your basis for the relation belongs in summary. Re-asserting a dim_table whose relations are suppressed LIFTS that veto (granularity: one dim_table per veto). Per-item verdicts in `results`: `outcome` (`added` = landed the relation or lifted the key\'s veto; `idempotent` = already present and not vetoed) and `unsuppressed` (did THIS call lift that key\'s veto). A fully-idempotent batch makes no commit; the receipt\'s `version` feeds the next write\'s expected_version.',
+      description: 'Append relations to a table, event, or concept, read-modify-write inside the corpus lock — one locked write (one commit) for the whole same-target batch. Two shapes, one per call: a join (dim_table + join_keys) on a table/event subject, or a concept-side edge ({target_kind, name}) for the entity layer — concept→concept, concept→table, or table→concept (event subjects take joins only); the Core refuses a mix, and a table subject\'s edges must all name the SAME target concept — a batch spanning landing files is rejected whole with a split-the-call error. A concept-side edge lands on the concept\'s related_refs — for a table subject naming a concept target, that is the TARGET concept\'s file, so expected_version is that concept\'s fingerprint (from get_definition kind:"concept"); for a concept subject it is the subject\'s own. Omits origin and derivation on write — the appended ref is treated as curated (ADR-0005 rulings 9-10); your basis for the relation belongs in summary. Re-asserting a dim_table whose relations are suppressed LIFTS that veto (granularity: one dim_table per veto). Per-item verdicts in `results`: `outcome` (`added` = landed the relation or lifted the key\'s veto; `idempotent` = already present and not vetoed) and `unsuppressed` (did THIS call lift that key\'s veto). A fully-idempotent batch makes no commit; the receipt\'s `version` feeds the next write\'s expected_version. ' + PROMOTION_EVIDENCE_DESCRIPTION,
       inputSchema: AddRelationInputSchema,
     },
     async (input, ctx: ServerContext) => {
@@ -151,8 +158,12 @@ function registerAddRelation(server: McpServer, deps: ServerDeps): void {
       const res = await auditedWrite(
         snap,
         ctx,
-        { tool: 'add_relation', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-        () => snap.core.addRelations(input.kind, input.name, input.relations, input.expected_version),
+        { tool: 'add_relation', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence, ...evidenceForIntent(input.evidence) },
+        // A promoted relation's `to` is the canonical EDGE it lands
+        // (ADR-0023 R6 — object identity includes edges), one anchor string
+        // per input relation, derived the same way remove_relation's
+        // dangling count derives its dying edges.
+        () => withPromotionWrite(snap, deps, input.evidence, () => relationEdgesOf(input.kind, input.name, input.relations).map(e => `${e.from} -${e.type}-> ${e.to}`), () => snap.core.addRelations(input.kind, input.name, input.relations, input.expected_version)),
       ).catch((e: unknown) => notFoundAsCoded(e, input.kind, input.name))
       return toolSuccess(await writeReceipt(snap, deps, res, {
         tool: 'add_relation',
@@ -186,7 +197,7 @@ function registerRemoveRelation(server: McpServer, deps: ServerDeps): void {
       // entries were anchored on it (`dangling_memories`, key absent at 0 — a
       // memory-free corpus keeps this receipt byte-identical). Computed
       // post-write against the process-resident anchor index (ADR-0023 R1).
-      const edges = removedRelationEdges(input.kind, input.name, input.relations)
+      const edges = relationEdgesOf(input.kind, input.name, input.relations)
       const results = res.value.results.map((row, i) => {
         if (row.outcome !== 'removed') return row
         const edge = edges[i]
@@ -205,18 +216,22 @@ function registerRemoveRelation(server: McpServer, deps: ServerDeps): void {
 }
 
 /**
- * The canonical edge each `remove_relation` input relation names, aligned with
- * the verdict rows the Core returns (row i ↔ relation i for join batches and
- * concept-subject edge batches; a table subject's whole edge batch collapses
- * to the ONE stored edge, matching the Core's single verdict row). The triple
- * spelling mirrors the anchor grammar's canonical logical direction
- * (ADR-0023 R4): asset→dim for joins, home-concept→target for declared edges.
+ * The canonical edge each input relation of a relation-batch call names
+ * (ADR-0023 R4's grammar, the graph build's canonical logical direction:
+ * asset→dim for joins, home-concept→target for declared edges). Two
+ * consumers read the same derivation: `remove_relation`'s per-row
+ * `dangling_memories` count (aligned with the verdict rows the Core returns —
+ * row i ↔ relation i for join batches and concept-subject edge batches; a
+ * table subject's whole edge batch collapses to the ONE stored edge, matching
+ * the Core's single verdict row) and `add_relation`'s promotion `to` targets
+ * (#136: one back-pointer per canonical edge, whatever the rows' verdicts —
+ * both `added` and `idempotent` affirm the edge object).
  * @param kind - the batch's subject kind.
  * @param name - the subject table/event/concept name.
  * @param relations - the batch's input relations, in order.
- * @returns one canonical edge triple per verdict row (empty for an empty batch).
+ * @returns one canonical edge triple per input relation (empty for an empty batch).
  */
-function removedRelationEdges(
+function relationEdgesOf(
   kind: 'table' | 'event' | 'concept',
   name: string,
   relations: ReadonlyArray<{ readonly target_kind?: 'table' | 'concept'; readonly dim_table?: string; readonly name?: string }>,
@@ -234,7 +249,7 @@ function removedRelationEdges(
     }))
   }
   // A table subject's edge batch names ONE target concept (the Core's
-  // split-the-call rule) and lands as ONE stored edge — one row, one triple.
+  // split-the-call rule) and lands as ONE stored edge — one triple.
   const target = relations[0]?.name
   return target === undefined ? [] : [{ from: `concept:${target}`, type: 'related_to', to: `table:${name}` }]
 }

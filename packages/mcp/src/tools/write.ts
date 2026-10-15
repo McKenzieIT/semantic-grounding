@@ -25,11 +25,13 @@ import type { ScopeBinding } from '../binding.ts'
 import { DefinitionAlreadyExistsError, DefinitionNotFoundError, DefinitionValidationError, UnsupportedUpdateFieldError, isSubstrateNotFound } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { assertScopeMatch, auditedWrite, toolSuccess, writeReceipt } from './audited.ts'
+import { PROMOTION_EVIDENCE_DESCRIPTION, evidenceForIntent, withPromotionWrite } from './promotion.ts'
 import {
   CREATE_COMMON_FIELDS,
   ConceptCreatePayloadSchema,
   ConceptFieldsSchema,
   EventFieldsSchema,
+  PROMOTION_EVIDENCE_FIELD,
   TableFieldsSchema,
   UPDATE_COMMON_FIELDS,
   loadWritable,
@@ -42,9 +44,9 @@ export const WRITE_TOOL_NAMES = ['create_definition', 'update_definition'] as co
 // ── create_definition ───────────────────────────────────────────────────────────────
 
 const CreateDefinitionInputSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('table'), table: TableDefinitionSchema, ...CREATE_COMMON_FIELDS }),
-  z.object({ kind: z.literal('event'), event: EventDefinitionSchema, ...CREATE_COMMON_FIELDS }),
-  z.object({ kind: z.literal('concept'), concept: ConceptCreatePayloadSchema, ...CREATE_COMMON_FIELDS }),
+  z.object({ kind: z.literal('table'), table: TableDefinitionSchema, ...CREATE_COMMON_FIELDS, ...PROMOTION_EVIDENCE_FIELD }),
+  z.object({ kind: z.literal('event'), event: EventDefinitionSchema, ...CREATE_COMMON_FIELDS, ...PROMOTION_EVIDENCE_FIELD }),
+  z.object({ kind: z.literal('concept'), concept: ConceptCreatePayloadSchema, ...CREATE_COMMON_FIELDS, ...PROMOTION_EVIDENCE_FIELD }),
 ])
 
 /**
@@ -66,7 +68,7 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
     'create_definition',
     {
       title: 'Create a definition',
-      description: 'Create a new table, event, or concept from a complete, schema-valid definition. Concepts are the knowledge-graph ontology/entity layer: register a domain term that maps to no single asset as kind:"concept" (name + description + pref_label/alt_labels + free-form `properties`); an asset term lands as a table/event (and may mount concepts later via update_definition fields.domains). A concept payload carrying related_refs / suppressed_alt_labels / suppressed_related_refs (a get_definition output fed straight back) has those keys ignored — they are item-verb fields owned by add_relation/add_alias (ADR-0019 R3); any other unknown key is rejected as a typo. There is no kind:"metric" — metric candidates are written inline into their host table/event\'s `metrics` block (the metric layer is a derived read view over those blocks, never a separate file). Refuses if the name already exists (use update_definition instead). The recorder is mandatory — every create_definition call is an audited commit.',
+      description: 'Create a new table, event, or concept from a complete, schema-valid definition. Concepts are the knowledge-graph ontology/entity layer: register a domain term that maps to no single asset as kind:"concept" (name + description + pref_label/alt_labels + free-form `properties`); an asset term lands as a table/event (and may mount concepts later via update_definition fields.domains). A concept payload carrying related_refs / suppressed_alt_labels / suppressed_related_refs (a get_definition output fed straight back) has those keys ignored — they are item-verb fields owned by add_relation/add_alias (ADR-0019 R3); any other unknown key is rejected as a typo. There is no kind:"metric" — metric candidates are written inline into their host table/event\'s `metrics` block (the metric layer is a derived read view over those blocks, never a separate file). Refuses if the name already exists (use update_definition instead). The recorder is mandatory — every create_definition call is an audited commit. ' + PROMOTION_EVIDENCE_DESCRIPTION,
       inputSchema: CreateDefinitionInputSchema,
     },
     async (input, ctx: ServerContext) => {
@@ -82,8 +84,8 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
         const res = await auditedWrite(
           snap,
           ctx,
-          { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-          async () => {
+          { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence, ...evidenceForIntent(input.evidence) },
+          () => withPromotionWrite(snap, deps, input.evidence, () => [`table:${name}`], async () => {
             const written = await writeTable(root, name, input.table, {}, { recorder: snap.recorder })
             // `writeTable` re-validates the payload; it was already validated
             // by this tool's zod schema, so reaching the `{ok:false}` branch
@@ -92,7 +94,7 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
               throw new Error(`writeTable rejected a payload create_definition already validated: ${written.error}`)
             }
             return written
-          },
+          }),
         )
         return toolSuccess(await writeReceipt(snap, deps, res, {
           tool: 'create_definition',
@@ -117,14 +119,14 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
         const res = await auditedWrite(
           snap,
           ctx,
-          { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-          async () => {
+          { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence, ...evidenceForIntent(input.evidence) },
+          () => withPromotionWrite(snap, deps, input.evidence, () => [`concept:${name}`], async () => {
             const written = await snap.core.writeConceptYaml(name, input.concept)
             if (!written.ok) {
               throw new Error(`writeConceptYaml rejected a payload create_definition already validated: ${written.error}`)
             }
             return written
-          },
+          }),
         )
         return toolSuccess(await writeReceipt(snap, deps, res, {
           tool: 'create_definition',
@@ -140,8 +142,8 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
       const res = await auditedWrite(
         snap,
         ctx,
-        { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-        async () => {
+        { tool: 'create_definition', target: name, summary: input.summary, derivation: input.derivation, confidence: input.confidence, ...evidenceForIntent(input.evidence) },
+        () => withPromotionWrite(snap, deps, input.evidence, () => [`event:${name}`], async () => {
           const written = await writeEventYaml(root, name, dumpYaml(input.event), { recorder: snap.recorder })
           if (!written.ok) {
             // `writeEventYaml` re-parses its own `content` and re-checks the name
@@ -150,7 +152,7 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
             throw new Error(`writeEventYaml rejected a payload create_definition already validated: ${written.error}`)
           }
           return written
-        },
+        }),
       )
       return toolSuccess(await writeReceipt(snap, deps, res, {
         tool: 'create_definition',
@@ -164,9 +166,9 @@ function registerCreateDefinition(server: McpServer, deps: ServerDeps): void {
 // ── update_definition ───────────────────────────────────────────────────────────────
 
 const UpdateDefinitionInputSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('table'), name: z.string().min(1), fields: TableFieldsSchema, ...UPDATE_COMMON_FIELDS }),
-  z.object({ kind: z.literal('event'), name: z.string().min(1), fields: EventFieldsSchema, ...UPDATE_COMMON_FIELDS }),
-  z.object({ kind: z.literal('concept'), name: z.string().min(1), fields: ConceptFieldsSchema, ...UPDATE_COMMON_FIELDS }),
+  z.object({ kind: z.literal('table'), name: z.string().min(1), fields: TableFieldsSchema, ...UPDATE_COMMON_FIELDS, ...PROMOTION_EVIDENCE_FIELD }),
+  z.object({ kind: z.literal('event'), name: z.string().min(1), fields: EventFieldsSchema, ...UPDATE_COMMON_FIELDS, ...PROMOTION_EVIDENCE_FIELD }),
+  z.object({ kind: z.literal('concept'), name: z.string().min(1), fields: ConceptFieldsSchema, ...UPDATE_COMMON_FIELDS, ...PROMOTION_EVIDENCE_FIELD }),
 ])
 
 // ── The update path's array-reference redirect apparatus (ADR-0005 ruling 4) ───────
@@ -308,7 +310,7 @@ function registerUpdateDefinition(server: McpServer, deps: ServerDeps): void {
     'update_definition',
     {
       title: 'Update a definition',
-      description: 'Shallow-merge scalar/object fields onto an existing table, event, or concept. Rejects identity fields (table_name/name/kind) and array-reference fields — tables/events: alt_labels/dimension_refs/external_refs; concepts: alt_labels/related_refs — use add_alias/remove_alias/add_relation/remove_relation for those. Concept fields: description, pref_label, properties (free-form entity attributes); a table mounts a concept via fields.domains. Table/event `metrics` merges as one whole block: shallow-merge is per top-level field, so changing a single metric means re-sending the entire `metrics` map (metrics have no per-key merge). Requires expected_version (from get_definition); a stale baseline is rejected for re-read-and-retry. Changing fields.domains unmounts the definition from the dropped concepts; memory entries anchored on those dying membership edges are reported as `dangling_memories: N` in the receipt (ADR-0026 R5: a reminder, never a block).',
+      description: 'Shallow-merge scalar/object fields onto an existing table, event, or concept. Rejects identity fields (table_name/name/kind) and array-reference fields — tables/events: alt_labels/dimension_refs/external_refs; concepts: alt_labels/related_refs — use add_alias/remove_alias/add_relation/remove_relation for those. Concept fields: description, pref_label, properties (free-form entity attributes); a table mounts a concept via fields.domains. Table/event `metrics` merges as one whole block: shallow-merge is per top-level field, so changing a single metric means re-sending the entire `metrics` map (metrics have no per-key merge). Requires expected_version (from get_definition); a stale baseline is rejected for re-read-and-retry. Changing fields.domains unmounts the definition from the dropped concepts; memory entries anchored on those dying membership edges are reported as `dangling_memories: N` in the receipt (ADR-0026 R5: a reminder, never a block). ' + PROMOTION_EVIDENCE_DESCRIPTION,
       inputSchema: UpdateDefinitionInputSchema,
     },
     async (input, ctx: ServerContext) => {
@@ -332,10 +334,20 @@ function registerUpdateDefinition(server: McpServer, deps: ServerDeps): void {
       const res = await auditedWrite(
         snap,
         ctx,
-        { tool: 'update_definition', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
-        () => applyFieldUpdate(snap, input.kind, input.name, input.fields, input.expected_version),
+        { tool: 'update_definition', target: input.name, summary: input.summary, derivation: input.derivation, confidence: input.confidence, ...evidenceForIntent(input.evidence) },
+        // `assertUpdateOk` sits INSIDE the wrapped fn (not after the window,
+        // where it used to): a replicated promotion must not append
+        // back-pointers onto a write that resolved `{ok:false}` — throwing
+        // before `withPromotionWrite`'s append arm is what keeps that
+        // impossible. The non-replicated path surfaces the identical coded
+        // error (the throw now happens under the lock, changing nothing the
+        // caller can observe).
+        () => withPromotionWrite(snap, deps, input.evidence, () => [`${input.kind}:${input.name}`], async () => {
+          const applied = await applyFieldUpdate(snap, input.kind, input.name, input.fields, input.expected_version)
+          assertUpdateOk(applied, input.kind, input.name)
+          return applied
+        }),
       )
-      assertUpdateOk(res.value, input.kind, input.name)
       // The dropped-concept membership edges: `concept:<domain> -related_to->
       // <node>`, the graph build's canonical group→member direction. Key stays
       // absent at 0 so a memory-free corpus keeps this receipt byte-identical.

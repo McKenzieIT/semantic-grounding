@@ -267,7 +267,10 @@ on trust. A single observation, the agent's own inference, or a batch run vouchi
 itself is not evidence. The first two kinds may promote directly with no memory in
 between; replication by definition cites the memories it rests on. Promotion is an
 ordinary audited write, and where it came from is answered by its commit, never by the
-fact itself. Filling in a "confirmed by" field is not promotion.
+fact itself: the commit's `X-SG-Evidence` trailer states the evidence kind — with the
+source named for a source promotion, and the cited memory ids listed for a replication,
+where the server also appends a `promoted` back-pointer onto each cited memory in that
+same commit. Filling in a "confirmed by" field is not promotion.
 
 ### verified query (已验证查询)
 

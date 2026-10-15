@@ -91,7 +91,8 @@ import { z } from 'zod'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { assertScopeMatch, auditedWrite, scopeStamp, toolSuccess, withAuditedBatch, writeReceipt } from './audited.ts'
 import { countNodesByKind } from './guidance.ts'
-import { ConceptCreatePayloadSchema, ConfidenceSchema, CONCEPT_ITEM_VERB_KEYS, loadWritable, loadWritableWithVersion, ScopeIdSchema, SummarySchema, type ToolFamily } from './shared.ts'
+import { appendPromotionBackpointers, guardReplicatedEvidence, PROMOTION_EVIDENCE_DESCRIPTION, evidenceForIntent } from './promotion.ts'
+import { ConceptCreatePayloadSchema, ConfidenceSchema, CONCEPT_ITEM_VERB_KEYS, loadWritable, loadWritableWithVersion, PROMOTION_EVIDENCE_FIELD, ScopeIdSchema, SummarySchema, type ToolFamily } from './shared.ts'
 
 /** The bulk-import tool's single name (#54 R6 — intent-level, an `import_` verb joins the surface). */
 export const IMPORT_TOOL_NAMES = ['import_definitions'] as const
@@ -137,6 +138,7 @@ const ImportDefinitionsInputSchema = z.object({
   confidence: ConfidenceSchema,
   dry_run: z.boolean().optional()
     .describe('Read-only rehearsal (ADR-0018): run the Phase-1 adjudication — the exact per-item created/updated/skipped/error verdicts and batch summary a real call would produce — and return them WITHOUT opening the audit window, writing, or committing (the response says committed:false and carries no version fingerprints). For a large batch, or one that may overwrite existing definitions: preview with dry_run:true first, review the updated verdicts, then re-issue without it.'),
+  ...PROMOTION_EVIDENCE_FIELD,
 }).strict()
 
 /** One item's verdict row — #54 R4's response shape. */
@@ -388,7 +390,7 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
     'import_definitions',
     {
       title: 'Import a batch of definitions',
-      description: 'Bulk-seed definitions for initialization: up to 500 items (table/event/concept mixed; there is no kind:"metric" item — metric candidates ride inline in their host table/event\'s `metrics` block) in one call, validated per item, landed as ONE commit (or zero when every item is idempotent). Each item gets a verdict — created / updated (payload differs from disk: full overwrite for table/event, read-merge-write for concept — a concept update preserves on-disk related_refs/suppressed_* because import never writes edges, ADR-0019 R2) / skipped (byte-equivalent, no commit) / error (bad schema or duplicate name in batch; does NOT abort the batch). A concept payload carrying related_refs / suppressed_alt_labels / suppressed_related_refs (e.g. a get_definition output fed straight back) has those keys stripped and ignored — the verdict row receipts "ignored N item-verb keys"; any other unknown key is a rejected typo (ADR-0019 R3). Provenance is batch-level: summary names the source, derivation must be "agent". No cross-corpus validation — dangling dimension_refs/domains are enrichment\'s to discover and report as work. Re-issuing the identical call is safe: all-skipped, no commit. For one definition, create_definition is the finer tool. Review surface (ADR-0018/0019): pass dry_run:true to rehearse the batch read-only (same verdicts and summary, nothing written — do this first for large batches or any re-import that may overwrite); two server-side guards then warn — never refusing — when a batch overwrites heavily: more than a configurable count of updated items (ADR-0018), or one kind\'s updated share of its existing corpus over a ratio threshold (default 50%, small-corpus floor 10; ADR-0019 R6). Both land a line in the response\'s `warnings` and annotate the commit subject for post-hoc git log review.',
+      description: 'Bulk-seed definitions for initialization: up to 500 items (table/event/concept mixed; there is no kind:"metric" item — metric candidates ride inline in their host table/event\'s `metrics` block) in one call, validated per item, landed as ONE commit (or zero when every item is idempotent). Each item gets a verdict — created / updated (payload differs from disk: full overwrite for table/event, read-merge-write for concept — a concept update preserves on-disk related_refs/suppressed_* because import never writes edges, ADR-0019 R2) / skipped (byte-equivalent, no commit) / error (bad schema or duplicate name in batch; does NOT abort the batch). A concept payload carrying related_refs / suppressed_alt_labels / suppressed_related_refs (e.g. a get_definition output fed straight back) has those keys stripped and ignored — the verdict row receipts "ignored N item-verb keys"; any other unknown key is a rejected typo (ADR-0019 R3). Provenance is batch-level: summary names the source, derivation must be "agent". No cross-corpus validation — dangling dimension_refs/domains are enrichment\'s to discover and report as work. Re-issuing the identical call is safe: all-skipped, no commit. For one definition, create_definition is the finer tool. Review surface (ADR-0018/0019): pass dry_run:true to rehearse the batch read-only (same verdicts and summary, nothing written — do this first for large batches or any re-import that may overwrite); two server-side guards then warn — never refusing — when a batch overwrites heavily: more than a configurable count of updated items (ADR-0018), or one kind\'s updated share of its existing corpus over a ratio threshold (default 50%, small-corpus floor 10; ADR-0019 R6). Both land a line in the response\'s `warnings` and annotate the commit subject for post-hoc git log review. ' + PROMOTION_EVIDENCE_DESCRIPTION,
       inputSchema: ImportDefinitionsInputSchema,
     },
     async (input, ctx) => {
@@ -453,14 +455,23 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
       const toWrite = staged.filter(s => s.verdict === 'created').length
       const toUpdate = staged.length - toWrite
 
-      // ── Phase 2 entrance: the two batch-overwrite guards ────────────────
-      // Both are soft signals, never refusals: a hard cap is trivially
-      // evaded by splitting the batch, and `.max(500)` already bounds
-      // runaway size. When tripped, each (a) puts a line in the response's
-      // `warnings` — both this call's and the dry-run preview's, zero-tax
-      // absent rather than an empty array — and (b) rides the intent
-      // target, so the annotation lands in the real write's commit subject
-      // where a post-hoc `git log` reader greps for it.
+      // ── Phase 2 entrance: the promotion guard + the two batch-overwrite guards ──
+      // The replicated-evidence guard (#136 / ADR-0021 R6) runs HERE, once,
+      // ahead of both the dry-run preview and the real write, so the preview
+      // predicts the rejection exactly — read-only like every other Phase-2-
+      // entrance read (the mass-update guards below, and Phase 1's own
+      // `loadWritable` sweep); the back-pointer append it licenses still lands
+      // inside the locked batch below. A refusal rejects the whole call with
+      // nothing written.
+      const effectiveMemoryIds = guardReplicatedEvidence(snap, input.evidence)
+
+      // The two batch-overwrite guards are soft signals, never refusals: a
+      // hard cap is trivially evaded by splitting the batch, and `.max(500)`
+      // already bounds runaway size. When tripped, each (a) puts a line in
+      // the response's `warnings` — both this call's and the dry-run
+      // preview's, zero-tax absent rather than an empty array — and (b) rides
+      // the intent target, so the annotation lands in the real write's
+      // commit subject where a post-hoc `git log` reader greps for it.
       let intentTarget = `${staged.length}/${input.items.length} items (${toWrite} created, ${toUpdate} updated)`
       const warnings: string[] = []
 
@@ -536,7 +547,7 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
       const audited = await auditedWrite(
         snap,
         ctx,
-        { tool: 'import_definitions', target: intentTarget, summary: input.summary, derivation: input.derivation, confidence: input.confidence },
+        { tool: 'import_definitions', target: intentTarget, summary: input.summary, derivation: input.derivation, confidence: input.confidence, ...evidenceForIntent(input.evidence) },
         async () => {
           // Skipped rows' write receipts first, inside the lock: nothing is
           // written for them, so the receipt is the file's CURRENT
@@ -577,6 +588,17 @@ function registerImportDefinitions(server: McpServer, deps: ServerDeps): void {
                   }
                 : { index: item.index, kind: item.kind, name: item.name, verdict: 'error', detail: res.error })
               if (res.ok) batch.record('import_definitions', { kind: item.kind, name: item.name })
+            }
+            // #136 / ADR-0023 R6: a replicated promotion appends its
+            // `promoted` back-pointer onto every counting cited memory HERE,
+            // inside the open batch, so `end()`'s single commit carries the
+            // fact-layer writes and the memory-side appends together. `to`
+            // is one entry per non-error item row (created / updated /
+            // skipped all affirm the object; an error row named an object
+            // that never came to exist).
+            if (effectiveMemoryIds.length > 0) {
+              const tos = results.filter(r => r.verdict !== 'error').map(r => `${r.kind}:${r.name}`)
+              await appendPromotionBackpointers(snap, deps, effectiveMemoryIds, tos)
             }
             return undefined
           })

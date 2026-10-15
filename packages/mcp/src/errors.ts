@@ -179,6 +179,8 @@ export const INTENT_TOOL_ERROR_CODES = {
   validation_failed: -31024,
   /** A `record_memory` batch was rejected whole — one item failed validation; nothing was written (#152 / ADR-0023 R9). */
   memory_invalid: -31025,
+  /** A promotion's ③ replicated evidence failed the server-side guard (ADR-0021 R6 / #136); nothing was written. */
+  promotion_rejected: -31026,
 } as const
 
 /** The union of codes this module allocates for the intent tool surface. */
@@ -468,6 +470,32 @@ export class MemoryRecordError extends SgApplicationError {
    */
   constructor(message: string, data?: Readonly<Record<string, unknown>>) {
     super(INTENT_TOOL_ERROR_CODES.memory_invalid, message, { ...data !== undefined ? { data } : {} })
+  }
+}
+
+/**
+ * A promotion's ③ replicated evidence failed the server-side replication
+ * guard (ADR-0021 R6 as revised by ADR-0023 R5, + R7's incident ban and
+ * ADR-0027 R6's contested ban; landed #136): a cited memory does not exist /
+ * is an incident / carries a still-live contested pair, or the counting
+ * citations are fewer than 2, share one session, or share one UTC day.
+ * Nothing was written — the guard runs before the promoting write stages
+ * anything, so the rejection is whole-call.
+ *
+ * The message is the substrate guard's own actionable text (names which id
+ * failed which rule and the remedy); `data.reason` carries the machine
+ * discriminant, `data.memories` the rejected citation. Not retryable by
+ * re-reading — the remedy is a corrected citation (or adjudicating the
+ * contested pair first).
+ */
+export class PromotionRejectedError extends SgApplicationError {
+  /**
+   * @param message - the substrate guard's rejection message (names the id and the rule).
+   * @param data - structured detail: `reason` (the ReplicationCheckResult
+   *   discriminant), `memories` (the rejected citation list).
+   */
+  constructor(message: string, data?: Readonly<Record<string, unknown>>) {
+    super(INTENT_TOOL_ERROR_CODES.promotion_rejected, message, { ...data !== undefined ? { data } : {} })
   }
 }
 

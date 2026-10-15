@@ -122,9 +122,13 @@ import { loadEvents, loadTables, loadConcepts, loadRawDir, loadConceptDefinition
 import {
   recordMemoryBatch,
   countMemoriesOnEdges as countMemoriesOnEdgesForRoot,
+  checkReplicatedEvidence as checkReplicatedEvidenceForRoot,
+  appendMemoryPromotions,
   type MemoryDraft,
   type MemoryEdgeAnchor,
+  type MemoryPromotionAppend,
   type RecordMemoriesResult,
+  type ReplicationCheckResult,
 } from './memory.ts'
 import { DefinitionSnapshot, captureSnapshot } from './snapshot.ts'
 import { buildExcludeColumns } from './io.ts'
@@ -1561,6 +1565,61 @@ export class SemanticGroundingCore {
    */
   countMemoriesOnEdges(edges: readonly MemoryEdgeAnchor[]): number {
     return countMemoriesOnEdgesForRoot(this.semanticRoot, edges)
+  }
+
+  /**
+   * The server-side replication guard behind ③ replicated promotion
+   * (#136 / ADR-0021 R5–R7 as revised by ADR-0023 R5 + ADR-0027 R6):
+   * verifies the cited memory ids machine-checkably — every id exists, none
+   * is an `incident` (R7's never-promote), none carries a still-live
+   * `contested_with` pair, ≥2 count after wrong-superseded citations are
+   * dropped (they never count, they do not reject), and the counting
+   * entries' `recorded.session` values and `recorded.at` UTC days are each
+   * pairwise distinct. 「结论相同」stays the citing agent's judgment.
+   *
+   * Read-only (a stat-refresh of the process-resident anchor index); the
+   * MCP layer runs it inside the audit window before the promoting write,
+   * and threads the returned `effective` ids into
+   * {@link appendPromotionBackpointers}.
+   * @param memoryIds - the cited memory ids, in citation order.
+   * @returns the counting (`effective`) ids, or the first refusal with an
+   *   actionable message naming which id failed which rule.
+   */
+  checkReplicatedEvidence(memoryIds: readonly string[]): ReplicationCheckResult {
+    return checkReplicatedEvidenceForRoot(this.semanticRoot, memoryIds)
+  }
+
+  /**
+   * Append the `promoted` back-pointer onto the cited memory files
+   * (ADR-0023 R6 — R2 append-only's one exception, server-written only):
+   * each cited entry gains `{to, at, session}` per promotion target, one
+   * read-append-write per file through `writeMemoryYaml`'s audited seam, so
+   * an open `beginBatch` folds the appends into the promoting write's own
+   * commit. `to` names object identity only (ADR-0021 R3) — a canonical
+   * node id or edge string the caller derives from what it wrote.
+   *
+   * Callers pass {@link checkReplicatedEvidence}'s `effective` ids — a
+   * wrong-hidden citation gets no back-pointer (it did not count).
+   * @param appends - the (memory id, promotion target) pairs to append.
+   * @param opts - the promoting session id (server-written, never agent-supplied).
+   */
+  async appendPromotionBackpointers(
+    appends: readonly MemoryPromotionAppend[],
+    opts: { readonly session: string },
+  ): Promise<void> {
+    await appendMemoryPromotions(this.semanticRoot, appends, {
+      session: opts.session,
+      write: async (id, entry) => {
+        const res = await writeMemoryYamlFromLayer(this.semanticRoot, id, entry, {
+          recorder: this.recorder(),
+          scope_id: this.scopeId,
+        })
+        // Same contract as `recordMemories`'s seam: the primitive has no
+        // validation of its own, so a refusal here is this server's bug —
+        // throw and let the open batch abort rather than half-land.
+        if (!res.ok) throw new Error(`promotion back-pointer append rejected for ${id}: ${res.error}`)
+      },
+    })
   }
 
   /**

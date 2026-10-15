@@ -78,3 +78,21 @@ SG 今天只有一种存储单位 —— definition（`table` / `event` / `conce
 
 - **R6 ③ 再收窄**：被引用的 memory 处于争议中（带仍有效的 `contested_with`）时 replicated 晋升拒写；① source /
   ② user-stated 不受影响。「结论相同」仍由引用方 agent 判断，服务端不从正文判断相反或相同。
+
+## Update 2026-10-16（#136 落地——trailer 与入参的具体形状）
+
+R5–R7 的实现补裁（ADR 漏裁处，记最小合理形状）：
+
+- **trailer 形状**：`X-SG-Evidence: source|user-stated|replicated` 只装证据类别（机器可查的单 token）；source 的
+  「出处」走附属 trailer `X-SG-Evidence-Source: <出处>`（R6 只裁了「trailer 写明出处」，未定格式——kind 行混入自由文本
+  会让类别不可判）；replicated 的引用走 `X-SG-Memory: <id…>`，多条 id 空格连接、单 trailer。三个均为可选、
+  仅晋升提交携带：普通写的 trailer 集与之前逐字相同，`X-SG-Schema` 维持 1（git 原生 trailer 解析忽略未知键，
+  附加可选键不改任何既有键的读法，bump 反而会给全部提交重贴标签）。
+- **入参通道**：五个定义写工具（`create_definition` / `update_definition` / `add_alias` / `add_relation` /
+  `import_definitions`）新增可选 `evidence: {kind, source?, memories?}` 入参，经 AuditIntent → CommitContext 的既有
+  per-call 通道（`sessionId` 同路）抵达 trailer。跨类别规则（source 必附出处、仅 replicated 可带 memories）在该
+  入参的 schema 单点校验。`record_memory` 不带（写 memory 不是晋升）；remove-*/enrichment 动词不带。
+- **守卫拒写错误码**：`promotion_rejected` −31026（intent 段顺延），`data.reason` 六值
+  `not_found|incident|contested|too_few|same_session|same_day`，message 逐例可行动（指名哪条 id、哪条规则、怎么改）。
+- **守卫落层**：核验逻辑在 substrate（`recorded` 只在那可见），MCP 层在审计窗口内调用；import 的 dry_run 预览
+  同样过守卫（预演必须预测拒写）。

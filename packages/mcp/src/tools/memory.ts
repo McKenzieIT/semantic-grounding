@@ -31,12 +31,12 @@
  *
  * @module tools/memory
  */
-import { randomUUID } from 'node:crypto'
 import type { McpServer, ServerContext } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 import { MemoryRecordError } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
 import { assertScopeMatch, auditedWrite, toolSuccess, withAuditedBatch, writeReceipt } from './audited.ts'
+import { promotionSession } from './promotion.ts'
 import { CREATE_COMMON_FIELDS, type ToolFamily } from './shared.ts'
 
 /** The memory family's single tool name. */
@@ -78,24 +78,10 @@ export function neighborJudgmentGuidance(id: string): string {
  */
 export const MEMORY_SUPERSEDE_NOTE = 'if this write is actually an update, re-issue it with supersedes referencing the entry it replaces (the neighbors above are the candidates)'
 
-// ── The lazily-minted process session (recorded.session's default) ──────────────
+// ── The session identity (the mint lives in tools/promotion.ts since #136) ──────
 
-/**
- * One session id for this server process's lifetime — `recorded.session`'s
- * default when `ServerConfig.sessionId` is unset. Under stdio no host-tracked
- * session exists to read (the 2026-07-28 revision is stateless), and one
- * process ≈ one serving session, so a startup mint is the honest identity;
- * tests and embedding hosts that need two distinguishable sessions in one
- * process set distinct `config.sessionId` values instead.
- */
-let generatedProcessSession: string | undefined
-
-function processMemorySession(): string {
-  if (generatedProcessSession === undefined) {
-    generatedProcessSession = `sg-${randomUUID()}`
-  }
-  return generatedProcessSession
-}
+// `recorded.session`'s default and a replicated promotion's `promoted.session`
+// are one identity — `promotionSession(deps)` is the single route both take.
 
 // ── Input schema (top-level object, runtime type dispatch — #132) ───────────────
 
@@ -153,7 +139,7 @@ function registerRecordMemory(server: McpServer, deps: ServerDeps): void {
       // Server-written provenance (ADR-0023 R5): the agent cannot fill
       // `recorded` — the session is the config's, or this process's own mint;
       // the agent is the startup-declared writing agent (the commit author).
-      const session = deps.config.sessionId ?? processMemorySession()
+      const session = promotionSession(deps)
       const agent = deps.config.agentId
       const target = `${input.memories.length} ${input.memories.length === 1 ? 'entry' : 'entries'}`
 

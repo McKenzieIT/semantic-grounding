@@ -54,7 +54,7 @@
 import { CLIENT_INFO_META_KEY, type CallToolResult, type ServerContext } from '@modelcontextprotocol/server'
 import type { EnrichmentHealthEntry, Tier2Batch, Tier2Opts } from '@semantic-grounding/substrate'
 import type { ScopeBinding } from '../binding.ts'
-import type { Derivation } from '../git/message.ts'
+import type { Derivation, PromotionEvidence } from '../git/message.ts'
 import type { AuditedResult } from '../git/recorder.ts'
 import type { ServerDeps } from '../server.ts'
 import { ScopeMismatchError } from '../errors.ts'
@@ -85,6 +85,15 @@ export interface AuditIntent {
    * every other tool leaves it absent exactly as before.
    */
   readonly sessionId?: string
+  /**
+   * Per-call promotion evidence (ADR-0021 R5/R6, #136): what licenses this
+   * write as a promotion — the audit window renders it as the
+   * `X-SG-Evidence` trailer block. Passed by the five definition-write tools
+   * (`create_definition` / `update_definition` / `add_alias` / `add_relation`
+   * / `import_definitions`) when their caller declares `evidence`; absent on
+   * every other write, so their trailer sets are unchanged.
+   */
+  readonly evidence?: PromotionEvidence
 }
 
 // ── Per-call `clientInfo` (ADR-0005's 2026-10-09 addendum, second falsified premise) ─

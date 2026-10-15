@@ -16,6 +16,11 @@
  * X-SG-Session: 01JD...
  * ```
  *
+ * A promotion write (ADR-0021 R5/R6, #136) appends its evidence block —
+ * `X-SG-Evidence: source|user-stated|replicated`, `X-SG-Evidence-Source`
+ * (source only, the 出处), `X-SG-Memory` (replicated only, space-joined ids) —
+ * after `X-SG-Session`; every other write's trailer set is unchanged.
+ *
  * Subject is `<tool>(<target>): <summary>` — the tool name is the audit verb, which is
  * why ADR-0005 treats renaming a tool as rewriting the history's semantics. Everything
  * machine-readable is a `X-SG-*` trailer, parsed back by git natively
@@ -60,6 +65,28 @@ export type Derivation = 'deterministic' | 'llm' | 'agent'
 export const DERIVATIONS: readonly Derivation[] = ['deterministic', 'llm', 'agent']
 
 /**
+ * The promotion evidence a write declares, as recorded in `X-SG-Evidence`
+ * (ADR-0021 R5/R6, landed #136): promotion is an ordinary Tier-2 write, and
+ * the evidence-kind trailer (+ its two companions) is where the write says
+ * what licenses the promotion. The values are agent-declared through the
+ * calling tool's `evidence` input; only the ③ replicated arm is
+ * machine-verified (the memory YAML's `recorded`, never this trailer —
+ * ADR-0023 R5's revision).
+ */
+export interface PromotionEvidence {
+  /** `source` (deterministic source), `user-stated` (a human said so in the
+   * conversation), or `replicated` (independent replication). */
+  readonly kind: 'source' | 'user-stated' | 'replicated'
+  /** Where the deterministic source is (required iff `kind` is `source`):
+   * DDL / column comment / documentation / code, named concretely. Rides the
+   * `X-SG-Evidence-Source` trailer. */
+  readonly source?: string | undefined
+  /** The memory ids a replication rests on (required iff `kind` is
+   * `replicated`): one space-joined `X-SG-Memory` trailer. */
+  readonly memories?: readonly string[] | undefined
+}
+
+/**
  * Everything one audit commit records. Assembled by the tool layer, which is the only
  * place that knows the *intent* behind a write.
  *
@@ -88,6 +115,10 @@ export interface CommitContext {
   readonly scopeId?: string
   /** The session this write belongs to, when the caller tracks one. */
   readonly sessionId?: string
+  /** The promotion evidence this write declares (ADR-0021 R5/R6, #136) —
+   * renders `X-SG-Evidence` plus its two companions; absent on every
+   * non-promotion write, so the trailer block is unchanged for them. */
+  readonly evidence?: PromotionEvidence
   /** Files in this commit — batch commits only (`beginBatch`, #21). */
   readonly files?: number
   /** Enrichment rounds folded into this commit — batch commits only. */
@@ -169,6 +200,23 @@ export function buildTrailers(ctx: CommitContext): string[] {
   }
   if (ctx.sessionId !== undefined && ctx.sessionId.trim() !== '') {
     lines.push(`${TRAILER_PREFIX}Session: ${oneLine(ctx.sessionId, MAX_TRAILER_CHARS)}`)
+  }
+  // The promotion-evidence trailers (#136 / ADR-0021 R5–R7): `X-SG-Evidence`
+  // carries the kind, `X-SG-Evidence-Source` the 出处 a `source` promotion
+  // must name (R6「trailer 写明出处」— its own line so the kind stays a single
+  // machine-readable token), and `X-SG-Memory` the space-joined ids a
+  // replication cites (R4's `<id…>`). Optional and promotion-only: the
+  // trailer set for every other write is byte-identical to before, which is
+  // why `TRAILER_SCHEMA_VERSION` stays 1 — git-native trailer parsing ignores
+  // unknown keys, so the additive companions change no reader.
+  if (ctx.evidence !== undefined) {
+    lines.push(`${TRAILER_PREFIX}Evidence: ${ctx.evidence.kind}`)
+    if (ctx.evidence.kind === 'source' && ctx.evidence.source !== undefined && ctx.evidence.source.trim() !== '') {
+      lines.push(`${TRAILER_PREFIX}Evidence-Source: ${oneLine(ctx.evidence.source, MAX_TRAILER_CHARS)}`)
+    }
+    if (ctx.evidence.kind === 'replicated' && ctx.evidence.memories !== undefined && ctx.evidence.memories.length > 0) {
+      lines.push(`${TRAILER_PREFIX}Memory: ${ctx.evidence.memories.map(m => oneLine(m, 64)).join(' ')}`)
+    }
   }
   // Batch-only trailers (ruling 10's "批量另加"). The format is settled here so #21's
   // `beginBatch` adds staging mechanics and nothing about the message shape.

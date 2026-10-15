@@ -75,3 +75,17 @@ ADR-0021 定了 memory 是独立存储、不是 definition、不进指纹、必�
 - **R7 条目字段 +`contradicts: [mem-id…]`**（可选）：与本条结论相反、仍有效、未裁决的已有条目；校验被引 id 存在、
   非 wrong、非自身、不与 `supersedes` 重叠，不校验锚点重叠。以 `wrong` 取代一条有争议条目时 `basis` 必填。
 - **R9 回执邻居附逐例判断指引**，`record_memory` 工具描述承载判断树主干（规程单一来源）；服务端仍不做语义判断。
+
+## Update 2026-10-16（#136 落地——R6 批量晋升的 `to` 语义）
+
+R6 裁了 `promoted: [{to, at, session}]` 的形状与「同一 commit、只由服务端追加」，未裁**一次晋升写多个目标**时 `to`
+怎么取。落地取最小合理语义：**每个「落地或被确认」的事实层对象各追加一条**——
+
+- `import_definitions`：非 `error` 的行（created / updated / skipped——三者都确认了该对象承载此结论；error 行
+  命名的对象从未诞生，不追加）；
+- 四个单目标工具（create/update_definition、add_alias）：subject 的规范节点 id，不论该写的行是否幂等
+  （对象身份与晋升主张都为真）；`add_relation`：每条输入 relation 的规范边串（`<起点> -<类型>-> <终点>`，
+  与 remove_relation 悬空计数同一次派生）。
+
+配套两则：被引但 wrong 不计的条目**不追加**（它没参与计数）；追加经 `writeMemoryYaml` 的审计 seam 落在晋升
+自身的 `beginBatch` commit 内（与 R6「同一 commit」的实现面）。
