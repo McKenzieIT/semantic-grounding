@@ -35,11 +35,11 @@ columns:
     type: string
     comment: 包名
     role: dimension
-  - name: ch_type
+  - name: c1
     type: string
     comment: 渠道，又叫1渠
     role: dimension
-  - name: ch_id
+  - name: c2
     type: string
     comment: 渠道id，又叫2渠
     role: dimension
@@ -307,7 +307,7 @@ coverage:
     - 账号规模与活跃：快照账号数、累计活跃事件总量
     - 付费经济：累计付费账号数、累计付费总金额、付费转化率、ARPPU
     - 留存与生命周期：首/末次活跃时间、活跃天数与日期间隔（act_days_std/act_ymd_diff1/2）
-    - 渠道与平台画像：按 os_id/ch_type/ch_id/app_ver/ip_country 拆分账号规模与付费
+    - 渠道与平台画像：按 os_id/c1/c2/app_ver/ip_country 拆分账号规模与付费
   limitations:
     - 仅 scout 抽样验证，未做全量 maxc 实测复核
     - 全表零行：maxc 实测 SELECT COUNT(*)=0 且 MAX(ds)=NULL；该 dws 账号汇总表疑似未产出数据/历史遗留空表，ds=20260729 实测所有指标均为 0/NULL，无法验证合理性

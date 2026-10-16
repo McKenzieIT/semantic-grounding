@@ -127,15 +127,15 @@ export const G3_TARGET_PLACEHOLDER = '<G3_TARGET_TABLE>'
 const E3_PROMPT_A = [
   '你在参与一个跨 agent 接力测试的写入腿(A 腿)。语义层由 semantic-grounding 的 MCP 服务(服务名 sg)提供;先用 list_scopes / get_scope 确认当前 scope,之后每次写工具调用都带正确的 scope_id。',
   '',
-  '背景:业务方说「按 2渠 拆一下」,你从 dws_10000251_acc_summary_df 的列注释学到:ch_type 注释「渠道，又叫1渠」、ch_id 注释「渠道id，又叫2渠」。业务语义:一个一级渠道下有 1..N 个二级渠道。',
+  '背景:业务方说「按 2渠 拆一下」,你从 dws_10000251_acc_summary_df 的列注释学到:c1 注释「渠道，又叫1渠」、c2 注释「渠道id，又叫2渠」。业务语义:一个一级渠道下有 1..N 个二级渠道。',
   '',
   '任务(按顺序,全部经 sg 的 MCP 工具完成):',
   '1. 用 import_definitions 一次性建两个概念(先不要带 alt_labels):',
-  '   - 一级渠道:description「渠道一级分类,对应列 ch_type。」,properties {column: ch_type, recent_column: ch_type_lst};',
-  '   - 二级渠道:description「渠道二级分类,隶属一级渠道,对应列 ch_id。」,properties {column: ch_id, recent_column: ch_id_lst, parent: 一级渠道, parent_column: ch_type}。',
-  '   这次 import_definitions 调用要声明 evidence: {kind: "source", source: "dws_10000251_acc_summary_df 的 ch_type/ch_id 列注释(渠道，又叫1渠 / 渠道id，又叫2渠)"}。',
+  '   - 一级渠道:description「渠道一级分类,对应列 c1。」,properties {column: c1, recent_column: c1_lst};',
+  '   - 二级渠道:description「渠道二级分类,隶属一级渠道,对应列 c2。」,properties {column: c2, recent_column: c2_lst, parent: 一级渠道, parent_column: c1}。',
+  '   这次 import_definitions 调用要声明 evidence: {kind: "source", source: "dws_10000251_acc_summary_df 的 c1/c2 列注释(渠道，又叫1渠 / 渠道id，又叫2渠)"}。',
   '2. 用 add_alias 给 concept 一级渠道 加别名「1渠」,给 concept 二级渠道 加别名「2渠」。',
-  '3. 用 add_relation 给 concept 二级渠道 加一条指向 concept 一级渠道 的 related_to 边,summary 里写「隶属上级:一级渠道(1:N),下钻时按 ch_type, ch_id 分组」。',
+  '3. 用 add_relation 给 concept 二级渠道 加一条指向 concept 一级渠道 的 related_to 边,summary 里写「隶属上级:一级渠道(1:N),下钻时按 c1, c2 分组」。',
   '注意:本环境没有 create_definition 工具(已知宿主限制),不要尝试;import_definitions 的概念项字段名是 name。完成后报告你落了哪些 commit。',
 ].join('\n')
 
@@ -166,7 +166,7 @@ function g3Prompts(target: string): { readonly a: string; readonly inWindow: str
     '注意:incident 永不晋升 —— 不要写任何定义、不要建已验证查询。完成后报告 memory id。',
   ].join('\n')
   const inWindow = `你是数据分析师。我要看 ${target} 从 ${G3_INCIDENT_DAY.slice(5, 7)}-09 到 ${G3_INCIDENT_DAY.slice(5, 7)}-12 每日的指标趋势。请先查语义层(semantic-grounding 的 MCP 服务,服务名 sg;scope ${X63_SCOPE_ID},要用读工具确认,注意带上日期窗)这几天里有没有需要特别注意或排除的日期,再给结论和依据。`
-  const outWindow = `你是数据分析师。我要看 ${target} 从 09-01 到 09-30 每日的指标趋势。请先查语义层(semantic-grounding 的 MCP 服务,服务名 sg;scope ${X63_SCOPE_ID},要用读工具确认,注意带上日期窗)有没有需要特别注意或排除的日期,再给结论和依据。`
+  const outWindow = `你是数据分析师。我要看 ${target} 从 09-01 到 09-30 每日的指标趋势。请先查语义层(semantic-grounding 的 MCP 服务,服务名 sg;scope ${X63_SCOPE_ID},要用读工具确认,注意带上日期窗)看 ${target} 表的记忆层有没有需要特别注意或排除的日期(仅查本表记忆,不要扩展到其他表或全库),再给结论和依据。`
   return { a, inWindow, outWindow }
 }
 
@@ -191,13 +191,13 @@ export const E3_SCENARIO: RelayScenario = {
   questions: [{
     id: 'e3-main',
     prompt: E3_PROMPT_B,
-    allOf: ['univ_acc_churn_di', 'ch_id'],
+    allOf: ['univ_acc_churn_di', 'c2'],
     anyOf: [],
     negative: [],
   }],
   l0: { must: 'evidence-source' },
   l1: { readTools: READ_TOOLS, trajectoryMentions: ['二级渠道'] },
-  replayKeywords: ['concept:二级渠道', 'ch_id'],
+  replayKeywords: ['concept:二级渠道', 'c2'],
 }
 
 /** A3 (k11, qodercli A/B, no script L3): 口径一致性 — B must repeat A's threshold. */

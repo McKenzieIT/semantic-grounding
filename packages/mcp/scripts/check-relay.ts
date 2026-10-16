@@ -72,6 +72,7 @@ import {
   judgeAnswer,
   judgeWindow,
   K11_RELAY_SCOPE_ID,
+  type RelayQuestion,
   relayScenario,
   X63_SCOPE_ID,
   type RelayRun,
@@ -448,7 +449,7 @@ function judgeL0(scenario: RelayScenario, root: string, baseline: string, g3Targ
   if (scenario.l0.must === 'evidence-source') {
     const promo = commits.find(c => c.trailers['Evidence'] === 'source')
     if (promo === undefined) return fail('no commit carries X-SG-Evidence: source — the A leg did not declare the promotion')
-    if (!(promo.trailers['Evidence-Source'] ?? '').includes('ch_id')) return fail('X-SG-Evidence-Source does not name the ch_id column comment')
+    if (!(promo.trailers['Evidence-Source'] ?? '').includes('c2')) return fail('X-SG-Evidence-Source does not name the c2 column comment')
     for (const c of commits) {
       if (c.trailers['Memory'] !== undefined) return fail(`commit ${c.sha.slice(0, 7)} carries X-SG-Memory (E3: 确定性直升,无 memory 引用)`)
       if (c.trailers['Session'] !== undefined) return fail(`commit ${c.sha.slice(0, 7)} carries X-SG-Session (E3 per #156: 仅 X-SG-Evidence: source)`)
@@ -504,8 +505,8 @@ function judgeL0(scenario: RelayScenario, root: string, baseline: string, g3Targ
 
 /** L1: B called an SG read tool (zero tool calls + a correct answer = leak =
  * fail), plus the card's trajectory-mentions rule (E3: touched 二级渠道),
- * plus any per-question window assertion (#179). */
-function judgeL1(scenario: RelayScenario, run: RelayRun): { readonly pass: boolean; readonly error: string | undefined } {
+ * plus the current question's window assertion (#179, #182). */
+function judgeL1(scenario: RelayScenario, question: RelayQuestion, run: RelayRun): { readonly pass: boolean; readonly error: string | undefined } {
   if (!run.sgCalls.some(c => scenario.l1.readTools.includes(c.name))) {
     return { pass: false, error: `no SG read tool called (called: ${run.sgCalls.map(c => c.name).join(', ') || 'none'} — a correct answer without a read is a leak)` }
   }
@@ -513,12 +514,11 @@ function judgeL1(scenario: RelayScenario, run: RelayRun): { readonly pass: boole
   for (const mention of scenario.l1.trajectoryMentions) {
     if (!trajectory.includes(mention)) return { pass: false, error: `trajectory never mentions "${mention}"` }
   }
-  // Per-question window assertions (#179).
-  for (const question of scenario.questions) {
-    if (question.window === undefined) continue
+  // Window assertion for THIS question only (#179, #182: each B run asks one
+  // question — don't apply other questions' window rules).
+  if (question.window !== undefined) {
     const w = judgeWindow(question, run)
-    if (w === undefined) continue
-    if (!w.pass) return { pass: false, error: `${question.id}: ${w.error}` }
+    if (w !== undefined && !w.pass) return { pass: false, error: `${question.id}: ${w.error}` }
   }
   return { pass: true, error: undefined }
 }
@@ -711,7 +711,7 @@ async function runScenario(scenario: RelayScenario, opts: Options, repoHead: str
           continue
         }
         judged += 1
-        const l1 = judgeL1(scenario, run.parsed)
+        const l1 = judgeL1(scenario, question, run.parsed)
         const l2 = judgeAnswer(question, run.parsed.answer)
         const pass = run.ok && l1.pass && l2.pass
         if (!pass) runOk = false

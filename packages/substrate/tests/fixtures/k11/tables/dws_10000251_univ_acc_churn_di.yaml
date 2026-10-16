@@ -4,7 +4,7 @@ table_comment: DWS通用账号流失日增量表：账号粒度流失用户快�
 description: |-
   粒度：日增量(_di)，每 user_id 一行。分析主体=账号（user_type=2，已校验 ds=20260730 仅含 user_type=2）。
   流失账号快照：记录当日判定流失的账号及其 churn_day（流失天数）、累计活跃/付费画像（act_days_std、act_dur_std、pay_amt_std 及 l7d/l30d/l90d/l180d/l360d 等滚动窗口付费）、首末活跃时间与设备/渠道/地域维度。
-  主要字段：user_type, user_id, churn_day, act_days_std, act_dur_std, pay_amt_std, pay_amt_l30d, act_tm_fst, act_tm_lst, pay_tm_fst, pay_tm_lst, os_id, ch_type, region_id 等49列。
+  主要字段：user_type, user_id, churn_day, act_days_std, act_dur_std, pay_amt_std, pay_amt_l30d, act_tm_fst, act_tm_lst, pay_tm_fst, pay_tm_lst, os_id, c1, region_id 等49列。
 domains:
   - 用户生命周期
   - 付费经济
@@ -22,7 +22,7 @@ columns:
     type: bigint
     comment: 平台
     role: dimension
-  - name: ch_type
+  - name: c1
     type: string
     comment: 渠道
     role: dimension
@@ -134,7 +134,7 @@ columns:
     type: bigint
     comment: 测试期用户标记，1-是、0-否
     role: dimension
-  - name: ch_id
+  - name: c2
     type: string
     comment: 渠道id
     role: dimension
@@ -182,11 +182,11 @@ columns:
     type: bigint
     comment: 最近平台
     role: dimension
-  - name: ch_type_lst
+  - name: c1_lst
     type: string
     comment: 最近渠道
     role: dimension
-  - name: ch_id_lst
+  - name: c2_lst
     type: string
     comment: 最近渠道id
     role: dimension
