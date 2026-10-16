@@ -1,0 +1,45 @@
+{
+  "scenario": "a3",
+  "corpus": "k11-copy",
+  "recorded_from": "pnpm relay run 2026-10-16T12:57:50.009Z (run 1, question a3-main)",
+  "scope_id": "k11-relay",
+  "requests": [
+    {
+      "name": "list_scopes",
+      "arguments": {}
+    },
+    {
+      "name": "resolve_alias",
+      "arguments": {
+        "term": "大R"
+      }
+    },
+    {
+      "name": "search_definitions",
+      "arguments": {
+        "query": "大R 留存"
+      }
+    },
+    {
+      "name": "get_definition",
+      "arguments": {
+        "kind": "concept",
+        "name": "付费经济"
+      }
+    },
+    {
+      "name": "get_definition",
+      "arguments": {
+        "kind": "table",
+        "name": "dws_10000251_univ_role_tag_df"
+      }
+    },
+    {
+      "name": "get_definition",
+      "arguments": {
+        "kind": "table",
+        "name": "dws_10000251_vip_acc_tag_df"
+      }
+    }
+  ]
+}

@@ -329,14 +329,14 @@ async function runHost(args: readonly string[], cwd: string, stdoutPath: string,
 function qodercliArgs(mcpConfig: string, prompt: string, model: string | undefined): string[] {
   const extra = (process.env['SG_RELAY_QODER_FLAGS'] ?? '').split(' ').filter(s => s !== '')
   const blanket = process.env['SG_RELAY_QODER_MODEL']
-  const effective = blanket ?? model
+  const effective = blanket ?? model ?? 'Auto'
   return [
     '--print',
     '--permission-mode', 'bypass_permissions',
     '--output-format', 'stream-json',
     '--no-session-persistence',
     '--mcp-config', mcpConfig, '--strict-mcp-config',
-    ...effective !== undefined ? ['--model', effective] : [],
+    '--model', effective,
     ...extra, prompt,
   ]
 }
@@ -371,7 +371,7 @@ interface RelaySandbox {
  * rule — the k11 legs carry their own registry). */
 function buildK11Sandbox(scenario: RelayScenario, registryPath: string): RelaySandbox {
   const dir = mkdtempSync(join(tmpdir(), `sg-relay-${scenario.id}-`))
-  const corpusRoot = realpathSync(join(dir, 'corpus'))
+  const corpusRoot = join(dir, 'corpus')
   cpSync(K11_FIXTURE, corpusRoot, { recursive: true })
   git(['init', '--quiet', '--initial-branch=main', '.'], corpusRoot)
   git(['config', 'user.name', `relay-${scenario.id}`], corpusRoot)
