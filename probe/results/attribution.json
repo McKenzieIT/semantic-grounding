@@ -1,0 +1,54 @@
+{
+  "corpus": {
+    "root": "/tmp/sg178-attr",
+    "tables": 61,
+    "events": 110,
+    "concepts": 10,
+    "memories": 12,
+    "queries": 5
+  },
+  "attribution": [
+    {
+      "step": "loadTables (61 表 YAML)",
+      "p50_ms": 6.701
+    },
+    {
+      "step": "loadEvents (110 事件 YAML)",
+      "p50_ms": 21.919
+    },
+    {
+      "step": "loadConcepts (10 概念 YAML，epoch 外)",
+      "p50_ms": 0.651
+    },
+    {
+      "step": "loadRawDir('queries') (5 已验证查询，epoch 外)",
+      "p50_ms": 0.374
+    },
+    {
+      "step": "buildAnchorUniverse 全量（冷 epoch = 真实每次调用）",
+      "p50_ms": 30.952
+    },
+    {
+      "step": "buildAnchorUniverse（表/事件已在本 epoch 读过 = 只剩建表开销）",
+      "p50_ms": 3.0429999999999993
+    },
+    {
+      "step": "readDefinitionMemories（冷 epoch = 现状）",
+      "p50_ms": 30.867
+    },
+    {
+      "step": "readDefinitionMemories（表/事件扫描已共享 = 修好后的量级）",
+      "p50_ms": 3.1389999999999993
+    },
+    {
+      "step": "verifiedQueriesFor（queries/ 第二次解析）",
+      "p50_ms": 0.385
+    }
+  ],
+  "whole_get_definition_table_ms": 31.068,
+  "fingerprint_only_floor_ms": 0.046,
+  "biggest_table_payload": {
+    "name": "dim_10000251_charm_gacha_info",
+    "bytes": 3708
+  }
+}

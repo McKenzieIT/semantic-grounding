@@ -1,0 +1,296 @@
+[
+  {
+    "variant": "mem=0,q=0 (零 memory 语料)",
+    "corpus": {
+      "root": "/tmp/sg178-stdio-m0",
+      "bytes": 1158123,
+      "files": 396,
+      "memories": 0,
+      "queries": 0
+    },
+    "startup_to_initialized_ms": 655,
+    "results": [
+      {
+        "call": "get_definition(table)",
+        "p50": 7.31,
+        "p90": 13.07,
+        "mean": 7.83,
+        "min": 6.38,
+        "max": 14.12,
+        "first_call_ms": 15.61,
+        "response_bytes": 1981,
+        "error": null
+      },
+      {
+        "call": "get_definition(table,+data_window)",
+        "p50": 6.86,
+        "p90": 7.52,
+        "mean": 6.89,
+        "min": 6.08,
+        "max": 7.63,
+        "first_call_ms": 7.23,
+        "response_bytes": 1981,
+        "error": null
+      },
+      {
+        "call": "get_definition(event)",
+        "p50": 21.8,
+        "p90": 24.2,
+        "mean": 22.09,
+        "min": 20.82,
+        "max": 25.44,
+        "first_call_ms": 26.07,
+        "response_bytes": 3956,
+        "error": null
+      },
+      {
+        "call": "get_scope",
+        "p50": 32.39,
+        "p90": 35.66,
+        "mean": 32.81,
+        "min": 30.16,
+        "max": 39.49,
+        "first_call_ms": 36,
+        "response_bytes": 384,
+        "error": null
+      },
+      {
+        "call": "list_definitions",
+        "p50": 32.72,
+        "p90": 37.34,
+        "mean": 34.98,
+        "min": 31.79,
+        "max": 63.16,
+        "first_call_ms": 34.52,
+        "response_bytes": 122724,
+        "error": null
+      },
+      {
+        "call": "search_definitions",
+        "p50": 37.61,
+        "p90": 39.67,
+        "mean": 37.76,
+        "min": 36.34,
+        "max": 40.84,
+        "first_call_ms": 53.29,
+        "response_bytes": 3967,
+        "error": null
+      },
+      {
+        "call": "resolve_alias",
+        "p50": 0.08,
+        "p90": 0.13,
+        "mean": 0.09,
+        "min": 0.07,
+        "max": 0.14,
+        "first_call_ms": 34.31,
+        "response_bytes": 174,
+        "error": null
+      }
+    ],
+    "stderr_head": [
+      "[semantic-grounding] @semantic-grounding/mcp 0.0.1 serving MCP over stdio",
+      "[semantic-grounding]   registry:  /tmp/sg178-registry-m0.yaml",
+      "[semantic-grounding]   scope:     probe-x63 -> /tmp/sg178-stdio-m0",
+      "[semantic-grounding]   agent:     probe-agent",
+      "[semantic-grounding]   author:    probe-agent <probe-agent@agents.sg178-stdio-m0>",
+      "[semantic-grounding]   committer: semantic-grounding-mcp"
+    ]
+  },
+  {
+    "variant": "mem=12,q=5 (X63 接力实测量级)",
+    "corpus": {
+      "root": "/tmp/sg178-stdio-m12",
+      "bytes": 1171689,
+      "files": 432,
+      "memories": 12,
+      "queries": 5
+    },
+    "startup_to_initialized_ms": 253,
+    "results": [
+      {
+        "call": "get_definition(table)",
+        "p50": 31.1,
+        "p90": 35.54,
+        "mean": 31.63,
+        "min": 29.52,
+        "max": 37.37,
+        "first_call_ms": 48.97,
+        "response_bytes": 2376,
+        "error": null
+      },
+      {
+        "call": "get_definition(table,+data_window)",
+        "p50": 34.32,
+        "p90": 42.46,
+        "mean": 34.63,
+        "min": 29.03,
+        "max": 42.48,
+        "first_call_ms": 31.77,
+        "response_bytes": 2376,
+        "error": null
+      },
+      {
+        "call": "get_definition(event)",
+        "p50": 36.42,
+        "p90": 51.65,
+        "mean": 37.89,
+        "min": 30.64,
+        "max": 56.48,
+        "first_call_ms": 41.11,
+        "response_bytes": 3957,
+        "error": null
+      },
+      {
+        "call": "get_scope",
+        "p50": 33.08,
+        "p90": 41.32,
+        "mean": 34.55,
+        "min": 30.6,
+        "max": 42.92,
+        "first_call_ms": 36.65,
+        "response_bytes": 386,
+        "error": null
+      },
+      {
+        "call": "list_definitions",
+        "p50": 33.48,
+        "p90": 42.35,
+        "mean": 34.81,
+        "min": 31.81,
+        "max": 44.08,
+        "first_call_ms": 35.09,
+        "response_bytes": 123240,
+        "error": null
+      },
+      {
+        "call": "search_definitions",
+        "p50": 41.87,
+        "p90": 46.32,
+        "mean": 42.22,
+        "min": 38.39,
+        "max": 55.38,
+        "first_call_ms": 48.02,
+        "response_bytes": 3894,
+        "error": null
+      },
+      {
+        "call": "resolve_alias",
+        "p50": 0.08,
+        "p90": 0.13,
+        "mean": 0.09,
+        "min": 0.07,
+        "max": 0.13,
+        "first_call_ms": 35.68,
+        "response_bytes": 175,
+        "error": null
+      }
+    ],
+    "stderr_head": [
+      "[semantic-grounding] @semantic-grounding/mcp 0.0.1 serving MCP over stdio",
+      "[semantic-grounding]   registry:  /tmp/sg178-registry-m12.yaml",
+      "[semantic-grounding]   scope:     probe-x63 -> /tmp/sg178-stdio-m12",
+      "[semantic-grounding]   agent:     probe-agent",
+      "[semantic-grounding]   author:    probe-agent <probe-agent@agents.sg178-stdio-m12>",
+      "[semantic-grounding]   committer: semantic-grounding-mcp"
+    ]
+  },
+  {
+    "variant": "mem=100,q=20",
+    "corpus": {
+      "root": "/tmp/sg178-stdio-m100",
+      "bytes": 1252533,
+      "files": 638,
+      "memories": 100,
+      "queries": 20
+    },
+    "startup_to_initialized_ms": 271.42,
+    "results": [
+      {
+        "call": "get_definition(table)",
+        "p50": 35.66,
+        "p90": 42.56,
+        "mean": 37.34,
+        "min": 32.9,
+        "max": 49.98,
+        "first_call_ms": 66.65,
+        "response_bytes": 2377,
+        "error": null
+      },
+      {
+        "call": "get_definition(table,+data_window)",
+        "p50": 37.17,
+        "p90": 42.95,
+        "mean": 37.35,
+        "min": 33.3,
+        "max": 45.46,
+        "first_call_ms": 42.01,
+        "response_bytes": 2377,
+        "error": null
+      },
+      {
+        "call": "get_definition(event)",
+        "p50": 35.26,
+        "p90": 38.77,
+        "mean": 34.6,
+        "min": 31.65,
+        "max": 39.68,
+        "first_call_ms": 33.79,
+        "response_bytes": 3958,
+        "error": null
+      },
+      {
+        "call": "get_scope",
+        "p50": 33.89,
+        "p90": 36.85,
+        "mean": 34.17,
+        "min": 31.22,
+        "max": 39.59,
+        "first_call_ms": 37.43,
+        "response_bytes": 388,
+        "error": null
+      },
+      {
+        "call": "list_definitions",
+        "p50": 34.02,
+        "p90": 38.13,
+        "mean": 34.32,
+        "min": 32.62,
+        "max": 40.64,
+        "first_call_ms": 36.78,
+        "response_bytes": 124796,
+        "error": null
+      },
+      {
+        "call": "search_definitions",
+        "p50": 40.35,
+        "p90": 45.81,
+        "mean": 40.91,
+        "min": 38.78,
+        "max": 46.75,
+        "first_call_ms": 52.16,
+        "response_bytes": 2255,
+        "error": null
+      },
+      {
+        "call": "resolve_alias",
+        "p50": 0.09,
+        "p90": 0.14,
+        "mean": 0.09,
+        "min": 0.05,
+        "max": 0.14,
+        "first_call_ms": 34.65,
+        "response_bytes": 176,
+        "error": null
+      }
+    ],
+    "stderr_head": [
+      "[semantic-grounding] @semantic-grounding/mcp 0.0.1 serving MCP over stdio",
+      "[semantic-grounding]   registry:  /tmp/sg178-registry-m100.yaml",
+      "[semantic-grounding]   scope:     probe-x63 -> /tmp/sg178-stdio-m100",
+      "[semantic-grounding]   agent:     probe-agent",
+      "[semantic-grounding]   author:    probe-agent <probe-agent@agents.sg178-stdio-m100>",
+      "[semantic-grounding]   committer: semantic-grounding-mcp"
+    ]
+  }
+]

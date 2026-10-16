@@ -1,0 +1,23 @@
+[
+  {
+    "scale": "X63 实测规模 61 表 + 110 事件 = 171",
+    "definitions": 171,
+    "get_definition_table_with_memory_ms": 40.8,
+    "get_definition_table_zero_memory_ms": 8.94,
+    "list_definitions_ms": 39.39
+  },
+  {
+    "scale": "2× 规模 122 表 + 220 事件 = 342",
+    "definitions": 342,
+    "get_definition_table_with_memory_ms": 72.85,
+    "get_definition_table_zero_memory_ms": 21.88,
+    "list_definitions_ms": 77.44
+  },
+  {
+    "scale": "k11 全量 321 表 + 453 事件 = 774",
+    "definitions": 774,
+    "get_definition_table_with_memory_ms": 165.4,
+    "get_definition_table_zero_memory_ms": 54.73,
+    "list_definitions_ms": 166.11
+  }
+]

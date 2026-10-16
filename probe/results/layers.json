@@ -1,0 +1,538 @@
+[
+  {
+    "variant": "mem=0,q=0 (零 memory 语料)",
+    "corpus": {
+      "root": "/tmp/sg178-corpus-m0",
+      "files": 183,
+      "bytes": 858313,
+      "tables": 61,
+      "events": 110,
+      "concepts": 10,
+      "memories": 0,
+      "queries": 0
+    },
+    "get_definition_table": {
+      "whole": {
+        "p50": 6.828958999999998,
+        "p90": 7.590666999999996,
+        "mean": 6.871298439999999,
+        "min": 5.953249999999969
+      },
+      "layers": [
+        {
+          "layer": "1 corpus 文件 I/O + YAML 解析 (loadTableDefinition)",
+          "p50": 6.717375000000004,
+          "p90": 7.487542000000019,
+          "mean": 6.767381680000003,
+          "min": 5.843250000000012,
+          "yaml_parses": 61
+        },
+        {
+          "layer": "2 指纹 sha256 (definitionVersion)",
+          "p50": 0.08341699999999719,
+          "p90": 0.10558300000002419,
+          "mean": 0.08759996,
+          "min": 0.06295799999998053,
+          "yaml_parses": 0
+        },
+        {
+          "layer": "3 memory 投影 (ADR-0024/0026/0027)",
+          "p50": 0.00829199999998309,
+          "p90": 0.013874999999984539,
+          "mean": 0.009403320000003532,
+          "min": 0.006000000000028649,
+          "yaml_parses": 0
+        },
+        {
+          "layer": "4 verified_queries (ADR-0025 uses 正扫)",
+          "p50": 0.004625000000032742,
+          "p90": 0.005959000000018477,
+          "mean": 0.00468831999999793,
+          "min": 0.0034160000000156288,
+          "yaml_parses": 0
+        }
+      ]
+    },
+    "get_definition_table_with_window": {
+      "whole": {
+        "p50": 6.675917000000027,
+        "p90": 7.380042000000003,
+        "mean": 6.919830079999994,
+        "min": 6.202874999999949
+      },
+      "memories_layer": {
+        "layer": "3 memory 投影 (带 data_window)",
+        "p50": 0.006374999999934516,
+        "p90": 0.010625000000004547,
+        "mean": 0.007043319999997948,
+        "min": 0.004583000000025095,
+        "yaml_parses": 0
+      }
+    },
+    "get_definition_event": {
+      "whole": {
+        "p50": 21.146332999999913,
+        "p90": 22.742917000000034,
+        "mean": 21.404244919999996,
+        "min": 19.752291000000014
+      },
+      "layers": [
+        {
+          "layer": "1 corpus 文件 I/O + YAML 解析 (loadEventDefinition)",
+          "p50": 20.864500000000135,
+          "p90": 22.391166999999996,
+          "mean": 21.077186719999997,
+          "min": 19.47958299999982,
+          "yaml_parses": 110
+        },
+        {
+          "layer": "2 指纹 sha256",
+          "p50": 0.30158400000004804,
+          "p90": 0.3805409999999938,
+          "mean": 0.31467664000001605,
+          "min": 0.2618330000000242,
+          "yaml_parses": 1
+        },
+        {
+          "layer": "3 memory 投影",
+          "p50": 0.009000000000014552,
+          "p90": 0.015165999999908308,
+          "mean": 0.010493240000018887,
+          "min": 0.006125000000110958,
+          "yaml_parses": 0
+        }
+      ]
+    },
+    "comparisons": [
+      {
+        "tool": "list_definitions (projectGraphNodes includeDerived)",
+        "p50": 32.66212500000006,
+        "p90": 35.709499999999935,
+        "mean": 33.01573172000002,
+        "min": 29.989500000000135,
+        "yaml_parses": 181
+      },
+      {
+        "tool": "get_scope (countNodesByKind = projectGraphNodes no-derived)",
+        "p50": 30.586333000000195,
+        "p90": 33.182624999999916,
+        "mean": 31.701354960000007,
+        "min": 28.732833000000028,
+        "yaml_parses": 181
+      }
+    ],
+    "cold_first_call_ms": 16.51,
+    "memory_index": {
+      "cold": {
+        "parses": 0,
+        "stats": 0
+      },
+      "warm_total_over_runs": {
+        "parses": 0,
+        "stats": 0
+      }
+    }
+  },
+  {
+    "variant": "mem=12,q=5 (X63 接力实测量级)",
+    "corpus": {
+      "root": "/tmp/sg178-corpus-m12",
+      "files": 200,
+      "bytes": 864256,
+      "tables": 61,
+      "events": 110,
+      "concepts": 10,
+      "memories": 12,
+      "queries": 5
+    },
+    "get_definition_table": {
+      "whole": {
+        "p50": 30.494665999999597,
+        "p90": 37.49108299999989,
+        "mean": 31.839208279999966,
+        "min": 28.87762500000008
+      },
+      "layers": [
+        {
+          "layer": "1 corpus 文件 I/O + YAML 解析 (loadTableDefinition)",
+          "p50": 6.62945899999977,
+          "p90": 8.251832999999806,
+          "mean": 7.139120039999925,
+          "min": 5.839332999999897,
+          "yaml_parses": 61
+        },
+        {
+          "layer": "2 指纹 sha256 (definitionVersion)",
+          "p50": 0.08466700000008132,
+          "p90": 0.11262500000066211,
+          "mean": 0.09181835999999749,
+          "min": 0.07016699999985576,
+          "yaml_parses": 0
+        },
+        {
+          "layer": "3 memory 投影 (ADR-0024/0026/0027)",
+          "p50": 23.21095800000012,
+          "p90": 25.281749999999647,
+          "mean": 24.133813359999987,
+          "min": 22.2952920000007,
+          "yaml_parses": 125
+        },
+        {
+          "layer": "4 verified_queries (ADR-0025 uses 正扫)",
+          "p50": 0.4385419999998703,
+          "p90": 0.5537079999994603,
+          "mean": 0.4702798399999301,
+          "min": 0.3710419999997612,
+          "yaml_parses": 5
+        }
+      ]
+    },
+    "get_definition_table_with_window": {
+      "whole": {
+        "p50": 30.25525000000016,
+        "p90": 31.59937500000069,
+        "mean": 30.201156680000096,
+        "min": 28.51366700000017
+      },
+      "memories_layer": {
+        "layer": "3 memory 投影 (带 data_window)",
+        "p50": 23.010457999999744,
+        "p90": 24.20445800000016,
+        "mean": 23.111413319999993,
+        "min": 21.999915999999757,
+        "yaml_parses": 125
+      }
+    },
+    "get_definition_event": {
+      "whole": {
+        "p50": 29.659083000000464,
+        "p90": 31.393291999999747,
+        "mean": 29.94250992000012,
+        "min": 28.379792000000634
+      },
+      "layers": [
+        {
+          "layer": "1 corpus 文件 I/O + YAML 解析 (loadEventDefinition)",
+          "p50": 20.63233300000047,
+          "p90": 22.5029999999997,
+          "mean": 20.9026533200001,
+          "min": 19.787124999999833,
+          "yaml_parses": 110
+        },
+        {
+          "layer": "2 指纹 sha256",
+          "p50": 0.2881250000000364,
+          "p90": 0.3519159999996191,
+          "mean": 0.3007349599999361,
+          "min": 0.2474579999998241,
+          "yaml_parses": 1
+        },
+        {
+          "layer": "3 memory 投影",
+          "p50": 8.656041999999616,
+          "p90": 9.546166999999514,
+          "mean": 8.73637668000003,
+          "min": 7.9140830000005735,
+          "yaml_parses": 76
+        }
+      ]
+    },
+    "comparisons": [
+      {
+        "tool": "list_definitions (projectGraphNodes includeDerived)",
+        "p50": 31.788125000000036,
+        "p90": 34.368625000000065,
+        "mean": 32.01849848000016,
+        "min": 29.998082999999497,
+        "yaml_parses": 186
+      },
+      {
+        "tool": "get_scope (countNodesByKind = projectGraphNodes no-derived)",
+        "p50": 30.979291999999987,
+        "p90": 32.59020799999962,
+        "mean": 31.278951679999956,
+        "min": 29.60608400000001,
+        "yaml_parses": 186
+      }
+    ],
+    "cold_first_call_ms": 36.77,
+    "memory_index": {
+      "cold": {
+        "parses": 12,
+        "stats": 12
+      },
+      "warm_total_over_runs": {
+        "parses": 0,
+        "stats": 1080
+      }
+    }
+  },
+  {
+    "variant": "mem=100,q=20",
+    "corpus": {
+      "root": "/tmp/sg178-corpus-m100",
+      "files": 303,
+      "bytes": 900149,
+      "tables": 61,
+      "events": 110,
+      "concepts": 10,
+      "memories": 100,
+      "queries": 20
+    },
+    "get_definition_table": {
+      "whole": {
+        "p50": 32.83649999999943,
+        "p90": 34.64770800000042,
+        "mean": 33.21644840000001,
+        "min": 31.536791999998968
+      },
+      "layers": [
+        {
+          "layer": "1 corpus 文件 I/O + YAML 解析 (loadTableDefinition)",
+          "p50": 6.626166000000012,
+          "p90": 6.8662919999987935,
+          "mean": 6.6354966400000555,
+          "min": 5.685249999998632,
+          "yaml_parses": 61
+        },
+        {
+          "layer": "2 指纹 sha256 (definitionVersion)",
+          "p50": 0.09241699999984121,
+          "p90": 0.10466699999960838,
+          "mean": 0.09170491999968362,
+          "min": 0.07133299999986775,
+          "yaml_parses": 0
+        },
+        {
+          "layer": "3 memory 投影 (ADR-0024/0026/0027)",
+          "p50": 24.75799999999981,
+          "p90": 26.846332999999504,
+          "mean": 25.144320000000153,
+          "min": 23.563249999999243,
+          "yaml_parses": 140
+        },
+        {
+          "layer": "4 verified_queries (ADR-0025 uses 正扫)",
+          "p50": 1.3513750000001892,
+          "p90": 1.4988329999996495,
+          "mean": 1.3411033199999656,
+          "min": 1.0528750000012224,
+          "yaml_parses": 20
+        }
+      ]
+    },
+    "get_definition_table_with_window": {
+      "whole": {
+        "p50": 32.03083399999923,
+        "p90": 32.78504099999918,
+        "mean": 32.22531516000003,
+        "min": 30.85637499999939
+      },
+      "memories_layer": {
+        "layer": "3 memory 投影 (带 data_window)",
+        "p50": 24.15783300000112,
+        "p90": 24.773166999999376,
+        "mean": 24.26564504000009,
+        "min": 23.292457999999897,
+        "yaml_parses": 140
+      }
+    },
+    "get_definition_event": {
+      "whole": {
+        "p50": 30.954665999999634,
+        "p90": 32.05687500000022,
+        "mean": 30.99909504000003,
+        "min": 29.38945799999965
+      },
+      "layers": [
+        {
+          "layer": "1 corpus 文件 I/O + YAML 解析 (loadEventDefinition)",
+          "p50": 20.668625000000247,
+          "p90": 21.48041700000067,
+          "mean": 20.77531156000019,
+          "min": 19.632542000001195,
+          "yaml_parses": 110
+        },
+        {
+          "layer": "2 指纹 sha256",
+          "p50": 0.2989579999994021,
+          "p90": 0.3491660000017873,
+          "mean": 0.30688319999993835,
+          "min": 0.2591659999998228,
+          "yaml_parses": 1
+        },
+        {
+          "layer": "3 memory 投影",
+          "p50": 10.032790999999634,
+          "p90": 10.535541999999623,
+          "mean": 9.91386163999996,
+          "min": 8.837500000001455,
+          "yaml_parses": 91
+        }
+      ]
+    },
+    "comparisons": [
+      {
+        "tool": "list_definitions (projectGraphNodes includeDerived)",
+        "p50": 33.05912499999977,
+        "p90": 35.64812500000153,
+        "mean": 33.336113240000124,
+        "min": 30.148417000000336,
+        "yaml_parses": 201
+      },
+      {
+        "tool": "get_scope (countNodesByKind = projectGraphNodes no-derived)",
+        "p50": 32.05729099999917,
+        "p90": 34.16170899999997,
+        "mean": 32.2600232800001,
+        "min": 30.550459000000046,
+        "yaml_parses": 201
+      }
+    ],
+    "cold_first_call_ms": 36.86,
+    "memory_index": {
+      "cold": {
+        "parses": 100,
+        "stats": 100
+      },
+      "warm_total_over_runs": {
+        "parses": 0,
+        "stats": 9000
+      }
+    }
+  },
+  {
+    "variant": "mem=500,q=50",
+    "corpus": {
+      "root": "/tmp/sg178-corpus-m500",
+      "files": 733,
+      "bytes": 1049909,
+      "tables": 61,
+      "events": 110,
+      "concepts": 10,
+      "memories": 500,
+      "queries": 50
+    },
+    "get_definition_table": {
+      "whole": {
+        "p50": 38.51391599999988,
+        "p90": 42.66520899999887,
+        "mean": 39.29892504000011,
+        "min": 36.98320800000147
+      },
+      "layers": [
+        {
+          "layer": "1 corpus 文件 I/O + YAML 解析 (loadTableDefinition)",
+          "p50": 6.746959000000061,
+          "p90": 7.219417000000249,
+          "mean": 6.959493440000151,
+          "min": 6.374375000001237,
+          "yaml_parses": 61
+        },
+        {
+          "layer": "2 指纹 sha256 (definitionVersion)",
+          "p50": 0.08950000000004366,
+          "p90": 0.11791600000105973,
+          "mean": 0.09573500000005879,
+          "min": 0.07999999999992724,
+          "yaml_parses": 0
+        },
+        {
+          "layer": "3 memory 投影 (ADR-0024/0026/0027)",
+          "p50": 28.404958999999508,
+          "p90": 31.409625000000233,
+          "mean": 28.914811800000315,
+          "min": 27.233917000001384,
+          "yaml_parses": 170
+        },
+        {
+          "layer": "4 verified_queries (ADR-0025 uses 正扫)",
+          "p50": 3.1877500000009604,
+          "p90": 3.5459160000009433,
+          "mean": 3.3258632800001213,
+          "min": 2.87879200000134,
+          "yaml_parses": 50
+        }
+      ]
+    },
+    "get_definition_table_with_window": {
+      "whole": {
+        "p50": 38.42383300000074,
+        "p90": 40.082916999999725,
+        "mean": 38.799164959999764,
+        "min": 36.93254199999865
+      },
+      "memories_layer": {
+        "layer": "3 memory 投影 (带 data_window)",
+        "p50": 28.53295799999978,
+        "p90": 29.537874999999985,
+        "mean": 28.599738239999862,
+        "min": 27.333667000000787,
+        "yaml_parses": 170
+      }
+    },
+    "get_definition_event": {
+      "whole": {
+        "p50": 35.30816599999889,
+        "p90": 37.50366699999722,
+        "mean": 35.560408319999844,
+        "min": 32.69708299999911
+      },
+      "layers": [
+        {
+          "layer": "1 corpus 文件 I/O + YAML 解析 (loadEventDefinition)",
+          "p50": 21.185832999999548,
+          "p90": 21.956874999999854,
+          "mean": 21.289051559999933,
+          "min": 20.138499999997293,
+          "yaml_parses": 110
+        },
+        {
+          "layer": "2 指纹 sha256",
+          "p50": 0.3251670000008744,
+          "p90": 0.3526669999992009,
+          "mean": 0.31565007999997763,
+          "min": 0.25512499999967986,
+          "yaml_parses": 1
+        },
+        {
+          "layer": "3 memory 投影",
+          "p50": 13.699500000000626,
+          "p90": 15.649750000000495,
+          "mean": 13.952599919999848,
+          "min": 11.784083000000464,
+          "yaml_parses": 121
+        }
+      ]
+    },
+    "comparisons": [
+      {
+        "tool": "list_definitions (projectGraphNodes includeDerived)",
+        "p50": 34.283832999997685,
+        "p90": 35.550790999997844,
+        "mean": 34.303199999999485,
+        "min": 30.861000000000786,
+        "yaml_parses": 231
+      },
+      {
+        "tool": "get_scope (countNodesByKind = projectGraphNodes no-derived)",
+        "p50": 33.516624999996566,
+        "p90": 35.39729100000113,
+        "mean": 33.60439499999949,
+        "min": 31.044167000000016,
+        "yaml_parses": 231
+      }
+    ],
+    "cold_first_call_ms": 112.05,
+    "memory_index": {
+      "cold": {
+        "parses": 500,
+        "stats": 500
+      },
+      "warm_total_over_runs": {
+        "parses": 0,
+        "stats": 45000
+      }
+    }
+  }
+]

@@ -1,0 +1,52 @@
+{
+  "rounds": 30,
+  "corpus": {
+    "root": "/tmp/sg178-rr",
+    "tables": 61,
+    "events": 110,
+    "memories": 12,
+    "queries": 5
+  },
+  "results": [
+    {
+      "call": "get_definition(table,+data_window)",
+      "p50": 39.05,
+      "p90": 45.06,
+      "min": 34.2,
+      "max": 45.65,
+      "response_bytes": 2370
+    },
+    {
+      "call": "get_definition(table)",
+      "p50": 39.42,
+      "p90": 44.33,
+      "min": 34.19,
+      "max": 70.87,
+      "response_bytes": 2370
+    },
+    {
+      "call": "get_scope",
+      "p50": 41.55,
+      "p90": 61.8,
+      "min": 34.76,
+      "max": 131.28,
+      "response_bytes": 373
+    },
+    {
+      "call": "list_definitions",
+      "p50": 43.55,
+      "p90": 50.12,
+      "min": 38.02,
+      "max": 56.12,
+      "response_bytes": 123233
+    },
+    {
+      "call": "search_definitions",
+      "p50": 49.23,
+      "p90": 78.47,
+      "min": 43.2,
+      "max": 104.09,
+      "response_bytes": 3887
+    }
+  ]
+}
