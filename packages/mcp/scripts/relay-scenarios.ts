@@ -13,16 +13,36 @@
  * it shareable between an opt-in external-LLM driver and the hermetic gate
  * (#157's boundary: the four gates never execute an external LLM call).
  *
+ * It also owns the **pure judging primitives** over the cards (#179's window
+ * assertion, #180's host-rejection boundary): both consumers and the unit
+ * tests call them without a CLI in the loop. The driver's `judgeL1`
+ * orchestrates them; this module just decides.
+ *
  * @module relay-scenarios
  */
 
 /** Which corpus a card runs over (#156's carrier ruling: E3+A3 k11, G3′ X63). */
 export type RelayCorpus = 'k11-copy' | 'x63-10000354'
 
-/** Which CLI harness drives a leg (#129's claude/codex shapes, #156's qodercli). */
-export type RelayHost = 'claude' | 'codex' | 'qodercli'
+/** Which CLI harness drives a leg (#180: qodercli only — claude/codex retired,
+ *  L3 is a manual QoderWork leg). */
+export type RelayHost = 'qodercli'
 
-/** One B-side question with its L2 keyword verdicts (#129's rubric layer 2). */
+/** A data-window the L1 judge enforces when present (#179's verdict: a window
+ *  must fit inside the question's date range and the matching read's result
+ *  must not contain the excluded memory). */
+export interface RelayWindow {
+  /** Inclusive lower bound, `YYYY-MM-DD`. */
+  readonly from: string
+  /** Inclusive upper bound, `YYYY-MM-DD`. */
+  readonly to: string
+  /** Memory id that MUST NOT appear in any tool result whose call carried
+   *  a window that fits inside this one. Empty = no memory exclusion. */
+  readonly excludeMemoryId: string
+}
+
+/** One B-side question with its L2 keyword verdicts (#129's rubric layer 2)
+ *  and optional L1 window assertion (#179). */
 export interface RelayQuestion {
   readonly id: string
   /** The question prompt. MUST NOT contain the answer keywords (#129's leak guard). */
@@ -33,6 +53,8 @@ export interface RelayQuestion {
   readonly anyOf: readonly string[]
   /** No keyword here may appear in B's final answer (empty = no negative rule). */
   readonly negative: readonly string[]
+  /** Optional L1 trajectory window assertion (#179). Empty = no window rule. */
+  readonly window?: RelayWindow
 }
 
 /** The L0 trailer verdict per card — #156's per-card table, verbatim. */
@@ -59,8 +81,10 @@ export interface RelayScenario {
   readonly corpus: RelayCorpus
   readonly harnessA: RelayHost
   readonly harnessB: RelayHost
-  /** The L3 cross-host harness (codex for the k11 cards per #129's C leg; claude for the qodercli card). */
-  readonly harnessL3: RelayHost
+  /** True if L3 is a manual QoderWork run on this card (#180: L3 = QoderWork
+   *  manual, G3′ only). When false, no L3 runs and the driver prints the
+   *  manual checklist at the end of the card. */
+  readonly l3Manual: boolean
   /** A's write-side prompt (drives the L0 writes). */
   readonly promptA: string
   /** The control question (E3 only, ADR-0028 R4: pre-promotion, same wording, must NOT pass — else 换题). */
@@ -125,7 +149,7 @@ const A3_PROMPT_A = [
   '背景:业务方要「大R 留存」,但全语料没有一处定义「大R」是多少钱以上(概念「付费经济」的 alt_labels 里有「大R」,但无阈值)。本次会话业务方口述了口径。',
   '',
   `任务:把这条口径用 record_memory 记一条 practice memory:anchors 用 ["concept:付费经济"],body 写「大R 口径:累计付费 ≥ ${A3_THRESHOLD} 元(2026-10 业务口述,未书面确认)。」,basis 写「业务方在本次会话中口述」。`,
-  '注意:本次只是记录 memory —— 不要把它写进任何定义,也不要创建已验证查询(口径尚未经人书面确认)。完成后报告 memory id。',
+  '注意:本次只是记录 memory —— 不要把它写进某种定义,也不要创建已验证查询(口径尚未经人书面确认)。完成后报告 memory id。',
 ].join('\n')
 
 const A3_PROMPT_B = '你是数据分析师。业务方要算「大R 留存」。请先查语义层(semantic-grounding 的 MCP 服务,服务名 sg;先 list_scopes,要用读工具确认)看有没有关于「大R」口径的记录,然后回答:大R 的口径是什么、阈值是多少?简述依据。'
@@ -154,14 +178,14 @@ export const G3_WINDOW = { from: G3_INCIDENT_DAY, to: G3_INCIDENT_DAY } as const
 
 // ── The three cards ─────────────────────────────────────────────────────────────
 
-/** E3 (k11, claude A/B, codex L3): jargon → term concepts, direct promotion. */
+/** E3 (k11, qodercli A/B, no script L3): jargon → term concepts, direct promotion. */
 export const E3_SCENARIO: RelayScenario = {
   id: 'e3',
   card: 'E3｜内部黑话 —— 该立刻晋升的 memory(docs/data-memory-scenarios.md,ADR-0028 R4 增量)',
   corpus: 'k11-copy',
-  harnessA: 'claude',
-  harnessB: 'claude',
-  harnessL3: 'codex',
+  harnessA: 'qodercli',
+  harnessB: 'qodercli',
+  l3Manual: false,
   promptA: E3_PROMPT_A,
   controlPrompt: E3_PROMPT_B,
   questions: [{
@@ -176,14 +200,14 @@ export const E3_SCENARIO: RelayScenario = {
   replayKeywords: ['concept:二级渠道', 'ch_id'],
 }
 
-/** A3 (k11, claude A/B, codex L3): 口径一致性 — B must repeat A's threshold. */
+/** A3 (k11, qodercli A/B, no script L3): 口径一致性 — B must repeat A's threshold. */
 export const A3_SCENARIO: RelayScenario = {
   id: 'a3',
   card: 'A3｜「大R」没有阈值 —— 口径一致性(docs/data-memory-scenarios.md)',
   corpus: 'k11-copy',
-  harnessA: 'claude',
-  harnessB: 'claude',
-  harnessL3: 'codex',
+  harnessA: 'qodercli',
+  harnessB: 'qodercli',
+  l3Manual: false,
   promptA: A3_PROMPT_A,
   controlPrompt: undefined,
   questions: [{
@@ -198,21 +222,23 @@ export const A3_SCENARIO: RelayScenario = {
   replayKeywords: [A3_THRESHOLD, 'memories'],
 }
 
-/** G3′ (X63, qodercli A/B, claude L3): time-bounded incident, in/out-window behaviour. */
+/** G3′ (X63, qodercli A/B, L3 = QoderWork manual — #180): time-bounded incident, in/out-window behaviour.
+ *  The in-window question uses the full L2 surface; the out-of-window question uses #179's
+ *  window assertion (data_window ⊆ 09-01..09-30 whose read result omits the incident memory). */
 export const G3_SCENARIO: RelayScenario = {
   id: 'g3',
   card: 'G3′｜一次具体的未产出事故 —— 有失效时间,永不晋升(docs/data-memory-scenarios.md)',
   corpus: 'x63-10000354',
   harnessA: 'qodercli',
   harnessB: 'qodercli',
-  harnessL3: 'claude',
+  l3Manual: true,
   // The G3′ prompts are target-table-dependent; check-relay substitutes and
   // judges from these rules. The placeholders below document the shape for readers.
   promptA: g3Prompts(G3_TARGET_PLACEHOLDER).a,
   controlPrompt: undefined,
   questions: [
     { id: 'g3-in-window', prompt: g3Prompts(G3_TARGET_PLACEHOLDER).inWindow, allOf: ['未产出'], anyOf: [G3_INCIDENT_DAY, `${G3_INCIDENT_DAY.slice(5, 7)}月${G3_INCIDENT_DAY.slice(8, 10)}`], negative: [] },
-    { id: 'g3-out-window', prompt: g3Prompts(G3_TARGET_PLACEHOLDER).outWindow, allOf: [], anyOf: [], negative: [G3_INCIDENT_DAY, `${G3_INCIDENT_DAY.slice(5, 7)}月${G3_INCIDENT_DAY.slice(8, 10)}`, '未产出'] },
+    { id: 'g3-out-window', prompt: g3Prompts(G3_TARGET_PLACEHOLDER).outWindow, allOf: [], anyOf: [], negative: [], window: { from: '2026-09-01', to: '2026-09-30', excludeMemoryId: '' } },
   ],
   l0: { must: 'session-only' },
   l1: { readTools: READ_TOOLS, trajectoryMentions: [] },
@@ -229,6 +255,30 @@ export function relayScenario(id: 'e3' | 'a3' | 'g3'): RelayScenario {
   return found
 }
 
+// ── Pure judging primitives ──────────────────────────────────────────────────────
+
+/** One SG tool call the driver parsed from the host's stream — the shape every
+ *  judge reads (#180 item 6: include the per-call result so the window
+ *  assertion can see whether the matching read returned the incident memory). */
+export interface RelaySgCall {
+  readonly name: string
+  readonly input: Record<string, unknown>
+  /** Stringified `tool_result.content` block from the host. Empty when the
+   *  host did not report a result for this call (truncated stream, CLI
+   *  timeout, etc.). */
+  readonly resultText: string
+  /** True when the host marked this call as failed (`tool_result.is_error`). */
+  readonly isError: boolean
+}
+
+/** The shape every judge reads (#180: `sgCalls` is richer than plain name+input). */
+export interface RelayRun {
+  readonly sgCalls: readonly RelaySgCall[]
+  readonly trajectoryText: string
+  readonly answer: string
+  readonly credits: number | undefined
+}
+
 /** B's final-answer keyword verdict (#129's L2: allOf + anyOf + negative). */
 export function judgeAnswer(question: RelayQuestion, answer: string): { readonly pass: boolean; readonly misses: readonly string[] } {
   const misses = question.allOf.filter(kw => !answer.includes(kw))
@@ -237,3 +287,75 @@ export function judgeAnswer(question: RelayQuestion, answer: string): { readonly
   if (leaked.length > 0) misses.push(`(must-NOT-appear) ${leaked.join(' | ')}`)
   return { pass: misses.length === 0, misses }
 }
+
+/** L1 window assertion (#179): B must have called at least one read tool
+ *  whose `data_window` argument fits inside the question's window and whose
+ *  `resultText` does not name the excluded memory id. Returns `undefined`
+ *  when the question declares no window (caller skips). */
+export function judgeWindow(question: RelayQuestion, run: RelayRun): { readonly pass: boolean; readonly error: string | undefined } | undefined {
+  if (question.window === undefined) return undefined
+  const { from, to, excludeMemoryId } = question.window
+  // Find reads whose data_window fits inside the question's window.
+  const readsInRange: Array<{ readonly name: string; readonly window: { from: string; to: string }; readonly resultText: string }> = []
+  for (const call of run.sgCalls) {
+    const w = (call.input['data_window'] ?? call.input['dataWindow']) as unknown
+    if (w === undefined || w === null) continue
+    if (typeof w !== 'object') continue
+    const wFrom = (w as Record<string, unknown>)['from']
+    const wTo = (w as Record<string, unknown>)['to']
+    if (typeof wFrom !== 'string' || typeof wTo !== 'string') continue
+    if (wFrom < from || wTo > to) continue // window crosses outside the question's range
+    readsInRange.push({ name: call.name, window: { from: wFrom, to: wTo }, resultText: call.resultText })
+  }
+  if (readsInRange.length === 0) {
+    return { pass: false, error: `no SG read tool carried a data_window ⊆ ${from}..${to} (B either called no read tool, or called one without a window, or the window crossed outside the question's range)` }
+  }
+  if (excludeMemoryId !== '') {
+    const leaks = readsInRange.filter(r => r.resultText.includes(excludeMemoryId))
+    if (leaks.length === readsInRange.length) {
+      // Every qualifying read contained the excluded memory — L1 fails.
+      return { pass: false, error: `every SG read with data_window ⊆ ${from}..${to} returned a result containing memory ${excludeMemoryId} — the window did not filter it out` }
+    }
+    // Partial leak is allowed under #179's ruling: the question only requires "this call's
+    // return did not contain the incident memory", i.e. at least one qualifying read is clean.
+  }
+  return { pass: true, error: undefined }
+}
+
+/** Substrings a host-generated rejection typically contains (#180 R4). The host
+ *  rejects a tool call by setting `tool_result.is_error=true` with text like
+ *  "Permission confirmation required…" or "approval required"; SG business
+ *  errors never use these words. */
+const HOST_REJECTION_MARKERS: readonly string[] = [
+  'permission',
+  'approval',
+  'denied',
+  'forbidden',
+  'unauthorized',
+]
+
+/** True if a parsed call looks like the host refused to run it (as opposed
+ *  to the SG server returning a business error). Matches any `is_error`
+ *  result whose text hits one of the host-rejection markers. */
+function isHostRejection(call: RelaySgCall): boolean {
+  if (!call.isError) return false
+  const needle = call.resultText.toLowerCase()
+  return HOST_REJECTION_MARKERS.some(m => needle.includes(m))
+}
+
+/** Find the first host-rejection call in a run, returning its tool name and
+ *  the rejection text. `undefined` when no rejection is present — caller
+ *  should halt the run with an environment error rather than judge it as
+ *  FAIL (#180 R4: host-layer rejection is not a B-leg quality signal). */
+export function hostRejectionOf(run: RelayRun): { readonly tool: string; readonly text: string } | undefined {
+  for (const call of run.sgCalls) {
+    if (isHostRejection(call)) return { tool: call.name, text: call.resultText }
+  }
+  return undefined
+}
+
+/** The default A-leg model tier for qodercli runs (#180 R5: A is mechanical
+ *  execution — record_memory / import_definitions — so a cheaper tier is
+ *  fine). B leg and the control set no default and let qodercli's Auto pick;
+ *  `SG_RELAY_QODER_MODEL` overrides everything for debugging only. */
+export const A_LEG_DEFAULT_MODEL = 'Efficient'

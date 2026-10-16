@@ -1,36 +1,42 @@
 #!/usr/bin/env node
 /**
- * The opt-in cross-agent relay driver (#157 / #156's ruling / #129's harness
- * research) — Destination ④'s REAL measurement, which by ruling never enters
- * the four gates: it spends external-LLM money, it is nondeterministic, and a
- * 401 from an upstream gateway must not paint a gate red (#81's
+ * The opt-in cross-agent relay driver (#157 / #156's ruling / #180's QoderWork +
+ * qodercli rerouting) — Destination ④'s REAL measurement, which by ruling never
+ * enters the four gates: it spends external-LLM money, it is nondeterministic,
+ * and a 401 from an upstream gateway must not paint a gate red (#81's
  * environment-red-is-skipIf doctrine, inverted: don't put the environment in
  * the gate at all).
  *
- * ## What it runs (the three cards, per #156)
+ * ## What it runs (the three cards, per #156 / #180)
  *
  * | card | corpus | A harness | B harness | L0 (#156's per-card table) |
  * |---|---|---|---|---|
- * | E3 | k11 fixture COPY in a temp sandbox, own temp registry | `claude -p --bare` | `claude -p --bare` (isolated) | promotion commit carries only `X-SG-Evidence: source` |
- * | A3 | same k11-copy shape | `claude -p --bare` | `claude -p --bare` | `record_memory` commit carries only `X-SG-Session` |
- * | G3′ | the REAL X63 scope `10000354` via the per-user registry | `qodercli` | `qodercli` | `record_memory` (incident) carries only `X-SG-Session` |
+ * | E3 | k11 fixture COPY in a temp sandbox, own temp registry | `qodercli` (Efficient) | `qodercli` (Auto, N=5) | promotion commit carries only `X-SG-Evidence: source` |
+ * | A3 | same k11-copy shape | `qodercli` (Efficient) | `qodercli` (Auto, N=5) | `record_memory` commit carries only `X-SG-Session` |
+ * | G3′ | the REAL X63 scope `10000354` via the per-user registry | `qodercli` (Efficient) | `qodercli` (Auto, N=5) | `record_memory` (incident) carries only `X-SG-Session` |
  *
- * E3 additionally runs ADR-0028 R4's 晋升前对照组: the same question against the
- * concept-free corpus must NOT pass — if it does, the scenario proves nothing
- * and the driver reports 换题 rather than a pass.
+ * L3 is a **manual QoderWork run** on G3′ only (#180 R1/R3). The driver does
+ * not spawn it; it prints a human-readable checklist at the end of the G3′
+ * card that the operator runs inside QoderWork's GUI. The checklist is the
+ * canonical evidence format (#180 R2). E3/A3 have no L3.
  *
- * ## Judging (#129's rubric)
+ * E3 additionally runs ADR-0028 R4's 晋升前对照组: the same question against
+ * the concept-free corpus must NOT pass — if it does, the scenario proves
+ * nothing and the driver reports 换题 rather than a pass.
  *
- * - L0 (deterministic, asserted here on the corpus git): the commit, its trailers,
- *   and the landed content per card.
- * - L1 (trajectory): B called at least one SG read tool (answering correctly
- *   with ZERO tool calls is a leak, judged FAIL); E3 additionally requires the
- *   trajectory to have touched `二级渠道`.
+ * ## Judging (#129's rubric, updated #179 + #180)
+ *
+ * - L0 (deterministic, asserted here on the corpus git): the commit, its
+ *   trailers, and the landed content per card.
+ * - L1 (trajectory): B called at least one SG read tool (zero tool calls +
+ *   correct answer = leak = fail). Per-question window assertion: a question
+ *   that declares a `window` requires ≥1 read whose `data_window` fits
+ *   inside the declared range and whose result omits the excluded memory id.
  * - L2 (answer keywords, allOf/anyOf/negative from `relay-scenarios.ts`).
- * - L3 (cross-host): one extra B run on the other harness (codex for the k11
- *   cards, claude for the qodercli card).
- * - N=5 B runs, pass ≥ ⌈0.8·N⌉ (#129: trajectory COUNTS are never asserted, only
- *   whether a read tool was called at all).
+ * - N=5 B runs, pass ≥ ⌈0.8·N⌉ (#129).
+ * - **Host-layer rejection** (e.g. `permission denied`, `approval required`)
+ *   halts the run with an **environment error** rather than a FAIL (#180 R4).
+ *   It is not counted in N=5 and does not deposit a fixture.
  *
  * ## Artifacts
  *
@@ -39,16 +45,16 @@
  *   replay leg consumes; until the first real run deposits it, that gate leg
  *   skips). COMMIT this file.
  * - `fixtures/relay/<id>-result.json` — the full result (pass rate, per-run
- *   trajectories, commit SHAs, costs). Git-ignored; paste into #157.
+ *   trajectories, commit SHAs, credits). Git-ignored; paste into #157.
  *
  * ## Preflight fails loud, never silently skips
  *
- * Every leg names the CLI it needs, the env vars that authenticate it (all of
- * #129's findings), and the artifact path it could not find. Nothing degrades
- * into "ran fewer scenarios than asked".
+ * Every leg names the CLI it needs and the artifact path it could not find.
+ * Nothing degrades into "ran fewer scenarios than asked".
  *
  * Run: `pnpm relay [--scenario e3|a3|g3|all] [--runs N] [--control-runs N]
- * [--skip-l3] [--keep]` — see `docs/relay-hitl.md` for the host-side runbook.
+ * [--keep] [--purge <mem-id>[,…]]` — see `docs/relay-hitl.md` for the host-side
+ * runbook.
  *
  * @module check-relay
  */
@@ -59,13 +65,17 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import yaml from 'js-yaml'
 import {
+  A_LEG_DEFAULT_MODEL,
   G3_TARGET_PLACEHOLDER,
   G3_WINDOW,
-  K11_RELAY_SCOPE_ID,
-  X63_SCOPE_ID,
+  hostRejectionOf,
   judgeAnswer,
+  judgeWindow,
+  K11_RELAY_SCOPE_ID,
   relayScenario,
-  type RelayHost,
+  X63_SCOPE_ID,
+  type RelayRun,
+  type RelaySgCall,
   type RelayScenario,
 } from './relay-scenarios.ts'
 
@@ -85,20 +95,23 @@ interface Options {
   readonly scenarios: readonly ('e3' | 'a3' | 'g3')[]
   readonly runs: number
   readonly controlRuns: number
-  readonly skipL3: boolean
   readonly keep: boolean
   readonly tight: boolean
   readonly timeoutMs: number
+  /** When non-empty, the driver runs --purge mode and exits: delete
+   *  `memory/<id>.yaml` for each id, commit once. Guarded to only delete
+   *  entries that match the G3′ card's incident signature. */
+  readonly purgeIds: readonly string[]
 }
 
 function parseOptions(argv: readonly string[]): Options {
   const scenarios: ('e3' | 'a3' | 'g3')[] = []
   let runs = Number(process.env['SG_RELAY_RUNS'] ?? 5)
   let controlRuns = Number(process.env['SG_RELAY_CONTROL_RUNS'] ?? 3)
-  let skipL3 = process.env['SG_RELAY_SKIP_L3'] === '1'
   let keep = false
   let tight = process.env['SG_RELAY_TIGHT'] !== '0'
   let timeoutMs = Number(process.env['SG_RELAY_TIMEOUT_MS'] ?? 300_000)
+  let purgeIds: string[] = []
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i]
     if (arg === undefined) continue
@@ -114,12 +127,15 @@ function parseOptions(argv: readonly string[]): Options {
     } else if (arg === '--control-runs') {
       controlRuns = Number(argv[i + 1] ?? controlRuns)
       i += 1
-    } else if (arg === '--skip-l3') {
-      skipL3 = true
     } else if (arg === '--keep') {
       keep = true
+    } else if (arg === '--purge') {
+      const raw = argv[i + 1]
+      if (raw === undefined || raw === '') throw new Error('--purge requires a comma-separated list of memory ids')
+      purgeIds = raw.split(',').map(s => s.trim()).filter(s => s !== '')
+      i += 1
     } else if (arg === '--help' || arg === '-h') {
-      console.log('usage: pnpm relay [--scenario e3|a3|g3|all] [--runs N] [--control-runs N] [--skip-l3] [--keep]\nenv: SG_RELAY_RUNS / SG_RELAY_CONTROL_RUNS / SG_RELAY_SKIP_L3 / SG_RELAY_TIGHT / SG_RELAY_TIMEOUT_MS / SG_RELAY_CLAUDE / SG_RELAY_CODEX / SG_RELAY_QODERCLI / SG_RELAY_CLAUDE_MODEL / SG_RELAY_QODER_MODEL / SG_RELAY_QODER_FLAGS / SG_RELAY_G3_TARGET')
+      console.log('usage: pnpm relay [--scenario e3|a3|g3|all] [--runs N] [--control-runs N] [--keep] [--purge <mem-id>[,…]]\nenv: SG_RELAY_RUNS / SG_RELAY_CONTROL_RUNS / SG_RELAY_TIGHT / SG_RELAY_TIMEOUT_MS / SG_RELAY_QODERCLI / SG_RELAY_QODER_MODEL / SG_RELAY_QODER_FLAGS / SG_RELAY_G3_TARGET')
       process.exit(0)
     } else {
       throw new Error(`unknown flag: ${arg}`)
@@ -129,39 +145,29 @@ function parseOptions(argv: readonly string[]): Options {
   if (!Number.isInteger(controlRuns) || controlRuns < 1) throw new Error(`--control-runs must be a positive integer, got ${controlRuns}`)
   return {
     scenarios: scenarios.length > 0 ? scenarios : ['e3', 'a3', 'g3'],
-    runs, controlRuns, skipL3, keep, tight, timeoutMs,
+    runs, controlRuns, keep, tight, timeoutMs,
+    purgeIds,
   }
 }
 
-/** The binary name for a host, overridable per host (#129/#156's paths are per-machine). */
-function binaryOf(host: RelayHost): string {
-  if (host === 'claude') return process.env['SG_RELAY_CLAUDE'] ?? 'claude'
-  if (host === 'codex') return process.env['SG_RELAY_CODEX'] ?? 'codex'
-  return process.env['SG_RELAY_QODERCLI'] ?? join(process.env['HOME'] ?? process.env['USERPROFILE'] ?? '', '.qoder', 'bin', 'qodercli', 'qodercli')
-}
-
-/** `qodercli` lives outside PATH on the machines that have it (#156); fall back
- * to the bare name when the default absolute path does not exist. */
-function resolveBinary(host: RelayHost): string {
-  const bin = binaryOf(host)
-  if (host === 'qodercli' && process.env['SG_RELAY_QODERCLI'] === undefined && !existsSync(bin)) return 'qodercli'
-  return bin
+/** The `qodercli` binary path (#180 — single harness now). Default lives
+ *  outside PATH on the machines that have it; fall back to the bare name
+ *  when the default absolute path does not exist. */
+function resolveQodercliBinary(): string {
+  const override = process.env['SG_RELAY_QODERCLI']
+  if (override !== undefined) return override
+  const home = process.env['HOME'] ?? process.env['USERPROFILE'] ?? ''
+  const defaultPath = join(home, '.qoder', 'bin', 'qodercli', 'qodercli')
+  if (existsSync(defaultPath)) return defaultPath
+  return 'qodercli'
 }
 
 // ── Process plumbing ──────────────────────────────────────────────────────────────
 
-/** One parsed harness run: everything the judges read. */
-interface ParsedRun {
-  readonly sgCalls: ReadonlyArray<{ readonly name: string; readonly input: Record<string, unknown> }>
-  readonly trajectoryText: string
-  readonly answer: string
-  readonly costUsd: number | undefined
-}
-
 /** One harness invocation's outcome. */
 interface HostRun {
   readonly ok: boolean
-  readonly parsed: ParsedRun
+  readonly parsed: RelayRun
   readonly error: string | undefined
   readonly stdoutPath: string
   readonly durationMs: number
@@ -178,32 +184,33 @@ function git(args: readonly string[], cwd: string): string {
  * must have passed (the workspace dep resolves to `lib/`, CLAUDE.md's known pit). */
 let sgToolNames: ReadonlySet<string> | undefined
 
-/** Normalize a host-rendered MCP tool name to its SG name; `undefined` when the call was not SG. */
-function sgCallOf(name: string, input: Record<string, unknown>): { readonly name: string; readonly input: Record<string, unknown> } | undefined {
-  if (sgToolNames === undefined) throw new Error('SG tool surface not loaded')
-  let normalized = name
+/** Strip the host-specific MCP tool prefix from a raw tool name; returns the
+ *  bare SG name when the call is SG, `undefined` otherwise. */
+function stripPrefix(raw: string): string {
   for (const prefix of ['mcp__sg__', 'sg__', 'sg/']) {
-    if (normalized.startsWith(prefix)) {
-      normalized = normalized.slice(prefix.length)
-      break
-    }
+    if (raw.startsWith(prefix)) return raw.slice(prefix.length)
   }
-  return sgToolNames.has(normalized) ? { name: normalized, input } : undefined
+  return raw
 }
 
-/** Parse one harness's JSONL stream (claude/qodercli's stream-json shape, then
- * codex's --json shape — #129 measured both; tool names arrive as `mcp__sg__x`,
- * `sg/x`, or bare, all normalized by {@link sgCallOf}). */
-function parseStream(raw: string): ParsedRun {
-  const calls: { name: string; input: Record<string, unknown> }[] = []
+/** Parse the `qodercli --output-format stream-json` stream (#180: the shape
+ *  the probe on qodercli 1.1.28 matched — assistant/user events with
+ *  `message.content[]` carrying `tool_use` and `tool_result` blocks, plus a
+ *  terminal `result` event). Returns per-call results so the window
+ *  assertion can see what each read returned (#179). */
+function parseStream(raw: string): RelayRun {
+  const calls = new Map<string, { name: string; input: Record<string, unknown>; resultText: string; isError: boolean }>()
+  const orderedCalls: { name: string; input: Record<string, unknown>; resultText: string; isError: boolean }[] = []
   let trajectoryText = ''
   let answer = ''
   let lastAssistantText = ''
-  let costUsd: number | undefined
-  const consumeCall = (name: unknown, input: unknown): void => {
+  let credits: number | undefined
+  const consumeUse = (id: unknown, name: unknown, input: unknown): void => {
     if (typeof name !== 'string') return
     const args = (input !== null && typeof input === 'object' ? input : {}) as Record<string, unknown>
-    calls.push({ name, input: args })
+    const entry = { name, input: args, resultText: '', isError: false }
+    if (typeof id === 'string' && id !== '') calls.set(id, entry)
+    orderedCalls.push(entry)
   }
   for (const line of raw.split('\n')) {
     if (line.trim() === '') continue
@@ -213,58 +220,56 @@ function parseStream(raw: string): ParsedRun {
     } catch {
       continue // harnesses interleave non-JSON notices on stdout; stderr is kept separately
     }
-    // claude -p / qodercli --print stream-json shape
     if (evt['type'] === 'assistant' || evt['type'] === 'user') {
       const message = evt['message'] as Record<string, unknown> | undefined
       const content = message?.['content']
       if (Array.isArray(content)) {
         for (const block of content as Record<string, unknown>[]) {
-          if (block['type'] === 'tool_use') {
-            consumeCall(block['name'], block['input'])
-          } else if (block['type'] === 'text' && typeof block['text'] === 'string') {
+          const bType = block['type']
+          if (bType === 'tool_use') {
+            consumeUse(block['id'], block['name'], block['input'])
+          } else if (bType === 'text' && typeof block['text'] === 'string') {
             trajectoryText += `${block['text']}\n`
             if (evt['type'] === 'assistant') lastAssistantText = block['text']
-          } else if (block['type'] === 'tool_result') {
+          } else if (bType === 'tool_result') {
+            const toolId = block['tool_use_id']
             const c = block['content']
-            trajectoryText += `${typeof c === 'string' ? c : JSON.stringify(c)}\n`
+            const text = typeof c === 'string' ? c : JSON.stringify(c)
+            const isError = block['is_error'] === true
+            const entry = typeof toolId === 'string' ? calls.get(toolId) : undefined
+            if (entry !== undefined) {
+              entry.resultText = text
+              entry.isError = isError
+            } else {
+              const last = orderedCalls[orderedCalls.length - 1]
+              if (last !== undefined) {
+                last.resultText = text
+                last.isError = isError
+              }
+            }
+            trajectoryText += `${text}\n`
           }
         }
       }
     } else if (evt['type'] === 'result') {
       if (typeof evt['result'] === 'string') answer = evt['result']
-      if (typeof evt['total_cost_usd'] === 'number') costUsd = evt['total_cost_usd']
-    }
-    // codex exec --json shape (#129's C leg: item.completed with .server/.tool)
-    else if (evt['type'] === 'item.completed') {
-      const item = evt['item'] as Record<string, unknown> | undefined
-      if (item === undefined) continue
-      if (typeof item['server'] === 'string' && typeof item['tool'] === 'string') {
-        const rawArgs = item['arguments'] ?? item['input'] ?? item['args']
-        if (typeof rawArgs === 'string') {
-          try {
-            consumeCall(`${item['server']}/${item['tool']}`, JSON.parse(rawArgs))
-          } catch {
-            consumeCall(`${item['server']}/${item['tool']}`, {})
-          }
-        } else {
-          consumeCall(`${item['server']}/${item['tool']}`, rawArgs)
-        }
-      } else if (item['type'] === 'agent_message' && typeof item['text'] === 'string') {
-        answer = item['text']
-      }
+      // qodercli's total_cost_usd is always 0 (#180 R5) — read credits instead.
+      if (typeof evt['total_credits'] === 'number') credits = evt['total_credits']
+      else if (typeof evt['total_cost_usd'] === 'number') credits = evt['total_cost_usd']
     }
   }
   if (answer === '') answer = lastAssistantText
-  return {
-    sgCalls: calls.map(c => sgCallOf(c.name, c.input)).filter((c): c is { name: string; input: Record<string, unknown> } => c !== undefined),
-    trajectoryText,
-    answer,
-    costUsd,
+  const sgCalls: RelaySgCall[] = []
+  for (const c of orderedCalls) {
+    const bare = stripPrefix(c.name)
+    if (sgToolNames === undefined) throw new Error('SG tool surface not loaded')
+    if (!sgToolNames.has(bare)) continue
+    sgCalls.push({ name: bare, input: c.input, resultText: c.resultText, isError: c.isError })
   }
+  return { sgCalls, trajectoryText, answer, credits }
 }
 
-/** The mcp-config file one harness leg gets (claude/qodercli's `--mcp-config`
- * shape; codex takes the same server inline via `-c`). */
+/** The mcp-config file a qodercli leg gets. */
 function writeMcpConfig(path: string, agentId: string, registryPath: string, scopeId: string): void {
   writeFileSync(path, `${JSON.stringify({
     mcpServers: {
@@ -276,9 +281,9 @@ function writeMcpConfig(path: string, agentId: string, registryPath: string, sco
   }, null, 2)}\n`, 'utf8')
 }
 
-/** Run one harness leg (stdin ignored — #129's pit #1: both CLIs hang waiting on a tty stdin). */
-async function runHost(host: RelayHost, args: readonly string[], cwd: string, stdoutPath: string, timeoutMs: number): Promise<HostRun> {
-  const bin = resolveBinary(host)
+/** Run one qodercli leg (stdin ignored — #129's pit #1: both CLIs hang waiting on a tty stdin). */
+async function runHost(args: readonly string[], cwd: string, stdoutPath: string, timeoutMs: number): Promise<HostRun> {
+  const bin = resolveQodercliBinary()
   const started = Date.now()
   return await new Promise<HostRun>(resolve => {
     const child = spawn(bin, [...args], { cwd, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
@@ -314,53 +319,32 @@ async function runHost(host: RelayHost, args: readonly string[], cwd: string, st
   })
 }
 
-/** claude's isolation six-piece (#129 §2: --bare + strict-mcp + fresh process +
- * no-session-persistence + tmp cwd + prompt-without-answer-keywords; tight adds
- * `--setting-sources ""` which also neutralizes the settings env block — auth
- * must then come from real env vars, which the preflight checks). */
-function claudeArgs(mcpConfig: string, prompt: string, tight: boolean, model: string | undefined): string[] {
-  return [
-    '-p', '--bare',
-    ...model !== undefined ? ['--model', model] : [],
-    ...tight ? ['--setting-sources', ''] : [],
-    '--mcp-config', mcpConfig, '--strict-mcp-config',
-    '--permission-mode', 'bypassPermissions',
-    '--output-format', 'stream-json', '--verbose',
-    '--no-session-persistence',
-    prompt,
-  ]
-}
-
-/** qodercli's flags (#156 measured them aligned with `claude -p`). */
-function qodercliArgs(mcpConfig: string, prompt: string): string[] {
+/** qodercli's flags (#156 measured them aligned with `claude -p`; #180 added
+ *  `--permission-mode bypass_permissions` — without it, qodercli's default
+ *  `acceptEdits` does not let MCP tool calls through, so L1 fails silently
+ *  with tool_result.is_error=true on every SG call). `model` is per-leg:
+ *  A defaults to Efficient (mechanical execution), B/control pass undefined
+ *  to let qodercli's Auto pick (B is the measurement subject — lowering its
+ *  tier would misattribute "model too weak" to "SG not useful"). */
+function qodercliArgs(mcpConfig: string, prompt: string, model: string | undefined): string[] {
   const extra = (process.env['SG_RELAY_QODER_FLAGS'] ?? '').split(' ').filter(s => s !== '')
-  const model = process.env['SG_RELAY_QODER_MODEL']
+  const blanket = process.env['SG_RELAY_QODER_MODEL']
+  const effective = blanket ?? model
   return [
     '--print',
-    ...model !== undefined ? ['--model', model] : [],
-    '--output-format', 'stream-json', '--verbose',
+    '--permission-mode', 'bypass_permissions',
+    '--output-format', 'stream-json',
+    '--no-session-persistence',
     '--mcp-config', mcpConfig, '--strict-mcp-config',
+    ...effective !== undefined ? ['--model', effective] : [],
     ...extra, prompt,
   ]
 }
 
-/** codex's flags (#129 §1.2 — note: NO --ignore-user-config, it takes auth with it). */
-function codexArgs(registryPath: string, scopeId: string, agentId: string, cwd: string, prompt: string): string[] {
-  const serverArgs = JSON.stringify([join(MCP_ROOT, 'src', 'bin.ts'), '--agent-id', agentId, '--registry', registryPath, '--scope', scopeId])
-  return [
-    'exec', '--ephemeral', '--skip-git-repo-check', '-C', cwd, '-s', 'read-only', '--json',
-    '-c', `mcp_servers.sg.command="${process.execPath}"`,
-    '-c', `mcp_servers.sg.args=${serverArgs}`,
-    prompt,
-  ]
-}
-
-/** One B-side invocation, whatever the host. */
-async function askOnce(host: RelayHost, prompt: string, sandbox: RelaySandbox, opts: Options, tag: string): Promise<HostRun> {
+/** One B-side invocation. A and B differ only in the prompt + model tier. */
+async function askOnce(prompt: string, sandbox: RelaySandbox, opts: Options, tag: string, model: string | undefined): Promise<HostRun> {
   const outPath = join(sandbox.outDir, `${tag}.jsonl`)
-  if (host === 'claude') return runHost('claude', claudeArgs(sandbox.mcpB, prompt, opts.tight, process.env['SG_RELAY_CLAUDE_MODEL']), sandbox.dir, outPath, opts.timeoutMs)
-  if (host === 'qodercli') return runHost('qodercli', qodercliArgs(sandbox.mcpB, prompt), sandbox.dir, outPath, opts.timeoutMs)
-  return runHost('codex', codexArgs(sandbox.registryPath, sandbox.scopeId, `relay-l3`, sandbox.dir, prompt), sandbox.dir, outPath, opts.timeoutMs)
+  return runHost(qodercliArgs(sandbox.mcpB, prompt, model), sandbox.dir, outPath, opts.timeoutMs)
 }
 
 // ── Sandbox ───────────────────────────────────────────────────────────────────────
@@ -413,7 +397,7 @@ function buildK11Sandbox(scenario: RelayScenario, registryPath: string): RelaySa
 /** The X63 leg's world: outputs land in a temp dir; the registry and the corpus
  * are the REAL ones (#156's ruling — G3′ rides the QoderWork-initialized scope).
  * The incident memory this leg writes is a real, bounded, memory-layer-only
- * artifact: never a definition fingerprint, retirable via a supersedes entry. */
+ * artifact: never a definition fingerprint, cleaned via `--purge <mem-id>`. */
 function buildX63Sandbox(scenario: RelayScenario, registryPath: string, corpusRoot: string): RelaySandbox {
   const dir = mkdtempSync(join(tmpdir(), `sg-relay-${scenario.id}-`))
   const outDir = join(dir, 'out')
@@ -435,6 +419,8 @@ interface L0Result {
   readonly pass: boolean
   readonly commits: ReadonlyArray<{ readonly sha: string; readonly subject: string; readonly trailers: Record<string, string> }>
   readonly error: string | undefined
+  /** Memory ids this card's A leg wrote, surfaced for the --purge guard. */
+  readonly writtenMemoryIds: readonly string[]
 }
 
 /** Read every commit since `baseline` with its full X-SG-* trailer map. */
@@ -452,10 +438,13 @@ function commitsSince(root: string, baseline: string): Array<{ sha: string; subj
   })
 }
 
-/** Judge one card's L0 (#156's per-card table). */
+/** Judge one card's L0 (#156's per-card table). Also returns the memory ids
+ *  A wrote — the guard for `--purge` (only ids matching the card's incident
+ *  signature may be deleted). */
 function judgeL0(scenario: RelayScenario, root: string, baseline: string, g3Target: string | undefined): L0Result {
   const commits = commitsSince(root, baseline)
-  const fail = (error: string): L0Result => ({ pass: false, commits, error })
+  const writtenMemoryIds: string[] = []
+  const fail = (error: string): L0Result => ({ pass: false, commits, error, writtenMemoryIds })
   if (scenario.l0.must === 'evidence-source') {
     const promo = commits.find(c => c.trailers['Evidence'] === 'source')
     if (promo === undefined) return fail('no commit carries X-SG-Evidence: source — the A leg did not declare the promotion')
@@ -473,7 +462,7 @@ function judgeL0(scenario: RelayScenario, root: string, baseline: string, g3Targ
     const secondary = yaml.load(readFileSync(join(root, 'concepts', '二级渠道.yaml'), 'utf8')) as Record<string, unknown>
     const refs = (secondary['related_refs'] as Array<Record<string, unknown>>) ?? []
     if (!refs.some(r => r['target_kind'] === 'concept' && r['target'] === '一级渠道')) return fail('concept 二级渠道 has no related_to edge to 一级渠道')
-    return { pass: true, commits, error: undefined }
+    return { pass: true, commits, error: undefined, writtenMemoryIds }
   }
   // A3 / G3′: a record_memory commit carrying ONLY X-SG-Session (never a promotion)
   const mem = commits.find(c => c.trailers['Tool'] === 'record_memory')
@@ -495,29 +484,41 @@ function judgeL0(scenario: RelayScenario, root: string, baseline: string, g3Targ
       if (!anchors.some(a => a.includes('付费经济')) || !body.includes('500')) continue
       sawExpected = true
       if (entry['promoted'] !== undefined) return fail('the practice memory already carries `promoted` (A3: 本次不升)')
+      const idMatch = /memory\/(mem-[^/]+)\.yaml$/.exec(rel)
+      if (idMatch !== null && idMatch[1] !== undefined) writtenMemoryIds.push(idMatch[1])
     } else {
       if (entry['type'] !== 'incident') continue
       if (entry['valid_from'] !== G3_WINDOW.from || entry['valid_until'] !== G3_WINDOW.to) continue
       if (g3Target !== undefined && !(((entry['anchors'] as unknown[]) ?? []).map(String)).some(a => a.includes(g3Target))) continue
       sawExpected = true
       if (entry['promoted'] !== undefined) return fail('the incident memory carries `promoted` (G3′: 永不升)')
+      const idMatch = /memory\/(mem-[^/]+)\.yaml$/.exec(rel)
+      if (idMatch !== null && idMatch[1] !== undefined) writtenMemoryIds.push(idMatch[1])
     }
   }
   if (!sawExpected) return fail('no memory entry matches the card (type / anchors / window)')
-  return { pass: true, commits, error: undefined }
+  return { pass: true, commits, error: undefined, writtenMemoryIds }
 }
 
-// ── L1 ────────────────────────────────────────────────────────────────────────────
+// ── L1 — trajectory judges ────────────────────────────────────────────────────────
 
 /** L1: B called an SG read tool (zero tool calls + a correct answer = leak =
- * fail), plus the card's trajectory-mentions rule (E3: touched 二级渠道). */
-function judgeL1(scenario: RelayScenario, run: HostRun): { readonly pass: boolean; readonly error: string | undefined } {
-  if (!run.parsed.sgCalls.some(c => scenario.l1.readTools.includes(c.name))) {
-    return { pass: false, error: `no SG read tool called (called: ${run.parsed.sgCalls.map(c => c.name).join(', ') || 'none'} — a correct answer without a read is a leak)` }
+ * fail), plus the card's trajectory-mentions rule (E3: touched 二级渠道),
+ * plus any per-question window assertion (#179). */
+function judgeL1(scenario: RelayScenario, run: RelayRun): { readonly pass: boolean; readonly error: string | undefined } {
+  if (!run.sgCalls.some(c => scenario.l1.readTools.includes(c.name))) {
+    return { pass: false, error: `no SG read tool called (called: ${run.sgCalls.map(c => c.name).join(', ') || 'none'} — a correct answer without a read is a leak)` }
   }
-  const trajectory = `${run.parsed.trajectoryText}\n${JSON.stringify(run.parsed.sgCalls)}`
+  const trajectory = `${run.trajectoryText}\n${JSON.stringify(run.sgCalls.map(c => ({ name: c.name, input: c.input })))}`
   for (const mention of scenario.l1.trajectoryMentions) {
     if (!trajectory.includes(mention)) return { pass: false, error: `trajectory never mentions "${mention}"` }
+  }
+  // Per-question window assertions (#179).
+  for (const question of scenario.questions) {
+    if (question.window === undefined) continue
+    const w = judgeWindow(question, run)
+    if (w === undefined) continue
+    if (!w.pass) return { pass: false, error: `${question.id}: ${w.error}` }
   }
   return { pass: true, error: undefined }
 }
@@ -526,31 +527,16 @@ function judgeL1(scenario: RelayScenario, run: HostRun): { readonly pass: boolea
 
 /** Everything a leg declared it needs — surfaced as ONE actionable error the
  * moment it is missing (never a silent skip). */
-function preflight(scenarios: readonly RelayScenario[], opts: Options): void {
+function preflight(scenarios: readonly RelayScenario[], _opts: Options): void {
   const problems: string[] = []
   const substrateLib = join(REPO_ROOT, 'packages', 'substrate', 'lib', 'index.js')
   if (!existsSync(substrateLib)) {
     problems.push(`substrate not built (${substrateLib} missing) — run "pnpm -r build" first (CLAUDE.md: direct .ts runs resolve the workspace dep to lib/)`)
   }
-  const hosts = new Set<RelayHost>()
-  for (const s of scenarios) {
-    hosts.add(s.harnessA)
-    hosts.add(s.harnessB)
-    if (!opts.skipL3) hosts.add(s.harnessL3)
-  }
-  for (const host of hosts) {
-    const bin = resolveBinary(host)
-    const probe = spawnSync(bin, ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, timeout: 30_000 })
-    if (probe.error !== undefined || probe.status !== 0) {
-      problems.push(`${host} leg: CLI not runnable ("${bin}" ${probe.error !== undefined ? probe.error.message : `exited ${probe.status}`}) — install it or point SG_RELAY_${host.toUpperCase()} at the binary`)
-      continue
-    }
-    if (host === 'claude') {
-      const auth = process.env['ANTHROPIC_AUTH_TOKEN'] ?? process.env['ANTHROPIC_API_KEY']
-      if (auth === undefined || auth === '') {
-        problems.push("claude leg: neither ANTHROPIC_AUTH_TOKEN nor ANTHROPIC_API_KEY is in the env. #129 measured --bare authenticates with ANTHROPIC_AUTH_TOKEN (+ANTHROPIC_BASE_URL for a third-party gateway); if yours live only in ~/.claude/settings.json's env block, export them first (jq -r '.env.ANTHROPIC_AUTH_TOKEN' ~/.claude/settings.json) or set SG_RELAY_TIGHT=0 to let --bare read the settings env block")
-      }
-    }
+  const bin = resolveQodercliBinary()
+  const probe = spawnSync(bin, ['--version'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true, timeout: 30_000 })
+  if (probe.error !== undefined || probe.status !== 0) {
+    problems.push(`qodercli leg: CLI not runnable ("${bin}" ${probe.error !== undefined ? probe.error.message : `exited ${probe.status}`}) — install it or point SG_RELAY_QODERCLI at the binary`)
   }
   if (scenarios.some(s => s.corpus === 'k11-copy') && !existsSync(K11_FIXTURE)) {
     problems.push(`k11 fixture missing at ${K11_FIXTURE} — the E3/A3 carrier (#128 P1)`)
@@ -565,14 +551,16 @@ function preflight(scenarios: readonly RelayScenario[], opts: Options): void {
 /** One treatment run's verdict. */
 interface RunVerdict {
   readonly tag: string
-  readonly host: RelayHost
   readonly ok: boolean
   readonly error: string | undefined
+  /** True if this run was halted by a host-layer rejection (env error);
+   *  such runs never count toward the pass-rate denominator (#180 R4). */
+  readonly envError: boolean
   readonly l1: { readonly pass: boolean; readonly error: string | undefined }
   readonly l2: ReadonlyArray<{ readonly question: string; readonly pass: boolean; readonly misses: readonly string[] }>
   readonly tools: readonly string[]
   readonly answerExcerpt: string
-  readonly costUsd: number | undefined
+  readonly credits: number | undefined
   readonly durationMs: number
   readonly pass: boolean
 }
@@ -584,10 +572,10 @@ interface ScenarioResult {
   readonly corpus: string
   readonly ranAt: string
   readonly repoHead: string
-  readonly l0: { readonly pass: boolean; readonly error: string | undefined; readonly commits: L0Result['commits'] }
+  readonly l0: { readonly pass: boolean; readonly error: string | undefined; readonly commits: L0Result['commits']; readonly writtenMemoryIds: readonly string[] }
   readonly control: { readonly runs: number; readonly passed: number; readonly valid: boolean } | undefined
-  readonly treatment: { readonly runs: number; readonly passed: number; readonly verdicts: readonly RunVerdict[] }
-  readonly l3: RunVerdict | undefined
+  readonly treatment: { readonly runs: number; readonly judged: number; readonly passed: number; readonly envErrors: number; readonly verdicts: readonly RunVerdict[] }
+  readonly manualL3: { readonly enabled: boolean; readonly scopeId: string; readonly corpusSha: string }
   readonly passRate: string
   readonly threshold: string
   readonly verdict: 'PASS' | 'FAIL' | 'INVALID (换题 — the control passed pre-promotion)'
@@ -623,6 +611,26 @@ function discoverG3Target(semanticRoot: string): string {
   return first.slice(0, -'.yaml'.length)
 }
 
+/** Print the manual L3 checklist (#180 R2): what the operator must do in
+ *  QoderWork's GUI to produce the human-side evidence. */
+function printManualL3Checklist(scenario: RelayScenario, g3Target: string | undefined, sandbox: RelaySandbox, corpusSha: string): void {
+  console.log(`\n[relay] === L3 manual checklist (${scenario.id}, QoderWork) ===`)
+  console.log(`  1. 语料仓 commit SHA: ${corpusSha}`)
+  console.log(`  2. 注册表 active scope: ${sandbox.scopeId}`)
+  console.log(`  3. 用 QoderWork 开两个全新会话(A 一次、B 一次,不复用含 A 上下文的会话)。`)
+  for (const question of scenario.questions) {
+    const prompt = g3Target !== undefined ? withG3Target(question.prompt, g3Target) : question.prompt
+    console.log(`  4. B 的 prompt (${question.id}):\n    ${prompt.split('\n').join('\n    ')}`)
+  }
+  console.log(`  5. 人工证据格式(写回 docs/relay-hitl.md §9,每条一次):`)
+  console.log(`     - 语料仓 commit SHA + 当时注册表 active scope;`)
+  console.log(`     - B 的 prompt 原文 + 最终回复原文;`)
+  console.log(`     - SG 工具调用逐条:工具名、关键入参(尤其 data_window 的 from/to)、返回里是否出现锚定的 memory id;`)
+  console.log(`     - L1 / L2 逐条判定,判据与脚本一致。`)
+  console.log(`  6. 跑完最后一步清理(不自动执行): pnpm relay --purge <本回合写入的 mem-id>[,…]`)
+  console.log(`     清理 §9 遗留的 mem-20261016-r6kgxn5a 也用同一口。`)
+}
+
 async function runScenario(scenario: RelayScenario, opts: Options, repoHead: string): Promise<ScenarioResult> {
   console.log(`\n[relay] === ${scenario.id}: ${scenario.card} ===`)
   let g3Target: string | undefined
@@ -647,15 +655,13 @@ async function runScenario(scenario: RelayScenario, opts: Options, repoHead: str
   }
   try {
     // ── E3 control (ADR-0028 R4) ───────────────────────────────────────────────
-    // Runs BEFORE the A leg: its premise is the concept-free corpus, and the
-    // sandbox is only guaranteed concept-free before A writes into it.
     let control: ScenarioResult['control']
     if (scenario.controlPrompt !== undefined) {
       const question = scenario.questions[0]
       if (question === undefined) throw new Error('internal: control scenario without a question')
       let passed = 0
       for (let i = 1; i <= opts.controlRuns; i += 1) {
-        const run = await askOnce(scenario.harnessB, scenario.controlPrompt, sandbox, opts, `ctrl-${i}`)
+        const run = await askOnce(scenario.controlPrompt, sandbox, opts, `ctrl-${i}`, undefined)
         const l2 = judgeAnswer(question, run.parsed.answer)
         const hit = run.ok && l2.pass
         if (hit) passed += 1
@@ -667,36 +673,56 @@ async function runScenario(scenario: RelayScenario, opts: Options, repoHead: str
 
     // ── A leg (the write) ──────────────────────────────────────────────────────
     const promptA = g3Target !== undefined ? withG3Target(scenario.promptA, g3Target) : scenario.promptA
-    const aArgs = scenario.harnessA === 'claude'
-      ? claudeArgs(sandbox.mcpA, promptA, opts.tight, process.env['SG_RELAY_CLAUDE_MODEL'])
-      : qodercliArgs(sandbox.mcpA, promptA)
-    console.log(`[relay]   A leg (${scenario.harnessA}) writing…`)
-    const aRun = await runHost(scenario.harnessA, aArgs, sandbox.dir, join(sandbox.outDir, 'A.jsonl'), opts.timeoutMs)
+    const aArgs = qodercliArgs(sandbox.mcpA, promptA, A_LEG_DEFAULT_MODEL)
+    console.log(`[relay]   A leg (qodercli, model=${A_LEG_DEFAULT_MODEL}) writing…`)
+    const aRun = await runHost(aArgs, sandbox.dir, join(sandbox.outDir, 'A.jsonl'), opts.timeoutMs)
     if (!aRun.ok) throw new Error(`A leg failed: ${aRun.error ?? 'unknown'}`)
     const l0 = judgeL0(scenario, sandbox.corpusRoot, sandbox.baseline, g3Target)
     console.log(`[relay]   L0 (commit+trailers on the corpus git): ${l0.pass ? 'PASS' : `FAIL — ${l0.error}`}`)
     for (const c of l0.commits) console.log(`[relay]     ${c.sha.slice(0, 7)} ${c.subject}`)
+    if (l0.writtenMemoryIds.length > 0) {
+      console.log(`[relay]   A wrote memory ids: ${l0.writtenMemoryIds.join(', ')} — pass these to \`--purge\` after the L3 manual run to clean the corpus.`)
+    }
 
     // ── B legs (N runs × questions) ────────────────────────────────────────────
     const verdicts: RunVerdict[] = []
     let runPasses = 0
+    let envErrors = 0
+    let judged = 0
     let fixtureWritten: string | undefined
     for (let i = 1; i <= opts.runs; i += 1) {
       let runOk = true
       for (const question of scenario.questions) {
         const prompt = g3Target !== undefined ? withG3Target(question.prompt, g3Target) : question.prompt
-        const run = await askOnce(scenario.harnessB, prompt, sandbox, opts, `B-${question.id}-${i}`)
-        const l1 = judgeL1(scenario, run)
+        const run = await askOnce(prompt, sandbox, opts, `B-${question.id}-${i}`, undefined)
+        // Host-layer rejection = environment error, never a FAIL (#180 R4).
+        const rejection = hostRejectionOf(run.parsed)
+        if (rejection !== undefined) {
+          envErrors += 1
+          verdicts.push({
+            tag: `B-${question.id}-${i}`, ok: false, error: `host rejected ${rejection.tool}: ${rejection.text.slice(0, 200)}`,
+            envError: true,
+            l1: { pass: false, error: 'host rejection' },
+            l2: [{ question: question.id, pass: false, misses: ['host rejection'] }],
+            tools: [], answerExcerpt: '', credits: undefined, durationMs: run.durationMs, pass: false,
+          })
+          console.log(`[relay]   run ${i} ${question.id}: ENV ERROR — host rejected ${rejection.tool}: ${rejection.text.split('\n')[0]?.slice(0, 120) ?? ''}`)
+          runOk = false
+          continue
+        }
+        judged += 1
+        const l1 = judgeL1(scenario, run.parsed)
         const l2 = judgeAnswer(question, run.parsed.answer)
         const pass = run.ok && l1.pass && l2.pass
         if (!pass) runOk = false
         if (!run.ok && run.error !== undefined) console.log(`[relay]   run ${i} ${question.id}: HOST ERROR — ${run.error}`)
-        console.log(`[relay]   run ${i}/${opts.runs} ${question.id}: L1=${l1.pass ? 'pass' : `FAIL(${l1.error})`} L2=${l2.pass ? 'pass' : `FAIL(${l2.misses.join('; ')})`} → ${pass ? 'PASS' : 'FAIL'}${run.parsed.costUsd !== undefined ? ` ($${run.parsed.costUsd.toFixed(4)})` : ''}`)
+        console.log(`[relay]   run ${i}/${opts.runs} ${question.id}: L1=${l1.pass ? 'pass' : `FAIL(${l1.error})`} L2=${l2.pass ? 'pass' : `FAIL(${l2.misses.join('; ')})`} → ${pass ? 'PASS' : 'FAIL'}${run.parsed.credits !== undefined ? ` (${run.parsed.credits.toFixed(3)} credits)` : ''}`)
         verdicts.push({
-          tag: `B-${question.id}-${i}`, host: scenario.harnessB, ok: run.ok, error: run.error,
+          tag: `B-${question.id}-${i}`, ok: run.ok, error: run.error,
+          envError: false,
           l1, l2: [{ question: question.id, pass: l2.pass, misses: l2.misses }],
           tools: run.parsed.sgCalls.map(c => c.name), answerExcerpt: run.parsed.answer.slice(0, 400),
-          costUsd: run.parsed.costUsd, durationMs: run.durationMs, pass,
+          credits: run.parsed.credits, durationMs: run.durationMs, pass,
         })
         if (pass && fixtureWritten === undefined && question.id === scenario.questions[0]?.id) {
           // #156: freeze B's MCP request sequence from the first passing main-question run.
@@ -716,42 +742,30 @@ async function runScenario(scenario: RelayScenario, opts: Options, repoHead: str
       if (runOk) runPasses += 1
     }
 
-    // ── L3 (cross-host, one run over the main question) ────────────────────────
-    let l3: RunVerdict | undefined
-    if (!opts.skipL3) {
-      const question = scenario.questions[0]
-      if (question === undefined) throw new Error('internal: scenario without a question')
-      const prompt = g3Target !== undefined ? withG3Target(question.prompt, g3Target) : question.prompt
-      console.log(`[relay]   L3 cross-host leg (${scenario.harnessL3})…`)
-      const run = await askOnce(scenario.harnessL3, prompt, sandbox, opts, 'L3')
-      const l1 = judgeL1(scenario, run)
-      const l2 = judgeAnswer(question, run.parsed.answer)
-      const pass = run.ok && l1.pass && l2.pass
-      console.log(`[relay]   L3: L1=${l1.pass ? 'pass' : `FAIL(${l1.error})`} L2=${l2.pass ? 'pass' : `FAIL(${l2.misses.join('; ')})`} → ${pass ? 'PASS' : 'FAIL'}`)
-      l3 = {
-        tag: 'L3', host: scenario.harnessL3, ok: run.ok, error: run.error, l1,
-        l2: [{ question: question.id, pass: l2.pass, misses: l2.misses }],
-        tools: run.parsed.sgCalls.map(c => c.name), answerExcerpt: run.parsed.answer.slice(0, 400),
-        costUsd: run.parsed.costUsd, durationMs: run.durationMs, pass,
-      }
+    // ── L3: manual only ────────────────────────────────────────────────────────
+    const corpusSha = git(['rev-parse', 'HEAD'], sandbox.corpusRoot).trim()
+    if (scenario.l3Manual) {
+      printManualL3Checklist(scenario, g3Target, sandbox, corpusSha)
+    } else {
+      console.log(`[relay]   L3: not configured for this card (per #180 R3, only G3′ gets manual L3)`)
     }
 
     const threshold = Math.ceil(opts.runs * 0.8)
     const controlValid = control?.valid ?? true
     const verdict: ScenarioResult['verdict'] = !controlValid
       ? 'INVALID (换题 — the control passed pre-promotion)'
-      : l0.pass && runPasses >= threshold && (l3?.pass ?? false)
+      : l0.pass && runPasses >= threshold
         ? 'PASS'
         : 'FAIL'
     return {
       scenario: scenario.id, card: scenario.card, corpus: scenario.corpus,
       ranAt: new Date().toISOString(), repoHead,
-      l0: { pass: l0.pass, error: l0.error, commits: l0.commits },
+      l0: { pass: l0.pass, error: l0.error, commits: l0.commits, writtenMemoryIds: l0.writtenMemoryIds },
       control,
-      treatment: { runs: opts.runs, passed: runPasses, verdicts },
-      l3,
-      passRate: `${runPasses}/${opts.runs}`,
-      threshold: `>=${threshold}/${opts.runs} (N=5 means >=4/5, #129)`,
+      treatment: { runs: opts.runs, judged, passed: runPasses, envErrors, verdicts },
+      manualL3: { enabled: scenario.l3Manual, scopeId: sandbox.scopeId, corpusSha },
+      passRate: `${runPasses}/${judged} judged (env errors: ${envErrors})`,
+      threshold: `>=${threshold}/${opts.runs} (N=5 means >=4/5, #129; env errors excluded)`,
       verdict,
       fixtureWritten,
     }
@@ -761,18 +775,75 @@ async function runScenario(scenario: RelayScenario, opts: Options, repoHead: str
   }
 }
 
+// ── --purge mode ──────────────────────────────────────────────────────────────────
+
+/** Verify one memory id matches the G3′ card's incident signature (type=incident,
+ *  valid_from/valid_until = G3_WINDOW) before deleting. Returns a one-line
+ *  reason if the entry does not match, `undefined` if it is safe to purge. */
+function validatePurgeTarget(corpusRoot: string, id: string): string | undefined {
+  const path = join(corpusRoot, 'memory', `${id}.yaml`)
+  if (!existsSync(path)) return `memory/${id}.yaml not found in the corpus`
+  const entry = yaml.load(readFileSync(path, 'utf8')) as Record<string, unknown>
+  if (entry['type'] !== 'incident') return `memory/${id} is type=${String(entry['type'])}, not incident — only G3′ incident memories may be purged`
+  if (entry['valid_from'] !== G3_WINDOW.from) return `memory/${id} valid_from=${String(entry['valid_from'])}, not ${G3_WINDOW.from}`
+  if (entry['valid_until'] !== G3_WINDOW.to) return `memory/${id} valid_until=${String(entry['valid_until'])}, not ${G3_WINDOW.to}`
+  return undefined
+}
+
+/** Run `--purge <ids>`: delete each memory/<id>.yaml and commit once. Guard
+ *  = only delete entries matching the G3′ incident signature; refuses
+ *  silently-bad ids rather than deleting them. */
+async function runPurge(ids: readonly string[]): Promise<void> {
+  console.log('[relay] --purge mode: deleting G3′ incident memories from the X63 corpus')
+  const { defaultRegistryPath, ScopeRegistryFile } = await import('../src/scope-registry.ts')
+  const registryPath = defaultRegistryPath()
+  const entry = new ScopeRegistryFile(registryPath).getEntry(X63_SCOPE_ID)
+  if (entry === undefined) {
+    throw new Error(`--purge: scope ${X63_SCOPE_ID} is not in the real registry (${registryPath})`)
+  }
+  const corpusRoot = realpathSync(resolveLayerDir(entry.semanticRoot))
+  const deleted: string[] = []
+  for (const id of ids) {
+    const reason = validatePurgeTarget(corpusRoot, id)
+    if (reason !== undefined) {
+      console.log(`[relay]   skip ${id}: ${reason}`)
+      continue
+    }
+    const path = join(corpusRoot, 'memory', `${id}.yaml`)
+    rmSync(path)
+    deleted.push(id)
+  }
+  if (deleted.length === 0) {
+    console.log('[relay]   nothing to delete')
+    return
+  }
+  const baseline = git(['rev-parse', 'HEAD'], corpusRoot).trim()
+  git(['add', '-A'], corpusRoot)
+  git(['commit', '--quiet', '-m', `relay: purge ${deleted.length} incident memory(ies) after manual L3`,
+    `--author=relay-purge <relay-purge@relay.invalid>`], corpusRoot)
+  const head = git(['rev-parse', 'HEAD'], corpusRoot).trim()
+  console.log(`[relay]   deleted ${deleted.length}: ${deleted.join(', ')}`)
+  console.log(`[relay]   commit ${head.slice(0, 7)} (baseline ${baseline.slice(0, 7)})`)
+}
+
 // ── main ──────────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
   const opts = parseOptions(process.argv.slice(2))
-  console.log('[relay] semantic-grounding relay driver (#157/#156/#129) — opt-in, NEVER part of the four gates')
-  console.log(`[relay] scenarios=${opts.scenarios.join(',')} runs=${opts.runs} controlRuns=${opts.controlRuns} skipL3=${opts.skipL3} tight=${opts.tight}`)
-  const scenarios = opts.scenarios.map(id => relayScenario(id))
-  preflight(scenarios, opts)
+  console.log('[relay] semantic-grounding relay driver (#157/#156/#180) — opt-in, NEVER part of the four gates')
+  console.log(`[relay] scenarios=${opts.scenarios.join(',')} runs=${opts.runs} controlRuns=${opts.controlRuns} keep=${opts.keep} purgeIds=${opts.purgeIds.length}`)
 
   // Lazy: everything under ../src resolves the substrate workspace dep to lib/.
   const { TOOL_NAMES } = await import('../src/tools/index.ts')
   sgToolNames = new Set(TOOL_NAMES)
+
+  if (opts.purgeIds.length > 0) {
+    await runPurge(opts.purgeIds)
+    return
+  }
+
+  const scenarios = opts.scenarios.map(id => relayScenario(id))
+  preflight(scenarios, opts)
 
   const repoHead = git(['rev-parse', 'HEAD'], REPO_ROOT).trim()
   const results: ScenarioResult[] = []
@@ -784,7 +855,7 @@ async function main(): Promise<void> {
   console.log('\n[relay] ── summary ──')
   let allPass = true
   for (const r of results) {
-    console.log(`[relay] ${r.scenario}: ${r.verdict} (treatment ${r.passRate}, threshold ${r.threshold}; L0=${r.l0.pass ? 'pass' : 'FAIL'}${r.control !== undefined ? `; control ${r.control.passed}/${r.control.runs} leaked` : ''}${r.l3 !== undefined ? `; L3=${r.l3.pass ? 'pass' : 'FAIL'}` : ''})`)
+    console.log(`[relay] ${r.scenario}: ${r.verdict} (treatment ${r.passRate}, threshold ${r.threshold}; L0=${r.l0.pass ? 'pass' : 'FAIL'}${r.control !== undefined ? `; control ${r.control.passed}/${r.control.runs} leaked` : ''})`)
     if (r.verdict !== 'PASS') allPass = false
     const resultPath = join(FIXTURE_DIR, `${r.scenario}-result.json`)
     writeFileSync(resultPath, `${JSON.stringify(r, null, 2)}\n`, 'utf8')

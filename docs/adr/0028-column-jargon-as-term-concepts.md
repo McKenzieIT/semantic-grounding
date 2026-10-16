@@ -43,6 +43,14 @@
 - 场景卡 E3 按 R4 改写（`docs/data-memory-scenarios.md`）。
 - **Followup**：同类黑话（其他列注释里的「又叫X」）的批量发现归工程图（map #125 Out of scope）；本 ADR 只定落点形状。
 
+## Update 2026-10-16（[#180](https://github.com/McKenzieIT/semantic-grounding/issues/180) 接力宿主重排后）
+
+接力实测宿主从「Claude Code CLI + codex + qodercli 三宿主」收为「QoderWork（GUI 人工）+ qodercli（脚本）」（[#180](https://github.com/McKenzieIT/semantic-grounding/issues/180) R1/R3，落地于 [#181](https://github.com/McKenzieIT/semantic-grounding/issues/181)）。原 Consequences 里 E3 A 腿走 `import_definitions` 的理由 —— 「`create_definition` 在 `claude -p` 上不可见」—— **前提已失效**：qodercli 1.1.28 实测 32 个 SG 工具全可见，两个判别联合工具（`create_definition` / `update_definition`）一个不少（[#180](https://github.com/McKenzieIT/semantic-grounding/issues/180) 探针实证）。
+
+**结论维持，理由更换**：E3 A 腿**仍走 `import_definitions`**（改动为零、风险为零），但按 `docs/agents/decision-framing.md` 「优先级改变时点名改变它的输入」，理由从「宿主不可见」换为**规避判别联合形状的宿主风险** —— 哪天又换一个会静默丢弃 oneOf-only inputSchema 的宿主，E3 会以极难排查的方式失败，`import_definitions` 顶层 object 形态对宿主形状不敏感。
+
+[#132](https://github.com/McKenzieIT/semantic-grounding/issues/132) 的跨宿主样本随之修正为**一负两正**：一负 = Claude Code CLI 2.1.263（静默丢弃）、两正 = QoderWork + qodercli 1.1.28（均可见）。防回潮断言（每个 inputSchema 须有顶层 `properties`）继续保留。
+
 ## 被否掉的路（记录免重探）
 
 - **「列注释里的黑话 SG 完全查不到」**：全文检索已覆盖列注释，缺的是「术语 → 列」的精确映射；不再以「查不到」立论。
