@@ -574,7 +574,11 @@ interface ScenarioResult {
   readonly repoHead: string
   readonly l0: { readonly pass: boolean; readonly error: string | undefined; readonly commits: L0Result['commits']; readonly writtenMemoryIds: readonly string[] }
   readonly control: { readonly runs: number; readonly passed: number; readonly valid: boolean } | undefined
-  readonly treatment: { readonly runs: number; readonly judged: number; readonly passed: number; readonly envErrors: number; readonly verdicts: readonly RunVerdict[] }
+  /** `passed` counts ROUNDS (a round passes only when every question in it
+   *  passes — that is what the N=5 threshold judges); `questionPasses`/`judged`
+   *  count question-runs. For a 2-question card they are different units, so
+   *  never render them as one fraction (#182). */
+  readonly treatment: { readonly runs: number; readonly judged: number; readonly passed: number; readonly questionPasses: number; readonly envErrors: number; readonly verdicts: readonly RunVerdict[] }
   readonly manualL3: { readonly enabled: boolean; readonly scopeId: string; readonly corpusSha: string }
   readonly passRate: string
   readonly threshold: string
@@ -751,6 +755,7 @@ async function runScenario(scenario: RelayScenario, opts: Options, repoHead: str
     }
 
     const threshold = Math.ceil(opts.runs * 0.8)
+    const questionPasses = verdicts.filter(v => !v.envError && v.pass).length
     const controlValid = control?.valid ?? true
     const verdict: ScenarioResult['verdict'] = !controlValid
       ? 'INVALID (换题 — the control passed pre-promotion)'
@@ -762,9 +767,9 @@ async function runScenario(scenario: RelayScenario, opts: Options, repoHead: str
       ranAt: new Date().toISOString(), repoHead,
       l0: { pass: l0.pass, error: l0.error, commits: l0.commits, writtenMemoryIds: l0.writtenMemoryIds },
       control,
-      treatment: { runs: opts.runs, judged, passed: runPasses, envErrors, verdicts },
+      treatment: { runs: opts.runs, judged, passed: runPasses, questionPasses, envErrors, verdicts },
       manualL3: { enabled: scenario.l3Manual, scopeId: sandbox.scopeId, corpusSha },
-      passRate: `${runPasses}/${judged} judged (env errors: ${envErrors})`,
+      passRate: `${runPasses}/${opts.runs} rounds${scenario.questions.length > 1 ? ` (${questionPasses}/${judged} question-runs across ${scenario.questions.length} questions; a round passes only if every question does)` : ''} (env errors: ${envErrors})`,
       threshold: `>=${threshold}/${opts.runs} (N=5 means >=4/5, #129; env errors excluded)`,
       verdict,
       fixtureWritten,

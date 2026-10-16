@@ -1,0 +1,44 @@
+{
+  "scenario": "g3",
+  "corpus": "x63-10000354",
+  "recorded_from": "pnpm relay run 2026-10-16T17:13:15.033Z (run 1, question g3-in-window)",
+  "scope_id": "10000354",
+  "requests": [
+    {
+      "name": "list_scopes",
+      "arguments": {}
+    },
+    {
+      "name": "get_definition",
+      "arguments": {
+        "data_window": {
+          "from": "2026-10-09",
+          "to": "2026-10-12"
+        },
+        "kind": "table",
+        "name": "dws_10000354_univ_acc_act_di"
+      }
+    },
+    {
+      "name": "get_relations",
+      "arguments": {
+        "data_window": {
+          "from": "2026-10-09",
+          "to": "2026-10-12"
+        },
+        "target": "table:dws_10000354_univ_acc_act_di"
+      }
+    },
+    {
+      "name": "get_definition",
+      "arguments": {
+        "data_window": {
+          "from": "2026-10-09",
+          "to": "2026-10-12"
+        },
+        "kind": "table",
+        "name": "dwd_10000354_univ_user_act_di"
+      }
+    }
+  ]
+}
