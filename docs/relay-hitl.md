@@ -74,6 +74,7 @@ pnpm relay --skip-l3            # 只跑 L0/L1/L2
 - **判定**:L0(语料仓 git commit + trailer,确定性,不过即整卡 FAIL)+ 对照组全不过 + B 通过率 ≥4/5 + L3 跨宿主一次命中 → 整卡 PASS。
 - 时长/成本量级:每卡 A 一次 + 对照组 3 次 + B 5 次 + L3 1 次 ≈ 10 次 CLI 调用;#129 实测单腿 $0.1–0.15 / 1–2 分钟,三卡全程约 30–60 分钟。
 - 逐腿 JSONL 与 stderr 落在沙箱 `out/` 目录(`--keep` 保留;路径见运行日志)。
+- **模型/成本旋钮**:`SG_RELAY_CLAUDE_MODEL` 管所有 claude 腿(`--model`);`SG_RELAY_QODER_MODEL` 管所有 qodercli 腿(轻量档见 `qodercli --list-models`,如 `Efficient` / `*-Flash`);**codex 腿无逐次覆盖**,模型由 `$CODEX_HOME/config.toml` 全局决定。首跑建议最小规模校准:`SG_RELAY_QODER_MODEL=Efficient pnpm relay --scenario g3 --runs 1 --skip-l3`。模型过弱会使 L1/L2 因能力而非 SG 失败,首跑只作校准。
 
 ## 6. 结果工件在哪、怎么用
 
@@ -95,3 +96,21 @@ pnpm relay --skip-l3            # 只跑 L0/L1/L2
 - 第三方网关模型名不在客户端目录 → 每次 `unrecognized_model` 告警无害(#129 坑 5)。
 - `create_definition`/`update_definition` 在 Claude Code 客户端不可见(#132)——E3 的 A 腿 prompt 已按 #159 裁决走 `import_definitions` + `add_alias`/`add_relation`,不要改回 create_definition。
 - B 的 prompt 不含答案关键词(脚本内固化);如果你手工改 prompt,把答案词带进去会直接判负(L1 反向条件)。
+- **qodercli 1.1.28 不认 `--verbose`**(2026-10-16 实测 `error: unknown option '--verbose'`)——`qodercliArgs()` 仍带它,G3′ 的脚本路径当前跑不通(参数校验即退出、不触达语料);修复随 #180 定方案后落。
+- **`pnpm -r build` 后要重启宿主的 SG MCP 子进程**:常驻的 `node .../lib/bin.js` 不会热加载新构建(2026-10-16 QoderWork 的子进程起于前一日,`record_memory` 报 `Tool not found`);重启宿主或其 MCP 连接即可。
+- **QoderWork 与 qodercli 是两套独立产品**(`~/.qoderwork/` vs `~/.qoder/`,会话/认证/`mcp.json` 互不共享):qodercli 跑的会话不出现在 QoderWork 里,反之亦然。
+
+## 9. 人工 QoderWork 路径(不经脚本)
+
+2026-10-16 用户裁决:后续接力实测尽量只用 **QoderWork(人工)+ qodercli(脚本)**,不用 Claude Code / codex;三卡如何重新分派、人工结果算不算正典证据,见 #180。在那之前,人工路径作 sanity check:
+
+- **前提**:QoderWork 的 `~/.qoderwork/mcp.json` 已注册 `semantic-grounding`(不传 `--scope`,落注册表 `active:`);跑前确认 `active` = 目标 scope,且 MCP 子进程是 `pnpm -r build` 之后起的(§8)。
+- **做法**:A 腿、B 腿每一问**各开一个全新会话**(不得复用含 A 上下文的会话);prompt 原样取 `packages/mcp/scripts/relay-scenarios.ts`(G3′ 把 `<G3_TARGET_TABLE>` 换成脚本发现的目标表)。
+- **判定**:L0 = 语料仓 `git log -1 --format=%B` 查 trailer;L1 = 回复里是否调了 SG 读工具;L2 = 按该卡 `allOf`/`anyOf`/`negative` 逐词对最终回复。
+- **拿不到的**:N=5 通过率、对照组、`fixtures/relay/<id>.json`(e2e Phase 8 回放腿仍 skip)。
+
+### 实跑记录
+
+| 日期 | 卡 | 宿主 | 结果 |
+|---|---|---|---|
+| 2026-10-16 | G3′(X63 `10000354`,目标表 `dws_10000354_univ_acc_act_di`) | QoderWork 人工,A + B×2 各新会话 | **L0 PASS**(语料仓 `a2663d8`,memory `mem-20261016-r6kgxn5a`,仅 `X-SG-Session`、无晋升 trailer)· **窗口内 PASS**(L1 带 `data_window` 调 `get_definition`;L2 命中「未产出」「2026-10-10」)· **窗口外 L1 PASS / L2 FAIL**——B 为自证窗口过滤做了一次不带窗对照,并把事故原文写进最终回复,命中 `negative`(→ #179)。本轮按「两问同过」判 **FAIL**。旁证:`get_definition` 体感偏慢(→ #178) |
