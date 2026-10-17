@@ -22,6 +22,7 @@
  * @see docs/adr/0005-mcp-tool-surface.md + docs/adr/0010-suppression.md
  */
 import type { McpServer, ServerContext } from '@modelcontextprotocol/server'
+import { edgeAnchorOf } from '@semantic-grounding/substrate'
 import { z } from 'zod'
 import { notFoundAsCoded } from '../errors.ts'
 import type { ServerDeps, ToolRegistrar } from '../server.ts'
@@ -163,7 +164,7 @@ function registerAddRelation(server: McpServer, deps: ServerDeps): void {
         // (ADR-0023 R6 — object identity includes edges), one anchor string
         // per input relation, derived the same way remove_relation's
         // dangling count derives its dying edges.
-        () => withPromotionWrite(snap, deps, input.evidence, () => relationEdgesOf(input.kind, input.name, input.relations).map(e => `${e.from} -${e.type}-> ${e.to}`), () => snap.core.addRelations(input.kind, input.name, input.relations, input.expected_version)),
+        () => withPromotionWrite(snap, deps, input.evidence, () => relationEdgesOf(input.kind, input.name, input.relations).map(e => edgeAnchorOf(e.from, e.type, e.to)), () => snap.core.addRelations(input.kind, input.name, input.relations, input.expected_version)),
       ).catch((e: unknown) => notFoundAsCoded(e, input.kind, input.name))
       return toolSuccess(await writeReceipt(snap, deps, res, {
         tool: 'add_relation',

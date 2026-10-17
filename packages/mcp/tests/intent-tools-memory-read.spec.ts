@@ -148,6 +148,60 @@ describe('get_definition / search_definitions — the mounts', () => {
     expect(row?.memories).toHaveLength(2)
     for (const m of row?.memories ?? []) expect(m.anchor).toBe('table:dws_order -joins-> table:dim_shop')
   })
+
+  it('a multi-edge path folds every edge\'s truncation into ONE key-sorted edge_memories_truncated (#198 E)', async () => {
+    h = await buildIntentToolHarness()
+    await addShopJoin(h)
+    // A second hop so one path carries TWO edges: dim_shop — dws_order — dim_region.
+    const created = toolOutcome(await h.client.callTool('create_definition', {
+      scope_id: 'fixture',
+      kind: 'table',
+      table: fixtureTable({
+        table_name: 'dim_region',
+        kind: 'dim',
+        primary_key: ['shop_id'],
+        label_columns: ['region_name'],
+        columns: [
+          { name: 'shop_id', type: 'string', role: 'dimension', comment: '' },
+          { name: 'region_name', type: 'string', role: 'dimension', comment: '' },
+        ],
+      }),
+      summary: '建第二跳维表',
+      ...tier2('建第二跳维表', 0.9),
+    }))
+    if (created.isError) throw new Error(`create_definition failed: ${JSON.stringify(created.body)}`)
+    const version = toolJson(await h.client.callTool('get_definition', { kind: 'table', name: 'dws_order' })) as { version: string }
+    const added = toolOutcome(await h.client.callTool('add_relation', {
+      scope_id: 'fixture',
+      kind: 'table',
+      name: 'dws_order',
+      relations: [{ dim_table: 'dim_region', join_keys: [{ dws_column: 'shop_id', dim_column: 'shop_id' }] }],
+      summary: '补第二跳 join',
+      ...tier2('补第二跳 join', 0.9),
+      expected_version: version.version,
+    }))
+    if (added.isError) throw new Error(`add_relation failed: ${JSON.stringify(added.body)}`)
+    // Over each edge's shared budget of 3: four observations on the first
+    // edge, five inferences on the second — each edge truncates on its own
+    // type, and only the mcp aggregation layer sees both.
+    await record(h, [1, 2, 3, 4].map(i => ({ type: 'observation', anchors: ['table:dws_order -joins-> table:dim_shop'], body: `第一跳观测 ${i}。`, valid_from: '2026-10-10', valid_until: '2026-10-10' })))
+    await record(h, [1, 2, 3, 4, 5].map(i => ({ type: 'inference', anchors: ['table:dws_order -joins-> table:dim_region'], body: `第二跳推断 ${i}。`, basis: '两跳行数对账' })))
+    const path = toolJson(await h.client.callTool('get_join_path', { from: 'table:dim_shop', to: 'table:dim_region' })) as {
+      found: boolean
+      path: string[]
+      edge_memories: ReadonlyArray<{ anchor: string }>
+      edge_memories_truncated: Record<string, number>
+    }
+    expect(path.found).toBe(true)
+    expect(path.path).toEqual(['table:dim_shop', 'table:dws_order', 'table:dim_region'])
+    expect(path.edge_memories).toHaveLength(6)
+    // The mcp cross-edge fold (NOT the substrate's per-edge counts — those
+    // are pinned in substrate memory-read.spec): the per-type overflow MERGES
+    // across edges and the keys come out SORTED — plain insertion order here
+    // would be observation (first edge) before inference.
+    expect(Object.keys(path.edge_memories_truncated)).toEqual(['inference', 'observation'])
+    expect(path.edge_memories_truncated).toEqual({ inference: 2, observation: 1 })
+  })
 })
 
 // ── ADR-0026: dangling anchors over the wire ───────────────────────────────

@@ -19,7 +19,7 @@
  * @module query (internal; only `"."` is importable — see ADR-0002)
  */
 import { QueryDefinitionSchema, type QueryDefinition } from './types.ts'
-import { loadRawDir } from './io.ts'
+import { loadQueryDefinitions } from './io.ts'
 import {
   buildAnchorUniverse,
   canonicalizeAnchor,
@@ -28,24 +28,6 @@ import {
 } from './memory.ts'
 
 // ── Loading ────────────────────────────────────────────────────────────────────
-
-/**
- * Load every schema-valid verified-query definition from one corpus root's
- * `queries/` dir (one file per query, ADR-0025 R1 — the kind plugin's generic
- * flat-dir read loads the same layout for the graph/corpus projections; this
- * loader is the write/read orchestration's own typed view). Lenient per file,
- * like every loader here: a malformed YAML is skipped, never thrown.
- * @param root - the corpus root (the dir holding `queries/`).
- * @returns the parsed definitions, filename order (deterministic).
- */
-export function loadQueryDefinitions(root: string): readonly QueryDefinition[] {
-  const out: QueryDefinition[] = []
-  for (const raw of loadRawDir(root, 'queries')) {
-    const r = QueryDefinitionSchema.safeParse(raw)
-    if (r.success && r.data !== undefined) out.push(r.data)
-  }
-  return out
-}
 
 /**
  * Load one verified-query definition by name.

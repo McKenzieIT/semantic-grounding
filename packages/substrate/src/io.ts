@@ -39,6 +39,7 @@ import {
   type EventDefinition,
   type TableDefinition,
   type ConceptDefinition,
+  type QueryDefinition,
   type TableMeta,
 } from './types.ts'
 import {
@@ -528,6 +529,28 @@ export function loadRawDir(semanticLayer: string, dir: string): Record<string, u
     } catch {
       continue
     }
+  }
+  return out
+}
+
+/**
+ * Load every schema-valid verified-query definition from one corpus root's
+ * `queries/` dir (one file per query, ADR-0025 R1). The single typed view of
+ * that dir: the write/read orchestration (query.ts) and the anchor universe's
+ * query-node scan (memory.ts) both consume this loader, so it lives here
+ * beside `loadRawDir` — the one module both may import without a cycle
+ * (query.ts already imports memory.ts, so the enumeration cannot live there;
+ * M3-②/#198: was duplicated at both call sites). The kind plugin's generic
+ * flat-dir read loads the same layout for the graph/corpus projections.
+ * Lenient per file, like every loader here.
+ * @param semanticLayer - the corpus root (the dir holding `queries/`).
+ * @returns the parsed definitions, filename order (deterministic).
+ */
+export function loadQueryDefinitions(semanticLayer: string): QueryDefinition[] {
+  const out: QueryDefinition[] = []
+  for (const raw of loadRawDir(semanticLayer, 'queries')) {
+    const r = QueryDefinitionSchema.safeParse(raw)
+    if (r.success && r.data !== undefined) out.push(r.data)
   }
   return out
 }

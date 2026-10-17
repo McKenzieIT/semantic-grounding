@@ -296,14 +296,14 @@ const EXPECTED_RUNTIME_NAMES = [
   'ConceptDefinitionSchema', 'DataSourceRegistry', 'DefinitionSnapshot', 'EventDefinitionSchema',
   'RelationGraph', 'SemanticGroundingCore', 'StaleBaselineError', 'TableDefinitionSchema',
   'UnknownFilterNamesError', 'assertKnownFilterNames', 'captureSnapshot',
-  'conceptKindPlugin', 'discard', 'dumpYaml', 'eventKindPlugin',
+  'conceptKindPlugin', 'discard', 'dumpYaml', 'edgeAnchorOf', 'eventKindPlugin',
   'invalidateCaches', 'listing', 'loadConcepts', 'loadConfig', 'loadEvents',
   'loadPending', 'loadTables', 'resolveSemanticLayer', 'submit',
   'tableKindPlugin', 'writeEventYaml', 'writeTable',
 ].sort()
 const names = Object.keys(mod).sort()
 assert.deepEqual(names, [...EXPECTED_RUNTIME_NAMES, 'default'].sort(),
-  'barrel runtime surface must equal the ADR-0003 allow-list (27 names + default), got: ' + names.join(', '))
+  'barrel runtime surface must equal the ADR-0003 allow-list (28 names + default), got: ' + names.join(', '))
 // Headline names that must STAY off the barrel (ADR-0002/0003: convention-
 // coupled, test utilities, internals). getCorpusVersion / registerInvalidationHook
 // / SemanticLayerService are asserted separately above and not repeated here.

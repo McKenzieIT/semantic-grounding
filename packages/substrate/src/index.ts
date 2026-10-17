@@ -215,6 +215,13 @@ export {
 // updateTableMeta/updateEventMeta: Tier-2-audited writes whose public route
 // is the Core class's same-named methods; the io functions stay for in-repo
 // tests and the class's own wrappers.
+// #198 (M3-① / ADR-0003 class (b)): `edgeAnchorOf` — the canonical edge
+// anchor's constructor, the twin of memory.ts's EDGE_ANCHOR_PATTERN parse.
+// On the barrel because the MCP host's `add_relation` derives its promotion
+// back-pointer targets through it (tools/items.ts) and the promotion wire
+// tests assert against its output; the parse-side PATTERN stays off (its only
+// consumers are the substrate's own internal modules).
+export { edgeAnchorOf } from './memory.ts'
 export { submit, load as loadPending, listing, discard, type PendingSuggestion, type SubmitArgs } from './pending.ts'
 // isValidId stays in pending.ts (internal, off since S1.5 #85): the pending
 // store's own id rule has no host consumer — the MCP suggestion tools check

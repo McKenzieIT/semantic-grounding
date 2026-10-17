@@ -40,7 +40,9 @@
  *
  * Off the public barrel (ADR-0002/0003) — the same split as `item-write.ts` /
  * `enrichment-work.ts`: the Core class's `recordMemories` / `countMemoriesOnEdges`
- * methods are the public route, so the barrel's name-level allow-list does not grow.
+ * methods are the public route. `edgeAnchorOf` is the one exception on the
+ * barrel (#198 / ADR-0003 class (b): the MCP host consumes it); everything
+ * else keeps the name-level allow-list closed.
  *
  * @module memory (internal; only `"."` is importable — see ADR-0002)
  */
@@ -48,8 +50,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import { join } from 'node:path'
 import yaml from 'js-yaml'
-import { loadConcepts, loadEvents, loadRawDir, loadTables } from './io.ts'
-import { QueryDefinitionSchema } from './types.ts'
+import { loadConcepts, loadEvents, loadQueryDefinitions, loadTables } from './io.ts'
 
 // ── Types ────────────────────────────────────────────────────────────────────────
 
@@ -600,7 +601,7 @@ export function buildAnchorUniverse(root: string): AnchorUniverse {
         const r = ref as { readonly target_kind?: unknown; readonly target?: unknown; readonly name?: unknown }
         const kind = r.target_kind === 'concept' ? 'concept' : r.target_kind === 'table' ? 'table' : undefined
         const name = typeof r.target === 'string' ? r.target : typeof r.name === 'string' ? r.name : undefined
-        if (kind !== undefined && name !== undefined) edges.add(`${node} -related_to-> ${kind}:${name}`)
+        if (kind !== undefined && name !== undefined) edges.add(edgeAnchorOf(node, 'related_to', `${kind}:${name}`))
       }
     }
   }
@@ -613,11 +614,11 @@ export function buildAnchorUniverse(root: string): AnchorUniverse {
     for (const ref of t.raw.dimension_refs !== undefined && Array.isArray(t.raw.dimension_refs) ? t.raw.dimension_refs : []) {
       if (typeof ref === 'object' && ref !== null) {
         const dim = (ref as { readonly dim_table?: unknown }).dim_table
-        if (typeof dim === 'string') edges.add(`${node} -joins-> table:${dim}`)
+        if (typeof dim === 'string') edges.add(edgeAnchorOf(node, 'joins', `table:${dim}`))
       }
     }
     for (const d of stringArrayField(t.raw, 'domains')) {
-      if (conceptNames.has(d)) edges.add(`concept:${d} -related_to-> ${node}`)
+      if (conceptNames.has(d)) edges.add(edgeAnchorOf(`concept:${d}`, 'related_to', node))
     }
   }
   for (const e of loadEvents(root)) {
@@ -628,22 +629,19 @@ export function buildAnchorUniverse(root: string): AnchorUniverse {
     for (const ref of e.raw.external_refs !== undefined && Array.isArray(e.raw.external_refs) ? e.raw.external_refs : []) {
       if (typeof ref === 'object' && ref !== null) {
         const dim = (ref as { readonly dim_table?: unknown }).dim_table
-        if (typeof dim === 'string') edges.add(`${node} -joins-> table:${dim}`)
+        if (typeof dim === 'string') edges.add(edgeAnchorOf(node, 'joins', `table:${dim}`))
       }
     }
     for (const d of stringArrayField(e.raw, 'domains')) {
-      if (conceptNames.has(d)) edges.add(`concept:${d} -related_to-> ${node}`)
+      if (conceptNames.has(d)) edges.add(edgeAnchorOf(`concept:${d}`, 'related_to', node))
     }
   }
   // Verified queries (#155 / ADR-0025 R1): graph nodes like any other kind, so
   // a memory may anchor on `query:<名>`. They contribute no columns and no
   // edges — a query's `uses` are its own forward anchors, validated on the
   // query write path (query.ts), never graph adjacency.
-  for (const raw of loadRawDir(root, 'queries')) {
-    const r = QueryDefinitionSchema.safeParse(raw)
-    if (r.success && r.data !== undefined && typeof r.data.name === 'string') {
-      nodes.add(`query:${r.data.name}`)
-    }
+  for (const q of loadQueryDefinitions(root)) {
+    nodes.add(`query:${q.name}`)
   }
   return { nodes, columns, edges }
 }
@@ -669,6 +667,23 @@ function resolveNode(raw: string, universe: AnchorUniverse): { readonly node: st
 export const EDGE_ANCHOR_PATTERN = /^(\S+)\s+-(\S+)->\s+(\S+)$/
 
 /**
+ * Construct one canonical edge anchor — `<起点id> -<类型>-> <终点id>`, the
+ * construction twin of {@link EDGE_ANCHOR_PATTERN}'s parse (ADR-0023 R4's
+ * literal spelling; the spaces around the bracketed type are load-bearing on
+ * both sides). Every producer of an edge anchor string goes through here, so
+ * the spelling can drift nowhere else (M3-①: nine bare template sites folded
+ * into this one). On the public barrel (ADR-0003 class (b), #198): the MCP
+ * host's `add_relation` derives its promotion back-pointer targets through
+ * it, and the promotion wire tests assert against its output.
+ * @param from - the edge's from-node id (prefixed).
+ * @param type - the edge's type (`joins` / `related_to` / a kind-declared type).
+ * @param to - the edge's to-node id (prefixed).
+ */
+export function edgeAnchorOf(from: string, type: string, to: string): string {
+  return `${from} -${type}-> ${to}`
+}
+
+/**
  * Canonicalize one anchor spelling against the universe (ADR-0023 R4): node /
  * `node#column` / edge, bare names tolerated on input, canonical output always
  * prefixed. Existence is part of resolution — a node, column, or edge that is
@@ -689,7 +704,7 @@ export function canonicalizeAnchor(raw: string, universe: AnchorUniverse): Ancho
     if (from.node === null || to.node === null) {
       return { ok: false, reason: 'not_found', detail: `edge endpoint is not a node in the current graph: ${raw}` }
     }
-    const anchor = `${from.node} -${edgeMatch[2]}-> ${to.node}`
+    const anchor = edgeAnchorOf(from.node, edgeMatch[2] as string, to.node)
     if (!universe.edges.has(anchor)) {
       return { ok: false, reason: 'not_found', detail: `edge does not exist in the current graph (canonical direction is <起点id> -<类型>-> <终点id>): ${raw}` }
     }
@@ -899,7 +914,7 @@ export function countMemoriesOnEdges(root: string, edges: readonly MemoryEdgeAnc
   if (edges.length === 0) return 0
   const index = memoryAnchorIndexFor(root)
   index.refresh(root)
-  const anchors = edges.map(e => `${e.from} -${e.type}-> ${e.to}`)
+  const anchors = edges.map(e => edgeAnchorOf(e.from, e.type, e.to))
   return index.validEntriesAnchoredOnAny(anchors).length
 }
 
@@ -1272,6 +1287,23 @@ function siteAnchorFor(entry: MemoryEntry, site: MountSite): string {
   return best
 }
 
+/** The node site's anchor set — the shared opening of every node-anchored read
+ * face: the node itself plus every column fragment the index still remembers
+ * (their columns may be gone — the detail view surfaces those with
+ * `column_missing`, ADR-0024 R5's 降级 arm). Three faces start from this set:
+ * the detail view's site (adds the universe's live columns on top), the
+ * not-found orphan list's site (adds dead-both-ends edges), and
+ * `search_definitions`' per-hit counts' site (as-is). M3-③: was repeated at
+ * all three entries. */
+function siteAnchorsOfNode(index: MemoryAnchorIndex, nodeId: string): Set<string> {
+  const anchors = new Set<string>([nodeId])
+  const columnPrefix = `${nodeId}#`
+  for (const anchor of index.allAnchors()) {
+    if (anchor.startsWith(columnPrefix)) anchors.add(anchor)
+  }
+  return anchors
+}
+
 /** One composed site's result: the shown rows plus the per-type overflow. */
 interface SiteComposition {
   readonly shown: readonly MemoryViewEntry[]
@@ -1434,11 +1466,7 @@ export function readNodeMemoriesView(root: string, nodeId: string, opts: MemoryR
   // The node site: the node itself, its live columns, and the column
   // fragments the index still remembers (their columns may be gone — those
   // surface with column_missing, ADR-0024 R5's 降级 arm).
-  const nodeAnchors = new Set<string>([nodeId])
-  const columnPrefix = `${nodeId}#`
-  for (const anchor of index.allAnchors()) {
-    if (anchor.startsWith(columnPrefix)) nodeAnchors.add(anchor)
-  }
+  const nodeAnchors = siteAnchorsOfNode(index, nodeId)
   const columns = universe.columns.get(nodeId)
   if (columns !== undefined) for (const col of columns) nodeAnchors.add(`${nodeId}#${col}`)
   const nodeSite = composeSite(index.validEntriesAnchoredOnAny([...nodeAnchors]), regime, {
@@ -1487,11 +1515,7 @@ export function readOrphanedMemoriesView(root: string, nodeId: string, opts: Mem
   if (index.size() === 0) return { orphaned_memories: [] }
   const universe = buildAnchorUniverse(root)
   const regime: ReadRegime = { index, window: opts.data_window }
-  const anchors = new Set<string>([nodeId])
-  const columnPrefix = `${nodeId}#`
-  for (const anchor of index.allAnchors()) {
-    if (anchor.startsWith(columnPrefix)) anchors.add(anchor)
-  }
+  const anchors = siteAnchorsOfNode(index, nodeId)
   // Dead-both-ends edges only: with a surviving far end the entry hangs there.
   for (const anchor of index.edgeAnchorsTouching(nodeId)) {
     const m = EDGE_ANCHOR_PATTERN.exec(anchor)
@@ -1530,11 +1554,7 @@ export function memoryCountsByNode(root: string, nodeIds: readonly string[]): Re
   if (index.size() === 0 || nodeIds.length === 0) return out
   const regime: ReadRegime = { index, window: undefined }
   for (const nodeId of nodeIds) {
-    const anchors = new Set<string>([nodeId])
-    const columnPrefix = `${nodeId}#`
-    for (const anchor of index.allAnchors()) {
-      if (anchor.startsWith(columnPrefix)) anchors.add(anchor)
-    }
+    const anchors = siteAnchorsOfNode(index, nodeId)
     // cap = everything: counts want the full visible set, not the head.
     const composed = composeSite(index.validEntriesAnchoredOnAny([...anchors]), regime, {
       anchors,
@@ -1574,7 +1594,7 @@ export function readEdgeMemoriesForPairs(
   if (index.size() === 0 || pairs.length === 0) return pairs.map(() => ({ entries: [] as const }))
   const regime: ReadRegime = { index, window: opts.data_window }
   return pairs.map(pair => {
-    const anchors = [`${pair.a} -${pair.type}-> ${pair.b}`, `${pair.b} -${pair.type}-> ${pair.a}`]
+    const anchors = [edgeAnchorOf(pair.a, pair.type, pair.b), edgeAnchorOf(pair.b, pair.type, pair.a)]
     const site = composeSite(index.validEntriesAnchoredOnAny(anchors), regime, {
       anchors: new Set(anchors),
       isLive: () => true,

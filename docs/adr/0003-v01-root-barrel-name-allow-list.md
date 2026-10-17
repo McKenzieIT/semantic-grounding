@@ -210,3 +210,22 @@ backward-compat」保留至今）退役删除。[#171](https://github.com/McKenz
   e2e 22）。
 - 巡检 2026-10-15 :110 行曾将 S2 `loadDomains` 与本件并提——#163 复核已分家：
   `loadDomains` 有 k11-seed.spec.ts 活消费，**活件不动**，不在本 Update 范围。
+
+## Update 2026-10-18 — #198：barrel +1（27→28 runtime），`edgeAnchorOf` 上桶
+
+[#198](https://github.com/McKenzieIT/semantic-grounding/issues/198)（第四轮巡检
+M3-①）把边锚点构串收进单一 seam——`edgeAnchorOf(from, type, to)`，`memory.ts`
+`EDGE_ANCHOR_PATTERN` 解析单源的构串孪生（ADR-0023 R4 字面拼写），九处裸模板
+（`buildAnchorUniverse` ×5 + `canonicalizeAnchor` / `countMemoriesOnEdges` /
+`readEdgeMemoriesForPairs` + mcp `add_relation` 的晋升目标派生）收编于此。
+
+- **（b）已确认 host 需求**：mcp 的 `add_relation`（`tools/items.ts`）经 barrel 消费
+  它派生③晋升回指目标（`relationEdgesOf(...).map(e => edgeAnchorOf(...))`），且
+  `intent-tools-promotion.spec` 的 wire 断言直接对它的输出（`promoted[].to ===
+  edgeAnchorOf(...)`）——构串语法在 host 侧可断言，是「解析单源、构串不单源」病根
+  的另一半收敛。
+- **PATTERN 本身留桶外**：解析侧消费者全在 substrate 内部模块（memory.ts ×7 +
+  query.ts ×2），无 host 消费，不随票上桶。
+- `scripts/check-tarball-acceptance.mjs` 的 `EXPECTED_RUNTIME_NAMES` 已同步到
+  **28 + default**；本 ADR 的 27 名表与各 Update 计数为历史存档，现行名单以
+  acceptance 脚本为准（先例：Update 2026-10-13 末条）。
