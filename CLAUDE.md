@@ -23,7 +23,8 @@ Issue 追踪在 GitHub（McKenzieIT/semantic-grounding），通过 `gh` CLI 操�
 
 ### Active map
 
-（无。最近关图 map #125 于 2026-10-17 关闭，见下方索引；其完整子票账本 `git show d11a698:CLAUDE.md` 可回查。）
+- **map [#189](https://github.com/McKenzieIT/semantic-grounding/issues/189) 分析图——口径仲裁者做实**（2026-10-17 charting，本图带执行）：口径单源 · 分歧可见 · 生命周期 · `caliber_variants` 处置 · A4 接力验收。开局票 #190/#191（research，开图即跑）· #192（场景采集 HITL）· #193（口径形状，blocked by 前三）· #194（变更行为，blocked by #193）。
+- 最近关图 map #125 于 2026-10-17 关闭，见下方索引；其完整子票账本 `git show d11a698:CLAUDE.md` 可回查。
 
 ### 当前基线
 
