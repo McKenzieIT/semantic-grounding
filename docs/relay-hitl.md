@@ -55,7 +55,7 @@ E3/A3 的跨会话隔离靠 qodercli 的 `--no-session-persistence` 保证(同�
 1. 确认真注册表里有 X63:`grep 10000354 ~/.semantic-grounding/scopes.yaml`(即 QoderWork 侧 #151 初始化的那个 scope;没有则先在 QoderWork 侧完成注册)。
 2. 目标表:脚本自动取该 scope 语料 `tables/` 下字典序第一个 `dws_*` 表;要指定就 `export SG_RELAY_G3_TARGET=<表名>`。
 3. **G3′ 会写真实语料**:A 腿在 X63 corpus 落一条 **incident memory**(`memory/` 层,带 `valid_from=valid_until=2026-10-10`,**永不晋升、不碰任何定义指纹**)。
-4. **跑完最后一步清理**(不自动执行 — 人工 L3 要读 A 写的那条):`pnpm relay --purge <本回合写入的 mem-id>[,…]`。每条 id 经 card-signature 守卫(type=incident,valid_from/until 命中 G3_WINDOW)核对后才删,防误删 §9 旧遗留(如 `mem-20261016-r6kgxn5a`)也用同一口清掉。
+4. **跑完最后一步清理**(不自动执行 — 人工 L3 要读 A 写的那条):`pnpm relay --purge <本回合 A 写入的 mem-id>[,…]`。每条 id 经 card-signature 守卫(type=incident,valid_from/until 命中 G3_WINDOW)核对后才删;清的就是本回合 A 写入的 id(L3 清单已打印)。
 
 ## 5. 跑
 
@@ -87,7 +87,7 @@ pnpm relay --purge <mem-id>[,…] # G3′ 跑完后清理 incident memory(见 §
 1. `git add packages/mcp/fixtures/relay/e3.json a3.json g3.json && git commit`(fixture 落地;G3′ 的 x63 fixture 也一并提交——门禁回放对它只打印 notice,不密闭重放)。
 2. `pnpm e2e` 复跑:Phase 8 的 relay replay 从 skip 变 live(E3/A3 关键词重放命中;G3′ 打印不可密闭重放 notice)。
 3. G3′ 人工 L3 在 QoderWork 上跑,按 §9 证据格式记回本文件 §9 表,同步贴进 #157 评论(每次一条)。
-4. 跑完 `pnpm relay --purge <本回合 A 写入的 mem-id>[,…]` 清掉 G3′ 在 X63 真实语料上的测试 incident(详见 §4 第 4 条);§9 遗留 `mem-20261016-r6kgxn5a` 也用同一口清掉。
+4. 跑完 `pnpm relay --purge <本回合 A 写入的 mem-id>[,…]` 清掉 G3′ 在 X63 真实语料上的测试 incident(详见 §4 第 4 条;只清本回合 A 写入的 id —— L3 清单已打印)。
 5. 把三个 `<id>-result.json` 的内容(或摘要:L0 commits + 通过率 + credits)+ 语料仓 commit SHA 回填 #157 resolution。真接力的正典证据 = 这些工件 + §9 人工 L3 证据 + #129 已有的一次实跑记录。
 6. 对账 map #125 Destination ①–④,关图。
 
@@ -120,7 +120,7 @@ pnpm relay --purge <mem-id>[,…] # G3′ 跑完后清理 incident memory(见 §
 - L0 = 语料仓 `git log -1 --format=%B` 查 trailer(脚本已判,日志打印)。
 - L1 = 回复里是否调了 SG 读工具、是否带了 `data_window`、窗是否落在九月内、该调用返回是否**不含**事故 memory id(#179 新判据)。**排除的 memory id = 本回合 A 写入的那条**:脚本 B 腿已用 `bindWindowExclusion` 自动绑定同一 id(#184,此前卡上留空、断言实际休眠),日志 L3 清单里逐题打印「L1 窗口判据」行,人工按该行判,不另取 id。
 - L2 = 按该卡 `allOf`/`anyOf`/`negative` 逐词对最终回复(`g3-out-window` 的 `negative` 已清空,#179)。
-- **拿不到的**:N=5 通过率、对照组、`fixtures/relay/<id>.json`(e2e Phase 8 回放腿仍 skip)。
+- **拿不到的**:N=5 通过率、对照组、`fixtures/relay/<id>.json` 的重放(三卡 fixture 已全部入库,e2e Phase 8 回放腿 live —— E3/A3 关键词重放命中,G3′ 打印不可密闭重放 notice,见 §7 第 2 条)。
 
 ### 人工证据格式(每条一次,贴本文件 §9 表 + #157 评论)
 

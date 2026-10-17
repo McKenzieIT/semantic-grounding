@@ -22,10 +22,6 @@
 /** Which corpus a card runs over (#156's carrier ruling: E3+A3 k11, G3′ X63). */
 export type RelayCorpus = 'k11-copy' | 'x63-10000354'
 
-/** Which CLI harness drives a leg (#180: qodercli only — claude/codex retired,
- *  L3 is a manual QoderWork leg). */
-export type RelayHost = 'qodercli'
-
 /** A data-window the L1 judge enforces when present (#179's verdict: a window
  *  must fit inside the question's date range and the matching read's result
  *  must not contain the excluded memory). */
@@ -114,8 +110,6 @@ export interface RelayScenario {
   /** The #128 card this replays. */
   readonly card: string
   readonly corpus: RelayCorpus
-  readonly harnessA: RelayHost
-  readonly harnessB: RelayHost
   /** True if L3 is a manual QoderWork run on this card (#180: L3 = QoderWork
    *  manual, G3′ only). When false, no L3 runs and the driver prints the
    *  manual checklist at the end of the card. */
@@ -257,8 +251,6 @@ export const E3_SCENARIO: RelayScenario = {
   id: 'e3',
   card: 'E3｜内部黑话 —— 该立刻晋升的 memory(docs/data-memory-scenarios.md,ADR-0028 R4 增量)',
   corpus: 'k11-copy',
-  harnessA: 'qodercli',
-  harnessB: 'qodercli',
   l3Manual: false,
   promptA: E3_PROMPT_A,
   controlPrompt: E3_PROMPT_B,
@@ -282,8 +274,6 @@ export const A3_SCENARIO: RelayScenario = {
   id: 'a3',
   card: 'A3｜「大R」没有阈值 —— 口径一致性(docs/data-memory-scenarios.md)',
   corpus: 'k11-copy',
-  harnessA: 'qodercli',
-  harnessB: 'qodercli',
   l3Manual: false,
   promptA: A3_PROMPT_A,
   controlPrompt: undefined,
@@ -306,8 +296,6 @@ export const G3_SCENARIO: RelayScenario = {
   id: 'g3',
   card: 'G3′｜一次具体的未产出事故 —— 有失效时间,永不晋升(docs/data-memory-scenarios.md)',
   corpus: 'x63-10000354',
-  harnessA: 'qodercli',
-  harnessB: 'qodercli',
   l3Manual: true,
   // The G3′ prompts are target-table-dependent; check-relay substitutes and
   // judges from these rules. The placeholders below document the shape for readers.

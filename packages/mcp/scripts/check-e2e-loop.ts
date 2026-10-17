@@ -81,7 +81,7 @@ import { createServerFactory, SERVER_INFO } from '../src/server.ts'
 import { TOOL_NAMES } from '../src/tools/index.ts'
 import { ScopeRegistryFile } from '../src/scope-registry.ts'
 import { buildServer, freshFixtureRegistry, tier2 } from '../tests/helpers/intent-tools-harness.ts'
-import { commitExternalEdit, createFixtureCorpus, fixtureGit, fixtureTable, type FixtureCorpus } from '../tests/helpers/fixture-corpus.ts'
+import { commitExternalEdit, createFixtureCorpus, fixtureGit, fixtureTable, initFixtureGit, type FixtureCorpus } from '../tests/helpers/fixture-corpus.ts'
 import { connectInProcess, toolJson, toolOutcome, type InProcessClient } from '../tests/helpers/inprocess-client.ts'
 import yaml from 'js-yaml'
 import {
@@ -1266,14 +1266,7 @@ async function main(): Promise<void> {
       const relayStubDir = mkdtempSync(join(tmpdir(), 'sg-relay-stub-'))
       const relayCorpus = join(relayStubDir, 'corpus')
       cpSync(fileURLToPath(new URL('../../substrate/tests/fixtures/k11/', import.meta.url)), relayCorpus, { recursive: true })
-      fixtureGit(['init', '--quiet', '--initial-branch=main', '.'], relayCorpus)
-      fixtureGit(['config', 'user.name', 'relay-stub-human'], relayCorpus)
-      fixtureGit(['config', 'user.email', 'relay-stub@fixture.local'], relayCorpus)
-      fixtureGit(['config', 'commit.gpgsign', 'false'], relayCorpus)
-      fixtureGit(['config', 'core.autocrlf', 'false'], relayCorpus)
-      fixtureGit(['config', 'gc.auto', '0'], relayCorpus)
-      fixtureGit(['add', '-A'], relayCorpus)
-      fixtureGit(['commit', '--quiet', '-m', 'relay stub: k11 fixture baseline'], relayCorpus)
+      initFixtureGit(relayCorpus, { name: 'relay-stub-human', email: 'relay-stub@fixture.local' }, 'relay stub: k11 fixture baseline')
       const relayRegistryDir = mkdtempSync(join(tmpdir(), 'sg-relay-stub-reg-'))
       const relayRegistryPath = join(relayRegistryDir, 'scopes.yaml')
       let relayActive: Boot | undefined

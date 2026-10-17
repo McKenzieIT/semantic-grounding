@@ -214,20 +214,28 @@ function writeCorpusFiles(root: string, withDim: boolean, withEvents: boolean): 
   }
 }
 
+/** The identity the canonical recipe installs for in-suite fixtures (the
+ *  human-write identity the audit history contrasts against — see below). */
+const FIXTURE_IDENTITY = { name: 'Fixture Human', email: 'human@fixture.local' } as const
+
 /**
  * Init the fixture's git layer: repository-local identity, hermetic line
- * endings, gc off, optional baseline commit.
+ * endings, gc off, optional baseline commit. The canonical 8-step recipe
+ * every corpus-rooted git repo in this package starts from — the e2e relay
+ * stub and the opt-in relay driver reuse it for their k11-copy sandboxes.
  * @param root - the corpus root (working tree already written).
- * @param baselineCommit - land `add -A` + commit, or leave an unborn HEAD.
+ * @param identity - repo-local `user.name`/`user.email`.
+ * @param baselineMessage - land `add -A` + commit with this message, or
+ *  leave an unborn HEAD when omitted.
  */
-function initFixtureGit(root: string, baselineCommit: boolean): void {
+export function initFixtureGit(root: string, identity: Readonly<{ name: string; email: string }>, baselineMessage?: string): void {
   fixtureGit(['init', '--quiet', '--initial-branch=main', '.'], root)
   // Repository-local identity: these tests must pass on a machine with no global git
   // config. It is also the human-write identity the audit history contrasts against,
   // which is why the recorder passes author/committer per invocation instead of
   // touching this config (see `git/identity.ts`).
-  fixtureGit(['config', 'user.name', 'Fixture Human'], root)
-  fixtureGit(['config', 'user.email', 'human@fixture.local'], root)
+  fixtureGit(['config', 'user.name', identity.name], root)
+  fixtureGit(['config', 'user.email', identity.email], root)
   fixtureGit(['config', 'commit.gpgsign', 'false'], root)
   // Hermetic line endings alongside the hermetic identity: Git-for-Windows defaults
   // `core.autocrlf=true` globally, and its smudge/clean filters make byte-exact
@@ -242,9 +250,9 @@ function initFixtureGit(root: string, baselineCommit: boolean): void {
   // git call that reads this repo's config, template copies included (the config
   // travels with the copy).
   fixtureGit(['config', 'gc.auto', '0'], root)
-  if (baselineCommit) {
+  if (baselineMessage !== undefined) {
     fixtureGit(['add', '-A'], root)
-    fixtureGit(['commit', '--quiet', '-m', 'corpus baseline'], root)
+    fixtureGit(['commit', '--quiet', '-m', baselineMessage], root)
   }
 }
 
@@ -267,7 +275,7 @@ function gitCorpusTemplate(withDim: boolean, withEvents: boolean, baselineCommit
 
   const dir = mkdtempSync(join(tmpdir(), 'sg-corpus-template-'))
   writeCorpusFiles(dir, withDim, withEvents)
-  initFixtureGit(dir, baselineCommit)
+  initFixtureGit(dir, FIXTURE_IDENTITY, baselineCommit ? 'corpus baseline' : undefined)
   gitCorpusTemplates.set(key, dir)
   // Best-effort cleanup when the worker exits; a leaked template directory is
   // a few KB in the OS tempdir, never a correctness concern.
@@ -296,7 +304,7 @@ export function createFixtureCorpus(opts: FixtureCorpusOptions = {}): FixtureCor
     cpSync(gitCorpusTemplate(withDim, withEvents, wantBaseline), root, { recursive: true })
   } else {
     writeCorpusFiles(root, withDim, withEvents)
-    if (wantGit) initFixtureGit(root, wantBaseline)
+    if (wantGit) initFixtureGit(root, FIXTURE_IDENTITY, wantBaseline ? 'corpus baseline' : undefined)
   }
 
   return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) }

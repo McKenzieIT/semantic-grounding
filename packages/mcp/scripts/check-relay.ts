@@ -48,7 +48,8 @@
  *   replay leg consumes; until the first real run deposits it, that gate leg
  *   skips). COMMIT this file.
  * - `fixtures/relay/<id>-result.json` — the full result (pass rate, per-run
- *   trajectories, commit SHAs, credits). Git-ignored; paste into #157.
+ *   trajectories, commit SHAs, credits). Git-ignored; paste into the ticket
+ *   that commissioned this relay run.
  *
  * ## Preflight fails loud, never silently skips
  *
@@ -104,7 +105,6 @@ interface Options {
   readonly runs: number
   readonly controlRuns: number
   readonly keep: boolean
-  readonly tight: boolean
   readonly timeoutMs: number
   /** When non-empty, the driver runs --purge mode and exits: delete
    *  `memory/<id>.yaml` for each id, commit once. Guarded to only delete
@@ -117,7 +117,6 @@ function parseOptions(argv: readonly string[]): Options {
   let runs = Number(process.env['SG_RELAY_RUNS'] ?? 5)
   let controlRuns = Number(process.env['SG_RELAY_CONTROL_RUNS'] ?? 3)
   let keep = false
-  let tight = process.env['SG_RELAY_TIGHT'] !== '0'
   let timeoutMs = Number(process.env['SG_RELAY_TIMEOUT_MS'] ?? 300_000)
   let purgeIds: string[] = []
   for (let i = 0; i < argv.length; i += 1) {
@@ -143,7 +142,7 @@ function parseOptions(argv: readonly string[]): Options {
       purgeIds = raw.split(',').map(s => s.trim()).filter(s => s !== '')
       i += 1
     } else if (arg === '--help' || arg === '-h') {
-      console.log('usage: pnpm relay [--scenario e3|a3|g3|all] [--runs N] [--control-runs N] [--keep] [--purge <mem-id>[,…]]\nenv: SG_RELAY_RUNS / SG_RELAY_CONTROL_RUNS / SG_RELAY_TIGHT / SG_RELAY_TIMEOUT_MS / SG_RELAY_QODERCLI / SG_RELAY_QODER_MODEL / SG_RELAY_QODER_FLAGS / SG_RELAY_G3_TARGET')
+      console.log('usage: pnpm relay [--scenario e3|a3|g3|all] [--runs N] [--control-runs N] [--keep] [--purge <mem-id>[,…]]\nenv: SG_RELAY_RUNS / SG_RELAY_CONTROL_RUNS / SG_RELAY_TIMEOUT_MS / SG_RELAY_QODERCLI / SG_RELAY_QODER_MODEL / SG_RELAY_QODER_FLAGS / SG_RELAY_G3_TARGET')
       process.exit(0)
     } else {
       throw new Error(`unknown flag: ${arg}`)
@@ -153,7 +152,7 @@ function parseOptions(argv: readonly string[]): Options {
   if (!Number.isInteger(controlRuns) || controlRuns < 1) throw new Error(`--control-runs must be a positive integer, got ${controlRuns}`)
   return {
     scenarios: scenarios.length > 0 ? scenarios : ['e3', 'a3', 'g3'],
-    runs, controlRuns, keep, tight, timeoutMs,
+    runs, controlRuns, keep, timeoutMs,
     purgeIds,
   }
 }
@@ -177,7 +176,6 @@ interface HostRun {
   readonly ok: boolean
   readonly parsed: RelayRun
   readonly error: string | undefined
-  readonly stdoutPath: string
   readonly durationMs: number
 }
 
@@ -193,7 +191,8 @@ function git(args: readonly string[], cwd: string): string {
 let sgToolNames: ReadonlySet<string> | undefined
 
 /** Strip the host-specific MCP tool prefix from a raw tool name; returns the
- *  bare SG name when the call is SG, `undefined` otherwise. */
+ *  bare SG name when the call is SG, the raw name unchanged otherwise —
+ *  callers drop non-SG names via the `sgToolNames` check (parseStream). */
 function stripPrefix(raw: string): string {
   for (const prefix of ['mcp__sg__', 'sg__', 'sg/']) {
     if (raw.startsWith(prefix)) return raw.slice(prefix.length)
@@ -290,7 +289,7 @@ function writeMcpConfig(path: string, agentId: string, registryPath: string, sco
 }
 
 /** Run one qodercli leg (stdin ignored — #129's pit #1: both CLIs hang waiting on a tty stdin). */
-async function runHost(args: readonly string[], cwd: string, stdoutPath: string, timeoutMs: number): Promise<HostRun> {
+async function runHost(args: readonly string[], cwd: string, stdoutFile: string, timeoutMs: number): Promise<HostRun> {
   const bin = resolveQodercliBinary()
   const started = Date.now()
   return await new Promise<HostRun>(resolve => {
@@ -299,10 +298,10 @@ async function runHost(args: readonly string[], cwd: string, stdoutPath: string,
     let stderr = ''
     let settled = false
     const finish = (ok: boolean, error: string | undefined): void => {
-      writeFileSync(stdoutPath, stdout, 'utf8')
-      if (stderr.trim() !== '') writeFileSync(`${stdoutPath}.stderr.txt`, stderr, 'utf8')
+      writeFileSync(stdoutFile, stdout, 'utf8')
+      if (stderr.trim() !== '') writeFileSync(`${stdoutFile}.stderr.txt`, stderr, 'utf8')
       const parsed = parseStream(stdout)
-      resolve({ ok: ok && parsed.answer.trim() !== '', parsed, error, stdoutPath, durationMs: Date.now() - started })
+      resolve({ ok: ok && parsed.answer.trim() !== '', parsed, error, durationMs: Date.now() - started })
     }
     const timer = setTimeout(() => {
       if (settled) return
@@ -316,7 +315,7 @@ async function runHost(args: readonly string[], cwd: string, stdoutPath: string,
       if (settled) return
       settled = true
       clearTimeout(timer)
-      resolve({ ok: false, parsed: parseStream(stdout), error: `failed to spawn ${bin}: ${e.message}`, stdoutPath, durationMs: Date.now() - started })
+      resolve({ ok: false, parsed: parseStream(stdout), error: `failed to spawn ${bin}: ${e.message}`, durationMs: Date.now() - started })
     })
     child.on('close', code => {
       if (settled) return
@@ -377,18 +376,16 @@ interface RelaySandbox {
  * hermetic line endings → gc off → baseline commit → mcp configs. The REAL
  * `~/.semantic-grounding/scopes.yaml` is never touched (#129's sandbox iron
  * rule — the k11 legs carry their own registry). */
-function buildK11Sandbox(scenario: RelayScenario, registryPath: string): RelaySandbox {
+async function buildK11Sandbox(scenario: RelayScenario, registryPath: string): Promise<RelaySandbox> {
   const dir = mkdtempSync(join(tmpdir(), `sg-relay-${scenario.id}-`))
   const corpusRoot = join(dir, 'corpus')
   cpSync(K11_FIXTURE, corpusRoot, { recursive: true })
-  git(['init', '--quiet', '--initial-branch=main', '.'], corpusRoot)
-  git(['config', 'user.name', `relay-${scenario.id}`], corpusRoot)
-  git(['config', 'user.email', `relay-${scenario.id}@relay.invalid`], corpusRoot)
-  git(['config', 'commit.gpgsign', 'false'], corpusRoot)
-  git(['config', 'core.autocrlf', 'false'], corpusRoot)
-  git(['config', 'gc.auto', '0'], corpusRoot)
-  git(['add', '-A'], corpusRoot)
-  git(['commit', '--quiet', '-m', 'relay sandbox: k11 fixture baseline'], corpusRoot)
+  // Canonical recipe from fixture-corpus.ts. Dynamic import only: that module
+  // top-level imports @semantic-grounding/substrate, which must stay behind
+  // the substrate-lib preflight — a static import would bypass the actionable
+  // error and die as a raw ERR_MODULE_NOT_FOUND instead.
+  const { initFixtureGit } = await import('../tests/helpers/fixture-corpus.ts')
+  initFixtureGit(corpusRoot, { name: `relay-${scenario.id}`, email: `relay-${scenario.id}@relay.invalid` }, 'relay sandbox: k11 fixture baseline')
   const baseline = git(['rev-parse', 'HEAD'], corpusRoot).trim()
   writeMcpConfig(join(dir, 'mcp-a.json'), `relay-${scenario.id}-a`, registryPath, K11_RELAY_SCOPE_ID)
   writeMcpConfig(join(dir, 'mcp-b.json'), `relay-${scenario.id}-b`, registryPath, K11_RELAY_SCOPE_ID)
@@ -451,7 +448,7 @@ function corpusReader(root: string): RelayCorpusReader {
 
 /** Everything a leg declared it needs — surfaced as ONE actionable error the
  * moment it is missing (never a silent skip). */
-function preflight(scenarios: readonly RelayScenario[], _opts: Options): void {
+function preflight(scenarios: readonly RelayScenario[]): void {
   const problems: string[] = []
   const substrateLib = join(REPO_ROOT, 'packages', 'substrate', 'lib', 'index.js')
   if (!existsSync(substrateLib)) {
@@ -541,10 +538,18 @@ function discoverG3Target(semanticRoot: string): string {
 
 /** Print the manual L3 checklist (#180 R2): what the operator must do in
  *  QoderWork's GUI to produce the human-side evidence. */
-function printManualL3Checklist(scenario: RelayScenario, g3Target: string | undefined, sandbox: RelaySandbox, corpusSha: string, writtenMemoryIds: readonly string[]): void {
+async function printManualL3Checklist(scenario: RelayScenario, g3Target: string | undefined, sandbox: RelaySandbox, corpusSha: string, writtenMemoryIds: readonly string[]): Promise<void> {
+  // Line 2 quotes the registry's REAL `active:` — QoderWork passes no --scope
+  // and reads the real active, so evidence copied from this line must not be
+  // the driver's own --scope binding (#186 第十件).
+  const { ScopeRegistryFile } = await import('../src/scope-registry.ts')
+  const active = new ScopeRegistryFile(sandbox.registryPath).read().active
   console.log(`\n[relay] === L3 manual checklist (${scenario.id}, QoderWork) ===`)
   console.log(`  1. 语料仓 commit SHA: ${corpusSha}`)
-  console.log(`  2. 注册表 active scope: ${sandbox.scopeId}`)
+  console.log(`  2. 注册表 active scope: ${active ?? '(未设)'}`)
+  if (active !== sandbox.scopeId) {
+    console.log(`     ⚠ active(${active ?? '未设'})≠ 目标 scope ${sandbox.scopeId} —— 先把 active 切到 ${sandbox.scopeId} 再开 QoderWork:QoderWork 不传 --scope,读的是注册表真实 active;本脚本不代切。`)
+  }
   console.log(`  3. 用 QoderWork 开两个全新会话(A 一次、B 一次,不复用含 A 上下文的会话)。`)
   for (const question of scenario.questions) {
     const prompt = g3Target !== undefined ? withG3Target(question.prompt, g3Target) : question.prompt
@@ -560,7 +565,7 @@ function printManualL3Checklist(scenario: RelayScenario, g3Target: string | unde
   console.log(`     - SG 工具调用逐条:工具名、关键入参(尤其 data_window 的 from/to)、返回里是否出现锚定的 memory id;`)
   console.log(`     - L1 / L2 逐条判定,判据与脚本一致。`)
   console.log(`  6. 跑完最后一步清理(不自动执行): pnpm relay --purge <本回合写入的 mem-id>[,…]`)
-  console.log(`     清理 §9 遗留的 mem-20261016-r6kgxn5a 也用同一口。`)
+  console.log(`     清本回合 A 写入的 id(L3 清单已打印)。`)
 }
 
 async function runScenario(scenario: RelayScenario, opts: Options, repoHead: string): Promise<ScenarioResult> {
@@ -571,7 +576,7 @@ async function runScenario(scenario: RelayScenario, opts: Options, repoHead: str
     const { ScopeRegistryFile } = await import('../src/scope-registry.ts')
     const registryDir = mkdtempSync(join(tmpdir(), `sg-relay-${scenario.id}-reg-`))
     const registryPath = join(registryDir, 'scopes.yaml')
-    sandbox = buildK11Sandbox(scenario, registryPath)
+    sandbox = await buildK11Sandbox(scenario, registryPath)
     await new ScopeRegistryFile(registryPath).register({ id: K11_RELAY_SCOPE_ID, semanticRoot: sandbox.corpusRoot, name: K11_RELAY_SCOPE_ID, registeredBy: `relay-${scenario.id}` })
     console.log(`[relay]   sandbox: ${sandbox.dir} (own registry; the real ~/.semantic-grounding/scopes.yaml is untouched)`)
   } else {
@@ -679,7 +684,7 @@ async function runScenario(scenario: RelayScenario, opts: Options, repoHead: str
     // ── L3: manual only ────────────────────────────────────────────────────────
     const corpusSha = git(['rev-parse', 'HEAD'], sandbox.corpusRoot).trim()
     if (scenario.l3Manual) {
-      printManualL3Checklist(scenario, g3Target, sandbox, corpusSha, l0.writtenMemoryIds)
+      await printManualL3Checklist(scenario, g3Target, sandbox, corpusSha, l0.writtenMemoryIds)
     } else {
       console.log(`[relay]   L3: not configured for this card (per #180 R3, only G3′ gets manual L3)`)
     }
@@ -778,7 +783,7 @@ async function main(): Promise<void> {
   }
 
   const scenarios = opts.scenarios.map(id => relayScenario(id))
-  preflight(scenarios, opts)
+  preflight(scenarios)
 
   const repoHead = git(['rev-parse', 'HEAD'], REPO_ROOT).trim()
   const results: ScenarioResult[] = []
@@ -794,7 +799,7 @@ async function main(): Promise<void> {
     if (r.verdict !== 'PASS') allPass = false
     const resultPath = join(FIXTURE_DIR, `${r.scenario}-result.json`)
     writeFileSync(resultPath, `${JSON.stringify(r, null, 2)}\n`, 'utf8')
-    console.log(`[relay]   result artifact: ${resultPath} (git-ignored — paste into #157)`)
+    console.log(`[relay]   result artifact: ${resultPath} (git-ignored — paste into the ticket that commissioned this run)`)
   }
   console.log(`[relay] ${allPass ? 'ALL PASS' : 'NOT ALL PASS'} — repo HEAD ${repoHead}`)
   process.exitCode = allPass ? 0 : 1
