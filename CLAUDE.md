@@ -23,7 +23,7 @@ Issue 追踪在 GitHub（McKenzieIT/semantic-grounding），通过 `gh` CLI 操�
 
 ### Active map
 
-- **map [#189](https://github.com/McKenzieIT/semantic-grounding/issues/189) 分析图——口径仲裁者做实**（2026-10-17 charting，本图带执行）：口径单源 · 分歧可见 · 生命周期 · `caliber_variants` 处置 · A4 接力验收。开局票 #190/#191/#195/#196/#197（research，5 路 subagent）· #192（场景采集 HITL）· #193（口径形状，blocked by 五 research）· #194（变更行为，blocked by #193）。**五 research 全关**：#191（`0111d4f`）· #195（`ecb4c54`，两条通道+三档 breaking-change）· #196（`8e2d9c8`，层级命名空间+多选澄清+certified 权重）· #197（`875541e`，SG `supersedes`+trailer+`outdated|wrong` 已领先行业）· #190（`9154d52`，**⚠️ 与终点 ①「口径单源」张力——行业阈值几乎都内嵌在 SQL 里，无独立事实对象**，ADR-0025 R5 与主流一致；#193 须先裁决「独立 segment kind」vs「`${xxx}` 占位符内嵌」）。#193 已放行；#192 待与用户做；#194 等 #193。
+- **map [#189](https://github.com/McKenzieIT/semantic-grounding/issues/189) 分析图——口径仲裁者做实**（2026-10-17 charting，本图带执行）：口径单源 · 分歧可见 · 生命周期 · `caliber_variants` 处置 · A4 接力验收。**第一轮 research（BI/SQL 栈对照材料，全关）**：#191（`0111d4f`）· #195（`ecb4c54`）· #196（`8e2d9c8`）· #197（`875541e`）· #190（`9154d52`，**与终点 ① 张力**——行业阈值几乎都内嵌在 SQL 里）。**第二轮 agent-facing research（已开票、待派 subagent）**：#201（生产 agent 消费口径）/ #202（agent 栈口径失败模式）/ #203（caliber schema 形状），均 blocked by #193。**#193 须等第二轮齐后再开 grilling**，同时看两套材料。**Q3 已裁（2026-10-18）**：路线 A「独立 caliber 事实」——原 ADR-0025 R5「阈值写在 SQL 里」在「多条大R 查询」前提下不再成立，将在 #193 改写。#192（场景采集 HITL）待与用户做；#194 等 #193。
 - 最近关图 map #125 于 2026-10-17 关闭，见下方索引；其完整子票账本 `git show d11a698:CLAUDE.md` 可回查。
 
 ### 当前基线
