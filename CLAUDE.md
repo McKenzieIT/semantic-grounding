@@ -23,7 +23,7 @@ Issue 追踪在 GitHub（McKenzieIT/semantic-grounding），通过 `gh` CLI 操�
 
 ### Active map
 
-- **map [#189](https://github.com/McKenzieIT/semantic-grounding/issues/189) 分析图——口径仲裁者做实**（2026-10-17 charting，本图带执行）：口径单源 · 分歧可见 · 生命周期 · `caliber_variants` 处置 · A4 接力验收。开局票 #190/#191/#195/#196/#197（research，5 路 subagent 并行）· #192（场景采集 HITL）· #193（口径形状，blocked by 五 research）· #194（变更行为，blocked by #193）。已关：#191（近一月前沿 agent，`research/data-agents-2026-10` · `0111d4f`，冲突处理两派/Ossie 收敛）、#196（两套口径并存消歧，`research/coexisting-definitions` · `8e2d9c8`，借鉴层级命名空间+多选澄清+certified 权重）；#190/#195/#197 仍在后台跑。
+- **map [#189](https://github.com/McKenzieIT/semantic-grounding/issues/189) 分析图——口径仲裁者做实**（2026-10-17 charting，本图带执行）：口径单源 · 分歧可见 · 生命周期 · `caliber_variants` 处置 · A4 接力验收。开局票 #190/#191/#195/#196/#197（research，5 路 subagent）· #192（场景采集 HITL）· #193（口径形状，blocked by 五 research）· #194（变更行为，blocked by #193）。已关：#191（近一月前沿 agent，`research/data-agents-2026-10` · `0111d4f`）、#196（并存消歧，`research/coexisting-definitions` · `8e2d9c8`，借鉴层级命名空间+多选澄清+certified 权重）、#197（退役读面，`research/deprecation-provenance` · `875541e`，SG `supersedes` 链+commit trailer+`outdated|wrong` 已领先行业，`get_history` 走专用工具路线；#194 默认走「supersede 为 outdated、旧条目可读」）；#190/#195 仍在后台跑（sonnet 重试）。
 - 最近关图 map #125 于 2026-10-17 关闭，见下方索引；其完整子票账本 `git show d11a698:CLAUDE.md` 可回查。
 
 ### 当前基线
