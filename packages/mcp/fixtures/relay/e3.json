@@ -1,0 +1,67 @@
+{
+  "scenario": "e3",
+  "corpus": "k11-copy",
+  "recorded_from": "pnpm relay run 2026-10-17T08:07:17.712Z (run 1, question e3-main)",
+  "scope_id": "k11-relay",
+  "requests": [
+    {
+      "name": "list_scopes",
+      "arguments": {}
+    },
+    {
+      "name": "resolve_alias",
+      "arguments": {
+        "term": "2渠"
+      }
+    },
+    {
+      "name": "search_definitions",
+      "arguments": {
+        "query": "2渠 渠道 流失",
+        "top_k": 20
+      }
+    },
+    {
+      "name": "get_definition",
+      "arguments": {
+        "kind": "concept",
+        "name": "二级渠道"
+      }
+    },
+    {
+      "name": "get_definition",
+      "arguments": {
+        "kind": "concept",
+        "name": "一级渠道"
+      }
+    },
+    {
+      "name": "get_definition",
+      "arguments": {
+        "kind": "table",
+        "name": "dws_10000251_univ_acc_churn_di"
+      }
+    },
+    {
+      "name": "get_relations",
+      "arguments": {
+        "target": "concept:二级渠道"
+      }
+    },
+    {
+      "name": "search_definitions",
+      "arguments": {
+        "query": "渠道id c2 归属 一级渠道 二级渠道 拆分",
+        "top_k": 10
+      }
+    },
+    {
+      "name": "list_definitions",
+      "arguments": {
+        "kinds": [
+          "concept"
+        ]
+      }
+    }
+  ]
+}

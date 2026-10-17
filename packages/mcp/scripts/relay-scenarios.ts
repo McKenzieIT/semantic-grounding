@@ -139,7 +139,18 @@ const E3_PROMPT_A = [
   '注意:本环境没有 create_definition 工具(已知宿主限制),不要尝试;import_definitions 的概念项字段名是 name。完成后报告你落了哪些 commit。',
 ].join('\n')
 
-const E3_PROMPT_B = '你是数据分析师。业务方要求:「按 2渠 拆一下昨天的流失账号数」。请先查语义层(semantic-grounding 的 MCP 服务,服务名 sg;先 list_scopes 看有哪些 scope,要用读工具确认)弄清「2渠」指什么,再回答:应该用哪张表的哪个字段来拆?给出表名和列名,并简述依据。'
+/** E3's B question (#183 — the third shape). The previous one, "「2渠」指什么?用哪
+ *  张表的哪个字段拆?", was answerable with no concepts at all: `acc_summary_df.c2`
+ *  carries the comment「渠道id，又叫2渠」and the churn table names the same column
+ *  `c2`, so the control chained alias → column name → target table out of corpus
+ *  text alone (1/3 leaked). Renaming columns (#182) or picking another table cannot
+ *  close that: the alias→column mapping *is* the promotion's evidence source (L0
+ *  `evidence-source`), so it lives in the corpus by construction.
+ *  What the concept layer alone holds is the hierarchy the business gave A —
+ *  一个一级渠道下有 1..N 个二级渠道, so a drill-down groups by c1 **and** c2 —
+ *  and grep confirms no 一级/二级渠道, 隶属, or 1:N anywhere in k11. The question
+ *  asks for that, so the control has to guess it to pass. */
+const E3_PROMPT_B = '你是数据分析师。业务方要求:「按 2渠 拆一下昨天的流失账号数」。请先查语义层(semantic-grounding 的 MCP 服务,服务名 sg;先 list_scopes 看有哪些 scope,要用读工具确认)弄清「2渠」指什么、它和「1渠」之间是什么关系,再回答三点:(1) 用哪张表;(2) GROUP BY 要写哪些列;(3) 简述依据。'
 
 // ── A3 — 「大R」没有阈值,口径进 memory (#128 A3 / ADR-0021) ──────────────────
 
@@ -191,8 +202,11 @@ export const E3_SCENARIO: RelayScenario = {
   questions: [{
     id: 'e3-main',
     prompt: E3_PROMPT_B,
-    allOf: ['univ_acc_churn_di', 'c2'],
-    anyOf: [],
+    // `allOf` keeps the operational answer (E3 is still "jargon → usable table.column");
+    // `anyOf` is the discriminator — the 1:N hierarchy exists only on the concept A wrote
+    // (description, `properties.parent`, and the `related_to` summary), never in k11 (#183).
+    allOf: ['univ_acc_churn_di', 'c1', 'c2'],
+    anyOf: ['1:N', '1..N', '一对多', '隶属'],
     negative: [],
   }],
   l0: { must: 'evidence-source' },

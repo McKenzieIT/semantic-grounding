@@ -413,9 +413,9 @@ describe('import_definitions — ADR-0018 (#104 dry-run preview + mass-update gu
     expect(atBody.summary).toEqual({ created: 0, updated: 50, skipped: 0, errors: 0 })
     expect(atBody.warnings?.some(w => w.startsWith('mass-update guard:'))).toBeFalsy()
     expect(lastMessage(h)).not.toContain('mass-update')
-    // 3 batches × 51 definitions over a real git corpus — measured ~33s, which
-    // sits just over the 30s default and made `pnpm test` red at random.
-  }, 90_000)
+    // 3 batches × 51 definitions over a real git corpus — ~33s on an idle box,
+    // ~88s with a relay run alongside it, so the 30s default went red at random.
+  }, 180_000)
 
   it('R5: the threshold is configurable, and the dry-run preview carries the same warnings the real write would get', async () => {
     h = await buildIntentToolHarness({ massUpdateWarnThreshold: 2 })
