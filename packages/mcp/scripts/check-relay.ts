@@ -26,12 +26,15 @@
  *
  * ## Judging (#129's rubric, updated #179 + #180)
  *
- * - L0 (deterministic, asserted here on the corpus git): the commit, its
- *   trailers, and the landed content per card.
+ * - L0 (deterministic, on the corpus git): the commit, its trailers, and the
+ *   landed content per card. This driver extracts commits + a corpus reader;
+ *   `relay-scenarios.ts`'s `judgeL0` decides (#184 — the e2e stub calls the
+ *   same judge).
  * - L1 (trajectory): B called at least one SG read tool (zero tool calls +
  *   correct answer = leak = fail). Per-question window assertion: a question
  *   that declares a `window` requires ≥1 read whose `data_window` fits
- *   inside the declared range and whose result omits the excluded memory id.
+ *   inside the declared range and whose result omits the excluded memory id
+ *   — the id A just wrote, bound by `bindWindowExclusion` before B runs.
  * - L2 (answer keywords, allOf/anyOf/negative from `relay-scenarios.ts`).
  * - N=5 B runs, pass ≥ ⌈0.8·N⌉ (#129).
  * - **Host-layer rejection** (e.g. `permission denied`, `approval required`)
@@ -66,15 +69,19 @@ import { fileURLToPath } from 'node:url'
 import yaml from 'js-yaml'
 import {
   A_LEG_DEFAULT_MODEL,
+  bindWindowExclusion,
   G3_TARGET_PLACEHOLDER,
   G3_WINDOW,
   hostRejectionOf,
   judgeAnswer,
-  judgeWindow,
+  judgeL0,
+  judgeL1,
   K11_RELAY_SCOPE_ID,
-  type RelayQuestion,
   relayScenario,
   X63_SCOPE_ID,
+  type RelayCommit,
+  type RelayCorpusReader,
+  type RelayL0Result,
   type RelayRun,
   type RelaySgCall,
   type RelayScenario,
@@ -413,19 +420,10 @@ function buildX63Sandbox(scenario: RelayScenario, registryPath: string, corpusRo
   }
 }
 
-// ── L0 — the deterministic half, judged on the corpus git ─────────────────────────
-
-/** One L0 finding. */
-interface L0Result {
-  readonly pass: boolean
-  readonly commits: ReadonlyArray<{ readonly sha: string; readonly subject: string; readonly trailers: Record<string, string> }>
-  readonly error: string | undefined
-  /** Memory ids this card's A leg wrote, surfaced for the --purge guard. */
-  readonly writtenMemoryIds: readonly string[]
-}
+// ── L0 extraction — the corpus git read for relay-scenarios' judgeL0 ─────────────
 
 /** Read every commit since `baseline` with its full X-SG-* trailer map. */
-function commitsSince(root: string, baseline: string): Array<{ sha: string; subject: string; trailers: Record<string, string> }> {
+function commitsSince(root: string, baseline: string): RelayCommit[] {
   const shas = git(['rev-list', '--reverse', '--max-count=50', `${baseline}..HEAD`], root).trim().split('\n').filter(s => s !== '')
   return shas.map(sha => {
     const subject = git(['log', '-1', '--format=%s', sha], root).trim()
@@ -439,88 +437,14 @@ function commitsSince(root: string, baseline: string): Array<{ sha: string; subj
   })
 }
 
-/** Judge one card's L0 (#156's per-card table). Also returns the memory ids
- *  A wrote — the guard for `--purge` (only ids matching the card's incident
- *  signature may be deleted). */
-function judgeL0(scenario: RelayScenario, root: string, baseline: string, g3Target: string | undefined): L0Result {
-  const commits = commitsSince(root, baseline)
-  const writtenMemoryIds: string[] = []
-  const fail = (error: string): L0Result => ({ pass: false, commits, error, writtenMemoryIds })
-  if (scenario.l0.must === 'evidence-source') {
-    const promo = commits.find(c => c.trailers['Evidence'] === 'source')
-    if (promo === undefined) return fail('no commit carries X-SG-Evidence: source — the A leg did not declare the promotion')
-    if (!(promo.trailers['Evidence-Source'] ?? '').includes('c2')) return fail('X-SG-Evidence-Source does not name the c2 column comment')
-    for (const c of commits) {
-      if (c.trailers['Memory'] !== undefined) return fail(`commit ${c.sha.slice(0, 7)} carries X-SG-Memory (E3: 确定性直升,无 memory 引用)`)
-      if (c.trailers['Session'] !== undefined) return fail(`commit ${c.sha.slice(0, 7)} carries X-SG-Session (E3 per #156: 仅 X-SG-Evidence: source)`)
-    }
-    for (const [name, alias] of [['一级渠道', '1渠'], ['二级渠道', '2渠']] as const) {
-      const path = join(root, 'concepts', `${name}.yaml`)
-      if (!existsSync(path)) return fail(`concepts/${name}.yaml not landed`)
-      const concept = yaml.load(readFileSync(path, 'utf8')) as Record<string, unknown>
-      if (!(((concept['alt_labels'] as unknown[]) ?? []) as string[]).includes(alias)) return fail(`concept ${name} is missing its alias "${alias}"`)
-    }
-    const secondary = yaml.load(readFileSync(join(root, 'concepts', '二级渠道.yaml'), 'utf8')) as Record<string, unknown>
-    const refs = (secondary['related_refs'] as Array<Record<string, unknown>>) ?? []
-    if (!refs.some(r => r['target_kind'] === 'concept' && r['target'] === '一级渠道')) return fail('concept 二级渠道 has no related_to edge to 一级渠道')
-    return { pass: true, commits, error: undefined, writtenMemoryIds }
+/** The corpus as `judgeL0` reads it: YAML/existence under the semantic-layer
+ *  root, and the `memory/` paths a commit touched (git diff-tree). */
+function corpusReader(root: string): RelayCorpusReader {
+  return {
+    yaml: rel => yaml.load(readFileSync(join(root, rel), 'utf8')),
+    exists: rel => existsSync(join(root, rel)),
+    memoryFilesOf: sha => git(['diff-tree', '--no-commit-id', '--name-only', '-r', sha], root).trim().split('\n').filter(f => f.startsWith('memory/')),
   }
-  // A3 / G3′: a record_memory commit carrying ONLY X-SG-Session (never a promotion)
-  const mem = commits.find(c => c.trailers['Tool'] === 'record_memory')
-  if (mem === undefined) return fail('no record_memory commit landed')
-  if (mem.trailers['Session'] === undefined) return fail('the record_memory commit carries no X-SG-Session')
-  for (const c of commits) {
-    if (c.trailers['Evidence'] !== undefined) return fail(`commit ${c.sha.slice(0, 7)} carries X-SG-Evidence (per #156: A3/G3′ 仅 X-SG-Session,不晋升)`)
-    if (c.trailers['Memory'] !== undefined) return fail(`commit ${c.sha.slice(0, 7)} carries X-SG-Memory`)
-  }
-  const memoryFiles = git(['diff-tree', '--no-commit-id', '--name-only', '-r', mem.sha], root).trim().split('\n').filter(f => f.startsWith('memory/'))
-  if (memoryFiles.length === 0) return fail('no memory/ file found in the record_memory commit')
-  let sawExpected = false
-  for (const rel of memoryFiles) {
-    const entry = yaml.load(readFileSync(join(root, rel), 'utf8')) as Record<string, unknown>
-    if (scenario.id === 'a3') {
-      if (entry['type'] !== 'practice') continue
-      const anchors = ((entry['anchors'] as unknown[]) ?? []).map(String)
-      const body = typeof entry['body'] === 'string' ? entry['body'] : ''
-      if (!anchors.some(a => a.includes('付费经济')) || !body.includes('500')) continue
-      sawExpected = true
-      if (entry['promoted'] !== undefined) return fail('the practice memory already carries `promoted` (A3: 本次不升)')
-      const idMatch = /memory\/(mem-[^/]+)\.yaml$/.exec(rel)
-      if (idMatch !== null && idMatch[1] !== undefined) writtenMemoryIds.push(idMatch[1])
-    } else {
-      if (entry['type'] !== 'incident') continue
-      if (entry['valid_from'] !== G3_WINDOW.from || entry['valid_until'] !== G3_WINDOW.to) continue
-      if (g3Target !== undefined && !(((entry['anchors'] as unknown[]) ?? []).map(String)).some(a => a.includes(g3Target))) continue
-      sawExpected = true
-      if (entry['promoted'] !== undefined) return fail('the incident memory carries `promoted` (G3′: 永不升)')
-      const idMatch = /memory\/(mem-[^/]+)\.yaml$/.exec(rel)
-      if (idMatch !== null && idMatch[1] !== undefined) writtenMemoryIds.push(idMatch[1])
-    }
-  }
-  if (!sawExpected) return fail('no memory entry matches the card (type / anchors / window)')
-  return { pass: true, commits, error: undefined, writtenMemoryIds }
-}
-
-// ── L1 — trajectory judges ────────────────────────────────────────────────────────
-
-/** L1: B called an SG read tool (zero tool calls + a correct answer = leak =
- * fail), plus the card's trajectory-mentions rule (E3: touched 二级渠道),
- * plus the current question's window assertion (#179, #182). */
-function judgeL1(scenario: RelayScenario, question: RelayQuestion, run: RelayRun): { readonly pass: boolean; readonly error: string | undefined } {
-  if (!run.sgCalls.some(c => scenario.l1.readTools.includes(c.name))) {
-    return { pass: false, error: `no SG read tool called (called: ${run.sgCalls.map(c => c.name).join(', ') || 'none'} — a correct answer without a read is a leak)` }
-  }
-  const trajectory = `${run.trajectoryText}\n${JSON.stringify(run.sgCalls.map(c => ({ name: c.name, input: c.input })))}`
-  for (const mention of scenario.l1.trajectoryMentions) {
-    if (!trajectory.includes(mention)) return { pass: false, error: `trajectory never mentions "${mention}"` }
-  }
-  // Window assertion for THIS question only (#179, #182: each B run asks one
-  // question — don't apply other questions' window rules).
-  if (question.window !== undefined) {
-    const w = judgeWindow(question, run)
-    if (w !== undefined && !w.pass) return { pass: false, error: `${question.id}: ${w.error}` }
-  }
-  return { pass: true, error: undefined }
 }
 
 // ── Preflight ─────────────────────────────────────────────────────────────────────
@@ -572,7 +496,7 @@ interface ScenarioResult {
   readonly corpus: string
   readonly ranAt: string
   readonly repoHead: string
-  readonly l0: { readonly pass: boolean; readonly error: string | undefined; readonly commits: L0Result['commits']; readonly writtenMemoryIds: readonly string[] }
+  readonly l0: { readonly pass: boolean; readonly error: string | undefined; readonly commits: RelayL0Result['commits']; readonly writtenMemoryIds: readonly string[] }
   readonly control: { readonly runs: number; readonly passed: number; readonly valid: boolean } | undefined
   /** `passed` counts ROUNDS (a round passes only when every question in it
    *  passes — that is what the N=5 threshold judges); `questionPasses`/`judged`
@@ -617,7 +541,7 @@ function discoverG3Target(semanticRoot: string): string {
 
 /** Print the manual L3 checklist (#180 R2): what the operator must do in
  *  QoderWork's GUI to produce the human-side evidence. */
-function printManualL3Checklist(scenario: RelayScenario, g3Target: string | undefined, sandbox: RelaySandbox, corpusSha: string): void {
+function printManualL3Checklist(scenario: RelayScenario, g3Target: string | undefined, sandbox: RelaySandbox, corpusSha: string, writtenMemoryIds: readonly string[]): void {
   console.log(`\n[relay] === L3 manual checklist (${scenario.id}, QoderWork) ===`)
   console.log(`  1. 语料仓 commit SHA: ${corpusSha}`)
   console.log(`  2. 注册表 active scope: ${sandbox.scopeId}`)
@@ -625,6 +549,10 @@ function printManualL3Checklist(scenario: RelayScenario, g3Target: string | unde
   for (const question of scenario.questions) {
     const prompt = g3Target !== undefined ? withG3Target(question.prompt, g3Target) : question.prompt
     console.log(`  4. B 的 prompt (${question.id}):\n    ${prompt.split('\n').join('\n    ')}`)
+    const window = bindWindowExclusion(question, writtenMemoryIds).window
+    if (window !== undefined) {
+      console.log(`     L1 窗口判据(与脚本 B 腿同一绑定,#184):须有一次读调用带 data_window ⊆ ${window.from}..${window.to},且该调用返回不含 memory ${window.excludeMemoryId || '(A 未写出 memory —— 排除断言无从绑定,先查 L0)'}`)
+    }
   }
   console.log(`  5. 人工证据格式(写回 docs/relay-hitl.md §9,每条一次):`)
   console.log(`     - 语料仓 commit SHA + 当时注册表 active scope;`)
@@ -681,7 +609,7 @@ async function runScenario(scenario: RelayScenario, opts: Options, repoHead: str
     console.log(`[relay]   A leg (qodercli, model=${A_LEG_DEFAULT_MODEL}) writing…`)
     const aRun = await runHost(aArgs, sandbox.dir, join(sandbox.outDir, 'A.jsonl'), opts.timeoutMs)
     if (!aRun.ok) throw new Error(`A leg failed: ${aRun.error ?? 'unknown'}`)
-    const l0 = judgeL0(scenario, sandbox.corpusRoot, sandbox.baseline, g3Target)
+    const l0 = judgeL0(scenario, commitsSince(sandbox.corpusRoot, sandbox.baseline), corpusReader(sandbox.corpusRoot), g3Target)
     console.log(`[relay]   L0 (commit+trailers on the corpus git): ${l0.pass ? 'PASS' : `FAIL — ${l0.error}`}`)
     for (const c of l0.commits) console.log(`[relay]     ${c.sha.slice(0, 7)} ${c.subject}`)
     if (l0.writtenMemoryIds.length > 0) {
@@ -696,7 +624,9 @@ async function runScenario(scenario: RelayScenario, opts: Options, repoHead: str
     let fixtureWritten: string | undefined
     for (let i = 1; i <= opts.runs; i += 1) {
       let runOk = true
-      for (const question of scenario.questions) {
+      for (const cardQuestion of scenario.questions) {
+        // The card leaves the window exclusion empty; bind A's memory id (#184 ruling 5).
+        const question = bindWindowExclusion(cardQuestion, l0.writtenMemoryIds)
         const prompt = g3Target !== undefined ? withG3Target(question.prompt, g3Target) : question.prompt
         const run = await askOnce(prompt, sandbox, opts, `B-${question.id}-${i}`, undefined)
         // Host-layer rejection = environment error, never a FAIL (#180 R4).
@@ -749,7 +679,7 @@ async function runScenario(scenario: RelayScenario, opts: Options, repoHead: str
     // ── L3: manual only ────────────────────────────────────────────────────────
     const corpusSha = git(['rev-parse', 'HEAD'], sandbox.corpusRoot).trim()
     if (scenario.l3Manual) {
-      printManualL3Checklist(scenario, g3Target, sandbox, corpusSha)
+      printManualL3Checklist(scenario, g3Target, sandbox, corpusSha, l0.writtenMemoryIds)
     } else {
       console.log(`[relay]   L3: not configured for this card (per #180 R3, only G3′ gets manual L3)`)
     }

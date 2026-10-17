@@ -118,7 +118,7 @@ pnpm relay --purge <mem-id>[,…] # G3′ 跑完后清理 incident memory(见 §
 
 **判定**:
 - L0 = 语料仓 `git log -1 --format=%B` 查 trailer(脚本已判,日志打印)。
-- L1 = 回复里是否调了 SG 读工具、是否带了 `data_window`、窗是否落在九月内、该调用返回是否**不含**事故 memory id(#179 新判据)。
+- L1 = 回复里是否调了 SG 读工具、是否带了 `data_window`、窗是否落在九月内、该调用返回是否**不含**事故 memory id(#179 新判据)。**排除的 memory id = 本回合 A 写入的那条**:脚本 B 腿已用 `bindWindowExclusion` 自动绑定同一 id(#184,此前卡上留空、断言实际休眠),日志 L3 清单里逐题打印「L1 窗口判据」行,人工按该行判,不另取 id。
 - L2 = 按该卡 `allOf`/`anyOf`/`negative` 逐词对最终回复(`g3-out-window` 的 `negative` 已清空,#179)。
 - **拿不到的**:N=5 通过率、对照组、`fixtures/relay/<id>.json`(e2e Phase 8 回放腿仍 skip)。
 
